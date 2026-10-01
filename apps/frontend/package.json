@@ -1,6 +1,7 @@
 {
   "name": "@realpolitik/frontend",
   "version": "0.1.0",
+  "private": true,
   "dependencies": {
     "@realpolitik/shared": "workspace:^"
   }
