@@ -4,11 +4,11 @@
   "private": true,
   "description": "Realpolitik Manager – monorepo root",
   "scripts": {
-    "lint": "eslint . --ext .ts,.tsx",
-    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "lint": "eslint . --ext .ts,.tsx --no-error-on-unmatched-pattern",
+    "lint:fix": "eslint . --ext .ts,.tsx --no-error-on-unmatched-pattern --fix",
     "format": "prettier --write \"**/*.{ts,tsx,json,yaml,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,yaml,md}\"",
-    "typecheck": "tsc --noEmit -p tsconfig.base.json"
+    "typecheck": "pnpm -r --if-present run typecheck"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",
