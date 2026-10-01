@@ -16,9 +16,24 @@ module.exports = {
     'plugin:import/typescript',
     'prettier', // Must be last – disables rules that conflict with Prettier
   ],
+  settings: {
+    'import/resolver': {
+      typescript: {
+        alwaysTryTypes: true,
+        project: ['./apps/*/tsconfig.json', './packages/*/tsconfig.json'],
+      },
+      node: true,
+    },
+  },
   rules: {
     /* TypeScript */
-    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+      },
+    ],
     '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
     '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/explicit-function-return-type': 'off',
