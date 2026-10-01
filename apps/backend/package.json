@@ -1,4 +1,11 @@
 {
   "name": "@realpolitik/backend",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@realpolitik/shared": "workspace:^"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.0"
+  }
 }
