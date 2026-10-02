@@ -1,0 +1,141 @@
+/* Fuentes autohospedadas (Fontsource): solo subset latin y los pesos usados. */
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * Tokens de Realpolitik Manager. Fuente de verdad visual: handoff de Design.
+ * Los valores se mantienen en hex, tal como figuran en el handoff.
+ */
+:root {
+  /* Superficies y texto */
+  --background: #f5f4f2;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --muted-foreground: #6b6b6b; /* text-muted */
+
+  /* Superficies auxiliares */
+  --muted: #efeeea; /* subtle */
+  --secondary: #eeebe8;
+  --secondary-foreground: #1a1a1a;
+  --accent: #efeeea;
+  --accent-foreground: #1a1a1a;
+  --table-head: #eeebe8;
+  --panel-alt: #fafaf8;
+
+  /* Bordes y foco */
+  --border: #e4e3de;
+  --input: #8f8e88;
+  --ring: #161314;
+
+  /* Acción principal y marca */
+  --primary: #161314;
+  --primary-foreground: #ffffff;
+  --primary-hover: #2b2627;
+  --brand-accent: #e23b43;
+
+  /* Estados */
+  --destructive: #b8262e;
+  --destructive-soft: #fbeeef;
+  --destructive-border: #ebc3c6;
+  --warning: #a97914;
+  --warning-soft: #fbf3e3;
+  --success: #1f5f3f;
+
+  /* Motion */
+  --motion-duration: 150ms;
+}
+
+/* Expone los tokens como utilidades de Tailwind (bg-background, text-foreground, etc.). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-content-secondary: var(--text-secondary);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-table-head: var(--table-head);
+  --color-panel-alt: var(--panel-alt);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-brand-accent: var(--brand-accent);
+  --color-destructive: var(--destructive);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-border: var(--destructive-border);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+}
+
+/* Tipografía, radios y easing del handoff (valores fijos, siempre emitidos). */
+@theme static {
+  --font-sans: "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  /* Radios del handoff */
+  --radius-chip: 4px;
+  --radius-control: 8px;
+  --radius-card: 10px;
+  --radius-panel: 12px;
+  --radius-pill: 999px;
+
+  /* Escala estándar de shadcn, alineada con los radios del handoff */
+  --radius-sm: var(--radius-chip);
+  --radius-md: var(--radius-control); /* base-nova: Skeleton y botones xs/sm */
+  --radius-lg: var(--radius-control);
+  --radius-xl: var(--radius-card);
+  --radius-2xl: var(--radius-panel);
+
+  --ease-standard: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration: 0.01ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
