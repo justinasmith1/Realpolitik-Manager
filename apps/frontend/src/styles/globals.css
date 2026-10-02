@@ -52,6 +52,19 @@
   --warning-soft: #fbf3e3;
   --success: #1f5f3f;
 
+  /* Sidebar: superficie oscura propia del shell (no es un modo oscuro global) */
+  --sidebar: #161314;
+  --sidebar-foreground: #dad4d2;
+  --sidebar-accent: #2b2627;
+  --sidebar-accent-foreground: #ffffff;
+  /*
+   * Token derivado: el valor #3A3435 está en el handoff, pero solo como borde del
+   * botón de colapso con el Sidebar colapsado. Acá se reutiliza como separador
+   * (p. ej. bajo la marca), uso que el handoff no define.
+   */
+  --sidebar-border: #3a3435;
+  --sidebar-ring: #ffffff;
+
   /* Motion */
   --motion-duration: 150ms;
 }
@@ -86,6 +99,12 @@
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-success: var(--success);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 /* Tipografía, radios y easing del handoff (valores fijos, siempre emitidos). */
@@ -122,6 +141,11 @@
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+
+  /* Sobre la superficie oscura del Sidebar el foco usa su propio token. */
+  [data-sidebar="sidebar"] :focus-visible {
+    outline-color: var(--sidebar-ring);
   }
 }
 
