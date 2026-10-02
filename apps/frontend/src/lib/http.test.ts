@@ -327,5 +327,38 @@ describe('http', () => {
       expect(error).not.toBeInstanceOf(ApiClientError);
       expect(fetchMock).not.toHaveBeenCalled();
     });
+
+    // El parser de URL trata "\" como "/" y descarta TAB, LF y CR: un path que a simple vista
+    // no tiene segmentos ".." puede normalizarse fuera del prefijo de la API. Se rechazan
+    // porque la URL final, ya normalizada, deja de estar bajo `/api/v1`.
+    it.each([
+      ['con ".." tras una barra invertida', '/..\\admin'],
+      ['con barras invertidas que suben dos niveles', '/clientes\\..\\..\\x'],
+      ['con TAB dentro de ".."', '/.\t./x'],
+      ['con LF dentro de ".."', '/.\n./x'],
+      ['con CR dentro de ".."', '/.\r./x'],
+      ['con TAB dentro de "%2e" codificado', '/%2e\t%2e/x'],
+      ['con TAB y LF entre los puntos', '/.\t\n./x'],
+    ])('rechaza un path %s porque saldría del prefijo', async (_caso, path) => {
+      const error = await rejection(http(path));
+
+      expect(error).toBeInstanceOf(TypeError);
+      expect(error).not.toBeInstanceOf(ApiClientError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('toda URL que sí se envía queda bajo el prefijo y en el mismo origin', async () => {
+      // Se normalizan dentro del prefijo (no lo abandonan), así que se aceptan.
+      const paths = ['/clientes\\123', '/cli\tentes', '/clientes\n/1', '/clientes?ruta=..\\x'];
+
+      for (const path of paths) {
+        await http(path);
+
+        const enviada = new URL(lastFetchCall().url);
+        expect(enviada.origin).toBe('https://example.com');
+        expect(enviada.pathname).toMatch(/^\/api\/v1\//);
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(paths.length);
+    });
   });
 });

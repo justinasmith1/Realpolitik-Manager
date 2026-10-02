@@ -59,6 +59,7 @@ function resolveBaseUrl(): string {
 
 // El path se une al base por concatenación (no con `new URL(path, base)`, que descartaría
 // el prefijo /api/v1). Por eso se exige un path relativo al base, que no pueda saltearlo.
+// Estas son las validaciones de forma; la garantía real está en `buildUrl`.
 function assertValidPath(path: string): void {
   if (!path.startsWith('/') || path.startsWith('//')) {
     throw new TypeError(
@@ -70,6 +71,25 @@ function assertValidPath(path: string): void {
   if (/(^|\/)(\.|%2e){1,2}(\/|$)/i.test(pathname)) {
     throw new TypeError('http() path must not contain dot segments ("." or "..").');
   }
+}
+
+// Une base y path, y comprueba contra la URL que `fetch` realmente va a pedir: el parser
+// normaliza (trata "\" como "/", descarta TAB/LF/CR, resuelve "..") y por eso una lista de
+// caracteres prohibidos nunca termina de cubrir los casos. Si la URL normalizada cambia de
+// origin o deja de estar bajo el pathname del base, el path no es válido.
+function buildUrl(base: string, path: string): string {
+  const url = `${base}${path}`;
+
+  const baseUrl = new URL(base);
+  const finalUrl = new URL(url);
+  const basePathname = baseUrl.pathname.replace(/\/+$/, '');
+  const isUnderBase =
+    finalUrl.pathname === basePathname || finalUrl.pathname.startsWith(`${basePathname}/`);
+
+  if (finalUrl.origin !== baseUrl.origin || !isUnderBase) {
+    throw new TypeError('http() path must stay under the API base URL once normalized.');
+  }
+  return url;
 }
 
 // Una cancelación por AbortSignal no es un fallo de red: debe llegar intacta al llamador
@@ -115,7 +135,7 @@ async function readErrorPayload(response: Response): Promise<unknown> {
  */
 export async function http(path: string, init: RequestInit = {}): Promise<Response> {
   assertValidPath(path);
-  const url = `${resolveBaseUrl()}${path}`;
+  const url = buildUrl(resolveBaseUrl(), path);
 
   const headers = new Headers(init.headers);
   if (!headers.has('Accept')) {
