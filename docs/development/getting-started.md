@@ -2,12 +2,12 @@
 
 Guía para preparar el entorno de desarrollo según el estado actual del repositorio.
 
-> Los workspaces (`apps/backend`, `apps/frontend`, `packages/shared`) están en fase de setup: por ahora solo tienen su `package.json`. Los scripts propios de cada uno irán apareciendo a medida que avance el desarrollo.
+> `apps/backend` todavía no tiene implementación ni scripts propios. `apps/frontend` (base de la aplicación web) y `packages/shared` ya definen los suyos; los del backend irán apareciendo a medida que avance el desarrollo.
 
 ## Requisitos
 
-- **Node.js** >= 20.
-- **pnpm** 9. El repositorio declara `packageManager: pnpm@9.7.1` en el `package.json` raíz.
+- **Node.js** >= 20.19.0.
+- **pnpm** 9.7.1. El repositorio lo declara como `packageManager: pnpm@9.7.1` en el `package.json` raíz.
 
 Se recomienda usar [Corepack](https://nodejs.org/api/corepack.html) (incluido con Node) para obtener la versión de pnpm declarada:
 
@@ -55,6 +55,40 @@ pnpm --filter @realpolitik/<workspace> <script>
 ```
 
 Los nombres actuales son `@realpolitik/backend`, `@realpolitik/frontend` y `@realpolitik/shared`. Solo se pueden ejecutar los scripts que ese workspace defina.
+
+## Frontend
+
+La aplicación web (React, Vite y TypeScript) está en `apps/frontend`. Desde la raíz del repositorio:
+
+```bash
+pnpm --filter @realpolitik/frontend dev        # servidor de desarrollo (Vite)
+pnpm --filter @realpolitik/frontend test       # tests
+pnpm --filter @realpolitik/frontend build      # build de producción
+pnpm --filter @realpolitik/frontend typecheck  # verificación de tipos
+```
+
+El servidor de desarrollo usa el puerto por defecto de Vite (`http://localhost:5173`).
+
+### Variables de entorno
+
+El frontend lee la URL de la API desde `VITE_API_URL`:
+
+1. Copiá `apps/frontend/.env.example` como `apps/frontend/.env.local` (Git ignora ese archivo).
+2. Completá el valor en `.env.local`:
+
+   ```bash
+   VITE_API_URL=
+   ```
+
+El backend todavía no define host, puerto ni prefijo, por eso `.env.example` deja el valor vacío y no sugiere uno.
+
+Las variables `VITE_*` quedan dentro del bundle que se descarga en el navegador: **son públicas**. Nunca pongas en ellas tokens, contraseñas, claves ni credenciales.
+
+La pantalla actual no hace requests, así que el frontend arranca aunque `VITE_API_URL` no esté configurada. Las llamadas HTTP que se agreguen más adelante van a fallar de forma explícita (con un error de configuración) hasta que se la defina. Si cambiás su valor, hay que reiniciar el servidor de desarrollo o volver a generar el build.
+
+### Paquete compartido
+
+El frontend importa `@realpolitik/shared` desde su build (`packages/shared/dist`, que no se versiona). Por eso `pnpm lint` en la raíz y los scripts `dev`, `typecheck`, `test` y `build` del frontend reconstruyen ese paquete antes de ejecutarse; no hace falta compilarlo a mano.
 
 ## Siguiente lectura
 
