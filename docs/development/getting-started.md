@@ -93,4 +93,5 @@ El frontend importa `@realpolitik/shared` desde su build (`packages/shared/dist`
 ## Siguiente lectura
 
 - [Convenciones](conventions.md)
+- [Base de datos](database.md)
 - [Baseline de seguridad](../security/security-baseline.md)
