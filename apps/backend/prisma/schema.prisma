@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums (isomorfos al schema Zod en @realpolitik/shared) ──────────────────
+
+enum Sector {
+  PUBLICO
+  PRIVADO
+}
+
+enum SubtipoPublico {
+  MUNICIPAL
+  PROVINCIAL_ORGANISMO
+  SINDICAL_OBRA_SOCIAL
+}
+
+enum IvaCondicion {
+  RESPONSABLE_INSCRIPTO
+  MONOTRIBUTO
+  EXENTO
+  CONSUMIDOR_FINAL
+  NO_CATEGORIZADO
+}
+
+enum ClienteEstado {
+  ACTIVO
+  INACTIVO
+  SUSPENDIDO
+}
+
+// ─── Modelo Cliente ───────────────────────────────────────────────────────────
+
+// TODO [DEUDA TÉCNICA]: La regla de negocio "si sector = PUBLICO entonces subtipo != null"
+// no puede expresarse como CHECK constraint en Prisma v5 con tipos ENUM.
+// Se valida únicamente en la capa de aplicación (Zod discriminatedUnion).
+// Evaluar en versiones futuras de Prisma o migrar Sector/Subtipo a tablas relacionales (ADR futuro).
+
+model Cliente {
+  id            String  @id @default(uuid()) @db.Uuid
+
+  // Datos de identificación
+  razonSocial   String  @db.VarChar(150)
+  /// Denominación corta o alias del cliente. Obligatorio. Máx 60 chars.
+  /// Es el identificador visual principal en la UI cuando razonSocial es extensa.
+  denominacion  String  @db.VarChar(60)
+
+  // Datos fiscales y de contacto
+  cuit               String   @unique @db.VarChar(13) // formato XX-XXXXXXXX-X
+  ivaCondicion       IvaCondicion
+  emailContacto      String   @db.VarChar(254)
+  emailsAdicionales  String[] @default([])
+  telefono           String?  @db.VarChar(25)
+  portalUrl          String?  @db.VarChar(500)
+
+  // Categorización (ADR-0002 §2)
+  sector   Sector
+  subtipo  SubtipoPublico? // null para clientes PRIVADO
+
+  // Estado comercial (ADR-0002 §3)
+  estado  ClienteEstado @default(ACTIVO)
+  activo  Boolean       @default(true)
+
+  // Baja lógica (ADR-0002 §3)
+  isDeleted  Boolean   @default(false)
+  deletedAt  DateTime?
+
+  // Auditoría (ADR-0002 §4)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

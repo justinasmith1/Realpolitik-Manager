@@ -2,10 +2,23 @@
   "name": "@realpolitik/backend",
   "version": "0.1.0",
   "private": true,
+  "scripts": {
+    "db:generate": "prisma generate --schema=prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema=prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio --schema=prisma/schema.prisma"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "@realpolitik/shared": "workspace:^"
   },
   "devDependencies": {
-    "tsup": "^8.3.0"
+    "prisma": "^5.22.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.1"
   }
 }
