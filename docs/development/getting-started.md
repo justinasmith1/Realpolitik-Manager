@@ -2,7 +2,7 @@
 
 Guía para preparar el entorno de desarrollo según el estado actual del repositorio.
 
-> `apps/backend` todavía no tiene implementación ni scripts propios. `apps/frontend` (base de la aplicación web) y `packages/shared` ya definen los suyos; los del backend irán apareciendo a medida que avance el desarrollo.
+> `apps/backend` (API Express), `apps/frontend` (base de la aplicación web) y `packages/shared` ya definen sus propios scripts.
 
 ## Requisitos
 
@@ -89,6 +89,42 @@ La pantalla actual no hace requests, así que el frontend arranca aunque `VITE_A
 ### Paquete compartido
 
 El frontend importa `@realpolitik/shared` desde su build (`packages/shared/dist`, que no se versiona). Por eso `pnpm lint` en la raíz y los scripts `dev`, `typecheck`, `test` y `build` del frontend reconstruyen ese paquete antes de ejecutarse; no hace falta compilarlo a mano.
+
+## Backend
+
+La API (Express 5 y TypeScript, en ESM) está en `apps/backend`. Desde la raíz del repositorio:
+
+```bash
+pnpm --filter @realpolitik/backend dev        # servidor de desarrollo con recarga (tsx watch)
+pnpm --filter @realpolitik/backend test       # tests (vitest y supertest)
+pnpm --filter @realpolitik/backend build      # genera dist/
+pnpm --filter @realpolitik/backend start      # arranca dist/server.js (requiere build previo)
+pnpm --filter @realpolitik/backend typecheck  # verificación de tipos
+```
+
+El servidor escucha en `http://localhost:3000` (variable `PORT`). Las rutas no llevan prefijo: `GET /health` responde `{ "status": "ok" }` sin consultar la base de datos.
+
+### Variables de entorno
+
+1. Copiá `apps/backend/.env.example` como `apps/backend/.env` (Git lo ignora).
+2. Ajustá los valores. El script `dev` lo carga con `--env-file=.env`.
+
+| Variable       | Obligatoria | Descripción                                                              |
+| -------------- | ----------- | ------------------------------------------------------------------------ |
+| `NODE_ENV`     | No          | `development` (default), `test` o `production`.                          |
+| `PORT`         | No          | Entero entre 1 y 65535 (default 3000).                                   |
+| `DATABASE_URL` | Sí          | URL de PostgreSQL. Si tu Docker usa otro puerto (p. ej. 5433), ajustalo. |
+| `CORS_ORIGINS` | Sí          | Orígenes del frontend permitidos, separados por comas y sin barra final. |
+
+Si falta o es inválida alguna, el servidor no arranca y el mensaje nombra la variable sin mostrar su valor (`DATABASE_URL` contiene la contraseña). En producción las variables vienen del entorno del servidor, no de un archivo `.env`.
+
+### Formato de error
+
+Todos los errores de la API responden `{ "error": { "code", "message", "details" } }`. Códigos: `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `CONFLICT` (409) e `INTERNAL_ERROR` (500). Un endpoint lanza errores con los helpers de `src/errors/app-error.ts` y valida sus entradas con el middleware `validate` de `src/middleware/validate.ts`.
+
+### Paquete compartido
+
+Igual que el frontend, el backend consume `@realpolitik/shared` desde su `dist`: `dev`, `typecheck`, `test` y `build` lo reconstruyen antes de ejecutarse.
 
 ## Siguiente lectura
 
