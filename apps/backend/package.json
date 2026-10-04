@@ -2,7 +2,18 @@
   "name": "@realpolitik/backend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
+    "build:shared": "pnpm --filter @realpolitik/shared build",
+    "predev": "pnpm run build:shared",
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "pretypecheck": "pnpm run build:shared",
+    "typecheck": "tsc --noEmit",
+    "prebuild": "pnpm run build:shared",
+    "build": "tsup",
+    "start": "node dist/server.js",
+    "pretest": "pnpm run build:shared",
+    "test": "vitest run",
     "db:generate": "prisma generate --schema=prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema=prisma/schema.prisma",
     "db:migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
@@ -14,11 +25,20 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "@realpolitik/shared": "workspace:^"
+    "@realpolitik/shared": "workspace:^",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.14.0",
+    "@types/supertest": "^6.0.2",
     "prisma": "^5.22.0",
+    "supertest": "^7.0.0",
     "tsup": "^8.3.0",
-    "tsx": "^4.19.1"
+    "tsx": "^4.19.1",
+    "vitest": "~4.1.11"
   }
 }
