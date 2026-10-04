@@ -4,8 +4,9 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "types": ["node"],
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "prisma/**/*.ts"],
+  "include": ["src/**/*.ts", "prisma/**/*.ts", "*.config.ts"],
   "exclude": ["node_modules", "dist"]
 }
