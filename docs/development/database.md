@@ -67,13 +67,13 @@ Abre una UI en `http://localhost:5555` para explorar y editar los datos directam
 
 ## Scripts disponibles
 
-| Script                                              | Qué hace                                                  |
-| --------------------------------------------------- | --------------------------------------------------------- |
-| `db:generate`                                       | Regenera el cliente Prisma a partir del schema            |
-| `db:migrate`                                        | Crea y aplica una nueva migración en desarrollo           |
-| `db:migrate:deploy`                                 | Aplica migraciones pendientes sin crearlas (producción)   |
-| `db:seed`                                           | Inserta datos de prueba en la base de datos               |
-| `db:studio`                                         | Abre Prisma Studio en `http://localhost:5555`             |
+| Script              | Qué hace                                                |
+| ------------------- | ------------------------------------------------------- |
+| `db:generate`       | Regenera el cliente Prisma a partir del schema          |
+| `db:migrate`        | Crea y aplica una nueva migración en desarrollo         |
+| `db:migrate:deploy` | Aplica migraciones pendientes sin crearlas (producción) |
+| `db:seed`           | Inserta datos de prueba en la base de datos             |
+| `db:studio`         | Abre Prisma Studio en `http://localhost:5555`           |
 
 Todos se ejecutan con `pnpm --filter @realpolitik/backend <script>`.
 
