@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, test y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Sin `version`: pnpm/action-setup lee `packageManager` (pnpm@9.7.1) del package.json raíz.
+      # Debe ir antes de setup-node, que necesita pnpm instalado para usar `cache: pnpm`.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      # Node 24 es el runtime objetivo de deploy. `engines.node` sigue siendo >=20.19.0.
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Los scripts del backend ya lo hacen solos; se deja explícito para que el CI
+      # no dependa de eso. No necesita DATABASE_URL ni base de datos.
+      - name: Generate Prisma Client
+        run: pnpm --filter @realpolitik/backend db:generate
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test shared
+        run: pnpm --filter @realpolitik/shared test
+
+      - name: Test backend
+        run: pnpm --filter @realpolitik/backend test
+
+      - name: Test frontend
+        run: pnpm --filter @realpolitik/frontend test
+
+      - name: Build frontend
+        run: pnpm --filter @realpolitik/frontend build
+
+      - name: Build backend
+        run: pnpm --filter @realpolitik/backend build
