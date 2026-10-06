@@ -20,3 +20,4 @@ Si un documento contradice al código, el código manda y el documento debe corr
 - [Despliegue](deployment.md): CI, configuración de Vercel y Railway, variables y migraciones.
 - [Baseline de seguridad](security/security-baseline.md): reglas mínimas y decisiones pendientes.
 - [Decisiones de arquitectura (ADR)](adr/README.md): qué son, cuándo escribirlas e índice.
+- [Contrato de API](development/api-contract.md): endpoints, schemas y respuestas.

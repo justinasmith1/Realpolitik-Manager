@@ -54,6 +54,7 @@ Más detalle en [Primeros pasos](docs/development/getting-started.md).
 - [Contexto de negocio](docs/product/contexto-negocio.md)
 - [Primeros pasos](docs/development/getting-started.md)
 - [Convenciones](docs/development/conventions.md)
+- [Contrato de API](docs/development/api-contract.md)
 - [Despliegue y CI](docs/deployment.md)
 - [Baseline de seguridad](docs/security/security-baseline.md)
 - [Decisiones de arquitectura (ADR)](docs/adr/README.md)
