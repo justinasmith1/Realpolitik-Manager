@@ -26,7 +26,7 @@ docs/
 .github/
 ```
 
-Los workspaces están en fase de setup: por ahora solo contienen su `package.json`.
+`apps/backend` (API Express con Prisma), `apps/frontend` (base de la aplicación web) y `packages/shared` (tipos y schemas compartidos) ya tienen su código base y sus propios scripts.
 
 ## Inicio rápido
 
@@ -54,6 +54,7 @@ Más detalle en [Primeros pasos](docs/development/getting-started.md).
 - [Contexto de negocio](docs/product/contexto-negocio.md)
 - [Primeros pasos](docs/development/getting-started.md)
 - [Convenciones](docs/development/conventions.md)
+- [Despliegue y CI](docs/deployment.md)
 - [Baseline de seguridad](docs/security/security-baseline.md)
 - [Decisiones de arquitectura (ADR)](docs/adr/README.md)
 

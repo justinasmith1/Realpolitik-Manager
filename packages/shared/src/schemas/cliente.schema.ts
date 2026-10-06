@@ -69,7 +69,8 @@ const ClienteCamposBase = z.object({
   cuit: z
     .string()
     .regex(/^(\d{2}[-\s]\d{8}[-\s]\d|\d{11})$/, {
-      message: 'El CUIT debe tener el formato XX-XXXXXXXX-X, XX XXXXXXXX X o 11 dígitos sin separadores.',
+      message:
+        'El CUIT debe tener el formato XX-XXXXXXXX-X, XX XXXXXXXX X o 11 dígitos sin separadores.',
     })
     .refine(validateCuit, {
       message: 'El CUIT ingresado no es válido (dígito verificador incorrecto o prefijo inválido).',

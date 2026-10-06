@@ -80,7 +80,7 @@ El frontend lee la URL de la API desde `VITE_API_URL`:
    VITE_API_URL=
    ```
 
-El backend todavía no define host, puerto ni prefijo, por eso `.env.example` deja el valor vacío y no sugiere uno.
+En desarrollo local el backend escucha en `http://localhost:3000` y sus rutas no llevan prefijo (ver [Backend](#backend)). El valor de producción lo define el proveedor de despliegue (ver [Despliegue](../deployment.md)). `.env.example` deja el valor vacío y no sugiere uno.
 
 Las variables `VITE_*` quedan dentro del bundle que se descarga en el navegador: **son públicas**. Nunca pongas en ellas tokens, contraseñas, claves ni credenciales.
 
@@ -122,12 +122,32 @@ Si falta o es inválida alguna, el servidor no arranca y el mensaje nombra la va
 
 Todos los errores de la API responden `{ "error": { "code", "message", "details" } }`. Códigos: `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `CONFLICT` (409) e `INTERNAL_ERROR` (500). Un endpoint lanza errores con los helpers de `src/errors/app-error.ts` y valida sus entradas con el middleware `validate` de `src/middleware/validate.ts`.
 
-### Paquete compartido
+### Paquete compartido y cliente Prisma
 
-Igual que el frontend, el backend consume `@realpolitik/shared` desde su `dist`: `dev`, `typecheck`, `test` y `build` lo reconstruyen antes de ejecutarse.
+Igual que el frontend, el backend consume `@realpolitik/shared` desde su `dist`. Además, usa el cliente de Prisma, que se genera a partir de `apps/backend/prisma/schema.prisma` (no se versiona, y un `pnpm install` no lo genera porque el schema no está en una ubicación por defecto).
+
+Por eso `dev`, `typecheck`, `test` y `build` del backend, y `pnpm lint` en la raíz, ejecutan antes el script interno `build:deps` del backend, que compila `shared` y genera el cliente. No hace falta hacerlo a mano ni tener una base de datos: generar el cliente no necesita `DATABASE_URL`. Para regenerarlo por separado: `pnpm --filter @realpolitik/backend db:generate`.
+
+No se usa un script `postinstall` para esto: en Windows deja el cliente generado en un lugar donde Node no lo encuentra.
+
+## Verificar antes de abrir un Pull Request
+
+El CI corre estos mismos comandos (ver [Despliegue](../deployment.md#integración-continua)):
+
+```bash
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm --filter @realpolitik/shared test
+pnpm --filter @realpolitik/backend test
+pnpm --filter @realpolitik/frontend test
+pnpm --filter @realpolitik/frontend build
+pnpm --filter @realpolitik/backend build
+```
 
 ## Siguiente lectura
 
 - [Convenciones](conventions.md)
 - [Base de datos](database.md)
+- [Despliegue](../deployment.md)
 - [Baseline de seguridad](../security/security-baseline.md)
