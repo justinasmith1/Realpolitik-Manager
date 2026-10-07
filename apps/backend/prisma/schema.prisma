@@ -64,7 +64,6 @@ model Cliente {
 
   // Estado comercial (ADR-0002 §3)
   estado  ClienteEstado @default(ACTIVO)
-  activo  Boolean       @default(true)
 
   // Baja lógica (ADR-0002 §3)
   isDeleted  Boolean   @default(false)

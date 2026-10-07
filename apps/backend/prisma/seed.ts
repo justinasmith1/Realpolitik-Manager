@@ -22,7 +22,6 @@ async function main() {
         sector: Sector.PUBLICO,
         subtipo: SubtipoPublico.MUNICIPAL,
         estado: ClienteEstado.ACTIVO,
-        activo: true,
       },
 
       // 2. Provincial/Organismo — ACTIVO
@@ -35,7 +34,6 @@ async function main() {
         sector: Sector.PUBLICO,
         subtipo: SubtipoPublico.PROVINCIAL_ORGANISMO,
         estado: ClienteEstado.ACTIVO,
-        activo: true,
       },
 
       // 3. Sindical/Obra Social — ACTIVO
@@ -49,7 +47,6 @@ async function main() {
         sector: Sector.PUBLICO,
         subtipo: SubtipoPublico.SINDICAL_OBRA_SOCIAL,
         estado: ClienteEstado.ACTIVO,
-        activo: true,
       },
 
       // 4. Municipal — INACTIVO (cliente que dejó de operar)
@@ -62,10 +59,9 @@ async function main() {
         sector: Sector.PUBLICO,
         subtipo: SubtipoPublico.MUNICIPAL,
         estado: ClienteEstado.INACTIVO,
-        activo: false,
       },
 
-      // 5. Provincial/Organismo — SUSPENDIDO y activo (suspensión temporal)
+      // 5. Provincial/Organismo — SUSPENDIDO (suspensión temporal)
       {
         razonSocial: 'Legislatura de la Ciudad Autónoma de Buenos Aires',
         denominacion: 'Legislatura CABA',
@@ -76,7 +72,6 @@ async function main() {
         sector: Sector.PUBLICO,
         subtipo: SubtipoPublico.PROVINCIAL_ORGANISMO,
         estado: ClienteEstado.SUSPENDIDO,
-        activo: true,
       },
 
       // 6. Sindical/Obra Social — baja lógica (isDeleted = true)
@@ -89,7 +84,6 @@ async function main() {
         sector: Sector.PUBLICO,
         subtipo: SubtipoPublico.SINDICAL_OBRA_SOCIAL,
         estado: ClienteEstado.ACTIVO,
-        activo: false,
         isDeleted: true,
         deletedAt: new Date('2026-08-15T10:00:00Z'),
       },
@@ -107,7 +101,6 @@ async function main() {
         portalUrl: 'https://proveedores.gruposolano.com.ar',
         sector: Sector.PRIVADO,
         estado: ClienteEstado.ACTIVO,
-        activo: true,
       },
 
       // 8. Privado — ACTIVO con emails adicionales
@@ -121,7 +114,6 @@ async function main() {
         portalUrl: 'https://portal.mediodinterior.com.ar',
         sector: Sector.PRIVADO,
         estado: ClienteEstado.ACTIVO,
-        activo: true,
       },
 
       // 9. Privado — INACTIVO (monotributo, sin portal)
@@ -133,7 +125,6 @@ async function main() {
         emailContacto: 'contacto@nortegrande.com.ar',
         sector: Sector.PRIVADO,
         estado: ClienteEstado.INACTIVO,
-        activo: false,
       },
 
       // 10. Privado — baja lógica (isDeleted = true)
@@ -145,7 +136,6 @@ async function main() {
         emailContacto: 'legal@patagonia-tv.com.ar',
         sector: Sector.PRIVADO,
         estado: ClienteEstado.ACTIVO,
-        activo: false,
         isDeleted: true,
         deletedAt: new Date('2026-09-01T08:30:00Z'),
       },
