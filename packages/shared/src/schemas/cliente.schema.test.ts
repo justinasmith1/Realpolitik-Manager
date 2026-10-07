@@ -5,6 +5,7 @@ import {
   ClienteSubtipoPublico,
   CreateClienteSchema,
   IvaCondicion,
+  UpdateClienteSchema,
 } from './cliente.schema.js';
 
 // ─── Payloads base ────────────────────────────────────────────────────────────
@@ -16,6 +17,7 @@ import {
 const BASE = {
   id: 'a1b2c3d4-e5f6-4789-abcd-ef0123456789',
   razonSocial: 'Agencia Realpolitik S.A.',
+  denominacion: 'Realpolitik',
   cuit: '30-50001274-5',
   ivaCondicion: 'RESPONSABLE_INSCRIPTO' as const,
   emailContacto: 'contacto@realpolitik.com.ar',
@@ -260,6 +262,49 @@ describe('ClienteSchema', () => {
     });
   });
 
+  // ─── Fallos por denominación ────────────────────────────────────────────────
+  describe('Fallos de validación — denominacion', () => {
+    it('falla si la denominación está ausente', () => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { denominacion, ...sinDenominacion } = clientePublico;
+      const result = ClienteSchema.safeParse(sinDenominacion);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.some((issue) => issue.path.includes('denominacion'))).toBe(true);
+      }
+    });
+
+    it('falla si la denominación tiene menos de 2 caracteres', () => {
+      const result = ClienteSchema.safeParse({ ...clientePublico, denominacion: 'A' });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.some((issue) => issue.path.includes('denominacion'))).toBe(true);
+      }
+    });
+
+    it('falla si la denominación supera los 60 caracteres', () => {
+      const result = ClienteSchema.safeParse({
+        ...clientePublico,
+        denominacion: 'A'.repeat(61),
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.some((issue) => issue.path.includes('denominacion'))).toBe(true);
+      }
+    });
+
+    it('aplica trim a la denominación', () => {
+      const result = ClienteSchema.safeParse({
+        ...clientePublico,
+        denominacion: '  Muni Cba  ',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.denominacion).toBe('Muni Cba');
+      }
+    });
+  });
+
   // ─── Fallos por email ───────────────────────────────────────────────────────
   describe('Fallos de validación — email', () => {
     it('falla si el email de contacto es inválido', () => {
@@ -302,6 +347,7 @@ describe('CreateClienteSchema', () => {
   it('acepta payload público sin id/creadoEn/actualizadoEn', () => {
     const payload = {
       razonSocial: 'Municipio de Paraná',
+      denominacion: 'Muni Paraná',
       cuit: '30-50001274-5',
       sector: 'PUBLICO' as const,
       subtipo: 'MUNICIPAL' as const,
@@ -318,6 +364,7 @@ describe('CreateClienteSchema', () => {
   it('acepta payload privado sin id/creadoEn/actualizadoEn', () => {
     const payload = {
       razonSocial: 'Empresa Privada S.A.',
+      denominacion: 'Empresa Privada',
       cuit: '20-12345678-6',
       sector: 'PRIVADO' as const,
       ivaCondicion: 'RESPONSABLE_INSCRIPTO' as const,
@@ -330,9 +377,26 @@ describe('CreateClienteSchema', () => {
     }
   });
 
+  it('falla si el payload no incluye denominacion', () => {
+    const payload = {
+      razonSocial: 'Municipio de Paraná',
+      cuit: '30-50001274-5',
+      sector: 'PUBLICO' as const,
+      subtipo: 'MUNICIPAL' as const,
+      ivaCondicion: 'EXENTO' as const,
+      emailContacto: 'municipio@parana.gob.ar',
+    };
+    const result = CreateClienteSchema.safeParse(payload);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.path.includes('denominacion'))).toBe(true);
+    }
+  });
+
   it('falla si el payload público no incluye subtipo', () => {
     const payload = {
       razonSocial: 'Organismo sin subtipo',
+      denominacion: 'Organismo',
       cuit: '30-50001274-5',
       sector: 'PUBLICO' as const,
       ivaCondicion: 'EXENTO' as const,
@@ -340,6 +404,55 @@ describe('CreateClienteSchema', () => {
     };
     const result = CreateClienteSchema.safeParse(payload);
     expect(result.success).toBe(false);
+  });
+});
+
+// ─── Tests de UpdateClienteSchema ────────────────────────────────────────────
+
+describe('UpdateClienteSchema', () => {
+  it('permite actualizar la denominacion', () => {
+    const payload = {
+      sector: 'PUBLICO' as const,
+      denominacion: 'Nuevo Alias',
+    };
+    const result = UpdateClienteSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.denominacion).toBe('Nuevo Alias');
+    }
+  });
+
+  it('permite omitir la denominacion en una actualizacion parcial', () => {
+    const payload = {
+      sector: 'PUBLICO' as const,
+      telefono: '+54 11 4000-1234',
+    };
+    const result = UpdateClienteSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+  });
+
+  it('falla si la denominacion en actualizacion tiene menos de 2 caracteres', () => {
+    const payload = {
+      sector: 'PUBLICO' as const,
+      denominacion: 'X',
+    };
+    const result = UpdateClienteSchema.safeParse(payload);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.path.includes('denominacion'))).toBe(true);
+    }
+  });
+
+  it('falla si la denominacion en actualizacion supera los 60 caracteres', () => {
+    const payload = {
+      sector: 'PUBLICO' as const,
+      denominacion: 'X'.repeat(61),
+    };
+    const result = UpdateClienteSchema.safeParse(payload);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.path.includes('denominacion'))).toBe(true);
+    }
   });
 });
 

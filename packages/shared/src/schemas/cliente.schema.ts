@@ -65,6 +65,17 @@ const ClienteCamposBase = z.object({
     .max(150, { message: 'La razón social no puede superar los 150 caracteres.' })
     .trim(),
 
+  /**
+   * Denominación corta o alias del cliente.
+   * Usar cuando la razón social es extensa y dificulta la identificación visual.
+   * Máximo 60 caracteres. Campo obligatorio.
+   */
+  denominacion: z
+    .string()
+    .min(2, { message: 'La denominación debe tener al menos 2 caracteres.' })
+    .max(60, { message: 'La denominación no puede superar los 60 caracteres.' })
+    .trim(),
+
   /** CUIT/CUIL con o sin guiones — se valida con Módulo 11 */
   cuit: z
     .string()
@@ -194,6 +205,7 @@ export type CreateClienteDto = z.infer<typeof CreateClienteSchema>;
 export const UpdateClienteSchema = z.discriminatedUnion('sector', [
   ClientePublicoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }).partial({
     razonSocial: true,
+    denominacion: true,
     cuit: true,
     ivaCondicion: true,
     emailContacto: true,
@@ -205,6 +217,7 @@ export const UpdateClienteSchema = z.discriminatedUnion('sector', [
   }),
   ClientePrivadoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }).partial({
     razonSocial: true,
+    denominacion: true,
     cuit: true,
     ivaCondicion: true,
     emailContacto: true,
