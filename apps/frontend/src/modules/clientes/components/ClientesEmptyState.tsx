@@ -1,5 +1,11 @@
-// Primer uso, sin ningún cliente. Sin acciones todavía: "Nuevo cliente" llega con HU1.1.
-export function ClientesEmptyState() {
+import { Button } from '@/components/ui/button';
+
+interface ClientesEmptyStateProps {
+  onNuevoCliente: () => void;
+}
+
+// Primer uso, sin ningún cliente: invita a registrar el primero.
+export function ClientesEmptyState({ onNuevoCliente }: ClientesEmptyStateProps) {
   return (
     <div className="flex flex-col items-start gap-4 rounded-card border bg-card p-6 sm:px-12 sm:py-11">
       <h2 className="text-xl font-semibold tracking-[-0.01em]">Todavía no cargaste clientes</h2>
@@ -7,6 +13,9 @@ export function ClientesEmptyState() {
         Los clientes que cargues aparecerán acá para que puedas consultar y organizar su
         información.
       </p>
+      <Button variant="outline" onClick={onNuevoCliente}>
+        Registrar el primer cliente
+      </Button>
     </div>
   );
 }
