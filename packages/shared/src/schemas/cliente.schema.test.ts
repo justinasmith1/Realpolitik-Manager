@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import {
   ClienteSchema,
   ClienteSubtipoPublico,
   CreateClienteSchema,
+  CuitSchema,
   IvaCondicion,
   UpdateClienteSchema,
+  type CreateClienteDto,
 } from './cliente.schema.js';
 
 // ─── Payloads base ────────────────────────────────────────────────────────────
@@ -343,38 +345,92 @@ describe('ClienteSchema', () => {
 
 // ─── Tests de CreateClienteSchema ────────────────────────────────────────────
 
+/** Alta de un cliente público: solo los campos que envía el front. */
+const altaPublica = {
+  razonSocial: 'Municipio de Paraná',
+  denominacion: 'Muni Paraná',
+  cuit: '30-50001274-5',
+  sector: 'PUBLICO' as const,
+  subtipo: 'MUNICIPAL' as const,
+  ivaCondicion: 'EXENTO' as const,
+  emailContacto: 'municipio@parana.gob.ar',
+};
+
+/** Alta de un cliente privado: solo los campos que envía el front. */
+const altaPrivada = {
+  razonSocial: 'Empresa Privada S.A.',
+  denominacion: 'Empresa Privada',
+  cuit: '20-12345678-6',
+  sector: 'PRIVADO' as const,
+  ivaCondicion: 'RESPONSABLE_INSCRIPTO' as const,
+  emailContacto: 'empresa@privada.com',
+};
+
+/** Paths de los issues de un parse fallido, en notación de puntos. */
+const pathsConError = (result: { success: boolean; error?: { issues: { path: unknown[] }[] } }) =>
+  result.error?.issues.map((issue) => issue.path.join('.')) ?? [];
+
 describe('CreateClienteSchema', () => {
-  it('acepta payload público sin id/creadoEn/actualizadoEn', () => {
-    const payload = {
-      razonSocial: 'Municipio de Paraná',
-      denominacion: 'Muni Paraná',
-      cuit: '30-50001274-5',
-      sector: 'PUBLICO' as const,
-      subtipo: 'MUNICIPAL' as const,
-      ivaCondicion: 'EXENTO' as const,
-      emailContacto: 'municipio@parana.gob.ar',
-    };
+  it.each([
+    ['público', altaPublica],
+    ['privado', altaPrivada],
+  ])('acepta un alta %s sin campos del servidor y no los agrega', (_sector, payload) => {
     const result = CreateClienteSchema.safeParse(payload);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect('id' in result.data).toBe(false);
+      expect(result.data).not.toHaveProperty('id');
+      expect(result.data).not.toHaveProperty('estado');
+      expect(result.data).not.toHaveProperty('creadoEn');
+      expect(result.data).not.toHaveProperty('actualizadoEn');
     }
   });
 
-  it('acepta payload privado sin id/creadoEn/actualizadoEn', () => {
-    const payload = {
-      razonSocial: 'Empresa Privada S.A.',
-      denominacion: 'Empresa Privada',
-      cuit: '20-12345678-6',
-      sector: 'PRIVADO' as const,
-      ivaCondicion: 'RESPONSABLE_INSCRIPTO' as const,
-      emailContacto: 'empresa@privada.com',
-    };
-    const result = CreateClienteSchema.safeParse(payload);
+  // El estado lo fija el servidor. Las claves desconocidas se descartan (no hay `.strict()`),
+  // así que enviarlo no es un error: simplemente no llega al resultado.
+  it.each(['ACTIVO', 'INACTIVO', 'SUSPENDIDO'])(
+    'descarta el estado %s enviado por el pedido',
+    (estado) => {
+      const result = CreateClienteSchema.safeParse({ ...altaPrivada, estado });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).not.toHaveProperty('estado');
+      }
+    },
+  );
+
+  it('descarta id, fechas y campos internos enviados por el pedido', () => {
+    const result = CreateClienteSchema.safeParse({
+      ...altaPublica,
+      id: 'a1b2c3d4-e5f6-4789-abcd-ef0123456789',
+      creadoEn: '2024-01-15T00:00:00.000Z',
+      actualizadoEn: '2024-06-30T00:00:00.000Z',
+      isDeleted: true,
+      deletedAt: '2024-06-30T00:00:00.000Z',
+    });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect('id' in result.data).toBe(false);
+      for (const campo of ['id', 'creadoEn', 'actualizadoEn', 'isDeleted', 'deletedAt']) {
+        expect(result.data).not.toHaveProperty(campo);
+      }
     }
+  });
+
+  it('CreateClienteDto no expone estado (lo verifica el typecheck)', () => {
+    expectTypeOf<CreateClienteDto>().not.toHaveProperty('estado');
+    expectTypeOf<CreateClienteDto>().not.toHaveProperty('id');
+  });
+
+  it.each(['emailContacto', 'ivaCondicion', 'sector'] as const)('sigue exigiendo %s', (campo) => {
+    const { [campo]: _omitido, ...sinCampo } = altaPublica;
+    const result = CreateClienteSchema.safeParse(sinCampo);
+    expect(result.success).toBe(false);
+    expect(pathsConError(result)).toContain(campo);
+  });
+
+  it('rechaza un alta privada con subtipo', () => {
+    const result = CreateClienteSchema.safeParse({ ...altaPrivada, subtipo: 'MUNICIPAL' });
+    expect(result.success).toBe(false);
+    expect(pathsConError(result)).toContain('subtipo');
   });
 
   it('falla si el payload no incluye denominacion', () => {
@@ -404,6 +460,88 @@ describe('CreateClienteSchema', () => {
     };
     const result = CreateClienteSchema.safeParse(payload);
     expect(result.success).toBe(false);
+  });
+
+  // ─── Trim antes de validar longitud ─────────────────────────────────────────
+  // La longitud se mide sobre el valor ya normalizado: un texto de solo espacios no
+  // cuenta como dato, y los espacios exteriores no consumen el máximo.
+  describe.each([
+    { campo: 'razonSocial', max: 150 },
+    { campo: 'denominacion', max: 60 },
+  ] as const)('trim de $campo', ({ campo, max }) => {
+    it('rechaza un valor de solo espacios', () => {
+      const result = CreateClienteSchema.safeParse({ ...altaPrivada, [campo]: '   ' });
+      expect(result.success).toBe(false);
+      expect(pathsConError(result)).toContain(campo);
+    });
+
+    it('aplica el mínimo de 2 después del trim', () => {
+      const result = CreateClienteSchema.safeParse({ ...altaPrivada, [campo]: '  A  ' });
+      expect(result.success).toBe(false);
+      expect(pathsConError(result)).toContain(campo);
+    });
+
+    it('acepta un valor válido con espacios exteriores y lo devuelve normalizado', () => {
+      const result = CreateClienteSchema.safeParse({ ...altaPrivada, [campo]: '  AB  ' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data[campo]).toBe('AB');
+      }
+    });
+
+    it(`aplica el máximo de ${max} sobre el valor normalizado`, () => {
+      const enElLimite = CreateClienteSchema.safeParse({
+        ...altaPrivada,
+        [campo]: `  ${'A'.repeat(max)}  `,
+      });
+      expect(enElLimite.success).toBe(true);
+
+      const excedido = CreateClienteSchema.safeParse({
+        ...altaPrivada,
+        [campo]: `  ${'A'.repeat(max + 1)}  `,
+      });
+      expect(excedido.success).toBe(false);
+      expect(pathsConError(excedido)).toContain(campo);
+    });
+  });
+});
+
+// ─── Tests de CuitSchema ──────────────────────────────────────────────────────
+
+describe('CuitSchema', () => {
+  // 20-12345678-6 es ficticio y válido por Módulo 11 (ver payloads base).
+  it.each([
+    ['canónico', '20-12345678-6'],
+    ['de 11 dígitos', '20123456786'],
+    ['con espacios', '20 12345678 6'],
+  ])('acepta un CUIT %s y lo devuelve en formato canónico', (_formato, cuit) => {
+    const result = CuitSchema.safeParse(cuit);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toBe('20-12345678-6');
+    }
+  });
+
+  it('rechaza un CUIT con dígito verificador incorrecto', () => {
+    const result = CuitSchema.safeParse('20-12345678-5');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe(
+        'El CUIT ingresado no es válido (dígito verificador incorrecto o prefijo inválido).',
+      );
+    }
+  });
+
+  it('rechaza un CUIT con formato no admitido', () => {
+    expect(CuitSchema.safeParse('2012345678').success).toBe(false);
+  });
+
+  it('es la regla que aplica el alta de cliente', () => {
+    const result = CreateClienteSchema.safeParse({ ...altaPrivada, cuit: '20123456786' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.cuit).toBe('20-12345678-6');
+    }
   });
 });
 

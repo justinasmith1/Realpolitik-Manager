@@ -3,6 +3,7 @@ import express, { json, type Express } from 'express';
 
 import { errorHandler } from './middleware/error-handler';
 import { notFoundHandler } from './middleware/not-found';
+import { clientesRouter } from './modules/clientes/clientes.routes';
 import { healthRouter } from './routes/health';
 
 export interface AppConfig {
@@ -18,6 +19,7 @@ export function createApp({ corsOrigins }: AppConfig): Express {
   app.use(json());
 
   app.use(healthRouter);
+  app.use('/clientes', clientesRouter);
 
   // El orden importa: el 404 y el manejo de errores van después de todas las rutas.
   app.use(notFoundHandler);

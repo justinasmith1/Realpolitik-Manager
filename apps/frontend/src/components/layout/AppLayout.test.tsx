@@ -2,11 +2,17 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { AppProviders } from '@/app/providers';
 import { routes } from '@/app/router';
 
+// Igual que main.tsx: el router dentro de los providers de la app.
 function renderRoute(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
+  render(
+    <AppProviders>
+      <RouterProvider router={router} />
+    </AppProviders>,
+  );
 }
 
 // Simula un viewport mobile: coincide la media query `max-width` de useIsMobile.

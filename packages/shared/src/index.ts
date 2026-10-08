@@ -7,6 +7,7 @@ export {
   ClienteEstado,
   ClienteSector,
   ClienteSubtipoPublico,
+  CuitSchema,
 } from './schemas/cliente.schema.js';
 
 export type {
