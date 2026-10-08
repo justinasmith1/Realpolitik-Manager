@@ -47,6 +47,31 @@ export const ClienteSubtipoPublico = z.enum([
 
 export type ClienteSubtipoPublico = z.infer<typeof ClienteSubtipoPublico>;
 
+// ─── CUIT ─────────────────────────────────────────────────────────────────────
+
+/**
+ * CUIT/CUIL con o sin separadores, validado con Módulo 11.
+ *
+ * Acepta `XX-XXXXXXXX-X`, `XX XXXXXXXX X` o 11 dígitos, y siempre devuelve el formato
+ * canónico `XX-XXXXXXXX-X`. Es la única definición de la regla: el Cliente la reutiliza
+ * y el front puede validar el campo solo (p. ej. al salir del input) con `safeParse`.
+ */
+export const CuitSchema = z
+  .string()
+  .regex(/^(\d{2}[-\s]\d{8}[-\s]\d|\d{11})$/, {
+    message:
+      'El CUIT debe tener el formato XX-XXXXXXXX-X, XX XXXXXXXX X o 11 dígitos sin separadores.',
+  })
+  .refine(validateCuit, {
+    message: 'El CUIT ingresado no es válido (dígito verificador incorrecto o prefijo inválido).',
+  })
+  .transform((raw) => {
+    // Normaliza la salida al formato canónico XX-XXXXXXXX-X independientemente
+    // de cómo haya sido ingresado (con guiones, sin guiones o con espacios).
+    const digits = raw.replace(/[-\s]/g, '');
+    return `${digits.slice(0, 2)}-${digits.slice(2, 10)}-${digits.slice(10)}`;
+  });
+
 // ─── Campos comunes ───────────────────────────────────────────────────────────
 
 /**
@@ -59,11 +84,13 @@ const ClienteCamposBase = z.object({
   id: z.string().uuid({ message: 'El ID debe ser un UUID v4 válido.' }),
 
   /** Razón social o nombre comercial del cliente */
+  // `.trim()` va antes de `.min()`/`.max()`: Zod aplica los checks en orden, y así la
+  // longitud se mide sobre el valor normalizado ("   " no puede pasar como 3 caracteres).
   razonSocial: z
     .string()
+    .trim()
     .min(2, { message: 'La razón social debe tener al menos 2 caracteres.' })
-    .max(150, { message: 'La razón social no puede superar los 150 caracteres.' })
-    .trim(),
+    .max(150, { message: 'La razón social no puede superar los 150 caracteres.' }),
 
   /**
    * Denominación corta o alias del cliente.
@@ -72,26 +99,12 @@ const ClienteCamposBase = z.object({
    */
   denominacion: z
     .string()
+    .trim()
     .min(2, { message: 'La denominación debe tener al menos 2 caracteres.' })
-    .max(60, { message: 'La denominación no puede superar los 60 caracteres.' })
-    .trim(),
+    .max(60, { message: 'La denominación no puede superar los 60 caracteres.' }),
 
   /** CUIT/CUIL con o sin guiones — se valida con Módulo 11 */
-  cuit: z
-    .string()
-    .regex(/^(\d{2}[-\s]\d{8}[-\s]\d|\d{11})$/, {
-      message:
-        'El CUIT debe tener el formato XX-XXXXXXXX-X, XX XXXXXXXX X o 11 dígitos sin separadores.',
-    })
-    .refine(validateCuit, {
-      message: 'El CUIT ingresado no es válido (dígito verificador incorrecto o prefijo inválido).',
-    })
-    .transform((raw) => {
-      // Normaliza la salida al formato canónico XX-XXXXXXXX-X independientemente
-      // de cómo haya sido ingresado (con guiones, sin guiones o con espacios).
-      const digits = raw.replace(/[-\s]/g, '');
-      return `${digits.slice(0, 2)}-${digits.slice(2, 10)}-${digits.slice(10)}`;
-    }),
+  cuit: CuitSchema,
 
   /** Condición frente al IVA */
   ivaCondicion: IvaCondicion,
@@ -183,15 +196,27 @@ export type ClientePublico = z.infer<typeof ClientePublicoSchema>;
 export type ClientePrivado = z.infer<typeof ClientePrivadoSchema>;
 
 /**
+ * Campos que fija el servidor al crear un cliente y que el pedido no puede controlar.
+ * `estado` incluido: un cliente nuevo siempre nace ACTIVO (lo asigna el backend).
+ */
+const CAMPOS_DEL_SERVIDOR_EN_ALTA = {
+  id: true,
+  estado: true,
+  creadoEn: true,
+  actualizadoEn: true,
+} as const;
+
+/**
  * DTO para la creación de un nuevo cliente.
- * Omite campos autogenerados por el servidor.
+ * Omite los campos que fija el servidor (ver `CAMPOS_DEL_SERVIDOR_EN_ALTA`). Si el pedido
+ * los envía igual, Zod los descarta como cualquier clave desconocida: no es un error.
  *
  * Nota: `discriminatedUnion` no expone `.omit()` directamente,
  * por lo que se construye derivando desde cada rama y re-uniendo.
  */
 export const CreateClienteSchema = z.discriminatedUnion('sector', [
-  ClientePublicoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }),
-  ClientePrivadoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }),
+  ClientePublicoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA),
+  ClientePrivadoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA),
 ]);
 
 export type CreateClienteDto = z.infer<typeof CreateClienteSchema>;
