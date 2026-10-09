@@ -113,14 +113,18 @@ describe('NuevoClienteSheet', () => {
       'Sector',
       'Condición frente al IVA',
       'Email de contacto',
+      'Canal de entrega',
     ]) {
       expect(campo(etiqueta)).toBeInTheDocument();
     }
     // El subtipo aparece recién al elegir Público.
     expect(screen.queryByLabelText('Subtipo público')).not.toBeInTheDocument();
+    // Portal web y WhatsApp aparecen según el canal elegido (por defecto es Correo).
+    expect(screen.queryByLabelText('URL del portal')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Número de WhatsApp')).not.toBeInTheDocument();
     expect(screen.getAllByRole('textbox')).toHaveLength(4);
-    expect(screen.getAllByRole('combobox')).toHaveLength(2);
-    expect(screen.queryByLabelText(/teléfono|portal|estado|periodicidad/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('combobox')).toHaveLength(3);
+    expect(screen.queryByLabelText(/teléfono|estado|periodicidad/i)).not.toBeInTheDocument();
   });
 
   it('muestra las opciones con nombres legibles y sin una elegida de antemano', () => {
@@ -245,6 +249,7 @@ describe('NuevoClienteSheet', () => {
       subtipo: 'MUNICIPAL',
       ivaCondicion: 'EXENTO',
       emailContacto: 'compras@municipio.example',
+      canalEntrega: 'CORREO',
     });
     expect(onCreado).toHaveBeenCalledTimes(1);
     expect(onCreado).toHaveBeenCalledWith(
