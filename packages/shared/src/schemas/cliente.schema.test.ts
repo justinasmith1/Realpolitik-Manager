@@ -549,12 +549,12 @@ describe('CuitSchema', () => {
 // ─── Tests de UpdateClienteSchema ────────────────────────────────────────────
 
 describe('UpdateClienteSchema', () => {
-  it('permite actualizar la denominacion', () => {
-    const payload = {
-      sector: 'PUBLICO' as const,
-      denominacion: 'Nuevo Alias',
-    };
-    const result = UpdateClienteSchema.safeParse(payload);
+  /** Rutas de los campos que Zod marcó con error. */
+  const camposConError = (resultado: { error?: ZodError }) =>
+    resultado.error?.issues.map((issue) => issue.path.join('.')) ?? [];
+
+  it('permite actualizar la denominacion sin enviar el sector', () => {
+    const result = UpdateClienteSchema.safeParse({ denominacion: 'Nuevo Alias' });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.denominacion).toBe('Nuevo Alias');
@@ -562,36 +562,139 @@ describe('UpdateClienteSchema', () => {
   });
 
   it('permite omitir la denominacion en una actualizacion parcial', () => {
-    const payload = {
-      sector: 'PUBLICO' as const,
-      telefono: '+54 11 4000-1234',
-    };
-    const result = UpdateClienteSchema.safeParse(payload);
+    const result = UpdateClienteSchema.safeParse({ telefono: '+54 11 4000-1234' });
     expect(result.success).toBe(true);
   });
 
   it('falla si la denominacion en actualizacion tiene menos de 2 caracteres', () => {
-    const payload = {
-      sector: 'PUBLICO' as const,
-      denominacion: 'X',
-    };
-    const result = UpdateClienteSchema.safeParse(payload);
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.some((issue) => issue.path.includes('denominacion'))).toBe(true);
-    }
+    const result = UpdateClienteSchema.safeParse({ denominacion: 'X' });
+    expect(camposConError(result)).toEqual(['denominacion']);
   });
 
   it('falla si la denominacion en actualizacion supera los 60 caracteres', () => {
-    const payload = {
-      sector: 'PUBLICO' as const,
-      denominacion: 'X'.repeat(61),
-    };
-    const result = UpdateClienteSchema.safeParse(payload);
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.some((issue) => issue.path.includes('denominacion'))).toBe(true);
-    }
+    const result = UpdateClienteSchema.safeParse({ denominacion: 'X'.repeat(61) });
+    expect(camposConError(result)).toEqual(['denominacion']);
+  });
+
+  describe('al menos un campo', () => {
+    it('rechaza un pedido vacío', () => {
+      const result = UpdateClienteSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('rechaza un pedido que solo trae campos que no se editan', () => {
+      const result = UpdateClienteSchema.safeParse({ estado: 'INACTIVO', id: BASE.id });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('campos del servidor', () => {
+    it('ignora estado, id y fechas sin error, y no los devuelve', () => {
+      const result = UpdateClienteSchema.safeParse({
+        razonSocial: 'Otra S.A.',
+        estado: 'INACTIVO',
+        id: BASE.id,
+        creadoEn: '2020-01-01',
+        actualizadoEn: '2020-01-01',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toEqual({ razonSocial: 'Otra S.A.' });
+    });
+  });
+
+  describe('sin defaults', () => {
+    it('un campo ausente queda ausente: no pisa canalEntrega ni emailsAdicionales', () => {
+      const result = UpdateClienteSchema.safeParse({ razonSocial: 'Otra S.A.' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).not.toHaveProperty('canalEntrega');
+        expect(result.data).not.toHaveProperty('emailsAdicionales');
+      }
+    });
+  });
+
+  describe('sector y subtipo', () => {
+    it('acepta pasar a PUBLICO con subtipo', () => {
+      const result = UpdateClienteSchema.safeParse({ sector: 'PUBLICO', subtipo: 'MUNICIPAL' });
+      expect(result.success).toBe(true);
+    });
+
+    it('rechaza pasar a PUBLICO sin subtipo y marca subtipo', () => {
+      const result = UpdateClienteSchema.safeParse({ sector: 'PUBLICO' });
+      expect(camposConError(result)).toEqual(['subtipo']);
+    });
+
+    it('acepta pasar a PRIVADO sin subtipo', () => {
+      const result = UpdateClienteSchema.safeParse({ sector: 'PRIVADO' });
+      expect(result.success).toBe(true);
+    });
+
+    it('rechaza PRIVADO con subtipo y marca subtipo', () => {
+      const result = UpdateClienteSchema.safeParse({ sector: 'PRIVADO', subtipo: 'MUNICIPAL' });
+      expect(camposConError(result)).toEqual(['subtipo']);
+    });
+
+    it('acepta un subtipo solo: el sector guardado lo valida el backend', () => {
+      const result = UpdateClienteSchema.safeParse({ subtipo: 'PROVINCIAL_ORGANISMO' });
+      expect(result.success).toBe(true);
+    });
+
+    it('rechaza un subtipo que no existe', () => {
+      const result = UpdateClienteSchema.safeParse({ sector: 'PUBLICO', subtipo: 'OTRO' });
+      expect(camposConError(result)).toEqual(['subtipo']);
+    });
+  });
+
+  describe('CUIT', () => {
+    it('rechaza un CUIT con dígito verificador incorrecto', () => {
+      const result = UpdateClienteSchema.safeParse({ cuit: '30-50001274-0' });
+      expect(camposConError(result)).toEqual(['cuit']);
+    });
+
+    it('normaliza un CUIT válido al formato canónico', () => {
+      const result = UpdateClienteSchema.safeParse({ cuit: '30500012745' });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.cuit).toBe('30-50001274-5');
+    });
+  });
+
+  describe('canal de entrega', () => {
+    it('rechaza PORTAL_WEB sin portalUrl', () => {
+      const result = UpdateClienteSchema.safeParse({ canalEntrega: 'PORTAL_WEB' });
+      expect(camposConError(result)).toEqual(['portalUrl']);
+    });
+
+    it('rechaza WHATSAPP sin whatsappNumero', () => {
+      const result = UpdateClienteSchema.safeParse({ canalEntrega: 'WHATSAPP' });
+      expect(camposConError(result)).toEqual(['whatsappNumero']);
+    });
+
+    it('acepta PORTAL_WEB con portalUrl válida', () => {
+      const result = UpdateClienteSchema.safeParse({
+        canalEntrega: 'PORTAL_WEB',
+        portalUrl: 'https://portal.ejemplo.gob.ar',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('acepta WHATSAPP con número válido y lo normaliza a E.164', () => {
+      const result = UpdateClienteSchema.safeParse({
+        canalEntrega: 'WHATSAPP',
+        whatsappNumero: '+54 9 (351) 123-4567',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.whatsappNumero).toBe('+5493511234567');
+    });
+
+    it('acepta cambiar solo la portalUrl, sin tocar el canal', () => {
+      const result = UpdateClienteSchema.safeParse({ portalUrl: 'https://nuevo.ejemplo.gob.ar' });
+      expect(result.success).toBe(true);
+    });
+
+    it('rechaza una portalUrl mal formada', () => {
+      const result = UpdateClienteSchema.safeParse({ portalUrl: 'portal sin protocolo' });
+      expect(camposConError(result)).toEqual(['portalUrl']);
+    });
   });
 });
 
