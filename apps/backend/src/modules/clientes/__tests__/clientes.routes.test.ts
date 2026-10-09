@@ -41,6 +41,9 @@ function filaInsertada({ data }: { data: Prisma.ClienteCreateInput }): ClienteRo
     portalUrl: data.portalUrl ?? null,
     canalEntrega: data.canalEntrega ?? 'CORREO',
     whatsappNumero: data.whatsappNumero ?? null,
+    periodicidadTipo: data.periodicidadTipo ?? null,
+    periodicidadDiaLimite: data.periodicidadDiaLimite ?? null,
+    periodicidadMesInicioCiclo: data.periodicidadMesInicioCiclo ?? null,
     sector: data.sector,
     subtipo: data.subtipo ?? null,
     estado: data.estado ?? 'ACTIVO',
@@ -116,6 +119,7 @@ describe('POST /clientes', () => {
         emailContacto: 'compras@municipio.example',
         emailsAdicionales: [],
         canalEntrega: 'CORREO',
+        periodicidad: null,
         estado: 'ACTIVO',
         creadoEn: AHORA.toISOString(),
         actualizadoEn: AHORA.toISOString(),
@@ -135,6 +139,9 @@ describe('POST /clientes', () => {
           portalUrl: null,
           canalEntrega: 'CORREO',
           whatsappNumero: null,
+          periodicidadTipo: null,
+          periodicidadDiaLimite: null,
+          periodicidadMesInicioCiclo: null,
           sector: 'PUBLICO',
           subtipo: 'MUNICIPAL',
           estado: 'ACTIVO',
@@ -161,6 +168,112 @@ describe('POST /clientes', () => {
       expect(prismaMock.cliente.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ estado: 'ACTIVO' }) as unknown,
       });
+    });
+  });
+
+  describe('periodicidad', () => {
+    it('sin periodicidad persiste null en las tres columnas y responde periodicidad null', async () => {
+      const res = await postClientes(altaPrivada);
+
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('periodicidad', null);
+      expect(prismaMock.cliente.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          periodicidadTipo: null,
+          periodicidadDiaLimite: null,
+          periodicidadMesInicioCiclo: null,
+        }) as unknown,
+      });
+    });
+
+    it.each([
+      [
+        'MENSUAL',
+        { tipo: 'MENSUAL', diaLimite: 10, mesInicioCiclo: null },
+        {
+          periodicidadTipo: 'MENSUAL',
+          periodicidadDiaLimite: 10,
+          periodicidadMesInicioCiclo: null,
+        },
+      ],
+      [
+        'BIMESTRAL',
+        { tipo: 'BIMESTRAL', diaLimite: 15, mesInicioCiclo: 3 },
+        { periodicidadTipo: 'BIMESTRAL', periodicidadDiaLimite: 15, periodicidadMesInicioCiclo: 3 },
+      ],
+      [
+        'POR_CAMPANIA',
+        { tipo: 'POR_CAMPANIA', diaLimite: 28, mesInicioCiclo: null },
+        {
+          periodicidadTipo: 'POR_CAMPANIA',
+          periodicidadDiaLimite: 28,
+          periodicidadMesInicioCiclo: null,
+        },
+      ],
+    ])(
+      'persiste las tres columnas y devuelve la periodicidad %s',
+      async (_tipo, periodicidad, columnas) => {
+        const res = await postClientes({ ...altaPublica, periodicidad });
+
+        expect(res.status).toBe(201);
+        expect(res.body).toMatchObject({ periodicidad });
+        expect(ClienteSchema.safeParse(res.body).success).toBe(true);
+        expect(prismaMock.cliente.create).toHaveBeenCalledWith({
+          data: expect.objectContaining(columnas) as unknown,
+        });
+      },
+    );
+
+    it('no guarda un objeto periodicidad en la base: solo las tres columnas', async () => {
+      await postClientes({
+        ...altaPrivada,
+        periodicidad: { tipo: 'MENSUAL', diaLimite: 10, mesInicioCiclo: null },
+      });
+
+      expect(prismaMock.cliente.create.mock.calls[0]?.[0].data).not.toHaveProperty('periodicidad');
+    });
+
+    it.each([
+      [
+        'un día límite fuera de rango',
+        { tipo: 'MENSUAL', diaLimite: 29, mesInicioCiclo: null },
+        'periodicidad.diaLimite',
+      ],
+      [
+        'un bimestral sin mes de inicio',
+        { tipo: 'BIMESTRAL', diaLimite: 10, mesInicioCiclo: null },
+        'periodicidad.mesInicioCiclo',
+      ],
+      [
+        'un mensual con mes de inicio',
+        { tipo: 'MENSUAL', diaLimite: 10, mesInicioCiclo: 3 },
+        'periodicidad.mesInicioCiclo',
+      ],
+    ])('responde 400 con %s, sin tocar la base', async (_caso, periodicidad, campo) => {
+      const res = await postClientes({ ...altaPrivada, periodicidad });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({
+        error: { code: 'VALIDATION_ERROR', details: [expect.objectContaining({ campo })] },
+      });
+      expect(prismaMock.cliente.create).not.toHaveBeenCalled();
+    });
+
+    it('con periodicidad válida, un CUIT duplicado sigue siendo 409', async () => {
+      prismaMock.cliente.create.mockRejectedValue(errorDeIndiceUnico(['cuit']));
+      prismaMock.cliente.findUnique.mockResolvedValue({
+        id: 'd4e5f6a7-b8c9-4012-9ef0-123456789012',
+        razonSocial: 'Cliente Existente S.A.',
+        estado: 'ACTIVO',
+      });
+
+      const res = await postClientes({
+        ...altaPublica,
+        periodicidad: { tipo: 'MENSUAL', diaLimite: 10, mesInicioCiclo: null },
+      });
+
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ error: { code: 'CONFLICT' } });
     });
   });
 

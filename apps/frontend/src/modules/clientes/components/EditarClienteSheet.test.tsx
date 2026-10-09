@@ -41,6 +41,7 @@ const clienteJson = {
   telefono: '+54 11 4000-1234',
   canalEntrega: 'PORTAL_WEB',
   portalUrl: 'https://portal.ejemplo.gob.ar',
+  periodicidad: null,
   estado: 'ACTIVO',
   creadoEn: '2026-10-08T12:00:00.000Z',
   actualizadoEn: '2026-10-08T12:00:00.000Z',
@@ -52,12 +53,12 @@ const cliente = {
   actualizadoEn: new Date(clienteJson.actualizadoEn),
 } as Cliente;
 
-function renderEdicion() {
+function renderEdicion(aEditar: Cliente = cliente) {
   const onActualizado = vi.fn();
   const onClose = vi.fn();
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <EditarClienteSheet cliente={cliente} onClose={onClose} onActualizado={onActualizado} />
+      <EditarClienteSheet cliente={aEditar} onClose={onClose} onActualizado={onActualizado} />
     </QueryClientProvider>,
   );
   return { user: userEvent.setup(), onActualizado, onClose };
@@ -184,6 +185,141 @@ describe('EditarClienteSheet', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'No pudimos guardar los cambios. Probá de nuevo en unos segundos.',
     );
+    expect(onActualizado).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('describe el panel sin decir que todo es obligatorio', () => {
+    renderEdicion();
+
+    expect(screen.getByRole('dialog', { name: 'Editar cliente' })).toHaveAccessibleDescription(
+      'Modificá los datos de Municipio de Ejemplo y guardá los cambios.',
+    );
+  });
+});
+
+// ─── Periodicidad de rendición (HU1.5) ────────────────────────────────────────
+
+describe('EditarClienteSheet: periodicidad', () => {
+  const conPeriodicidad = (periodicidad: Cliente['periodicidad']): Cliente => ({
+    ...cliente,
+    periodicidad,
+  });
+  const bimestral = { tipo: 'BIMESTRAL', diaLimite: 15, mesInicioCiclo: 3 } as const;
+
+  /** Cuerpo del PATCH, después de que la edición terminó. */
+  async function guardarYLeerCuerpo(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(botonGuardar());
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    return cuerpoEnviado() as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    fetchMock.mockResolvedValue(jsonResponse(clienteJson, 200));
+  });
+
+  it('sin periodicidad precarga "Sin configurar" y no muestra día ni mes', () => {
+    renderEdicion();
+
+    expect(campo('Periodicidad')).toHaveValue('');
+    expect(screen.queryByLabelText('Día límite')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['MENSUAL', { tipo: 'MENSUAL', diaLimite: 10, mesInicioCiclo: null }],
+    ['POR_CAMPANIA', { tipo: 'POR_CAMPANIA', diaLimite: 5, mesInicioCiclo: null }],
+  ] as const)('precarga una periodicidad %s con su día y sin mes', (tipo, periodicidad) => {
+    renderEdicion(conPeriodicidad(periodicidad));
+
+    expect(campo('Periodicidad')).toHaveValue(tipo);
+    expect(campo('Día límite')).toHaveValue(String(periodicidad.diaLimite));
+    expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
+  });
+
+  it('precarga una periodicidad BIMESTRAL con su día y su mes', () => {
+    renderEdicion(conPeriodicidad(bimestral));
+
+    expect(campo('Periodicidad')).toHaveValue('BIMESTRAL');
+    expect(campo('Día límite')).toHaveValue('15');
+    expect(campo('Mes de inicio del ciclo')).toHaveValue('3');
+    expect(screen.getByRole('option', { name: 'Marzo', selected: true })).toBeInTheDocument();
+  });
+
+  it('si nunca tuvo periodicidad y sigue sin configurar, no la envía', async () => {
+    const { user } = renderEdicion();
+
+    const cuerpo = await guardarYLeerCuerpo(user);
+
+    expect(cuerpo).not.toHaveProperty('periodicidad');
+  });
+
+  it('configurar una periodicidad envía el objeto con números', async () => {
+    const { user } = renderEdicion();
+
+    await user.selectOptions(campo('Periodicidad'), 'POR_CAMPANIA');
+    await user.type(campo('Día límite'), '7');
+    const cuerpo = await guardarYLeerCuerpo(user);
+
+    expect(cuerpo.periodicidad).toStrictEqual({
+      tipo: 'POR_CAMPANIA',
+      diaLimite: 7,
+      mesInicioCiclo: null,
+    });
+  });
+
+  it('modificar una periodicidad existente envía la nueva completa', async () => {
+    const { user } = renderEdicion(conPeriodicidad(bimestral));
+
+    await user.clear(campo('Día límite'));
+    await user.type(campo('Día límite'), '20');
+    await user.selectOptions(campo('Mes de inicio del ciclo'), 'Noviembre');
+    const cuerpo = await guardarYLeerCuerpo(user);
+
+    expect(cuerpo.periodicidad).toStrictEqual({
+      tipo: 'BIMESTRAL',
+      diaLimite: 20,
+      mesInicioCiclo: 11,
+    });
+  });
+
+  it('al pasar de BIMESTRAL a MENSUAL el mes guardado no viaja', async () => {
+    const { user } = renderEdicion(conPeriodicidad(bimestral));
+
+    await user.selectOptions(campo('Periodicidad'), 'MENSUAL');
+    const cuerpo = await guardarYLeerCuerpo(user);
+
+    expect(cuerpo.periodicidad).toStrictEqual({
+      tipo: 'MENSUAL',
+      diaLimite: 15,
+      mesInicioCiclo: null,
+    });
+  });
+
+  it('si tenía periodicidad y pasa a "Sin configurar", envía periodicidad: null', async () => {
+    const { user } = renderEdicion(conPeriodicidad(bimestral));
+
+    await user.selectOptions(campo('Periodicidad'), '');
+    const cuerpo = await guardarYLeerCuerpo(user);
+
+    expect(cuerpo).toHaveProperty('periodicidad', null);
+    expect(cuerpo).not.toHaveProperty('periodicidadTipo');
+  });
+
+  it('ante un error del servidor queda abierto y conserva la periodicidad elegida', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: { code: 'INTERNAL_ERROR' } }, 500));
+    const { user, onActualizado, onClose } = renderEdicion(conPeriodicidad(bimestral));
+
+    await user.selectOptions(campo('Mes de inicio del ciclo'), 'Junio');
+    await user.click(botonGuardar());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No pudimos guardar los cambios. Probá de nuevo en unos segundos.',
+    );
+    expect(screen.getByRole('dialog', { name: 'Editar cliente' })).toBeInTheDocument();
+    expect(campo('Periodicidad')).toHaveValue('BIMESTRAL');
+    expect(campo('Día límite')).toHaveValue('15');
+    expect(campo('Mes de inicio del ciclo')).toHaveValue('6');
     expect(onActualizado).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });

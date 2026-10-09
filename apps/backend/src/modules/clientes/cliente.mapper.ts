@@ -8,7 +8,8 @@ import { ClienteSchema, type Cliente } from '@realpolitik/shared';
  * por accidente. Los `null` de la base se omiten porque el contrato los modela como campos
  * opcionales. Eso incluye `subtipo`: si la base tiene una combinación imposible (un privado
  * con subtipo o un público sin él) no se corrige acá, la detecta `ClienteSchema.parse` y
- * termina en un 500 en lugar de devolver un dato que contradice el contrato.
+ * termina en un 500 en lugar de devolver un dato que contradice el contrato. Lo mismo vale
+ * para la periodicidad (ver `periodicidadDeFila`).
  */
 export function toClienteDto(row: ClienteRow): Cliente {
   return ClienteSchema.parse({
@@ -23,10 +24,33 @@ export function toClienteDto(row: ClienteRow): Cliente {
     ...(row.portalUrl === null ? {} : { portalUrl: row.portalUrl }),
     canalEntrega: row.canalEntrega,
     ...(row.whatsappNumero === null ? {} : { whatsappNumero: row.whatsappNumero }),
+    periodicidad: periodicidadDeFila(row),
     sector: row.sector,
     ...(row.subtipo === null ? {} : { subtipo: row.subtipo }),
     estado: row.estado,
     creadoEn: row.createdAt,
     actualizadoEn: row.updatedAt,
   });
+}
+
+/**
+ * Reconstruye la periodicidad pública desde sus tres columnas.
+ *
+ * Solo las tres columnas en null significan "sin configurar" (`null`). Cualquier otra
+ * combinación se entrega tal cual y la valida `ClienteSchema.parse`: un tipo sin día límite,
+ * un bimestral sin mes, o columnas sueltas sin tipo no se completan ni se convierten a `null`.
+ */
+function periodicidadDeFila(row: ClienteRow) {
+  if (
+    row.periodicidadTipo === null &&
+    row.periodicidadDiaLimite === null &&
+    row.periodicidadMesInicioCiclo === null
+  ) {
+    return null;
+  }
+  return {
+    tipo: row.periodicidadTipo,
+    diaLimite: row.periodicidadDiaLimite,
+    mesInicioCiclo: row.periodicidadMesInicioCiclo,
+  };
 }

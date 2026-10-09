@@ -49,7 +49,7 @@ export function NuevoClienteSheet({ abierto, onAbiertoChange, onCreado }: NuevoC
         <SheetHeader className="pr-12">
           <SheetTitle>Nuevo cliente</SheetTitle>
           <SheetDescription>
-            Completá los datos para registrarlo en el catálogo. Todos los campos son obligatorios.
+            Completá los datos para registrarlo en el catálogo. La periodicidad es opcional.
           </SheetDescription>
         </SheetHeader>
         <ClienteForm

@@ -3,6 +3,7 @@ import type {
   Cliente,
   CreateClienteDto,
   ListarClientesQuery,
+  Periodicidad,
   UpdateClienteDto,
 } from '@realpolitik/shared';
 
@@ -156,9 +157,20 @@ function datosDeAlta(input: CreateClienteDto): Prisma.ClienteCreateInput {
     portalUrl: input.portalUrl ?? null,
     canalEntrega: input.canalEntrega,
     whatsappNumero: input.whatsappNumero ?? null,
+    ...columnasDePeriodicidad(input.periodicidad),
     sector: input.sector,
     subtipo: input.sector === 'PUBLICO' ? input.subtipo : null,
     estado: 'ACTIVO',
+  };
+}
+
+// La periodicidad vive en tres columnas: configurada se escriben las tres, y sin configurar
+// (alta sin periodicidad o `null` en la edición) quedan las tres en null.
+function columnasDePeriodicidad(periodicidad: Periodicidad | null | undefined) {
+  return {
+    periodicidadTipo: periodicidad?.tipo ?? null,
+    periodicidadDiaLimite: periodicidad?.diaLimite ?? null,
+    periodicidadMesInicioCiclo: periodicidad?.mesInicioCiclo ?? null,
   };
 }
 
@@ -178,6 +190,8 @@ function datosDeEdicion(input: UpdateClienteDto): Prisma.ClienteUpdateInput {
     ...(input.emailContacto !== undefined && { emailContacto: input.emailContacto }),
     ...(input.emailsAdicionales !== undefined && { emailsAdicionales: input.emailsAdicionales }),
     ...(input.telefono !== undefined && { telefono: input.telefono }),
+    // Ausente = no se toca; `null` = borrar; objeto = reemplazar las tres columnas.
+    ...(input.periodicidad !== undefined && columnasDePeriodicidad(input.periodicidad)),
     ...(input.sector !== undefined && {
       sector: input.sector,
       // Para un público, shared ya exigió el subtipo en el mismo pedido.

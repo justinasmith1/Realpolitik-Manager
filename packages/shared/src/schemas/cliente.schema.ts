@@ -103,6 +103,72 @@ export const CuitSchema = z
     return `${digits.slice(0, 2)}-${digits.slice(2, 10)}-${digits.slice(10)}`;
   });
 
+// ─── Periodicidad de rendición ─────────────────────────────────────────────────
+
+/**
+ * Tipo de periodicidad con la que se rinde al cliente.
+ *
+ * - MENSUAL      → una rendición por mes
+ * - BIMESTRAL    → una rendición cada dos meses (requiere `mesInicioCiclo`)
+ * - POR_CAMPANIA → una rendición por campaña
+ */
+export const PeriodicidadTipo = z.enum(['MENSUAL', 'BIMESTRAL', 'POR_CAMPANIA']);
+
+export type PeriodicidadTipo = z.infer<typeof PeriodicidadTipo>;
+
+/** Día del mes límite para rendir. Hasta el 28 para que exista en todos los meses. */
+const DiaLimiteSchema = z
+  .number({
+    required_error: 'Ingresá el día límite de rendición.',
+    invalid_type_error: 'El día límite debe ser un número entero entre 1 y 28.',
+  })
+  .int({ message: 'El día límite debe ser un número entero entre 1 y 28.' })
+  .min(1, { message: 'El día límite debe estar entre 1 y 28.' })
+  .max(28, { message: 'El día límite debe estar entre 1 y 28.' });
+
+/** `mesInicioCiclo` de una periodicidad que no lo usa: tiene que venir explícitamente en null. */
+const SinMesInicioCicloSchema = z.null({
+  required_error: 'Solo la periodicidad bimestral lleva mes de inicio del ciclo: enviá null.',
+  invalid_type_error: 'Solo la periodicidad bimestral lleva mes de inicio del ciclo: enviá null.',
+});
+
+/**
+ * Periodicidad de rendición de un cliente.
+ *
+ * `discriminatedUnion` sobre `tipo`: cada rama fija la regla de `mesInicioCiclo` en su propio
+ * objeto, así el error cae en el campo concreto y el tipo inferido es una unión precisa
+ * (`mesInicioCiclo: number` solo en BIMESTRAL, `null` en las demás).
+ *
+ * - BIMESTRAL               → `mesInicioCiclo` entero de 1 a 12 (obligatorio)
+ * - MENSUAL / POR_CAMPANIA  → `mesInicioCiclo` debe ser `null` (no se acepta ausente)
+ */
+export const PeriodicidadSchema = z.discriminatedUnion('tipo', [
+  z.object({
+    tipo: z.literal(PeriodicidadTipo.enum.MENSUAL),
+    diaLimite: DiaLimiteSchema,
+    mesInicioCiclo: SinMesInicioCicloSchema,
+  }),
+  z.object({
+    tipo: z.literal(PeriodicidadTipo.enum.BIMESTRAL),
+    diaLimite: DiaLimiteSchema,
+    mesInicioCiclo: z
+      .number({
+        required_error: 'Si la periodicidad es bimestral, indicá el mes de inicio del ciclo.',
+        invalid_type_error: 'El mes de inicio del ciclo debe ser un número entero entre 1 y 12.',
+      })
+      .int({ message: 'El mes de inicio del ciclo debe ser un número entero entre 1 y 12.' })
+      .min(1, { message: 'El mes de inicio del ciclo debe estar entre 1 y 12.' })
+      .max(12, { message: 'El mes de inicio del ciclo debe estar entre 1 y 12.' }),
+  }),
+  z.object({
+    tipo: z.literal(PeriodicidadTipo.enum.POR_CAMPANIA),
+    diaLimite: DiaLimiteSchema,
+    mesInicioCiclo: SinMesInicioCicloSchema,
+  }),
+]);
+
+export type Periodicidad = z.infer<typeof PeriodicidadSchema>;
+
 // ─── Campos comunes ───────────────────────────────────────────────────────────
 
 /**
@@ -173,6 +239,15 @@ const ClienteCamposBase = z.object({
 
   /** Número de WhatsApp en E.164. Obligatorio si el canal es WHATSAPP. */
   whatsappNumero: WhatsappNumeroSchema.optional(),
+
+  /**
+   * Periodicidad de rendición: un objeto válido o `null` si todavía no se configuró.
+   * Es la representación contractual de la API, así que la clave es obligatoria: sin default,
+   * para que un mapper que se olvide de incluirla falle en vez de completarse con `null`.
+   * El alta y la edición la redefinen (ver `CreateClienteSchema` y `UpdateClienteSchema`)
+   * porque ahí ausente y `null` significan cosas distintas.
+   */
+  periodicidad: PeriodicidadSchema.nullable(),
 
   /** Estado actual del cliente en el sistema */
   estado: ClienteEstado.default('ACTIVO'),
@@ -344,13 +419,18 @@ const CAMPOS_DEL_SERVIDOR_EN_ALTA = {
  * Omite los campos que fija el servidor (ver `CAMPOS_DEL_SERVIDOR_EN_ALTA`). Si el pedido
  * los envía igual, Zod los descarta como cualquier clave desconocida: no es un error.
  *
+ * `periodicidad` es opcional y sin default: si no se envía, queda ausente y el cliente nace
+ * sin periodicidad configurada. `null` no se acepta en el alta (no hay nada que borrar).
+ *
  * Nota: `discriminatedUnion` no expone `.omit()` directamente,
  * por lo que se construye derivando desde cada rama y re-uniendo.
  */
+const PERIODICIDAD_EN_ALTA = { periodicidad: PeriodicidadSchema.optional() } as const;
+
 export const CreateClienteSchema = z
   .discriminatedUnion('sector', [
-    ClientePublicoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA),
-    ClientePrivadoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA),
+    ClientePublicoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA).extend(PERIODICIDAD_EN_ALTA),
+    ClientePrivadoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA).extend(PERIODICIDAD_EN_ALTA),
   ])
   .superRefine(validarCanalEntrega);
 
@@ -381,9 +461,16 @@ const CAMPOS_EDITABLES = {
  * `emailsAdicionales`): un campo ausente queda ausente y no pisa lo guardado. Por eso no
  * es una unión discriminada: acá `sector` y `subtipo` son opcionales y la regla que los
  * relaciona es el `superRefine`.
+ *
+ * `periodicidad` tiene tres estados: ausente = no modificar, objeto = configurar o reemplazar,
+ * `null` = eliminar la configuración. Sin default, para que ausente no se confunda con `null`.
  */
 export const UpdateClienteSchema = ClienteCamposBase.pick(CAMPOS_EDITABLES)
-  .extend({ sector: ClienteSector, subtipo: ClienteSubtipoPublico })
+  .extend({
+    sector: ClienteSector,
+    subtipo: ClienteSubtipoPublico,
+    periodicidad: PeriodicidadSchema.nullable(),
+  })
   .partial()
   .superRefine((datos, ctx) => {
     if (Object.values(datos).every((valor) => valor === undefined)) {

@@ -1,6 +1,7 @@
-import type { Cliente } from '@realpolitik/shared';
+import type { Cliente, Periodicidad } from '@realpolitik/shared';
 
 import { Button } from '@/components/ui/button';
+import { etiquetaDeMes, etiquetasPeriodicidad } from '@/modules/clientes/clientes.etiquetas';
 import { CanalEntregaBadge } from '@/modules/clientes/components/CanalEntregaBadge';
 import { SectorBadge } from '@/modules/clientes/components/SectorBadge';
 import { SubtipoBadge } from '@/modules/clientes/components/SubtipoBadge';
@@ -11,7 +12,36 @@ interface ClientesTablaProps {
   onLimpiarFiltros: () => void;
 }
 
-const columnas = ['Cliente', 'CUIT', 'Sector', 'Subtipo', 'Email de contacto', 'Canal', 'Acciones'];
+const columnas = [
+  'Cliente',
+  'CUIT',
+  'Sector',
+  'Subtipo',
+  'Email de contacto',
+  'Canal',
+  'Periodicidad',
+  'Acciones',
+];
+
+/**
+ * Periodicidad en texto y no como badge: la fila ya tiene sector, subtipo y canal como
+ * badges. El tipo va arriba y el detalle abajo, en texto secundario como el email.
+ */
+function PeriodicidadCelda({ periodicidad }: { periodicidad: Periodicidad | null }) {
+  if (periodicidad === null) {
+    return <span className="text-content-secondary">Sin configurar</span>;
+  }
+  const detalle =
+    periodicidad.tipo === 'BIMESTRAL'
+      ? `Día ${periodicidad.diaLimite} · desde ${etiquetaDeMes(periodicidad.mesInicioCiclo)}`
+      : `Día ${periodicidad.diaLimite}`;
+  return (
+    <div className="flex flex-col whitespace-nowrap">
+      <span>{etiquetasPeriodicidad[periodicidad.tipo]}</span>
+      <span className="text-xs text-content-secondary">{detalle}</span>
+    </div>
+  );
+}
 
 /**
  * Tabla del listado. Con la lista vacía muestra el aviso de "sin resultados": que no haya
@@ -75,6 +105,9 @@ export function ClientesTabla({
               <td className="px-4 py-3 text-content-secondary">{cliente.emailContacto}</td>
               <td className="px-4 py-3">
                 <CanalEntregaBadge canal={cliente.canalEntrega} />
+              </td>
+              <td className="px-4 py-3">
+                <PeriodicidadCelda periodicidad={cliente.periodicidad} />
               </td>
               <td className="px-4 py-3">
                 <div className="flex gap-1">

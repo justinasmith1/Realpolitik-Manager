@@ -77,7 +77,8 @@ Reglas de los datos:
   - Si es `PORTAL_WEB`: `portalUrl` es obligatorio y debe tener formato de URL válido.
   - Si es `WHATSAPP`: `whatsappNumero` es obligatorio, con código de país y formato E.164 (`+5493511234567`).
   - Si es `CORREO`: el cliente debe contar con al menos un email de contacto destinatario (`emailContacto` o adicionales).
-- **Periodicidad:** `tipo` es `MENSUAL`, `BIMESTRAL` o `POR_CAMPANIA`. `diaLimite` es un entero de 1 a 28. `mesInicioCiclo` (1 a 12) es obligatorio si el tipo es `BIMESTRAL` y debe ser `null` en los demás.
+- **Periodicidad (`periodicidad`):** `tipo` es `MENSUAL`, `BIMESTRAL` o `POR_CAMPANIA`. `diaLimite` es un entero de 1 a 28. `mesInicioCiclo` es un entero de 1 a 12, obligatorio si el tipo es `BIMESTRAL`, y debe ser `null` en los demás.
+  - Un cliente sin periodicidad configurada la devuelve como `"periodicidad": null`. La clave siempre está presente en la respuesta.
 - **Estado:** `ACTIVO`, `INACTIVO` o `SUSPENDIDO`. En este sprint ningún endpoint asigna `SUSPENDIDO`; queda reservado (por ejemplo, para clientes que pausan la publicidad en verano).
 - El resto de los campos (`ivaCondicion`, `telefono`, `emailsAdicionales`) se validan según el schema.
 
@@ -93,10 +94,10 @@ Reglas de los datos:
 
 ### `POST /clientes` (HU1.1, HU1.2, HU1.4, HU1.5)
 
-- **Pedido:** los campos del cliente, sin `id`, `estado`, `creadoEn` ni `actualizadoEn`. La periodicidad es opcional al crear. `canalEntrega` toma `CORREO` por defecto. Si se envía `PORTAL_WEB` es obligatoria la `portalUrl`; si se envía `WHATSAPP` es obligatorio `whatsappNumero`.
+- **Pedido:** los campos del cliente, sin `id`, `estado`, `creadoEn` ni `actualizadoEn`. La periodicidad es opcional al crear: si no se envía, el cliente queda sin periodicidad (`"periodicidad": null` en la respuesta). En el alta no se acepta `"periodicidad": null`; para no configurarla se omite la clave. `canalEntrega` toma `CORREO` por defecto. Si se envía `PORTAL_WEB` es obligatoria la `portalUrl`; si se envía `WHATSAPP` es obligatorio `whatsappNumero`.
 - **Respuesta 201:** el cliente creado, con `estado` `ACTIVO`.
 - **Errores:**
-  - `400 VALIDATION_ERROR`: falta la razón social, la denominación (o supera los 60 caracteres), el CUIT, el sector, el email de rendición o la condición de IVA; CUIT con dígito verificador incorrecto; subtipo ausente en un cliente público; día límite fuera de 1 a 28; periodicidad bimestral sin mes de inicio; canal `PORTAL_WEB` sin `portalUrl` válida; canal `WHATSAPP` sin `whatsappNumero` válido; canal `CORREO` sin emails de contacto.
+  - `400 VALIDATION_ERROR`: falta la razón social, la denominación (o supera los 60 caracteres), el CUIT, el sector, el email de rendición o la condición de IVA; CUIT con dígito verificador incorrecto; subtipo ausente en un cliente público; día límite fuera de 1 a 28 o no entero; periodicidad bimestral sin mes de inicio, o con mes fuera de 1 a 12; mes de inicio distinto de `null` en una periodicidad mensual o por campaña; canal `PORTAL_WEB` sin `portalUrl` válida; canal `WHATSAPP` sin `whatsappNumero` válido; canal `CORREO` sin emails de contacto.
   - `409 CONFLICT`: ya existe un cliente con ese CUIT, **activo o inactivo**. Se devuelve cuál es, porque HU1.1 pide mostrarlo:
 
 ```json
@@ -132,7 +133,11 @@ Reglas de los datos:
 
 ### `PATCH /clientes/:id` (HU1.7, HU1.2, HU1.4, HU1.5)
 
-- **Pedido:** cualquier subconjunto de los campos del cliente, con al menos uno. Solo se modifican los campos enviados. No se envían `id`, `estado`, `creadoEn` ni `actualizadoEn`: si llegan, se ignoran sin error. El estado se cambia solo con `PATCH /clientes/:id/estado`. Enviar `"periodicidad": null` borra la periodicidad.
+- **Pedido:** cualquier subconjunto de los campos del cliente, con al menos uno. Solo se modifican los campos enviados. No se envían `id`, `estado`, `creadoEn` ni `actualizadoEn`: si llegan, se ignoran sin error. El estado se cambia solo con `PATCH /clientes/:id/estado`.
+- **Periodicidad:**
+  - Sin la clave `periodicidad`, se conserva la que tenga el cliente.
+  - Con un objeto, se configura o se reemplaza completa (`tipo`, `diaLimite` y `mesInicioCiclo`), con las mismas reglas que en el alta.
+  - Con `"periodicidad": null`, se borra: el cliente queda sin periodicidad configurada.
 - **Cambio de sector:**
   - De `PUBLICO` a `PRIVADO`: el subtipo anterior se descarta.
   - De `PRIVADO` a `PUBLICO`: hay que enviar el `subtipo` en el mismo pedido.
@@ -146,7 +151,7 @@ Reglas de los datos:
 - **Campos que no se envían:** `telefono` y `emailsAdicionales` se conservan si el pedido no los trae.
 - **Respuesta 200:** el cliente actualizado.
 - **Errores:**
-  - `400 VALIDATION_ERROR`: pedido sin campos, CUIT inválido, sector y subtipo inconsistentes, o canal y datos de entrega inconsistentes.
+  - `400 VALIDATION_ERROR`: pedido sin campos, CUIT inválido, sector y subtipo inconsistentes, canal y datos de entrega inconsistentes, o periodicidad inválida.
   - `404 NOT_FOUND`.
   - `409 CONFLICT`: el CUIT nuevo pertenece **a otro** cliente. Mismo `details` que en `POST`. El CUIT del propio cliente no cuenta como duplicado.
 
@@ -199,10 +204,12 @@ vencimientos y despacho. Se documentan cuando se implementen.
 
 ## 5. Cambios que este contrato exige
 
+Los puntos marcados como **Hecho** ya están implementados; se conservan para no cambiar la numeración.
+
 ### En `@realpolitik/shared`
 
 1. Agregar `denominacion` (obligatoria, hasta 60 caracteres). Ya existe en la base de datos.
-2. Agregar `periodicidad` (`tipo`, `diaLimite`, `mesInicioCiclo`) con las reglas de la sección 2.
+2. **Hecho (HU1.5).** Agregar `periodicidad` (`tipo`, `diaLimite`, `mesInicioCiclo`) con las reglas de la sección 2: `PeriodicidadTipo` y `PeriodicidadSchema`, incorporados a `ClienteSchema`, `CreateClienteSchema` y `UpdateClienteSchema`.
 3. En la edición, no exigir `sector` ni permitir enviar `estado`.
 4. Crear los schemas de contacto: alta, edición y el tipo `Contacto`.
 5. Crear el schema de los parámetros de `GET /clientes` (`q`, `estado`, `sector`, `subtipo`).
@@ -211,7 +218,7 @@ vencimientos y despacho. Se documentan cuando se implementen.
 ### En la base de datos
 
 7. Modelo `Contacto` con baja lógica, y un índice único sobre cliente y email entre los contactos no eliminados.
-8. En el cliente: columnas para la periodicidad.
+8. **Hecho (HU1.5).** En el cliente: columnas para la periodicidad (`periodicidadTipo`, `periodicidadDiaLimite` y `periodicidadMesInicioCiclo`, las tres opcionales; sin periodicidad configurada quedan las tres en `null`).
 9. Quitar `activo` del modelo de Cliente: `estado` es la única fuente de verdad del estado del cliente. `isDeleted` y `deletedAt` no forman parte de este contrato; se definen al ajustar el modelo de datos.
 10. Crear el índice único de contactos con SQL a mano en la migración, porque Prisma no soporta índices parciales.
 

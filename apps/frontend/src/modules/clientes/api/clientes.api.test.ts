@@ -30,6 +30,7 @@ const clienteCreado = {
   ivaCondicion: 'RESPONSABLE_INSCRIPTO',
   emailContacto: 'admin@empresa.example',
   emailsAdicionales: [],
+  periodicidad: null,
   estado: 'ACTIVO',
   creadoEn: '2026-10-08T12:00:00.000Z',
   actualizadoEn: '2026-10-08T12:00:00.000Z',
@@ -100,6 +101,25 @@ describe('crearCliente', () => {
 
     await expect(crearCliente(nuevoCliente)).rejects.toThrow();
   });
+
+  it('envía la periodicidad tal cual, con día y mes numéricos', async () => {
+    const periodicidad = { tipo: 'BIMESTRAL', diaLimite: 10, mesInicioCiclo: 3 } as const;
+    fetchMock.mockResolvedValue(jsonResponse({ ...clienteCreado, periodicidad }, 201));
+
+    const cliente = await crearCliente({ ...nuevoCliente, periodicidad });
+
+    const cuerpo = (fetchMock.mock.calls[0]?.[1]?.body ?? '') as string;
+    expect(JSON.parse(cuerpo)).toStrictEqual({ ...nuevoCliente, periodicidad });
+    expect(cuerpo).toContain('"diaLimite":10,"mesInicioCiclo":3');
+    expect(cliente.periodicidad).toEqual(periodicidad);
+  });
+
+  it('rechaza una respuesta sin la clave periodicidad', async () => {
+    const { periodicidad: _omitida, ...sinPeriodicidad } = clienteCreado;
+    fetchMock.mockResolvedValue(jsonResponse(sinPeriodicidad, 201));
+
+    await expect(crearCliente(nuevoCliente)).rejects.toThrow();
+  });
 });
 
 describe('actualizarCliente', () => {
@@ -114,6 +134,14 @@ describe('actualizarCliente', () => {
     expect(init?.method).toBe('PATCH');
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
     expect(JSON.parse(init?.body as string)).toEqual({ razonSocial: 'Otra S.A.' });
+  });
+
+  it('envía periodicidad: null para borrarla (no la omite)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(clienteCreado, 200));
+
+    await actualizarCliente(clienteCreado.id, { periodicidad: null });
+
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe('{"periodicidad":null}');
   });
 
   it('devuelve el cliente actualizado validado con el schema compartido', async () => {

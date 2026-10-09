@@ -12,7 +12,18 @@ const camposDelFormulario = new Set<string>([
   'subtipo',
   'ivaCondicion',
   'emailContacto',
+  'periodicidadTipo',
+  'periodicidadDiaLimite',
+  'periodicidadMesInicioCiclo',
 ]);
+
+// La API informa los datos anidados con notación de puntos; el formulario los tiene sueltos.
+const campoDeLaApi: Partial<Record<string, string>> = {
+  periodicidad: 'periodicidadTipo',
+  'periodicidad.tipo': 'periodicidadTipo',
+  'periodicidad.diaLimite': 'periodicidadDiaLimite',
+  'periodicidad.mesInicioCiclo': 'periodicidadMesInicioCiclo',
+};
 
 /**
  * Texto para la interfaz de cada fallo. Nunca muestra detalles técnicos. `mensajeInesperado`
@@ -37,6 +48,7 @@ export function erroresParaElFormulario(
     case 'datos-invalidos': {
       const campos = Object.fromEntries(
         fallo.campos
+          .map((campo) => campoDeLaApi[campo] ?? campo)
           .filter((campo) => camposDelFormulario.has(campo))
           .map((campo) => [campo, 'Revisá este dato.']),
       );

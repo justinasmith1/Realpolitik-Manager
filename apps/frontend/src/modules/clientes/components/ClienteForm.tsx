@@ -3,6 +3,7 @@ import {
   ClienteSector,
   ClienteSubtipoPublico,
   IvaCondicion,
+  PeriodicidadTipo,
 } from '@realpolitik/shared';
 import { useId, useState, type ReactNode } from 'react';
 import { useForm, useWatch, type FieldError } from 'react-hook-form';
@@ -14,8 +15,10 @@ import type { NuevoCliente } from '@/modules/clientes/api/clientes.api';
 import {
   etiquetasCanalEntrega,
   etiquetasIvaCondicion,
+  etiquetasPeriodicidad,
   etiquetasSector,
   etiquetasSubtipo,
+  nombresDeMes,
 } from '@/modules/clientes/clientes.etiquetas';
 import {
   clienteFormResolver,
@@ -69,20 +72,28 @@ function Campo({ id, etiqueta, ayuda, error, children }: CampoProps) {
   );
 }
 
-/** Atributos de accesibilidad que conectan el control con su ayuda y su error. */
-function describirCampo(id: string, error: FieldError | undefined, conAyuda = false) {
+/**
+ * Atributos de accesibilidad que conectan el control con su ayuda y su error. Casi todo es
+ * obligatorio; un campo opcional (la periodicidad) pasa `obligatorio: false`.
+ */
+function describirCampo(
+  id: string,
+  error: FieldError | undefined,
+  conAyuda = false,
+  obligatorio = true,
+) {
   const descripciones = [conAyuda && `${id}-ayuda`, error && `${id}-error`].filter(Boolean);
   return {
     id,
-    required: true,
+    required: obligatorio,
     'aria-invalid': error ? true : undefined,
     'aria-describedby': descripciones.length > 0 ? descripciones.join(' ') : undefined,
   };
 }
 
 /**
- * Formulario de los datos de un cliente (HU1.1). Valida con las reglas de shared antes de
- * enviar y muestra en cada campo los errores propios y los que devuelva el servidor.
+ * Formulario de los datos de un cliente (HU1.1, HU1.4, HU1.5). Valida con las reglas de shared
+ * antes de enviar y muestra en cada campo los errores propios y los que devuelva el servidor.
  */
 export function ClienteForm({
   onSubmit,
@@ -107,6 +118,7 @@ export function ClienteForm({
   });
   const sector = useWatch({ control, name: 'sector' });
   const canalEntrega = useWatch({ control, name: 'canalEntrega' });
+  const periodicidadTipo = useWatch({ control, name: 'periodicidadTipo' });
 
   const enviar = handleSubmit(async (datos) => {
     setErrorGeneral(null);
@@ -289,6 +301,81 @@ export function ClienteForm({
               {...register('whatsappNumero')}
               {...describirCampo(idDe('whatsappNumero'), errors.whatsappNumero, true)}
             />
+          </Campo>
+        )}
+
+        {/* ─── Periodicidad de rendición (opcional) ─── */}
+        <Campo
+          id={idDe('periodicidadTipo')}
+          etiqueta="Periodicidad"
+          ayuda="Cada cuánto se rinde. Podés configurarla más adelante."
+          error={errors.periodicidadTipo}
+        >
+          <NativeSelect
+            {...register('periodicidadTipo', {
+              // Igual que el canal: lo que el tipo nuevo no usa se descarta, y sus errores
+              // no quedan colgados de un campo que ya no está en pantalla.
+              onChange: (evento: { target: { value: string } }) => {
+                const tipo = evento.target.value;
+                if (tipo !== 'BIMESTRAL') {
+                  setValue('periodicidadMesInicioCiclo', '');
+                  clearErrors('periodicidadMesInicioCiclo');
+                }
+                if (tipo === '') {
+                  setValue('periodicidadDiaLimite', '');
+                  clearErrors('periodicidadDiaLimite');
+                }
+              },
+            })}
+            {...describirCampo(idDe('periodicidadTipo'), errors.periodicidadTipo, true, false)}
+          >
+            <option value="">Sin configurar</option>
+            {PeriodicidadTipo.options.map((valor) => (
+              <option key={valor} value={valor}>
+                {etiquetasPeriodicidad[valor]}
+              </option>
+            ))}
+          </NativeSelect>
+        </Campo>
+
+        {periodicidadTipo !== '' && (
+          <Campo
+            id={idDe('periodicidadDiaLimite')}
+            etiqueta="Día límite"
+            ayuda="Del 1 al 28, para que exista en todos los meses."
+            error={errors.periodicidadDiaLimite}
+          >
+            <Input
+              inputMode="numeric"
+              autoComplete="off"
+              {...register('periodicidadDiaLimite')}
+              {...describirCampo(idDe('periodicidadDiaLimite'), errors.periodicidadDiaLimite, true)}
+            />
+          </Campo>
+        )}
+
+        {periodicidadTipo === 'BIMESTRAL' && (
+          <Campo
+            id={idDe('periodicidadMesInicioCiclo')}
+            etiqueta="Mes de inicio del ciclo"
+            error={errors.periodicidadMesInicioCiclo}
+          >
+            <NativeSelect
+              {...register('periodicidadMesInicioCiclo')}
+              {...describirCampo(
+                idDe('periodicidadMesInicioCiclo'),
+                errors.periodicidadMesInicioCiclo,
+              )}
+            >
+              <option value="" disabled>
+                Elegí el mes
+              </option>
+              {nombresDeMes.map((nombre, indice) => (
+                <option key={nombre} value={String(indice + 1)}>
+                  {nombre}
+                </option>
+              ))}
+            </NativeSelect>
           </Campo>
         )}
 

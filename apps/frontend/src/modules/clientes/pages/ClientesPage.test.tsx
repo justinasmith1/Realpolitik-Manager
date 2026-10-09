@@ -26,6 +26,7 @@ const comunes = {
   ivaCondicion: 'EXENTO',
   emailsAdicionales: [],
   canalEntrega: 'CORREO',
+  periodicidad: null,
   estado: 'ACTIVO',
   ...fechas,
 };
@@ -88,6 +89,7 @@ const respuesta201 = () =>
       ivaCondicion: 'RESPONSABLE_INSCRIPTO',
       emailContacto: 'admin@empresa.example',
       emailsAdicionales: [],
+      periodicidad: null,
       estado: 'ACTIVO',
       ...fechas,
     },
@@ -250,7 +252,7 @@ function simularServidorTrasElPrimerPedido() {
 describe('ClientesPage: tabla', () => {
   beforeEach(() => simularServidor());
 
-  it('muestra las columnas Cliente, CUIT, Sector, Subtipo, Email de contacto, Canal y Acciones', async () => {
+  it('muestra las columnas Cliente, CUIT, Sector, Subtipo, Email de contacto, Canal, Periodicidad y Acciones', async () => {
     renderPage();
 
     const tabla = await screen.findByRole('table');
@@ -264,6 +266,7 @@ describe('ClientesPage: tabla', () => {
       'Subtipo',
       'Email de contacto',
       'Canal',
+      'Periodicidad',
       'Acciones',
     ]);
   });

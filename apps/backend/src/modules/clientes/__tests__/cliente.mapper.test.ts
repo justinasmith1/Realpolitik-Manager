@@ -18,6 +18,9 @@ const filaPublica: ClienteRow = {
   portalUrl: 'https://proveedores.municipio.example',
   canalEntrega: 'CORREO',
   whatsappNumero: null,
+  periodicidadTipo: null,
+  periodicidadDiaLimite: null,
+  periodicidadMesInicioCiclo: null,
   sector: 'PUBLICO',
   subtipo: 'MUNICIPAL',
   estado: 'ACTIVO',
@@ -55,6 +58,7 @@ describe('toClienteDto', () => {
       telefono: '+54 221 400-0000',
       portalUrl: 'https://proveedores.municipio.example',
       canalEntrega: 'CORREO',
+      periodicidad: null,
       sector: 'PUBLICO',
       subtipo: 'MUNICIPAL',
       estado: 'ACTIVO',
@@ -90,5 +94,85 @@ describe('toClienteDto', () => {
     ['un público sin subtipo', { ...filaPublica, subtipo: null }],
   ])('rechaza %s', (_caso, fila) => {
     expect(() => toClienteDto(fila)).toThrow(/subtipo/);
+  });
+});
+
+describe('toClienteDto — periodicidad', () => {
+  it('devuelve periodicidad null, con la clave presente, si las tres columnas son null', () => {
+    const dto = toClienteDto(filaPublica);
+
+    expect(dto).toHaveProperty('periodicidad', null);
+  });
+
+  it.each([
+    [
+      'MENSUAL',
+      { periodicidadTipo: 'MENSUAL', periodicidadDiaLimite: 10, periodicidadMesInicioCiclo: null },
+      { tipo: 'MENSUAL', diaLimite: 10, mesInicioCiclo: null },
+    ],
+    [
+      'BIMESTRAL',
+      { periodicidadTipo: 'BIMESTRAL', periodicidadDiaLimite: 15, periodicidadMesInicioCiclo: 3 },
+      { tipo: 'BIMESTRAL', diaLimite: 15, mesInicioCiclo: 3 },
+    ],
+    [
+      'POR_CAMPANIA',
+      {
+        periodicidadTipo: 'POR_CAMPANIA',
+        periodicidadDiaLimite: 28,
+        periodicidadMesInicioCiclo: null,
+      },
+      { tipo: 'POR_CAMPANIA', diaLimite: 28, mesInicioCiclo: null },
+    ],
+  ] as const)(
+    'reconstruye una periodicidad %s desde las tres columnas',
+    (_tipo, columnas, esperada) => {
+      const dto = toClienteDto({ ...filaPrivada, ...columnas });
+
+      expect(dto.periodicidad).toEqual(esperada);
+    },
+  );
+
+  // La base no tiene CHECK para estas reglas: si se rompen, el mapper no las disimula ni
+  // las convierte en null (terminaría en un 500 en vez de un dato que contradice el contrato).
+  it.each([
+    [
+      'un tipo sin día límite',
+      {
+        periodicidadTipo: 'MENSUAL',
+        periodicidadDiaLimite: null,
+        periodicidadMesInicioCiclo: null,
+      },
+    ],
+    [
+      'un bimestral sin mes de inicio',
+      {
+        periodicidadTipo: 'BIMESTRAL',
+        periodicidadDiaLimite: 10,
+        periodicidadMesInicioCiclo: null,
+      },
+    ],
+    [
+      'un mensual con mes de inicio',
+      { periodicidadTipo: 'MENSUAL', periodicidadDiaLimite: 10, periodicidadMesInicioCiclo: 3 },
+    ],
+    [
+      'un día límite fuera de rango',
+      {
+        periodicidadTipo: 'POR_CAMPANIA',
+        periodicidadDiaLimite: 31,
+        periodicidadMesInicioCiclo: null,
+      },
+    ],
+    [
+      'día límite sin tipo',
+      { periodicidadTipo: null, periodicidadDiaLimite: 10, periodicidadMesInicioCiclo: null },
+    ],
+    [
+      'mes de inicio sin tipo',
+      { periodicidadTipo: null, periodicidadDiaLimite: null, periodicidadMesInicioCiclo: 3 },
+    ],
+  ] as const)('rechaza %s', (_caso, columnas) => {
+    expect(() => toClienteDto({ ...filaPrivada, ...columnas })).toThrow(/periodicidad/);
   });
 });
