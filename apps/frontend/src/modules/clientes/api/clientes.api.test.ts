@@ -1,5 +1,6 @@
 import { ApiClientError } from '@/lib/http';
 import {
+  causaDeError,
   crearCliente,
   diagnosticoDeError,
   listarClientes,
@@ -230,5 +231,26 @@ describe('diagnosticoDeError', () => {
     ['error de otro tipo', new Error('x'), 'ERROR_INESPERADO'],
   ])('%s', (_caso, error, esperado) => {
     expect(diagnosticoDeError(error)).toBe(esperado);
+  });
+});
+
+describe('causaDeError', () => {
+  it.each([
+    [
+      'sin respuesta del servidor',
+      new ApiClientError({ kind: 'network', message: 'x' }),
+      'conexion',
+    ],
+    [
+      'configuración inválida',
+      new ApiClientError({ kind: 'configuration', message: 'x' }),
+      'configuracion',
+    ],
+    ['un 500', errorHttp(500, undefined), 'servidor'],
+    ['un 503', errorHttp(503, undefined), 'servidor'],
+    ['un 404', errorHttp(404, undefined), 'inesperado'],
+    ['un error de otro tipo', new Error('x'), 'inesperado'],
+  ])('%s', (_caso, error, esperado) => {
+    expect(causaDeError(error)).toBe(esperado);
   });
 });

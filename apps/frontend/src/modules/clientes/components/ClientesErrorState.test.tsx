@@ -41,4 +41,24 @@ describe('ClientesErrorState', () => {
 
     expect(onReintentar).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ['conexion', 'Error de conexión', /No pudimos conectarnos con el servidor/],
+    ['servidor', 'Error del servidor', /El servidor respondió con un error/],
+    ['configuracion', 'Error de configuración', /dirección del servidor/],
+    ['inesperado', 'Error inesperado', /Algo salió mal/],
+  ] as const)('con la causa "%s" lo dice con precisión', (causa, etiqueta, detalle) => {
+    render(<ClientesErrorState causa={causa} />);
+
+    const alerta = screen.getByRole('alert');
+    expect(within(alerta).getByText(etiqueta)).toBeInTheDocument();
+    expect(within(alerta).getByText(detalle)).toBeInTheDocument();
+  });
+
+  it('un error 500 no dice que "el servidor no respondió"', () => {
+    render(<ClientesErrorState causa="servidor" diagnostico="HTTP_500" />);
+
+    expect(screen.queryByText(/no respondió/)).not.toBeInTheDocument();
+    expect(screen.getByText('HTTP_500')).toBeInTheDocument();
+  });
 });

@@ -203,6 +203,8 @@ describe('ClientesPage: estados del listado', () => {
 
     const alerta = await screen.findByRole('alert');
     expect(alerta).toHaveTextContent('No pudimos cargar los clientes');
+    expect(alerta).toHaveTextContent('Error del servidor');
+    expect(alerta).not.toHaveTextContent('no respondió');
     expect(within(alerta).getByText('HTTP_500')).toBeInTheDocument();
     expect(emptyHeading()).not.toBeInTheDocument();
 
@@ -218,6 +220,7 @@ describe('ClientesPage: estados del listado', () => {
     renderPage();
 
     expect(await screen.findByText('NETWORK_ERROR')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Error de conexión');
   });
 
   it('no queda ningún rastro del preview ?estado=', async () => {
@@ -337,6 +340,14 @@ describe('ClientesPage: filtros por sector y subtipo (HU1.2)', () => {
     await vi.waitFor(() => expect(ultimaUrl()).toBe('https://api.example/clientes?sector=PRIVADO'));
     expect(screen.getByLabelText('Subtipo')).toBeDisabled();
     expect(screen.getByLabelText('Subtipo')).toHaveValue('');
+  });
+
+  it('con el sector Privado el subtipo está deshabilitado desde el primer momento', async () => {
+    renderPage('/clientes?sector=PRIVADO&subtipo=MUNICIPAL');
+
+    await screen.findByRole('table');
+    expect(screen.getByLabelText('Subtipo')).toBeDisabled();
+    expect(urlsPedidas()).toEqual(['https://api.example/clientes?sector=PRIVADO']);
   });
 
   it('arranca con los filtros que trae la URL, ignorando el subtipo si el sector es Privado', async () => {

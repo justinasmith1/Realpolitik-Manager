@@ -1,13 +1,13 @@
 /* Fuentes autohospedadas (Fontsource): solo subset latin y los pesos usados. */
-@import "@fontsource/ibm-plex-sans/latin-400.css";
-@import "@fontsource/ibm-plex-sans/latin-500.css";
-@import "@fontsource/ibm-plex-sans/latin-600.css";
-@import "@fontsource/ibm-plex-mono/latin-400.css";
-@import "@fontsource/ibm-plex-mono/latin-500.css";
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
 
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
 /*
  * Tokens de Realpolitik Manager. Fuente de verdad visual: handoff de Design.
@@ -51,6 +51,15 @@
   --warning: #a97914;
   --warning-soft: #fbf3e3;
   --success: #1f5f3f;
+
+  /* Clasificación del cliente (badges de sector y subtipo). Son colores propios: no
+     reutilizan los de estado ni el de error. */
+  --sector-publico: #3a4aa6;
+  --sector-publico-soft: #eceffc;
+  --sector-publico-border: #c5cdf0;
+  --sector-privado: #1c6a6a;
+  --sector-privado-soft: #e6f3f2;
+  --sector-privado-border: #b8dcd9;
 
   /* Sidebar: superficie oscura propia del shell (no es un modo oscuro global) */
   --sidebar: #161314;
@@ -99,6 +108,12 @@
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-success: var(--success);
+  --color-sector-publico: var(--sector-publico);
+  --color-sector-publico-soft: var(--sector-publico-soft);
+  --color-sector-publico-border: var(--sector-publico-border);
+  --color-sector-privado: var(--sector-privado);
+  --color-sector-privado-soft: var(--sector-privado-soft);
+  --color-sector-privado-border: var(--sector-privado-border);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
@@ -109,8 +124,8 @@
 
 /* Tipografía, radios y easing del handoff (valores fijos, siempre emitidos). */
 @theme static {
-  --font-sans: "IBM Plex Sans", sans-serif;
-  --font-mono: "IBM Plex Mono", monospace;
+  --font-sans: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
 
   /* Radios del handoff */
   --radius-chip: 4px;
@@ -144,7 +159,7 @@
   }
 
   /* Sobre la superficie oscura del Sidebar el foco usa su propio token. */
-  [data-sidebar="sidebar"] :focus-visible {
+  [data-sidebar='sidebar'] :focus-visible {
     outline-color: var(--sidebar-ring);
   }
 }

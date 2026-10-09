@@ -3,7 +3,7 @@ import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { diagnosticoDeError } from '@/modules/clientes/api/clientes.api';
+import { causaDeError, diagnosticoDeError } from '@/modules/clientes/api/clientes.api';
 import { ClientesEmptyState } from '@/modules/clientes/components/ClientesEmptyState';
 import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorState';
 import { ClientesFiltros } from '@/modules/clientes/components/ClientesFiltros';
@@ -55,6 +55,7 @@ export function ClientesPage() {
         <ClientesLoadingState />
       ) : consulta.isError ? (
         <ClientesErrorState
+          causa={causaDeError(consulta.error)}
           diagnostico={diagnosticoDeError(consulta.error)}
           onReintentar={() => void consulta.refetch()}
         />

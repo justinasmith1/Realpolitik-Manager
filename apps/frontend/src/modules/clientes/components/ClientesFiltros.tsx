@@ -106,16 +106,18 @@ export function ClientesFiltros({
         </NativeSelect>
       </div>
 
-      {hayFiltros && (
-        <Button type="button" variant="ghost" onClick={onLimpiar}>
-          <RotateCcwIcon aria-hidden="true" />
-          Limpiar filtros
-        </Button>
-      )}
-
-      <p aria-live="polite" className="ml-auto self-center text-xs text-muted-foreground">
-        {total === 1 ? '1 cliente' : `${total} clientes`}
-      </p>
+      {/* Misma altura que los controles (h-8), así el botón y el contador quedan alineados. */}
+      <div className="ml-auto flex h-8 items-center gap-3">
+        {hayFiltros && (
+          <Button type="button" variant="ghost" onClick={onLimpiar}>
+            <RotateCcwIcon aria-hidden="true" />
+            Limpiar filtros
+          </Button>
+        )}
+        <p aria-live="polite" className="text-xs text-muted-foreground">
+          {total === 1 ? '1 cliente' : `${total} clientes`}
+        </p>
+      </div>
     </div>
   );
 }

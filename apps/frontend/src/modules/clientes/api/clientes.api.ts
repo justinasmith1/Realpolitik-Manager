@@ -66,6 +66,23 @@ export function diagnosticoDeError(error: unknown): string {
   }
 }
 
+/** Por qué falló la carga del listado, para decirlo con precisión en la interfaz. */
+export type CausaDeFalloDeCarga = 'conexion' | 'servidor' | 'configuracion' | 'inesperado';
+
+export function causaDeError(error: unknown): CausaDeFalloDeCarga {
+  if (!(error instanceof ApiClientError)) {
+    return 'inesperado';
+  }
+  switch (error.kind) {
+    case 'network':
+      return 'conexion';
+    case 'configuration':
+      return 'configuracion';
+    case 'http':
+      return (error.status ?? 0) >= 500 ? 'servidor' : 'inesperado';
+  }
+}
+
 /**
  * `POST /clientes`. Devuelve el cliente creado, validado con el schema compartido.
  * Si la API responde un error, rechaza con el `ApiClientError` de `http()` sin modificarlo:
