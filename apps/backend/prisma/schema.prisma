@@ -86,4 +86,29 @@ model Cliente {
   // Auditoría (ADR-0002 §4)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  contactos  Contacto[]
+}
+
+// ─── Modelo Contacto ──────────────────────────────────────────────────────────
+
+model Contacto {
+  id                String   @id @default(uuid()) @db.Uuid
+
+  nombre            String   @db.VarChar(150)
+  area              String   @db.VarChar(100)
+  email             String   @db.VarChar(254)
+  recibeRendiciones Boolean  @default(false)
+
+  // Relación con Cliente
+  clienteId         String   @db.Uuid
+  cliente           Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  // Baja lógica (HU1.3)
+  isDeleted         Boolean   @default(false)
+  deletedAt         DateTime?
+
+  // Auditoría
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
