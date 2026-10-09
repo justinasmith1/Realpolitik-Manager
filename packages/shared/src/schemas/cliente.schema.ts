@@ -169,6 +169,16 @@ const ClientePrivadoSchema = ClienteCamposBase.extend({
   subtipo: z.undefined().optional(),
 });
 
+/**
+ * Subtipos válidos según el sector del cliente.
+ * Para el sector PÚBLICO son los definidos en ClienteSubtipoPublico.
+ * Para el sector PRIVADO no aplica ninguno (array vacío).
+ */
+export const subtiposPorSector = {
+  PUBLICO: ClienteSubtipoPublico.options,
+  PRIVADO: [] as const,
+} as const satisfies Record<ClienteSector, readonly ClienteSubtipoPublico[]>;
+
 // ─── Schema principal (discriminated union) ───────────────────────────────────
 
 /**

@@ -8,7 +8,11 @@ export {
   ClienteSector,
   ClienteSubtipoPublico,
   CuitSchema,
+  subtiposPorSector,
 } from './schemas/cliente.schema.js';
+
+export { ListarClientesQuerySchema } from './schemas/listarClientesQuery.schema.js';
+export type { ListarClientesQuery } from './schemas/listarClientesQuery.schema.js';
 
 export type {
   Cliente,
@@ -24,3 +28,5 @@ export type {
 
 // ─── Utilidades ───────────────────────────────────────────────────────────────
 export { validateCuit } from './utils/validateCuit.js';
+export { cambiarSector } from './utils/cambiarSector.js';
+export type { Clasificacion } from './utils/cambiarSector.js';

@@ -1,26 +1,25 @@
 import type { ClienteSector } from '@realpolitik/shared';
 
-// Texto visible de cada sector. `Record` obliga a cubrir todos los valores de ClienteSector:
-// si shared agrega uno, esto deja de compilar hasta que tenga etiqueta.
-const etiquetas: Record<ClienteSector, string> = {
-  PUBLICO: 'Público',
-  PRIVADO: 'Privado',
+import { etiquetasSector } from '@/modules/clientes/clientes.etiquetas';
+
+// Color de cada sector, con tokens propios del tema (`sector-*`): no se reutilizan los de
+// estado ni el de error. `Record` obliga a cubrir cada sector.
+const claseDeSector: Record<ClienteSector, string> = {
+  PUBLICO: 'border-sector-publico-border bg-sector-publico-soft text-sector-publico',
+  PRIVADO: 'border-sector-privado-border bg-sector-privado-soft text-sector-privado',
 };
 
 interface SectorBadgeProps {
   sector: ClienteSector;
 }
 
-/**
- * Sector del cliente. Se distingue por el texto, no por el color: el sector no es un
- * estado (éxito/alerta/error), así que ambos valores usan la presentación neutral del
- * handoff (la de "sin tipología"). El handoff colorea por tipología (municipio, organismo
- * provincial), que son subtipos públicos que este componente todavía no representa.
- */
+/** Sector del cliente. El color ayuda a distinguirlo, pero la información la lleva el texto. */
 export function SectorBadge({ sector }: SectorBadgeProps) {
   return (
-    <span className="inline-flex items-center rounded-pill border border-border bg-panel-alt px-2.25 py-0.5 text-xs font-medium whitespace-nowrap text-content-secondary">
-      {etiquetas[sector]}
+    <span
+      className={`inline-flex items-center rounded-pill border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${claseDeSector[sector]}`}
+    >
+      {etiquetasSector[sector]}
     </span>
   );
 }

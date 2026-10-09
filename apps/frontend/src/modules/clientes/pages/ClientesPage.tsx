@@ -1,47 +1,39 @@
 import type { Cliente } from '@realpolitik/shared';
 import { PlusIcon } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { causaDeError, diagnosticoDeError } from '@/modules/clientes/api/clientes.api';
 import { ClientesEmptyState } from '@/modules/clientes/components/ClientesEmptyState';
 import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorState';
+import { ClientesFiltros } from '@/modules/clientes/components/ClientesFiltros';
 import { ClientesLoadingState } from '@/modules/clientes/components/ClientesLoadingState';
+import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
-
-// Herramienta de QA manual, solo en desarrollo: Loading y Error todavía no pueden ocurrir
-// (no hay datos), así que `/clientes?estado=loading|error` permite verlos. Todo el preview
-// vive tras `import.meta.env.DEV`: en producción el parámetro se ignora y el build elimina
-// esta rama. Se reemplaza por el estado real de la consulta de clientes.
-function vistaDePreview(params: URLSearchParams): ReactNode {
-  if (!import.meta.env.DEV) {
-    return null;
-  }
-  switch (params.get('estado')) {
-    case 'loading':
-      return <ClientesLoadingState />;
-    case 'error':
-      return <ClientesErrorState diagnostico="NETWORK_ERROR" />;
-    default:
-      return null;
-  }
-}
+import { useClientes } from '@/modules/clientes/hooks/useClientes';
+import { useFiltrosClientes } from '@/modules/clientes/hooks/useFiltrosClientes';
 
 export function ClientesPage() {
-  const [params] = useSearchParams();
   const [altaAbierta, setAltaAbierta] = useState(false);
   const [ultimoCreado, setUltimoCreado] = useState<Cliente | null>(null);
+
+  const { filtros, hayFiltros, textoBusqueda, ...acciones } = useFiltrosClientes();
+  const consulta = useClientes(filtros);
 
   const abrirAlta = () => {
     setUltimoCreado(null);
     setAltaAbierta(true);
   };
 
-  // El catálogo real llega con HU1.6: acá solo se confirma el alta, sin inventar una lista.
   const alCrear = (cliente: Cliente) => {
     setUltimoCreado(cliente);
     setAltaAbierta(false);
   };
+
+  const clientes = consulta.data;
+  // Mientras se pide un filtro nuevo, `data` es la respuesta anterior: no sirve para concluir
+  // que "no hay ningún cliente".
+  const sinClientes = clientes?.length === 0 && !hayFiltros && !consulta.isPlaceholderData;
 
   return (
     <div className="flex flex-col gap-3.5 px-6 pt-5.5 pb-10">
@@ -59,7 +51,32 @@ export function ClientesPage() {
         </p>
       )}
 
-      {vistaDePreview(params) ?? <ClientesEmptyState onNuevoCliente={abrirAlta} />}
+      {consulta.isPending ? (
+        <ClientesLoadingState />
+      ) : consulta.isError ? (
+        <ClientesErrorState
+          causa={causaDeError(consulta.error)}
+          diagnostico={diagnosticoDeError(consulta.error)}
+          onReintentar={() => void consulta.refetch()}
+        />
+      ) : sinClientes ? (
+        <ClientesEmptyState onNuevoCliente={abrirAlta} />
+      ) : (
+        <>
+          <ClientesFiltros
+            textoBusqueda={textoBusqueda}
+            sector={filtros.sector}
+            subtipo={filtros.subtipo}
+            hayFiltros={hayFiltros}
+            total={clientes?.length ?? 0}
+            onTextoChange={acciones.cambiarTexto}
+            onSectorChange={acciones.elegirSector}
+            onSubtipoChange={acciones.elegirSubtipo}
+            onLimpiar={acciones.limpiar}
+          />
+          <ClientesTabla clientes={clientes ?? []} onLimpiarFiltros={acciones.limpiar} />
+        </>
+      )}
 
       <NuevoClienteSheet
         abierto={altaAbierta}

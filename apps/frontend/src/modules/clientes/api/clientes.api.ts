@@ -6,6 +6,8 @@ import {
   ClienteSchema,
   type Cliente,
   type ClienteEstadoType,
+  type ClienteSectorType,
+  type ClienteSubtipoPublicoType,
   type CreateClienteSchema,
 } from '@realpolitik/shared';
 
@@ -17,8 +19,69 @@ import { ApiClientError, http } from '@/lib/http';
  */
 export type NuevoCliente = (typeof CreateClienteSchema)['_input'];
 
-/** Prefijo de todas las queries de clientes. Un alta lo invalida (lo consume HU1.6). */
+/** Prefijo de todas las queries de clientes. Un alta lo invalida: el listado se vuelve a pedir. */
 export const clientesQueryKey = ['clientes'] as const;
+
+/** Filtros del listado. Lo que está ausente no filtra. */
+export interface FiltrosClientes {
+  q?: string | undefined;
+  sector?: ClienteSectorType | undefined;
+  subtipo?: ClienteSubtipoPublicoType | undefined;
+}
+
+/**
+ * `GET /clientes`. Devuelve los clientes activos que cumplen los filtros, ordenados por
+ * razón social (lo resuelve el backend), validados con el schema compartido.
+ */
+export async function listarClientes(
+  filtros: FiltrosClientes = {},
+  signal?: AbortSignal,
+): Promise<Cliente[]> {
+  const params = new URLSearchParams();
+  for (const [clave, valor] of Object.entries(filtros)) {
+    if (typeof valor === 'string' && valor !== '') {
+      params.set(clave, valor);
+    }
+  }
+  const query = params.toString();
+  const ruta = query === '' ? '/clientes' : `/clientes?${query}`;
+  const response = await http(ruta, signal ? { signal } : {});
+  return ClienteSchema.array().parse(await response.json());
+}
+
+/**
+ * Código técnico, sin datos personales, para mostrar a soporte cuando falla la carga.
+ */
+export function diagnosticoDeError(error: unknown): string {
+  if (!(error instanceof ApiClientError)) {
+    return 'ERROR_INESPERADO';
+  }
+  switch (error.kind) {
+    case 'network':
+      return 'NETWORK_ERROR';
+    case 'configuration':
+      return 'CONFIG_ERROR';
+    case 'http':
+      return `HTTP_${error.status ?? 'ERROR'}`;
+  }
+}
+
+/** Por qué falló la carga del listado, para decirlo con precisión en la interfaz. */
+export type CausaDeFalloDeCarga = 'conexion' | 'servidor' | 'configuracion' | 'inesperado';
+
+export function causaDeError(error: unknown): CausaDeFalloDeCarga {
+  if (!(error instanceof ApiClientError)) {
+    return 'inesperado';
+  }
+  switch (error.kind) {
+    case 'network':
+      return 'conexion';
+    case 'configuration':
+      return 'configuracion';
+    case 'http':
+      return (error.status ?? 0) >= 500 ? 'servidor' : 'inesperado';
+  }
+}
 
 /**
  * `POST /clientes`. Devuelve el cliente creado, validado con el schema compartido.
