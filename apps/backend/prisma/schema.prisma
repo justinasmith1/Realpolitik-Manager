@@ -41,6 +41,13 @@ enum CanalEntrega {
   WHATSAPP
 }
 
+/// Periodicidad con la que se rinde al cliente (HU1.5).
+enum PeriodicidadTipo {
+  MENSUAL
+  BIMESTRAL
+  POR_CAMPANIA
+}
+
 // ─── Modelo Cliente ───────────────────────────────────────────────────────────
 
 // TODO [DEUDA TÉCNICA]: La regla de negocio "si sector = PUBLICO entonces subtipo != null"
@@ -71,6 +78,16 @@ model Cliente {
   canalEntrega       CanalEntrega @default(CORREO)
   /// Número de WhatsApp normalizado a E.164 (+5493511234567). Obligatorio si canalEntrega = WHATSAPP.
   whatsappNumero     String?  @db.VarChar(16)
+
+  // Periodicidad de rendición (HU1.5). Sin configurar = las tres columnas en null.
+  // TODO [DEUDA TÉCNICA]: las reglas "las tres columnas van juntas", "diaLimite entre 1 y 28" y
+  // "mesInicioCiclo solo en BIMESTRAL" se validan solo en la capa de aplicación (Zod
+  // PeriodicidadSchema), igual que sector/subtipo. El mapper no corrige estados inconsistentes.
+  periodicidadTipo           PeriodicidadTipo?
+  /// Día del mes límite para rendir (1 a 28).
+  periodicidadDiaLimite      Int?              @db.SmallInt
+  /// Mes (1 a 12) en que arranca el ciclo bimestral. Null para MENSUAL y POR_CAMPANIA.
+  periodicidadMesInicioCiclo Int?              @db.SmallInt
 
   // Categorización (ADR-0002 §2)
   sector   Sector

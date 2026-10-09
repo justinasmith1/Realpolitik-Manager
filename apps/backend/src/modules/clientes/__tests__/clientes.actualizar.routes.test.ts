@@ -49,6 +49,9 @@ const filaGuardada: ClienteRow = {
   portalUrl: null,
   canalEntrega: 'CORREO',
   whatsappNumero: null,
+  periodicidadTipo: null,
+  periodicidadDiaLimite: null,
+  periodicidadMesInicioCiclo: null,
   sector: 'PUBLICO',
   subtipo: 'MUNICIPAL',
   estado: 'ACTIVO',
@@ -306,6 +309,137 @@ describe('PATCH /clientes/:id', () => {
       const res = await patchCliente(ID, { portalUrl: 'https://nuevo.ejemplo.gob.ar' });
 
       expect(res.status).toBe(400);
+      expect(prismaMock.cliente.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('periodicidad', () => {
+    const columnasVacias = {
+      periodicidadTipo: null,
+      periodicidadDiaLimite: null,
+      periodicidadMesInicioCiclo: null,
+    };
+    const filaConBimestral: ClienteRow = {
+      ...filaGuardada,
+      periodicidadTipo: 'BIMESTRAL',
+      periodicidadDiaLimite: 15,
+      periodicidadMesInicioCiclo: 3,
+    };
+
+    it('como único cambio escribe las tres columnas y no toca nada más', async () => {
+      const res = await patchCliente(ID, {
+        periodicidad: { tipo: 'MENSUAL', diaLimite: 10, mesInicioCiclo: null },
+      });
+
+      expect(res.status).toBe(200);
+      expect(dataEnviada()).toEqual({
+        periodicidadTipo: 'MENSUAL',
+        periodicidadDiaLimite: 10,
+        periodicidadMesInicioCiclo: null,
+      });
+      expect(res.body).toMatchObject({
+        periodicidad: { tipo: 'MENSUAL', diaLimite: 10, mesInicioCiclo: null },
+      });
+      expect(ClienteSchema.safeParse(res.body).success).toBe(true);
+    });
+
+    it('al cambiar de BIMESTRAL a POR_CAMPANIA reemplaza las tres columnas', async () => {
+      prismaMock.cliente.update.mockImplementation(({ data }) =>
+        Promise.resolve(filaActualizada(data, filaConBimestral)),
+      );
+
+      const res = await patchCliente(ID, {
+        periodicidad: { tipo: 'POR_CAMPANIA', diaLimite: 5, mesInicioCiclo: null },
+      });
+
+      expect(res.status).toBe(200);
+      // El mes de inicio anterior viaja como null explícito: no queda un resto del bimestral.
+      expect(dataEnviada()).toEqual({
+        periodicidadTipo: 'POR_CAMPANIA',
+        periodicidadDiaLimite: 5,
+        periodicidadMesInicioCiclo: null,
+      });
+      expect(res.body).toMatchObject({
+        periodicidad: { tipo: 'POR_CAMPANIA', diaLimite: 5, mesInicioCiclo: null },
+      });
+    });
+
+    it('al cambiar de MENSUAL a BIMESTRAL escribe el mes de inicio', async () => {
+      const res = await patchCliente(ID, {
+        periodicidad: { tipo: 'BIMESTRAL', diaLimite: 20, mesInicioCiclo: 11 },
+      });
+
+      expect(res.status).toBe(200);
+      expect(dataEnviada()).toEqual({
+        periodicidadTipo: 'BIMESTRAL',
+        periodicidadDiaLimite: 20,
+        periodicidadMesInicioCiclo: 11,
+      });
+    });
+
+    it('periodicidad: null deja las tres columnas en null y responde periodicidad null', async () => {
+      prismaMock.cliente.update.mockImplementation(({ data }) =>
+        Promise.resolve(filaActualizada(data, filaConBimestral)),
+      );
+
+      const res = await patchCliente(ID, { periodicidad: null });
+
+      expect(res.status).toBe(200);
+      expect(dataEnviada()).toEqual(columnasVacias);
+      expect(res.body).toHaveProperty('periodicidad', null);
+    });
+
+    it('ausente conserva la existente: no envía ninguna de las tres columnas', async () => {
+      prismaMock.cliente.update.mockImplementation(({ data }) =>
+        Promise.resolve(filaActualizada(data, filaConBimestral)),
+      );
+
+      const res = await patchCliente(ID, { razonSocial: 'Municipio Renombrado' });
+
+      expect(res.status).toBe(200);
+      expect(dataEnviada()).toEqual({ razonSocial: 'Municipio Renombrado' });
+      expect(res.body).toMatchObject({
+        periodicidad: { tipo: 'BIMESTRAL', diaLimite: 15, mesInicioCiclo: 3 },
+      });
+    });
+
+    it('junto con otros campos, cada uno se persiste sin pisar al otro', async () => {
+      const res = await patchCliente(ID, {
+        denominacion: 'Muni Nuevo',
+        periodicidad: { tipo: 'MENSUAL', diaLimite: 1, mesInicioCiclo: null },
+      });
+
+      expect(res.status).toBe(200);
+      expect(dataEnviada()).toEqual({
+        denominacion: 'Muni Nuevo',
+        periodicidadTipo: 'MENSUAL',
+        periodicidadDiaLimite: 1,
+        periodicidadMesInicioCiclo: null,
+      });
+    });
+
+    it.each([
+      [
+        'un día límite fuera de rango',
+        { tipo: 'MENSUAL', diaLimite: 0, mesInicioCiclo: null },
+        'periodicidad.diaLimite',
+      ],
+      [
+        'un bimestral sin mes de inicio',
+        { tipo: 'BIMESTRAL', diaLimite: 10, mesInicioCiclo: null },
+        'periodicidad.mesInicioCiclo',
+      ],
+      [
+        'un tipo inexistente',
+        { tipo: 'ANUAL', diaLimite: 10, mesInicioCiclo: null },
+        'periodicidad.tipo',
+      ],
+    ])('responde 400 con %s y no actualiza', async (_caso, periodicidad, campo) => {
+      const res = await patchCliente(ID, { periodicidad });
+
+      expect(res.status).toBe(400);
+      expect(detalleDeValidacion(res)).toEqual([campo]);
+      expect(prismaMock.cliente.findFirst).not.toHaveBeenCalled();
       expect(prismaMock.cliente.update).not.toHaveBeenCalled();
     });
   });
