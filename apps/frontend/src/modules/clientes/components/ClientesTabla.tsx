@@ -11,13 +11,17 @@ interface ClientesTablaProps {
   onLimpiarFiltros: () => void;
 }
 
-const columnas = ['Cliente', 'CUIT', 'Sector', 'Subtipo', 'Email de contacto', 'Canal'];
+const columnas = ['Cliente', 'CUIT', 'Sector', 'Subtipo', 'Email de contacto', 'Canal', 'Acciones'];
 
 /**
  * Tabla del listado. Con la lista vacía muestra el aviso de "sin resultados": que no haya
  * ningún cliente en absoluto lo resuelve la página con `ClientesEmptyState`.
  */
-export function ClientesTabla({ clientes, onLimpiarFiltros }: ClientesTablaProps) {
+export function ClientesTabla({
+  clientes,
+  onLimpiarFiltros,
+  onAdministrarContactos,
+}: ClientesTablaProps & { onAdministrarContactos?: (cliente: Cliente) => void }) {
   if (clientes.length === 0) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">
@@ -67,6 +71,11 @@ export function ClientesTabla({ clientes, onLimpiarFiltros }: ClientesTablaProps
               <td className="px-4 py-3 text-content-secondary">{cliente.emailContacto}</td>
               <td className="px-4 py-3">
                 <CanalEntregaBadge canal={cliente.canalEntrega} />
+              </td>
+              <td className="px-4 py-3">
+                <Button variant="ghost" size="sm" onClick={() => onAdministrarContactos?.(cliente)}>
+                  Contactos
+                </Button>
               </td>
             </tr>
           ))}

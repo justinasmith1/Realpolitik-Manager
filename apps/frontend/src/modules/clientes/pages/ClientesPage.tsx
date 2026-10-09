@@ -9,6 +9,7 @@ import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorS
 import { ClientesFiltros } from '@/modules/clientes/components/ClientesFiltros';
 import { ClientesLoadingState } from '@/modules/clientes/components/ClientesLoadingState';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
+import { GestionarContactosSheet } from '@/modules/clientes/components/GestionarContactosSheet';
 import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
 import { useFiltrosClientes } from '@/modules/clientes/hooks/useFiltrosClientes';
@@ -16,6 +17,7 @@ import { useFiltrosClientes } from '@/modules/clientes/hooks/useFiltrosClientes'
 export function ClientesPage() {
   const [altaAbierta, setAltaAbierta] = useState(false);
   const [ultimoCreado, setUltimoCreado] = useState<Cliente | null>(null);
+  const [clienteAAdministrar, setClienteAAdministrar] = useState<Cliente | null>(null);
 
   const { filtros, hayFiltros, textoBusqueda, ...acciones } = useFiltrosClientes();
   const consulta = useClientes(filtros);
@@ -74,7 +76,11 @@ export function ClientesPage() {
             onSubtipoChange={acciones.elegirSubtipo}
             onLimpiar={acciones.limpiar}
           />
-          <ClientesTabla clientes={clientes ?? []} onLimpiarFiltros={acciones.limpiar} />
+          <ClientesTabla
+            clientes={clientes ?? []}
+            onLimpiarFiltros={acciones.limpiar}
+            onAdministrarContactos={setClienteAAdministrar}
+          />
         </>
       )}
 
@@ -82,6 +88,10 @@ export function ClientesPage() {
         abierto={altaAbierta}
         onAbiertoChange={setAltaAbierta}
         onCreado={alCrear}
+      />
+      <GestionarContactosSheet
+        cliente={clienteAAdministrar}
+        onClose={() => setClienteAAdministrar(null)}
       />
     </div>
   );

@@ -13,6 +13,14 @@ export {
   subtiposPorSector,
 } from './schemas/cliente.schema.js';
 
+export {
+  ContactoSchema,
+  CreateContactoSchema,
+  UpdateContactoSchema,
+} from './schemas/contacto.schema.js';
+
+export type { Contacto, CreateContactoDto, UpdateContactoDto } from './schemas/contacto.schema.js';
+
 export { ListarClientesQuerySchema } from './schemas/listarClientesQuery.schema.js';
 export type { ListarClientesQuery } from './schemas/listarClientesQuery.schema.js';
 
