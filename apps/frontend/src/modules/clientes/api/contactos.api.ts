@@ -7,12 +7,18 @@ import {
 
 import { http } from '@/lib/http';
 
-export async function listarContactos(clienteId: string, signal?: AbortSignal): Promise<Contacto[]> {
+export async function listarContactos(
+  clienteId: string,
+  signal?: AbortSignal,
+): Promise<Contacto[]> {
   const response = await http(`/clientes/${clienteId}/contactos`, signal ? { signal } : {});
   return ContactoSchema.array().parse(await response.json());
 }
 
-export async function crearContacto(clienteId: string, datos: CreateContactoDto): Promise<Contacto> {
+export async function crearContacto(
+  clienteId: string,
+  datos: CreateContactoDto,
+): Promise<Contacto> {
   const response = await http(`/clientes/${clienteId}/contactos`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

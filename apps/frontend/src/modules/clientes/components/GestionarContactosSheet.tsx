@@ -1,4 +1,5 @@
 import type { Cliente, CreateContactoDto } from '@realpolitik/shared';
+
 import {
   Sheet,
   SheetContent,
@@ -6,14 +7,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { ApiClientError } from '@/lib/http';
+
 import {
   useActualizarContacto,
   useContactos,
   useCrearContacto,
   useEliminarContacto,
 } from '../hooks/useContactos';
+
 import { ContactosForm } from './ContactosForm';
-import { ApiClientError } from '@/lib/http';
 
 interface GestionarContactosSheetProps {
   cliente: Cliente | null;
@@ -23,12 +26,15 @@ interface GestionarContactosSheetProps {
 export function GestionarContactosSheet({ cliente, onClose }: GestionarContactosSheetProps) {
   const abierto = cliente !== null;
   const consulta = useContactos(cliente?.id ?? '');
-  
+
   const crear = useCrearContacto();
   const actualizar = useActualizarContacto();
   const eliminar = useEliminarContacto();
 
-  const handleSave = async (nuevos: (CreateContactoDto & { _id?: string })[], borradosIds: string[]) => {
+  const handleSave = async (
+    nuevos: (CreateContactoDto & { _id?: string })[],
+    borradosIds: string[],
+  ) => {
     if (!cliente) return;
 
     try {
@@ -52,7 +58,7 @@ export function GestionarContactosSheet({ cliente, onClose }: GestionarContactos
           await crear.mutateAsync({ clienteId: cliente.id, datos: c });
         }
       }
-      
+
       onClose();
       return undefined;
     } catch (error) {
@@ -72,7 +78,7 @@ export function GestionarContactosSheet({ cliente, onClose }: GestionarContactos
             Administrá los contactos para el envío de notificaciones.
           </SheetDescription>
         </SheetHeader>
-        
+
         {consulta.isPending ? (
           <div className="p-4 text-sm">Cargando contactos...</div>
         ) : consulta.isError ? (

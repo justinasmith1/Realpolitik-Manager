@@ -3,6 +3,7 @@ import type { Contacto, CreateContactoDto, UpdateContactoDto } from '@realpoliti
 
 import { conflict, notFound, type AppError } from '../../errors/app-error';
 import { prisma } from '../../lib/prisma';
+
 import { toContactoDto } from './contacto.mapper';
 
 export async function listarContactos(clienteId: string): Promise<Contacto[]> {
@@ -63,7 +64,9 @@ export async function actualizarContacto(
         ...(input.nombre !== undefined && { nombre: input.nombre }),
         ...(input.area !== undefined && { area: input.area }),
         ...(input.email !== undefined && { email: input.email }),
-        ...(input.recibeRendiciones !== undefined && { recibeRendiciones: input.recibeRendiciones }),
+        ...(input.recibeRendiciones !== undefined && {
+          recibeRendiciones: input.recibeRendiciones,
+        }),
       },
     });
     return toContactoDto(actualizado);

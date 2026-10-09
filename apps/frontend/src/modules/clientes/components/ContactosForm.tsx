@@ -1,12 +1,15 @@
-import { useId, useState } from 'react';
-import { Controller, useFieldArray, useForm, type Resolver } from 'react-hook-form';
 import type { Contacto, CreateContactoDto } from '@realpolitik/shared';
 import { CreateContactoSchema } from '@realpolitik/shared';
 import { PlusIcon, TrashIcon } from 'lucide-react';
+import { useState } from 'react';
+import {
+  Controller,
+  useFieldArray,
+  useForm,
+  type FieldError,
+  type Resolver,
+} from 'react-hook-form';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,27 +21,32 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+
+type ContactoFormItem = CreateContactoDto & { _id?: string };
 
 interface ContactosFormValues {
-  contactos: (CreateContactoDto & { _id?: string })[];
+  contactos: ContactoFormItem[];
 }
 
-const resolver: Resolver<ContactosFormValues> = async (values) => {
+const resolver: Resolver<ContactosFormValues> = (values) => {
   const result = CreateContactoSchema.array().safeParse(values.contactos);
   if (result.success) {
     return { values, errors: {} };
   }
-  
-  const errors: Record<string, any> = {};
+
+  const contactosErrors: Record<string, FieldError>[] = [];
   for (const issue of result.error.issues) {
     const [index, campo] = issue.path;
-    if (index !== undefined && campo) {
-      if (!errors.contactos) errors.contactos = [];
-      if (!errors.contactos[index as number]) errors.contactos[index as number] = {};
-      errors.contactos[index as number][campo] = { message: 'Dato inválido' };
+    if (typeof index === 'number' && typeof campo === 'string') {
+      const errorsDelContacto = contactosErrors[index] ?? {};
+      errorsDelContacto[campo] = { type: 'validate', message: 'Dato inválido' };
+      contactosErrors[index] = errorsDelContacto;
     }
   }
-  return { values: {}, errors };
+  return { values: {}, errors: contactosErrors.length > 0 ? { contactos: contactosErrors } : {} };
 };
 
 interface ContactosFormProps {
@@ -50,7 +58,6 @@ interface ContactosFormProps {
 export function ContactosForm({ contactosIniciales, onSave, onCancel }: ContactosFormProps) {
   const [borradosIds, setBorradosIds] = useState<string[]>([]);
   const [rootError, setRootError] = useState<string | null>(null);
-  const id = useId();
 
   const {
     control,
@@ -67,7 +74,7 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
         recibeRendiciones: c.recibeRendiciones,
         // Hack para mantener el ID internamente en el array
         _id: c.id,
-      })) as any,
+      })),
     },
   });
 
@@ -85,9 +92,9 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
   });
 
   const marcarParaBorrar = (index: number) => {
-    const field = fields[index] as any;
-    if (field._id) {
-      setBorradosIds((prev) => [...prev, field._id]);
+    const contactoId: string | undefined = fields[index]?._id;
+    if (contactoId) {
+      setBorradosIds((prev) => [...prev, contactoId]);
     }
     remove(index);
   };
@@ -100,7 +107,9 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold">Contacto {index + 1}</h4>
               <AlertDialog>
-                <AlertDialogTrigger render={<Button variant="ghost" size="icon" className="text-destructive" />}>
+                <AlertDialogTrigger
+                  render={<Button variant="ghost" size="icon" className="text-destructive" />}
+                >
                   <TrashIcon className="h-4 w-4" />
                   <span className="sr-only">Eliminar</span>
                 </AlertDialogTrigger>
@@ -108,12 +117,15 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
                   <AlertDialogHeader>
                     <AlertDialogTitle>¿Eliminar contacto?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Esta acción removerá el contacto de la lista. Deberás guardar los cambios para confirmar.
+                      Esta acción removerá el contacto de la lista. Deberás guardar los cambios para
+                      confirmar.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => marcarParaBorrar(index)}>Eliminar</AlertDialogAction>
+                    <AlertDialogAction onClick={() => marcarParaBorrar(index)}>
+                      Eliminar
+                    </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
@@ -121,35 +133,60 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Nombre</label>
-                <Input {...register(`contactos.${index}.nombre` as const)} />
+                <label htmlFor={`${field.id}-nombre`} className="text-sm font-medium">
+                  Nombre
+                </label>
+                <Input
+                  id={`${field.id}-nombre`}
+                  {...register(`contactos.${index}.nombre` as const)}
+                />
                 {errors.contactos?.[index]?.nombre && (
-                  <p className="text-xs text-destructive">{errors.contactos[index]?.nombre?.message}</p>
+                  <p className="text-xs text-destructive">
+                    {errors.contactos[index]?.nombre?.message}
+                  </p>
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Área</label>
-                <Input {...register(`contactos.${index}.area` as const)} />
+                <label htmlFor={`${field.id}-area`} className="text-sm font-medium">
+                  Área
+                </label>
+                <Input id={`${field.id}-area`} {...register(`contactos.${index}.area` as const)} />
                 {errors.contactos?.[index]?.area && (
-                  <p className="text-xs text-destructive">{errors.contactos[index]?.area?.message}</p>
+                  <p className="text-xs text-destructive">
+                    {errors.contactos[index]?.area?.message}
+                  </p>
                 )}
               </div>
               <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <label className="text-sm font-medium">Email</label>
-                <Input type="email" {...register(`contactos.${index}.email` as const)} />
+                <label htmlFor={`${field.id}-email`} className="text-sm font-medium">
+                  Email
+                </label>
+                <Input
+                  id={`${field.id}-email`}
+                  type="email"
+                  {...register(`contactos.${index}.email` as const)}
+                />
                 {errors.contactos?.[index]?.email && (
-                  <p className="text-xs text-destructive">{errors.contactos[index]?.email?.message}</p>
+                  <p className="text-xs text-destructive">
+                    {errors.contactos[index]?.email?.message}
+                  </p>
                 )}
               </div>
               <div className="flex items-center gap-2 sm:col-span-2">
                 <Controller
                   name={`contactos.${index}.recibeRendiciones` as const}
                   control={control}
-                  render={({ field }) => (
-                    <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                  render={({ field: campo }) => (
+                    <Checkbox
+                      id={`${field.id}-recibeRendiciones`}
+                      checked={campo.value}
+                      onCheckedChange={campo.onChange}
+                    />
                   )}
                 />
-                <label className="text-sm">Recibe rendiciones</label>
+                <label htmlFor={`${field.id}-recibeRendiciones`} className="text-sm">
+                  Recibe rendiciones
+                </label>
               </div>
             </div>
           </div>

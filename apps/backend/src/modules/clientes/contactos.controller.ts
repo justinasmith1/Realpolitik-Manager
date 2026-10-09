@@ -2,6 +2,7 @@ import type { Contacto, CreateContactoSchema, UpdateContactoSchema } from '@real
 import type { Request, Response } from 'express';
 
 import type { ValidatedLocals } from '../../middleware/validate';
+
 import {
   actualizarContacto,
   crearContacto,

@@ -17,7 +17,11 @@ const columnas = ['Cliente', 'CUIT', 'Sector', 'Subtipo', 'Email de contacto', '
  * Tabla del listado. Con la lista vacía muestra el aviso de "sin resultados": que no haya
  * ningún cliente en absoluto lo resuelve la página con `ClientesEmptyState`.
  */
-export function ClientesTabla({ clientes, onLimpiarFiltros, onAdministrarContactos }: ClientesTablaProps & { onAdministrarContactos?: (cliente: Cliente) => void }) {
+export function ClientesTabla({
+  clientes,
+  onLimpiarFiltros,
+  onAdministrarContactos,
+}: ClientesTablaProps & { onAdministrarContactos?: (cliente: Cliente) => void }) {
   if (clientes.length === 0) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">

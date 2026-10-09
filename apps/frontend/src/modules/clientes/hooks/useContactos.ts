@@ -1,5 +1,5 @@
+import type { CreateContactoDto, UpdateContactoDto } from '@realpolitik/shared';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Contacto, CreateContactoDto, UpdateContactoDto } from '@realpolitik/shared';
 
 import {
   actualizarContacto,
@@ -8,7 +8,8 @@ import {
   listarContactos,
 } from '../api/contactos.api';
 
-export const contactosQueryKey = (clienteId: string) => ['clientes', clienteId, 'contactos'] as const;
+export const contactosQueryKey = (clienteId: string) =>
+  ['clientes', clienteId, 'contactos'] as const;
 
 export function useContactos(clienteId: string) {
   return useQuery({
@@ -24,7 +25,7 @@ export function useCrearContacto() {
     mutationFn: ({ clienteId, datos }: { clienteId: string; datos: CreateContactoDto }) =>
       crearContacto(clienteId, datos),
     onSuccess: (contacto) => {
-      queryClient.invalidateQueries({ queryKey: contactosQueryKey(contacto.clienteId) });
+      void queryClient.invalidateQueries({ queryKey: contactosQueryKey(contacto.clienteId) });
     },
   });
 }
@@ -42,7 +43,7 @@ export function useActualizarContacto() {
       datos: UpdateContactoDto;
     }) => actualizarContacto(clienteId, contactoId, datos),
     onSuccess: (contacto) => {
-      queryClient.invalidateQueries({ queryKey: contactosQueryKey(contacto.clienteId) });
+      void queryClient.invalidateQueries({ queryKey: contactosQueryKey(contacto.clienteId) });
     },
   });
 }
@@ -53,7 +54,7 @@ export function useEliminarContacto() {
     mutationFn: ({ clienteId, contactoId }: { clienteId: string; contactoId: string }) =>
       eliminarContacto(clienteId, contactoId),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: contactosQueryKey(variables.clienteId) });
+      void queryClient.invalidateQueries({ queryKey: contactosQueryKey(variables.clienteId) });
     },
   });
 }

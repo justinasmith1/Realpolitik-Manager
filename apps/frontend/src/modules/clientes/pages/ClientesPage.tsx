@@ -9,8 +9,8 @@ import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorS
 import { ClientesFiltros } from '@/modules/clientes/components/ClientesFiltros';
 import { ClientesLoadingState } from '@/modules/clientes/components/ClientesLoadingState';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
-import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
 import { GestionarContactosSheet } from '@/modules/clientes/components/GestionarContactosSheet';
+import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
 import { useFiltrosClientes } from '@/modules/clientes/hooks/useFiltrosClientes';
 
@@ -76,8 +76,8 @@ export function ClientesPage() {
             onSubtipoChange={acciones.elegirSubtipo}
             onLimpiar={acciones.limpiar}
           />
-          <ClientesTabla 
-            clientes={clientes ?? []} 
+          <ClientesTabla
+            clientes={clientes ?? []}
             onLimpiarFiltros={acciones.limpiar}
             onAdministrarContactos={setClienteAAdministrar}
           />
