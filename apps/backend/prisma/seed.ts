@@ -16,7 +16,7 @@ async function main() {
       {
         razonSocial: 'Municipalidad de Córdoba',
         denominacion: 'Muni Córdoba',
-        cuit: '30-99887766-5',
+        cuit: '30-99887766-7',
         ivaCondicion: IvaCondicion.EXENTO,
         emailContacto: 'proveedores@cordoba.gob.ar',
         sector: Sector.PUBLICO,
@@ -28,7 +28,7 @@ async function main() {
       {
         razonSocial: 'Ministerio de Salud de la Provincia de Buenos Aires',
         denominacion: 'Min. Salud GBA',
-        cuit: '30-71234567-8',
+        cuit: '30-71234567-1',
         ivaCondicion: IvaCondicion.EXENTO,
         emailContacto: 'contrataciones@salud.gba.gob.ar',
         sector: Sector.PUBLICO,
@@ -40,7 +40,7 @@ async function main() {
       {
         razonSocial: 'Sindicato de Trabajadores Municipales de Córdoba',
         denominacion: 'STM Córdoba',
-        cuit: '30-55443322-1',
+        cuit: '30-55443322-3',
         ivaCondicion: IvaCondicion.EXENTO,
         emailContacto: 'admin@stm.org.ar',
         telefono: '+54 11 4000-1234',
@@ -53,7 +53,7 @@ async function main() {
       {
         razonSocial: 'Municipalidad de Villa María',
         denominacion: 'Muni Villa María',
-        cuit: '30-66554433-2',
+        cuit: '30-66554433-4',
         ivaCondicion: IvaCondicion.EXENTO,
         emailContacto: 'licitaciones@villamaria.gob.ar',
         sector: Sector.PUBLICO,
@@ -65,7 +65,7 @@ async function main() {
       {
         razonSocial: 'Legislatura de la Ciudad Autónoma de Buenos Aires',
         denominacion: 'Legislatura CABA',
-        cuit: '30-78901234-5',
+        cuit: '30-78901234-9',
         ivaCondicion: IvaCondicion.EXENTO,
         emailContacto: 'compras@legislatura.gob.ar',
         portalUrl: 'https://compras.legislatura.gob.ar',
@@ -94,7 +94,7 @@ async function main() {
       {
         razonSocial: 'Grupo Solano Comunicación S.A.',
         denominacion: 'Grupo Solano',
-        cuit: '30-12345678-9',
+        cuit: '30-12345678-1',
         ivaCondicion: IvaCondicion.RESPONSABLE_INSCRIPTO,
         emailContacto: 'facturacion@gruposolano.com.ar',
         telefono: '+54 351 555-0001',
@@ -120,7 +120,7 @@ async function main() {
       {
         razonSocial: 'Productora Norte Grande',
         denominacion: 'Norte Grande',
-        cuit: '20-44556677-8',
+        cuit: '20-44556677-3',
         ivaCondicion: IvaCondicion.MONOTRIBUTO,
         emailContacto: 'contacto@nortegrande.com.ar',
         sector: Sector.PRIVADO,
@@ -131,7 +131,7 @@ async function main() {
       {
         razonSocial: 'Señal Regional Patagonia S.A.',
         denominacion: 'Patagonia TV',
-        cuit: '30-22334455-6',
+        cuit: '30-22334455-7',
         ivaCondicion: IvaCondicion.RESPONSABLE_INSCRIPTO,
         emailContacto: 'legal@patagonia-tv.com.ar',
         sector: Sector.PRIVADO,
