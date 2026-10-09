@@ -35,6 +35,8 @@ interface ClienteFormProps {
   onSubmit: (datos: NuevoCliente) => Promise<ErroresDeEnvio | undefined>;
   onCancel: () => void;
   textoEnviar: string;
+  /** Datos con los que arranca el formulario. Sin ellos arranca vacío (alta). */
+  valoresIniciales?: ClienteFormValues;
 }
 
 interface CampoProps {
@@ -82,7 +84,12 @@ function describirCampo(id: string, error: FieldError | undefined, conAyuda = fa
  * Formulario de los datos de un cliente (HU1.1). Valida con las reglas de shared antes de
  * enviar y muestra en cada campo los errores propios y los que devuelva el servidor.
  */
-export function ClienteForm({ onSubmit, onCancel, textoEnviar }: ClienteFormProps) {
+export function ClienteForm({
+  onSubmit,
+  onCancel,
+  textoEnviar,
+  valoresIniciales = valoresInicialesClienteForm,
+}: ClienteFormProps) {
   const id = useId();
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const {
@@ -94,7 +101,7 @@ export function ClienteForm({ onSubmit, onCancel, textoEnviar }: ClienteFormProp
     setError,
     formState: { errors, isSubmitting },
   } = useForm<ClienteFormValues, unknown, NuevoCliente>({
-    defaultValues: valoresInicialesClienteForm,
+    defaultValues: valoresIniciales,
     resolver: clienteFormResolver,
     mode: 'onTouched',
   });

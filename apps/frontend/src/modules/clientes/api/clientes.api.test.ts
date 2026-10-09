@@ -1,5 +1,6 @@
 import { ApiClientError } from '@/lib/http';
 import {
+  actualizarCliente,
   causaDeError,
   crearCliente,
   diagnosticoDeError,
@@ -98,6 +99,41 @@ describe('crearCliente', () => {
     fetchMock.mockResolvedValue(jsonResponse({ ...clienteCreado, cuit: 'no-es-un-cuit' }, 201));
 
     await expect(crearCliente(nuevoCliente)).rejects.toThrow();
+  });
+});
+
+describe('actualizarCliente', () => {
+  it('hace PATCH /clientes/:id con los cambios en JSON', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(clienteCreado, 200));
+
+    await actualizarCliente(clienteCreado.id, { razonSocial: 'Otra S.A.' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(`https://api.example/clientes/${clienteCreado.id}`);
+    expect(init?.method).toBe('PATCH');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+    expect(JSON.parse(init?.body as string)).toEqual({ razonSocial: 'Otra S.A.' });
+  });
+
+  it('devuelve el cliente actualizado validado con el schema compartido', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...clienteCreado, razonSocial: 'Otra S.A.' }, 200));
+
+    const cliente = await actualizarCliente(clienteCreado.id, { razonSocial: 'Otra S.A.' });
+
+    expect(cliente).toMatchObject({ id: clienteCreado.id, razonSocial: 'Otra S.A.' });
+    expect(cliente.actualizadoEn).toEqual(new Date('2026-10-08T12:00:00.000Z'));
+  });
+
+  it('rechaza con el ApiClientError de http() sin modificarlo', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: { code: 'NOT_FOUND', message: 'x' } }, 404));
+
+    const error = await actualizarCliente(clienteCreado.id, { razonSocial: 'Otra S.A.' }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(ApiClientError);
+    expect(error).toMatchObject({ kind: 'http', status: 404 });
   });
 });
 

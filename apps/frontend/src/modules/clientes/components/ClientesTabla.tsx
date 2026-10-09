@@ -21,7 +21,11 @@ export function ClientesTabla({
   clientes,
   onLimpiarFiltros,
   onAdministrarContactos,
-}: ClientesTablaProps & { onAdministrarContactos?: (cliente: Cliente) => void }) {
+  onEditar,
+}: ClientesTablaProps & {
+  onAdministrarContactos?: (cliente: Cliente) => void;
+  onEditar?: (cliente: Cliente) => void;
+}) {
   if (clientes.length === 0) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">
@@ -73,9 +77,18 @@ export function ClientesTabla({
                 <CanalEntregaBadge canal={cliente.canalEntrega} />
               </td>
               <td className="px-4 py-3">
-                <Button variant="ghost" size="sm" onClick={() => onAdministrarContactos?.(cliente)}>
-                  Contactos
-                </Button>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => onEditar?.(cliente)}>
+                    Editar
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onAdministrarContactos?.(cliente)}
+                  >
+                    Contactos
+                  </Button>
+                </div>
               </td>
             </tr>
           ))}

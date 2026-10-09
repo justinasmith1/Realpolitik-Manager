@@ -9,6 +9,7 @@ import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorS
 import { ClientesFiltros } from '@/modules/clientes/components/ClientesFiltros';
 import { ClientesLoadingState } from '@/modules/clientes/components/ClientesLoadingState';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
+import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import { GestionarContactosSheet } from '@/modules/clientes/components/GestionarContactosSheet';
 import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
@@ -18,18 +19,32 @@ export function ClientesPage() {
   const [altaAbierta, setAltaAbierta] = useState(false);
   const [ultimoCreado, setUltimoCreado] = useState<Cliente | null>(null);
   const [clienteAAdministrar, setClienteAAdministrar] = useState<Cliente | null>(null);
+  const [clienteAEditar, setClienteAEditar] = useState<Cliente | null>(null);
+  const [ultimoEditado, setUltimoEditado] = useState<Cliente | null>(null);
 
   const { filtros, hayFiltros, textoBusqueda, ...acciones } = useFiltrosClientes();
   const consulta = useClientes(filtros);
 
   const abrirAlta = () => {
     setUltimoCreado(null);
+    setUltimoEditado(null);
     setAltaAbierta(true);
   };
 
   const alCrear = (cliente: Cliente) => {
     setUltimoCreado(cliente);
     setAltaAbierta(false);
+  };
+
+  const abrirEdicion = (cliente: Cliente) => {
+    setUltimoCreado(null);
+    setUltimoEditado(null);
+    setClienteAEditar(cliente);
+  };
+
+  const alActualizar = (cliente: Cliente) => {
+    setUltimoEditado(cliente);
+    setClienteAEditar(null);
   };
 
   const clientes = consulta.data;
@@ -50,6 +65,12 @@ export function ClientesPage() {
       {ultimoCreado !== null && (
         <p role="status" className="rounded-control border bg-card px-3 py-2 text-sm text-success">
           Se registró el cliente {ultimoCreado.razonSocial} (CUIT {ultimoCreado.cuit}).
+        </p>
+      )}
+
+      {ultimoEditado !== null && (
+        <p role="status" className="rounded-control border bg-card px-3 py-2 text-sm text-success">
+          Se actualizó el cliente {ultimoEditado.razonSocial}.
         </p>
       )}
 
@@ -80,6 +101,7 @@ export function ClientesPage() {
             clientes={clientes ?? []}
             onLimpiarFiltros={acciones.limpiar}
             onAdministrarContactos={setClienteAAdministrar}
+            onEditar={abrirEdicion}
           />
         </>
       )}
@@ -88,6 +110,11 @@ export function ClientesPage() {
         abierto={altaAbierta}
         onAbiertoChange={setAltaAbierta}
         onCreado={alCrear}
+      />
+      <EditarClienteSheet
+        cliente={clienteAEditar}
+        onClose={() => setClienteAEditar(null)}
+        onActualizado={alActualizar}
       />
       <GestionarContactosSheet
         cliente={clienteAAdministrar}

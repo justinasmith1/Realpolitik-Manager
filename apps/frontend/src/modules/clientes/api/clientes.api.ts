@@ -9,6 +9,7 @@ import {
   type ClienteSectorType,
   type ClienteSubtipoPublicoType,
   type CreateClienteSchema,
+  type UpdateClienteSchema,
 } from '@realpolitik/shared';
 
 import { ApiClientError, http } from '@/lib/http';
@@ -18,6 +19,9 @@ import { ApiClientError, http } from '@/lib/http';
  * compartido (el de salida tiene el CUIT ya normalizado y defaults aplicados).
  */
 export type NuevoCliente = (typeof CreateClienteSchema)['_input'];
+
+/** Datos que el front envía para modificar un cliente: cualquier subconjunto de sus campos. */
+export type CambiosCliente = (typeof UpdateClienteSchema)['_input'];
 
 /** Prefijo de todas las queries de clientes. Un alta lo invalida: el listado se vuelve a pedir. */
 export const clientesQueryKey = ['clientes'] as const;
@@ -91,6 +95,20 @@ export function causaDeError(error: unknown): CausaDeFalloDeCarga {
 export async function crearCliente(datos: NuevoCliente): Promise<Cliente> {
   const response = await http('/clientes', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(datos),
+  });
+  return ClienteSchema.parse(await response.json());
+}
+
+/**
+ * `PATCH /clientes/:id`. Devuelve el cliente actualizado, validado con el schema compartido.
+ * Los errores llegan sin modificar, igual que en `crearCliente`: `interpretarFalloAlta` los
+ * traduce (el CUIT duplicado y los datos inválidos tienen el mismo formato que en el alta).
+ */
+export async function actualizarCliente(id: string, datos: CambiosCliente): Promise<Cliente> {
+  const response = await http(`/clientes/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(datos),
   });
