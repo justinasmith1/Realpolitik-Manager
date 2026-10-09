@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorState';
 
@@ -28,5 +29,16 @@ describe('ClientesErrorState', () => {
     render(<ClientesErrorState diagnostico={diagnostico} />);
 
     expect(screen.queryByText(/código de abajo/)).not.toBeInTheDocument();
+  });
+
+  it('ofrece "Reintentar" solo si se le pasa la acción, y la ejecuta', async () => {
+    const onReintentar = vi.fn();
+    const { rerender } = render(<ClientesErrorState />);
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+
+    rerender(<ClientesErrorState onReintentar={onReintentar} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+
+    expect(onReintentar).toHaveBeenCalledTimes(1);
   });
 });

@@ -26,6 +26,22 @@ describe('SectorBadge', () => {
     expect(screen.getByText('Privado')).toBeVisible();
   });
 
+  it('colorea distinto cada sector, con tokens del tema y sin los colores de estado o error', () => {
+    render(
+      <>
+        <SectorBadge sector="PUBLICO" />
+        <SectorBadge sector="PRIVADO" />
+      </>,
+    );
+
+    const publico = screen.getByText('Público').className;
+    const privado = screen.getByText('Privado').className;
+    expect(publico).not.toBe(privado);
+    for (const clase of [publico, privado]) {
+      expect(clase).not.toMatch(/success|warning|destructive/);
+    }
+  });
+
   it('acepta únicamente un ClienteSector', () => {
     expectTypeOf<ComponentProps<typeof SectorBadge>['sector']>().toEqualTypeOf<ClienteSector>();
   });

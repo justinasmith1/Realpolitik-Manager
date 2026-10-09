@@ -1,13 +1,17 @@
+import { Button } from '@/components/ui/button';
+
 interface ClientesErrorStateProps {
   /**
    * Código técnico para soporte, en tipografía mono (p. ej. un código de error o una
    * referencia). Sin stack traces, URLs ni datos personales. Sin él, no se menciona.
    */
   diagnostico?: string | undefined;
+  /** Si se pasa, se ofrece "Reintentar". */
+  onReintentar?: (() => void) | undefined;
 }
 
-// Falla la carga de la lista. Sin "Reintentar" todavía: no hay nada que reintentar.
-export function ClientesErrorState({ diagnostico }: ClientesErrorStateProps) {
+// Falla la carga de la lista.
+export function ClientesErrorState({ diagnostico, onReintentar }: ClientesErrorStateProps) {
   const tieneDiagnostico = diagnostico !== undefined && diagnostico.trim() !== '';
 
   return (
@@ -26,6 +30,11 @@ export function ClientesErrorState({ diagnostico }: ClientesErrorStateProps) {
       </p>
       {tieneDiagnostico && (
         <p className="font-mono text-xs text-content-secondary">{diagnostico}</p>
+      )}
+      {onReintentar && (
+        <Button variant="outline" onClick={onReintentar}>
+          Reintentar
+        </Button>
       )}
     </div>
   );
