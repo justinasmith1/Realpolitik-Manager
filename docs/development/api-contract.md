@@ -58,6 +58,9 @@ Todos los errores responden con la misma forma:
   "ivaCondicion": "EXENTO",
   "emailContacto": "rendiciones@ejemplo.gob.ar",
   "emailsAdicionales": [],
+  "canalEntrega": "CORREO",
+  "portalUrl": null,
+  "whatsappNumero": null,
   "periodicidad": { "tipo": "MENSUAL", "diaLimite": 10, "mesInicioCiclo": null },
   "estado": "ACTIVO",
   "creadoEn": "2026-10-02T15:30:00.000Z",
@@ -70,9 +73,13 @@ Reglas de los datos:
 - **Denominación (`denominacion`):** obligatoria, hasta 60 caracteres. Es el alias o nombre corto del cliente para identificarlo en pantalla cuando la razón social es muy extensa.
 - **Sector y subtipo:** si el sector es `PUBLICO`, el `subtipo` es obligatorio. Si es `PRIVADO`, el campo `subtipo` no se envía ni aparece en la respuesta.
 - **Email de rendición (`emailContacto`):** obligatorio, guardado en minúsculas. Es el destinatario principal de las rendiciones.
+- **Canal de entrega habitual (`canalEntrega`):** `CORREO` (por defecto), `PORTAL_WEB` o `WHATSAPP`.
+  - Si es `PORTAL_WEB`: `portalUrl` es obligatorio y debe tener formato de URL válido.
+  - Si es `WHATSAPP`: `whatsappNumero` es obligatorio, con código de país y formato E.164 (`+5493511234567`).
+  - Si es `CORREO`: el cliente debe contar con al menos un email de contacto destinatario (`emailContacto` o adicionales).
 - **Periodicidad:** `tipo` es `MENSUAL`, `BIMESTRAL` o `POR_CAMPANIA`. `diaLimite` es un entero de 1 a 28. `mesInicioCiclo` (1 a 12) es obligatorio si el tipo es `BIMESTRAL` y debe ser `null` en los demás.
 - **Estado:** `ACTIVO`, `INACTIVO` o `SUSPENDIDO`. En este sprint ningún endpoint asigna `SUSPENDIDO`; queda reservado (por ejemplo, para clientes que pausan la publicidad en verano).
-- El resto de los campos (`ivaCondicion`, `telefono`, `portalUrl`, `emailsAdicionales`) se validan según el schema.
+- El resto de los campos (`ivaCondicion`, `telefono`, `emailsAdicionales`) se validan según el schema.
 
 ### Resumen
 
@@ -84,12 +91,12 @@ Reglas de los datos:
 | HU1.7    | `PATCH /clientes/:id`        | Modifica datos de un cliente    | `UpdateClienteSchema`             | `ClienteSchema`          |
 | HU1.8    | `PATCH /clientes/:id/estado` | Desactiva o reactiva un cliente | A crear en shared (ver sección 5) | `ClienteSchema`          |
 
-### `POST /clientes` (HU1.1, HU1.2, HU1.5)
+### `POST /clientes` (HU1.1, HU1.2, HU1.4, HU1.5)
 
-- **Pedido:** los campos del cliente, sin `id`, `estado`, `creadoEn` ni `actualizadoEn`. La periodicidad es opcional al crear.
+- **Pedido:** los campos del cliente, sin `id`, `estado`, `creadoEn` ni `actualizadoEn`. La periodicidad es opcional al crear. `canalEntrega` toma `CORREO` por defecto. Si se envía `PORTAL_WEB` es obligatoria la `portalUrl`; si se envía `WHATSAPP` es obligatorio `whatsappNumero`.
 - **Respuesta 201:** el cliente creado, con `estado` `ACTIVO`.
 - **Errores:**
-  - `400 VALIDATION_ERROR`: falta la razón social, la denominación (o supera los 60 caracteres), el CUIT, el sector, el email de rendición o la condición de IVA; CUIT con dígito verificador incorrecto; subtipo ausente en un cliente público; día límite fuera de 1 a 28; periodicidad bimestral sin mes de inicio.
+  - `400 VALIDATION_ERROR`: falta la razón social, la denominación (o supera los 60 caracteres), el CUIT, el sector, el email de rendición o la condición de IVA; CUIT con dígito verificador incorrecto; subtipo ausente en un cliente público; día límite fuera de 1 a 28; periodicidad bimestral sin mes de inicio; canal `PORTAL_WEB` sin `portalUrl` válida; canal `WHATSAPP` sin `whatsappNumero` válido; canal `CORREO` sin emails de contacto.
   - `409 CONFLICT`: ya existe un cliente con ese CUIT, **activo o inactivo**. Se devuelve cuál es, porque HU1.1 pide mostrarlo:
 
 ```json
@@ -123,16 +130,19 @@ Reglas de los datos:
 - **Respuesta 200:** el cliente, aunque esté `INACTIVO`.
 - **Errores:** `400 VALIDATION_ERROR` (el id no es un uuid), `404 NOT_FOUND`.
 
-### `PATCH /clientes/:id` (HU1.7, HU1.2, HU1.5)
+### `PATCH /clientes/:id` (HU1.7, HU1.2, HU1.4, HU1.5)
 
 - **Pedido:** cualquier subconjunto de los campos del cliente, con al menos uno. Solo se modifican los campos enviados. No se envían `id`, `estado`, `creadoEn` ni `actualizadoEn`: si llegan, se ignoran sin error. El estado se cambia solo con `PATCH /clientes/:id/estado`. Enviar `"periodicidad": null` borra la periodicidad.
 - **Cambio de sector:**
   - De `PUBLICO` a `PRIVADO`: el subtipo anterior se descarta.
   - De `PRIVADO` a `PUBLICO`: hay que enviar el `subtipo` en el mismo pedido.
   - Enviar `subtipo` para un cliente privado es un error.
+- **Cambio de canal:**
+  - Si se cambia a `PORTAL_WEB`, debe enviarse `portalUrl` válida en el mismo pedido.
+  - Si se cambia a `WHATSAPP`, debe enviarse `whatsappNumero` válido en el mismo pedido.
 - **Respuesta 200:** el cliente actualizado.
 - **Errores:**
-  - `400 VALIDATION_ERROR`: pedido sin campos, CUIT inválido, o sector y subtipo inconsistentes.
+  - `400 VALIDATION_ERROR`: pedido sin campos, CUIT inválido, sector y subtipo inconsistentes, o canal y datos de entrega inconsistentes.
   - `404 NOT_FOUND`.
   - `409 CONFLICT`: el CUIT nuevo pertenece **a otro** cliente. Mismo `details` que en `POST`. El CUIT del propio cliente no cuenta como duplicado.
 
@@ -181,7 +191,7 @@ Un contacto pertenece a un cliente.
 ## 4. Fuera del alcance de este documento
 
 Autenticación y permisos, carga de documentos, requisitos por cliente, rendiciones,
-vencimientos, despacho y canal de entrega (HU1.4). Se documentan cuando se implementen.
+vencimientos y despacho. Se documentan cuando se implementen.
 
 ## 5. Cambios que este contrato exige
 
