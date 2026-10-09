@@ -85,6 +85,8 @@ function datosDeAlta(input: CreateClienteDto): Prisma.ClienteCreateInput {
     emailsAdicionales: input.emailsAdicionales,
     telefono: input.telefono ?? null,
     portalUrl: input.portalUrl ?? null,
+    canalEntrega: input.canalEntrega,
+    whatsappNumero: input.whatsappNumero ?? null,
     sector: input.sector,
     subtipo: input.sector === 'PUBLICO' ? input.subtipo : null,
     estado: 'ACTIVO',

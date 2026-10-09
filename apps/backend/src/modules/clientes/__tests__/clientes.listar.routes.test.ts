@@ -36,6 +36,8 @@ const base: ClienteRow = {
   emailsAdicionales: [],
   telefono: null,
   portalUrl: null,
+  canalEntrega: 'CORREO',
+  whatsappNumero: null,
   sector: 'PRIVADO',
   subtipo: null,
   estado: 'ACTIVO',

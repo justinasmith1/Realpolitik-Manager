@@ -22,7 +22,13 @@ function renderPage(url = '/clientes') {
 // ─── Datos ficticios ──────────────────────────────────────────────────────────
 
 const fechas = { creadoEn: '2026-10-08T12:00:00.000Z', actualizadoEn: '2026-10-08T12:00:00.000Z' };
-const comunes = { ivaCondicion: 'EXENTO', emailsAdicionales: [], estado: 'ACTIVO', ...fechas };
+const comunes = {
+  ivaCondicion: 'EXENTO',
+  emailsAdicionales: [],
+  canalEntrega: 'CORREO',
+  estado: 'ACTIVO',
+  ...fechas,
+};
 
 const clienteMunicipal = {
   ...comunes,
@@ -244,14 +250,21 @@ function simularServidorTrasElPrimerPedido() {
 describe('ClientesPage: tabla', () => {
   beforeEach(() => simularServidor());
 
-  it('muestra solo las columnas Cliente, CUIT, Sector, Subtipo y Email de contacto', async () => {
+  it('muestra solo las columnas Cliente, CUIT, Sector, Subtipo, Email de contacto y Canal', async () => {
     renderPage();
 
     const tabla = await screen.findByRole('table');
     const encabezados = within(tabla)
       .getAllByRole('columnheader')
       .map((th) => th.textContent);
-    expect(encabezados).toEqual(['Cliente', 'CUIT', 'Sector', 'Subtipo', 'Email de contacto']);
+    expect(encabezados).toEqual([
+      'Cliente',
+      'CUIT',
+      'Sector',
+      'Subtipo',
+      'Email de contacto',
+      'Canal',
+    ]);
   });
 
   it('lista todos los clientes que trae la API, con la razón social bajo "Cliente" y su email de contacto', async () => {

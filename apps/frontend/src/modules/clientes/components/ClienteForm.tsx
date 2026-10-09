@@ -1,4 +1,9 @@
-import { ClienteSector, ClienteSubtipoPublico, IvaCondicion } from '@realpolitik/shared';
+import {
+  CanalEntrega,
+  ClienteSector,
+  ClienteSubtipoPublico,
+  IvaCondicion,
+} from '@realpolitik/shared';
 import { useId, useState, type ReactNode } from 'react';
 import { useForm, useWatch, type FieldError } from 'react-hook-form';
 
@@ -7,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import type { NuevoCliente } from '@/modules/clientes/api/clientes.api';
 import {
+  etiquetasCanalEntrega,
   etiquetasIvaCondicion,
   etiquetasSector,
   etiquetasSubtipo,
@@ -93,6 +99,7 @@ export function ClienteForm({ onSubmit, onCancel, textoEnviar }: ClienteFormProp
     mode: 'onTouched',
   });
   const sector = useWatch({ control, name: 'sector' });
+  const canalEntrega = useWatch({ control, name: 'canalEntrega' });
 
   const enviar = handleSubmit(async (datos) => {
     setErrorGeneral(null);
@@ -215,6 +222,68 @@ export function ClienteForm({ onSubmit, onCancel, textoEnviar }: ClienteFormProp
             {...describirCampo(idDe('emailContacto'), errors.emailContacto)}
           />
         </Campo>
+
+        {/* ─── Canal de entrega ─── */}
+        <Campo
+          id={idDe('canalEntrega')}
+          etiqueta="Canal de entrega"
+          ayuda="Por dónde se envían habitualmente las rendiciones."
+          error={errors.canalEntrega}
+        >
+          <NativeSelect
+            {...register('canalEntrega', {
+              // Igual que sector/subtipo: el dato del canal anterior no debe quedar guardado
+              // ni mostrar un error de un campo que ya no está en pantalla.
+              onChange: () => {
+                setValue('portalUrl', '');
+                setValue('whatsappNumero', '');
+                clearErrors(['portalUrl', 'whatsappNumero']);
+              },
+            })}
+            {...describirCampo(idDe('canalEntrega'), errors.canalEntrega, true)}
+          >
+            {CanalEntrega.options.map((valor) => (
+              <option key={valor} value={valor}>
+                {etiquetasCanalEntrega[valor]}
+              </option>
+            ))}
+          </NativeSelect>
+        </Campo>
+
+        {canalEntrega === 'PORTAL_WEB' && (
+          <Campo
+            id={idDe('portalUrl')}
+            etiqueta="URL del portal"
+            ayuda="Dirección completa, con https://"
+            error={errors.portalUrl}
+          >
+            <Input
+              type="url"
+              inputMode="url"
+              autoComplete="url"
+              placeholder="https://portal.ejemplo.gob.ar"
+              {...register('portalUrl')}
+              {...describirCampo(idDe('portalUrl'), errors.portalUrl, true)}
+            />
+          </Campo>
+        )}
+
+        {canalEntrega === 'WHATSAPP' && (
+          <Campo
+            id={idDe('whatsappNumero')}
+            etiqueta="Número de WhatsApp"
+            ayuda="Con código de país, p. ej. +54 9 351 123 4567."
+            error={errors.whatsappNumero}
+          >
+            <Input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              {...register('whatsappNumero')}
+              {...describirCampo(idDe('whatsappNumero'), errors.whatsappNumero, true)}
+            />
+          </Campo>
+        )}
 
         {avisoGeneral !== null && (
           <p
