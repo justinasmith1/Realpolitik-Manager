@@ -1,6 +1,8 @@
 import { ApiClientError } from '@/lib/http';
 import {
   crearCliente,
+  diagnosticoDeError,
+  listarClientes,
   interpretarFalloAlta,
   type NuevoCliente,
 } from '@/modules/clientes/api/clientes.api';
@@ -154,5 +156,79 @@ describe('interpretarFalloAlta', () => {
     ['un error que no viene de http()', new Error('respuesta inválida')],
   ])('trata %s como inesperado', (_caso, error) => {
     expect(interpretarFalloAlta(error)).toEqual({ tipo: 'inesperado' });
+  });
+});
+
+describe('listarClientes', () => {
+  it('hace GET /clientes sin query cuando no hay filtros', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([], 200));
+
+    await listarClientes();
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe('https://api.example/clientes');
+    expect(init?.method).toBeUndefined();
+  });
+
+  it('envía solo los filtros con valor', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse([], 200))
+      .mockResolvedValueOnce(jsonResponse([], 200));
+
+    await listarClientes({ q: 'muni', sector: 'PUBLICO', subtipo: undefined });
+    await listarClientes({ q: '', sector: 'PRIVADO' });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example/clientes?q=muni&sector=PUBLICO');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://api.example/clientes?sector=PRIVADO');
+  });
+
+  it('codifica el texto de búsqueda', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([], 200));
+
+    await listarClientes({ q: 'Ñandú & Cía' });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://api.example/clientes?q=%C3%91and%C3%BA+%26+C%C3%ADa',
+    );
+  });
+
+  it('valida la respuesta con el schema compartido (fechas como Date)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([clienteCreado], 200));
+
+    const [cliente] = await listarClientes();
+
+    expect(cliente?.razonSocial).toBe('Empresa de Ejemplo S.A.');
+    expect(cliente?.creadoEn).toBeInstanceOf(Date);
+  });
+
+  it('rechaza una respuesta que no cumple el contrato', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([{ ...clienteCreado, sector: 'MIXTO' }], 200));
+
+    await expect(listarClientes()).rejects.toThrow();
+  });
+
+  it('propaga el ApiClientError si la API falla', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: { code: 'INTERNAL_ERROR' } }, 500));
+
+    await expect(listarClientes()).rejects.toBeInstanceOf(ApiClientError);
+  });
+});
+
+describe('diagnosticoDeError', () => {
+  it.each([
+    [
+      'sin respuesta del servidor',
+      new ApiClientError({ kind: 'network', message: 'x' }),
+      'NETWORK_ERROR',
+    ],
+    [
+      'configuración inválida',
+      new ApiClientError({ kind: 'configuration', message: 'x' }),
+      'CONFIG_ERROR',
+    ],
+    ['respuesta HTTP', errorHttp(503, undefined), 'HTTP_503'],
+    ['error de otro tipo', new Error('x'), 'ERROR_INESPERADO'],
+  ])('%s', (_caso, error, esperado) => {
+    expect(diagnosticoDeError(error)).toBe(esperado);
   });
 });
