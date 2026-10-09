@@ -1,11 +1,21 @@
-import type { Cliente, CreateClienteSchema, ListarClientesQuerySchema } from '@realpolitik/shared';
+import type {
+  Cliente,
+  CreateClienteSchema,
+  ListarClientesQuerySchema,
+  UpdateClienteSchema,
+} from '@realpolitik/shared';
 import type { Request, Response } from 'express';
 
 import type { ValidatedLocals } from '../../middleware/validate';
 
-import { crearCliente, listarClientes } from './clientes.service';
+import type { ClienteIdParamsSchema } from './clientes.routes';
+import { actualizarCliente, crearCliente, listarClientes } from './clientes.service';
 
 type CrearClienteLocals = ValidatedLocals<{ body: typeof CreateClienteSchema }>;
+type ActualizarClienteLocals = ValidatedLocals<{
+  params: typeof ClienteIdParamsSchema;
+  body: typeof UpdateClienteSchema;
+}>;
 type ListarClientesLocals = ValidatedLocals<{ query: typeof ListarClientesQuerySchema }>;
 
 export async function crearClienteController(
@@ -14,6 +24,15 @@ export async function crearClienteController(
 ): Promise<void> {
   const cliente = await crearCliente(res.locals.validated.body);
   res.status(201).json(cliente);
+}
+
+export async function actualizarClienteController(
+  _req: Request,
+  res: Response<Cliente, ActualizarClienteLocals>,
+): Promise<void> {
+  const { params, body } = res.locals.validated;
+  const cliente = await actualizarCliente(params.id, body);
+  res.status(200).json(cliente);
 }
 
 export async function listarClientesController(

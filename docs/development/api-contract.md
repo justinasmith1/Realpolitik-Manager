@@ -140,6 +140,10 @@ Reglas de los datos:
 - **Cambio de canal:**
   - Si se cambia a `PORTAL_WEB`, debe enviarse `portalUrl` válida en el mismo pedido.
   - Si se cambia a `WHATSAPP`, debe enviarse `whatsappNumero` válido en el mismo pedido.
+  - Al cambiar el canal, el dato del otro canal se borra (`portalUrl` queda vacía salvo en `PORTAL_WEB`, y `whatsappNumero` salvo en `WHATSAPP`).
+  - Enviar `portalUrl` o `whatsappNumero` sin cambiar el canal modifica solo ese dato, pero únicamente si el canal guardado es el que lo usa (la URL con `PORTAL_WEB`, el número con `WHATSAPP`). En otro caso es `400 VALIDATION_ERROR`.
+- **Sector sin `sector` en el pedido:** enviar solo `subtipo` modifica el subtipo de un cliente público; para un cliente privado es `400 VALIDATION_ERROR`. Enviar `sector: "PUBLICO"` exige `subtipo` en el mismo pedido.
+- **Campos que no se envían:** `telefono` y `emailsAdicionales` se conservan si el pedido no los trae.
 - **Respuesta 200:** el cliente actualizado.
 - **Errores:**
   - `400 VALIDATION_ERROR`: pedido sin campos, CUIT inválido, sector y subtipo inconsistentes, o canal y datos de entrega inconsistentes.

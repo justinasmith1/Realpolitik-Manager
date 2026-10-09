@@ -2,13 +2,19 @@ import {
   CreateClienteSchema,
   ListarClientesQuerySchema,
   CreateContactoSchema,
+  UpdateClienteSchema,
   UpdateContactoSchema,
 } from '@realpolitik/shared';
 import { Router } from 'express';
+import { z } from 'zod';
 
 import { validate } from '../../middleware/validate';
 
-import { crearClienteController, listarClientesController } from './clientes.controller';
+import {
+  actualizarClienteController,
+  crearClienteController,
+  listarClientesController,
+} from './clientes.controller';
 import {
   actualizarContactoController,
   crearContactoController,
@@ -16,10 +22,20 @@ import {
   listarContactosController,
 } from './contactos.controller';
 
+export const ClienteIdParamsSchema = z.object({
+  id: z.string().uuid({ message: 'El ID debe ser un UUID válido.' }),
+});
+
 export const clientesRouter = Router();
 
 clientesRouter.get('/', validate({ query: ListarClientesQuerySchema }), listarClientesController);
 clientesRouter.post('/', validate({ body: CreateClienteSchema }), crearClienteController);
+
+clientesRouter.patch(
+  '/:id',
+  validate({ params: ClienteIdParamsSchema, body: UpdateClienteSchema }),
+  actualizarClienteController,
+);
 
 clientesRouter.get('/:id/contactos', listarContactosController);
 clientesRouter.post(
