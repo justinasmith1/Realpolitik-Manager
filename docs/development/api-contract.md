@@ -123,7 +123,7 @@ Reglas de los datos:
 | `subtipo` | No          | Un subtipo del sector público                                                                                                        |
 
 - **Respuesta 200:** lista de clientes **ordenada alfabéticamente por razón social**. Si no hay resultados, devuelve una lista vacía: no es un error. El mensaje de "no hay resultados" y la invitación a registrar el primer cliente los muestra el front.
-- **Estado:** si no se envía `estado`, solo devuelve clientes `ACTIVO`. Por ahora no hay forma de listar activos e inactivos juntos (ver sección 6).
+- **Estado:** si no se envía `estado`, solo devuelve clientes `ACTIVO`. Para ver los desactivados se pide `estado=INACTIVO` (HU1.8), y se combina con `q`, `sector` y `subtipo`. Por ahora no hay forma de listar activos e inactivos juntos (ver sección 6). El front solo ofrece las vistas de activos e inactivos: `SUSPENDIDO` está reservado.
 - **Errores:** `400 VALIDATION_ERROR` si un parámetro tiene un valor no válido.
 
 ### `GET /clientes/:id`
@@ -158,8 +158,10 @@ Reglas de los datos:
 ### `PATCH /clientes/:id/estado` (HU1.8)
 
 - **Pedido:** `{ "estado": "INACTIVO" }` o `{ "estado": "ACTIVO" }`. Enviar `SUSPENDIDO` devuelve `400 VALIDATION_ERROR` (reservado para un sprint futuro).
+- **Qué hace:** cambia solo `estado`. Desactivar no borra nada: los datos y los contactos del cliente se conservan, y tampoco usa la baja lógica (`isDeleted`). Un cliente `INACTIVO` sigue pudiéndose editar y reactivar.
 - **Respuesta 200:** el cliente con su nuevo estado. Los datos se conservan. Pedir el estado que el cliente ya tiene responde 200 sin cambios.
-- **Errores:** `400 VALIDATION_ERROR`, `404 NOT_FOUND`.
+- **Errores:** `400 VALIDATION_ERROR` (estado ausente, `SUSPENDIDO` o un valor desconocido, o id que no es un uuid), `404 NOT_FOUND` (no existe o está dado de baja lógica).
+- **Cómo lo usa el front:** "Desactivar" pide confirmación antes de llamar a este endpoint; "Reactivar" no. El listado de inactivos se pide con `GET /clientes?estado=INACTIVO`.
 
 ## 3. Contactos (HU1.3)
 
@@ -213,7 +215,7 @@ Los puntos marcados como **Hecho** ya están implementados; se conservan para no
 3. En la edición, no exigir `sector` ni permitir enviar `estado`.
 4. Crear los schemas de contacto: alta, edición y el tipo `Contacto`.
 5. Crear el schema de los parámetros de `GET /clientes` (`q`, `estado`, `sector`, `subtipo`).
-6. Crear el schema del cuerpo de `PATCH /clientes/:id/estado`.
+6. **Hecho (HU1.8).** Crear el schema del cuerpo de `PATCH /clientes/:id/estado`: `ActualizarEstadoClienteSchema`, que solo acepta `ACTIVO` e `INACTIVO`.
 
 ### En la base de datos
 

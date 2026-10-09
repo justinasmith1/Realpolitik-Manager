@@ -1,4 +1,5 @@
 import type {
+  ActualizarEstadoClienteSchema,
   Cliente,
   CreateClienteSchema,
   ListarClientesQuerySchema,
@@ -9,12 +10,21 @@ import type { Request, Response } from 'express';
 import type { ValidatedLocals } from '../../middleware/validate';
 
 import type { ClienteIdParamsSchema } from './clientes.routes';
-import { actualizarCliente, crearCliente, listarClientes } from './clientes.service';
+import {
+  actualizarCliente,
+  cambiarEstadoCliente,
+  crearCliente,
+  listarClientes,
+} from './clientes.service';
 
 type CrearClienteLocals = ValidatedLocals<{ body: typeof CreateClienteSchema }>;
 type ActualizarClienteLocals = ValidatedLocals<{
   params: typeof ClienteIdParamsSchema;
   body: typeof UpdateClienteSchema;
+}>;
+type CambiarEstadoClienteLocals = ValidatedLocals<{
+  params: typeof ClienteIdParamsSchema;
+  body: typeof ActualizarEstadoClienteSchema;
 }>;
 type ListarClientesLocals = ValidatedLocals<{ query: typeof ListarClientesQuerySchema }>;
 
@@ -32,6 +42,15 @@ export async function actualizarClienteController(
 ): Promise<void> {
   const { params, body } = res.locals.validated;
   const cliente = await actualizarCliente(params.id, body);
+  res.status(200).json(cliente);
+}
+
+export async function cambiarEstadoClienteController(
+  _req: Request,
+  res: Response<Cliente, CambiarEstadoClienteLocals>,
+): Promise<void> {
+  const { params, body } = res.locals.validated;
+  const cliente = await cambiarEstadoCliente(params.id, body.estado);
   res.status(200).json(cliente);
 }
 
