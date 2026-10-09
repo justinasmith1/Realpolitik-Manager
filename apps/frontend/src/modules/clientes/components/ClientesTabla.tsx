@@ -10,7 +10,7 @@ interface ClientesTablaProps {
   onLimpiarFiltros: () => void;
 }
 
-const columnas = ['Razón social', 'Denominación', 'CUIT', 'Sector', 'Subtipo'];
+const columnas = ['Cliente', 'CUIT', 'Sector', 'Subtipo', 'Email de contacto'];
 
 /**
  * Tabla del listado. Con la lista vacía muestra el aviso de "sin resultados": que no haya
@@ -50,7 +50,6 @@ export function ClientesTabla({ clientes, onLimpiarFiltros }: ClientesTablaProps
               <th scope="row" className="px-4 py-3 font-medium">
                 {cliente.razonSocial}
               </th>
-              <td className="px-4 py-3">{cliente.denominacion}</td>
               <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{cliente.cuit}</td>
               <td className="px-4 py-3">
                 <SectorBadge sector={cliente.sector} />
@@ -64,6 +63,7 @@ export function ClientesTabla({ clientes, onLimpiarFiltros }: ClientesTablaProps
                   </span>
                 )}
               </td>
+              <td className="px-4 py-3 text-content-secondary">{cliente.emailContacto}</td>
             </tr>
           ))}
         </tbody>

@@ -12,4 +12,20 @@ describe('SubtipoBadge', () => {
 
     expect(screen.getByText(texto)).toBeVisible();
   });
+
+  it('cada subtipo tiene colores distintos, sin íconos', () => {
+    const { container } = render(
+      <>
+        <SubtipoBadge subtipo="MUNICIPAL" />
+        <SubtipoBadge subtipo="PROVINCIAL_ORGANISMO" />
+        <SubtipoBadge subtipo="SINDICAL_OBRA_SOCIAL" />
+      </>,
+    );
+
+    const clases = ['Municipio', 'Provincial u organismo público', 'Sindicato u obra social'].map(
+      (texto) => screen.getByText(texto).className,
+    );
+    expect(new Set(clases).size).toBe(3);
+    expect(container.querySelector('svg')).toBeNull();
+  });
 });

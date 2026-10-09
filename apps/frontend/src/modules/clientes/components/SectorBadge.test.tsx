@@ -42,6 +42,12 @@ describe('SectorBadge', () => {
     }
   });
 
+  it('no lleva íconos: solo el texto', () => {
+    const { container } = render(<SectorBadge sector="PUBLICO" />);
+
+    expect(container.querySelector('svg')).toBeNull();
+  });
+
   it('acepta únicamente un ClienteSector', () => {
     expectTypeOf<ComponentProps<typeof SectorBadge>['sector']>().toEqualTypeOf<ClienteSector>();
   });

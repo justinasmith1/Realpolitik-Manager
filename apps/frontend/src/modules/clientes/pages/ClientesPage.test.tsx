@@ -244,17 +244,17 @@ function simularServidorTrasElPrimerPedido() {
 describe('ClientesPage: tabla', () => {
   beforeEach(() => simularServidor());
 
-  it('muestra solo las columnas Razón social, Denominación, CUIT, Sector y Subtipo', async () => {
+  it('muestra solo las columnas Cliente, CUIT, Sector, Subtipo y Email de contacto', async () => {
     renderPage();
 
     const tabla = await screen.findByRole('table');
     const encabezados = within(tabla)
       .getAllByRole('columnheader')
       .map((th) => th.textContent);
-    expect(encabezados).toEqual(['Razón social', 'Denominación', 'CUIT', 'Sector', 'Subtipo']);
+    expect(encabezados).toEqual(['Cliente', 'CUIT', 'Sector', 'Subtipo', 'Email de contacto']);
   });
 
-  it('lista todos los clientes que trae la API, con razón social y denominación en columnas propias', async () => {
+  it('lista todos los clientes que trae la API, con la razón social bajo "Cliente" y su email de contacto', async () => {
     renderPage();
 
     await screen.findByRole('table');
@@ -262,8 +262,9 @@ describe('ClientesPage: tabla', () => {
     const fila = filaDe('Municipalidad de Ejemplo');
     const celdas = within(fila).getAllByRole('cell');
     expect(within(fila).getByRole('rowheader')).toHaveTextContent('Municipalidad de Ejemplo');
-    expect(celdas[0]).toHaveTextContent('Muni Ejemplo');
-    expect(celdas[1]).toHaveTextContent('30-50001274-5');
+    expect(celdas[0]).toHaveTextContent('30-50001274-5');
+    expect(celdas[3]).toHaveTextContent('muni@ejemplo.example');
+    expect(within(fila).queryByText('Muni Ejemplo')).not.toBeInTheDocument();
     expect(screen.getAllByRole('row')).toHaveLength(1 + catalogo.length);
     expect(screen.getByText('3 clientes')).toBeInTheDocument();
   });
