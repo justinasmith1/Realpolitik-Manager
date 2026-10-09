@@ -7,7 +7,9 @@ export {
   ClienteEstado,
   ClienteSector,
   ClienteSubtipoPublico,
+  CanalEntrega,
   CuitSchema,
+  WhatsappNumeroSchema,
   subtiposPorSector,
 } from './schemas/cliente.schema.js';
 
@@ -24,6 +26,7 @@ export type {
   ClienteEstado as ClienteEstadoType,
   ClienteSector as ClienteSectorType,
   ClienteSubtipoPublico as ClienteSubtipoPublicoType,
+  CanalEntrega as CanalEntregaType,
 } from './schemas/cliente.schema.js';
 
 // ─── Utilidades ───────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { ZodError } from 'zod';
 
 import {
   ClienteSchema,
@@ -625,5 +626,108 @@ describe('ClienteSubtipoPublico', () => {
 
   it('rechaza un subtipo que no existe en el enum', () => {
     expect(ClienteSubtipoPublico.safeParse('NACIONAL').success).toBe(false);
+  });
+});
+
+// ─── Canal de entrega (HU1.4) ─────────────────────────────────────────────────────────
+
+describe('Canal de entrega (HU1.4)', () => {
+  /** Alta de un privado: sin los campos que fija el servidor. */
+  const altaPrivado = {
+    razonSocial: clientePrivado.razonSocial,
+    denominacion: clientePrivado.denominacion,
+    cuit: clientePrivado.cuit,
+    ivaCondicion: clientePrivado.ivaCondicion,
+    emailContacto: clientePrivado.emailContacto,
+    sector: clientePrivado.sector,
+  };
+
+  /** Campos (en notación de puntos) que Zod marcó con error. */
+  const camposConError = (resultado: { error?: ZodError }) =>
+    resultado.error?.issues.map((issue) => issue.path.join('.')) ?? [];
+
+  it('usa CORREO por defecto', () => {
+    const resultado = CreateClienteSchema.safeParse(altaPrivado);
+    expect(resultado.success).toBe(true);
+    if (resultado.success) expect(resultado.data.canalEntrega).toBe('CORREO');
+  });
+
+  it('acepta CORREO con email de contacto', () => {
+    expect(CreateClienteSchema.safeParse({ ...altaPrivado, canalEntrega: 'CORREO' }).success).toBe(
+      true,
+    );
+  });
+
+  it('rechaza PORTAL_WEB sin URL y marca portalUrl', () => {
+    const resultado = CreateClienteSchema.safeParse({ ...altaPrivado, canalEntrega: 'PORTAL_WEB' });
+    expect(resultado.success).toBe(false);
+    expect(camposConError(resultado)).toEqual(['portalUrl']);
+  });
+
+  it('rechaza PORTAL_WEB con URL mal formada', () => {
+    const resultado = CreateClienteSchema.safeParse({
+      ...altaPrivado,
+      canalEntrega: 'PORTAL_WEB',
+      portalUrl: 'portal sin protocolo',
+    });
+    expect(camposConError(resultado)).toEqual(['portalUrl']);
+  });
+
+  it('acepta PORTAL_WEB con URL válida', () => {
+    const resultado = CreateClienteSchema.safeParse({
+      ...altaPrivado,
+      canalEntrega: 'PORTAL_WEB',
+      portalUrl: 'https://portal.ejemplo.gob.ar',
+    });
+    expect(resultado.success).toBe(true);
+  });
+
+  it('rechaza WHATSAPP sin número y marca whatsappNumero', () => {
+    const resultado = CreateClienteSchema.safeParse({ ...altaPrivado, canalEntrega: 'WHATSAPP' });
+    expect(resultado.success).toBe(false);
+    expect(camposConError(resultado)).toEqual(['whatsappNumero']);
+  });
+
+  it('rechaza WHATSAPP con un número demasiado corto', () => {
+    const resultado = CreateClienteSchema.safeParse({
+      ...altaPrivado,
+      canalEntrega: 'WHATSAPP',
+      whatsappNumero: '351 1234',
+    });
+    expect(camposConError(resultado)).toEqual(['whatsappNumero']);
+  });
+
+  it('acepta WHATSAPP y normaliza el número a E.164', () => {
+    const resultado = CreateClienteSchema.safeParse({
+      ...altaPrivado,
+      canalEntrega: 'WHATSAPP',
+      whatsappNumero: '+54 9 (351) 123-4567',
+    });
+    expect(resultado.success).toBe(true);
+    if (resultado.success) expect(resultado.data.whatsappNumero).toBe('+5493511234567');
+  });
+
+  it('rechaza un canal que no existe', () => {
+    const resultado = CreateClienteSchema.safeParse({ ...altaPrivado, canalEntrega: 'FAX' });
+    expect(camposConError(resultado)).toEqual(['canalEntrega']);
+  });
+
+  it('en la edición, no exige nada si el canal no cambia', () => {
+    expect(
+      UpdateClienteSchema.safeParse({ sector: 'PRIVADO', razonSocial: 'Otra S.A.' }).success,
+    ).toBe(true);
+  });
+
+  it('en la edición, pasar a PORTAL_WEB exige la URL en el mismo pedido', () => {
+    const resultado = UpdateClienteSchema.safeParse({
+      sector: 'PRIVADO',
+      canalEntrega: 'PORTAL_WEB',
+    });
+    expect(camposConError(resultado)).toEqual(['portalUrl']);
+  });
+
+  it('el cliente leído de la API también respeta la regla', () => {
+    const resultado = ClienteSchema.safeParse({ ...clientePrivado, canalEntrega: 'WHATSAPP' });
+    expect(camposConError(resultado)).toEqual(['whatsappNumero']);
   });
 });

@@ -47,6 +47,37 @@ export const ClienteSubtipoPublico = z.enum([
 
 export type ClienteSubtipoPublico = z.infer<typeof ClienteSubtipoPublico>;
 
+/**
+ * Canal habitual por el que se entregan las rendiciones al cliente.
+ *
+ * - CORREO     → se envían por email al `emailContacto` (y adicionales)
+ * - PORTAL_WEB → se cargan en el portal del cliente (`portalUrl` obligatorio)
+ * - WHATSAPP   → se envían por WhatsApp (`whatsappNumero` obligatorio)
+ */
+export const CanalEntrega = z.enum(['CORREO', 'PORTAL_WEB', 'WHATSAPP']);
+
+export type CanalEntrega = z.infer<typeof CanalEntrega>;
+
+// ─── WhatsApp ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Número de WhatsApp. Acepta separadores habituales (espacios, guiones, paréntesis) y
+ * devuelve siempre el formato E.164: `+` seguido de 10 a 15 dígitos (p. ej. `+5493511234567`).
+ * Se exige el código de país porque es lo que necesita un enlace `wa.me`.
+ */
+export const WhatsappNumeroSchema = z
+  .string()
+  .trim()
+  .regex(/^\+?[\d\s\-().]+$/, {
+    message: 'El número de WhatsApp solo puede tener dígitos, espacios, guiones o paréntesis.',
+  })
+  .transform((raw) => raw.replace(/\D/g, ''))
+  .refine((digitos) => /^[1-9]\d{9,14}$/.test(digitos), {
+    message:
+      'El número de WhatsApp debe incluir el código de país y tener entre 10 y 15 dígitos (p. ej. +54 9 351 123 4567).',
+  })
+  .transform((digitos) => `+${digitos}`);
+
 // ─── CUIT ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -130,11 +161,18 @@ const ClienteCamposBase = z.object({
     })
     .optional(),
 
-  /** URL del portal web donde se deben entregar los legajos (opcional) */
+  /** URL del portal web donde se deben entregar los legajos. Obligatoria si el canal es PORTAL_WEB. */
   portalUrl: z
     .string()
+    .trim()
     .url({ message: 'La URL del portal no tiene un formato válido.' })
     .optional(),
+
+  /** Canal habitual de entrega de rendiciones. Por defecto, CORREO (igual que la base). */
+  canalEntrega: CanalEntrega.default('CORREO'),
+
+  /** Número de WhatsApp en E.164. Obligatorio si el canal es WHATSAPP. */
+  whatsappNumero: WhatsappNumeroSchema.optional(),
 
   /** Estado actual del cliente en el sistema */
   estado: ClienteEstado.default('ACTIVO'),
@@ -179,6 +217,90 @@ export const subtiposPorSector = {
   PRIVADO: [] as const,
 } as const satisfies Record<ClienteSector, readonly ClienteSubtipoPublico[]>;
 
+// ─── Validación condicional del canal de entrega ───────────────────────────────────
+
+/**
+ * Campos que intervienen en la regla del canal. Todos opcionales para poder reutilizar
+ * la misma función en el alta (objeto completo) y en la edición parcial (PATCH).
+ */
+interface DatosCanalEntrega {
+  canalEntrega?: CanalEntrega | undefined;
+  portalUrl?: string | undefined;
+  whatsappNumero?: string | undefined;
+  emailContacto?: string | undefined;
+  emailsAdicionales?: string[] | undefined;
+}
+
+/**
+ * Regla "el canal elegido debe tener dónde entregar".
+ *
+ * Por qué `superRefine` y no otra `discriminatedUnion`:
+ * - El schema ya discrimina por `sector`. Una segunda unión por `canalEntrega` obligaría a
+ *   combinar 2 sectores × 3 canales = 6 ramas, y Zod no permite anidar uniones discriminadas.
+ * - `discriminatedUnion` solo acepta `ZodObject` puros, así que el refinamiento no puede ir
+ *   dentro de cada rama: se aplica sobre la unión ya armada (ver `ClienteSchema` y DTOs).
+ *
+ * Por qué `superRefine` y no `refine`:
+ * - Permite informar el error en el campo concreto (`path`), que es lo que el contrato
+ *   expone como `details[].campo` y lo que el front usa para marcar el input.
+ *
+ * Importante: Zod ejecuta el refinamiento solo si el resto del objeto ya es válido. Por eso
+ * el formulario del front, además, chequea los campos vacíos por su cuenta (ver
+ * `clienteFormResolver`), para mostrar todos los errores juntos.
+ */
+function validarCanalEntrega(datos: DatosCanalEntrega, ctx: z.RefinementCtx): void {
+  switch (datos.canalEntrega) {
+    // Portal web: sin URL no hay dónde subir la rendición. El formato ya lo validó `.url()`;
+    // acá solo se exige que esté presente.
+    case 'PORTAL_WEB':
+      if (datos.portalUrl === undefined || datos.portalUrl === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['portalUrl'],
+          message: 'Si el canal de entrega es Portal web, ingresá la URL del portal.',
+        });
+      }
+      break;
+
+    // WhatsApp: el formato (E.164) lo validó `WhatsappNumeroSchema`; acá se exige presencia.
+    case 'WHATSAPP':
+      if (datos.whatsappNumero === undefined || datos.whatsappNumero === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['whatsappNumero'],
+          message: 'Si el canal de entrega es WhatsApp, ingresá un número de WhatsApp.',
+        });
+      }
+      break;
+
+    // Correo: debe existir al menos un destinatario. Hoy los destinatarios son el email de
+    // rendición (`emailContacto`, obligatorio) y los adicionales. Cuando exista el modelo
+    // Contacto (HU1.3), los contactos con `recibeRendiciones` se validan en el backend contra
+    // la base: Zod no puede consultar una relación.
+    // `emailContacto === undefined` solo ocurre en una edición parcial que no lo toca: en ese
+    // caso el cliente ya tiene uno guardado y no hay nada que validar.
+    case 'CORREO': {
+      if (datos.emailContacto === undefined) break;
+      const destinatarios = [datos.emailContacto, ...(datos.emailsAdicionales ?? [])].filter(
+        (email) => email.trim() !== '',
+      );
+      if (destinatarios.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['emailContacto'],
+          message:
+            'Si el canal de entrega es Correo, el cliente debe tener al menos un email de contacto.',
+        });
+      }
+      break;
+    }
+
+    // Edición parcial que no cambia el canal: no se valida nada.
+    case undefined:
+      break;
+  }
+}
+
 // ─── Schema principal (discriminated union) ───────────────────────────────────
 
 /**
@@ -188,11 +310,12 @@ export const subtiposPorSector = {
  * validación condicional:
  * - `sector: 'PUBLICO'` → `subtipo` obligatorio (MUNICIPAL | PROVINCIAL_ORGANISMO | SINDICAL_OBRA_SOCIAL)
  * - `sector: 'PRIVADO'` → `subtipo` no requerido
+ *
+ * Y un `superRefine` para el canal de entrega (ver `validarCanalEntrega`).
  */
-export const ClienteSchema = z.discriminatedUnion('sector', [
-  ClientePublicoSchema,
-  ClientePrivadoSchema,
-]);
+export const ClienteSchema = z
+  .discriminatedUnion('sector', [ClientePublicoSchema, ClientePrivadoSchema])
+  .superRefine(validarCanalEntrega);
 
 // ─── DTOs inferidos ───────────────────────────────────────────────────────────
 
@@ -224,10 +347,12 @@ const CAMPOS_DEL_SERVIDOR_EN_ALTA = {
  * Nota: `discriminatedUnion` no expone `.omit()` directamente,
  * por lo que se construye derivando desde cada rama y re-uniendo.
  */
-export const CreateClienteSchema = z.discriminatedUnion('sector', [
-  ClientePublicoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA),
-  ClientePrivadoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA),
-]);
+export const CreateClienteSchema = z
+  .discriminatedUnion('sector', [
+    ClientePublicoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA),
+    ClientePrivadoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA),
+  ])
+  .superRefine(validarCanalEntrega);
 
 export type CreateClienteDto = z.infer<typeof CreateClienteSchema>;
 
@@ -237,31 +362,39 @@ export type CreateClienteDto = z.infer<typeof CreateClienteSchema>;
  *
  * La unión se mantiene para preservar el narrowing de `subtipo`.
  */
-export const UpdateClienteSchema = z.discriminatedUnion('sector', [
-  ClientePublicoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }).partial({
-    razonSocial: true,
-    denominacion: true,
-    cuit: true,
-    ivaCondicion: true,
-    emailContacto: true,
-    emailsAdicionales: true,
-    telefono: true,
-    portalUrl: true,
-    estado: true,
-    subtipo: true,
-  }),
-  ClientePrivadoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }).partial({
-    razonSocial: true,
-    denominacion: true,
-    cuit: true,
-    ivaCondicion: true,
-    emailContacto: true,
-    emailsAdicionales: true,
-    telefono: true,
-    portalUrl: true,
-    estado: true,
-    subtipo: true,
-  }),
-]);
+export const UpdateClienteSchema = z
+  .discriminatedUnion('sector', [
+    ClientePublicoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }).partial({
+      razonSocial: true,
+      denominacion: true,
+      cuit: true,
+      ivaCondicion: true,
+      emailContacto: true,
+      emailsAdicionales: true,
+      telefono: true,
+      portalUrl: true,
+      canalEntrega: true,
+      whatsappNumero: true,
+      estado: true,
+      subtipo: true,
+    }),
+    ClientePrivadoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }).partial({
+      razonSocial: true,
+      denominacion: true,
+      cuit: true,
+      ivaCondicion: true,
+      emailContacto: true,
+      emailsAdicionales: true,
+      telefono: true,
+      portalUrl: true,
+      canalEntrega: true,
+      whatsappNumero: true,
+      estado: true,
+      subtipo: true,
+    }),
+  ])
+  // En la edición la regla solo aplica si el pedido cambia el canal: quien pasa a PORTAL_WEB
+  // o WHATSAPP debe enviar el dato correspondiente en el mismo pedido (como sector/subtipo).
+  .superRefine(validarCanalEntrega);
 
 export type UpdateClienteDto = z.infer<typeof UpdateClienteSchema>;
