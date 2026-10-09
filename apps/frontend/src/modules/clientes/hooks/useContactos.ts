@@ -14,6 +14,7 @@ export function useContactos(clienteId: string) {
   return useQuery({
     queryKey: contactosQueryKey(clienteId),
     queryFn: ({ signal }) => listarContactos(clienteId, signal),
+    enabled: clienteId !== '',
   });
 }
 
