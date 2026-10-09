@@ -7,8 +7,13 @@ import {
   CreateClienteSchema,
   CuitSchema,
   IvaCondicion,
+  PeriodicidadSchema,
+  PeriodicidadTipo,
   UpdateClienteSchema,
+  type Cliente,
   type CreateClienteDto,
+  type Periodicidad,
+  type UpdateClienteDto,
 } from './cliente.schema.js';
 
 // ─── Payloads base ────────────────────────────────────────────────────────────
@@ -24,6 +29,7 @@ const BASE = {
   cuit: '30-50001274-5',
   ivaCondicion: 'RESPONSABLE_INSCRIPTO' as const,
   emailContacto: 'contacto@realpolitik.com.ar',
+  periodicidad: null,
   estado: 'ACTIVO' as const,
   creadoEn: new Date('2024-01-15'),
   actualizadoEn: new Date('2024-06-30'),
@@ -832,5 +838,356 @@ describe('Canal de entrega (HU1.4)', () => {
   it('el cliente leído de la API también respeta la regla', () => {
     const resultado = ClienteSchema.safeParse({ ...clientePrivado, canalEntrega: 'WHATSAPP' });
     expect(camposConError(resultado)).toEqual(['whatsappNumero']);
+  });
+});
+
+// ─── Periodicidad de rendición (HU1.5) ────────────────────────────────────────────────
+
+describe('Periodicidad de rendición (HU1.5)', () => {
+  const mensual = { tipo: 'MENSUAL', diaLimite: 10, mesInicioCiclo: null } as const;
+  const bimestral = { tipo: 'BIMESTRAL', diaLimite: 15, mesInicioCiclo: 3 } as const;
+  const porCampania = { tipo: 'POR_CAMPANIA', diaLimite: 5, mesInicioCiclo: null } as const;
+
+  /** Campos (en notación de puntos) que Zod marcó con error. */
+  const camposConError = (resultado: { error?: ZodError }) =>
+    resultado.error?.issues.map((issue) => issue.path.join('.')) ?? [];
+
+  describe('PeriodicidadTipo', () => {
+    it('tiene exactamente MENSUAL, BIMESTRAL y POR_CAMPANIA', () => {
+      expect(PeriodicidadTipo.options).toEqual(['MENSUAL', 'BIMESTRAL', 'POR_CAMPANIA']);
+    });
+
+    it('rechaza un tipo que no existe', () => {
+      expect(PeriodicidadTipo.safeParse('TRIMESTRAL').success).toBe(false);
+    });
+  });
+
+  describe('PeriodicidadSchema — tipo', () => {
+    it.each([mensual, bimestral, porCampania])('acepta $tipo con datos válidos', (payload) => {
+      const resultado = PeriodicidadSchema.safeParse(payload);
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data).toEqual(payload);
+    });
+
+    it('rechaza un tipo que no existe y marca tipo', () => {
+      const resultado = PeriodicidadSchema.safeParse({ ...mensual, tipo: 'TRIMESTRAL' });
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['tipo']);
+    });
+
+    it('rechaza un objeto sin tipo y marca tipo', () => {
+      const resultado = PeriodicidadSchema.safeParse({ diaLimite: 10, mesInicioCiclo: null });
+      expect(camposConError(resultado)).toEqual(['tipo']);
+    });
+
+    it.each([null, undefined, 'MENSUAL', 10, []])('rechaza %j como periodicidad', (valor) => {
+      expect(PeriodicidadSchema.safeParse(valor).success).toBe(false);
+    });
+
+    it('descarta claves desconocidas', () => {
+      const resultado = PeriodicidadSchema.safeParse({ ...mensual, extra: 'x' });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data).toEqual(mensual);
+    });
+  });
+
+  describe('PeriodicidadSchema — diaLimite', () => {
+    it.each([1, 28])('acepta MENSUAL con diaLimite %d', (diaLimite) => {
+      expect(PeriodicidadSchema.safeParse({ ...mensual, diaLimite }).success).toBe(true);
+    });
+
+    it.each([1, 28])('acepta BIMESTRAL y POR_CAMPANIA con diaLimite %d', (diaLimite) => {
+      expect(PeriodicidadSchema.safeParse({ ...bimestral, diaLimite }).success).toBe(true);
+      expect(PeriodicidadSchema.safeParse({ ...porCampania, diaLimite }).success).toBe(true);
+    });
+
+    it.each([0, 29, -1, 100])('rechaza diaLimite %d y marca diaLimite', (diaLimite) => {
+      const resultado = PeriodicidadSchema.safeParse({ ...mensual, diaLimite });
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['diaLimite']);
+    });
+
+    // 28.5 incumple a la vez "entero" y "máximo": Zod informa dos issues sobre el mismo campo.
+    it.each([1.5, 10.1, 28.5])('rechaza el decimal %d y marca diaLimite', (diaLimite) => {
+      const resultado = PeriodicidadSchema.safeParse({ ...mensual, diaLimite });
+      expect(resultado.success).toBe(false);
+      expect([...new Set(camposConError(resultado))]).toEqual(['diaLimite']);
+    });
+
+    it.each(['10', 'diez', '', null, true, {}, [], Number.NaN])(
+      'rechaza el valor no numérico %j y marca diaLimite',
+      (diaLimite) => {
+        const resultado = PeriodicidadSchema.safeParse({ ...mensual, diaLimite });
+        expect(resultado.success).toBe(false);
+        expect(camposConError(resultado)).toEqual(['diaLimite']);
+      },
+    );
+
+    it.each([mensual, bimestral, porCampania])('exige diaLimite en $tipo', (payload) => {
+      const { diaLimite: _omitido, ...sinDia } = payload;
+      const resultado = PeriodicidadSchema.safeParse(sinDia);
+      expect(camposConError(resultado)).toEqual(['diaLimite']);
+    });
+
+    it('no coacciona un string numérico a número', () => {
+      expect(PeriodicidadSchema.safeParse({ ...mensual, diaLimite: '10' }).success).toBe(false);
+    });
+  });
+
+  describe('PeriodicidadSchema — BIMESTRAL y mesInicioCiclo', () => {
+    it.each([1, 12])('acepta mesInicioCiclo %d', (mesInicioCiclo) => {
+      expect(PeriodicidadSchema.safeParse({ ...bimestral, mesInicioCiclo }).success).toBe(true);
+    });
+
+    it('rechaza BIMESTRAL sin mesInicioCiclo y marca mesInicioCiclo', () => {
+      const { mesInicioCiclo: _omitido, ...sinMes } = bimestral;
+      const resultado = PeriodicidadSchema.safeParse(sinMes);
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['mesInicioCiclo']);
+    });
+
+    it('rechaza BIMESTRAL con mesInicioCiclo null', () => {
+      const resultado = PeriodicidadSchema.safeParse({ ...bimestral, mesInicioCiclo: null });
+      expect(camposConError(resultado)).toEqual(['mesInicioCiclo']);
+    });
+
+    it.each([0, 13, -1])('rechaza mesInicioCiclo %d', (mesInicioCiclo) => {
+      const resultado = PeriodicidadSchema.safeParse({ ...bimestral, mesInicioCiclo });
+      expect(camposConError(resultado)).toEqual(['mesInicioCiclo']);
+    });
+
+    it.each([1.5, 6.9])('rechaza el decimal %d', (mesInicioCiclo) => {
+      const resultado = PeriodicidadSchema.safeParse({ ...bimestral, mesInicioCiclo });
+      expect(camposConError(resultado)).toEqual(['mesInicioCiclo']);
+    });
+
+    it.each(['3', 'marzo', true, {}, Number.NaN])(
+      'rechaza el valor no numérico %j',
+      (mesInicioCiclo) => {
+        const resultado = PeriodicidadSchema.safeParse({ ...bimestral, mesInicioCiclo });
+        expect(camposConError(resultado)).toEqual(['mesInicioCiclo']);
+      },
+    );
+  });
+
+  describe('PeriodicidadSchema — MENSUAL y POR_CAMPANIA exigen mesInicioCiclo null', () => {
+    it.each([mensual, porCampania])('acepta $tipo con mesInicioCiclo null', (payload) => {
+      const resultado = PeriodicidadSchema.safeParse(payload);
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data.mesInicioCiclo).toBeNull();
+    });
+
+    it.each([mensual, porCampania])('rechaza $tipo con un mes de inicio numérico', (payload) => {
+      const resultado = PeriodicidadSchema.safeParse({ ...payload, mesInicioCiclo: 3 });
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['mesInicioCiclo']);
+    });
+
+    it.each([mensual, porCampania])('rechaza $tipo con mesInicioCiclo ausente', (payload) => {
+      const { mesInicioCiclo: _omitido, ...sinMes } = payload;
+      const resultado = PeriodicidadSchema.safeParse(sinMes);
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['mesInicioCiclo']);
+    });
+
+    it.each([0, '', '3'])('rechaza %j como mesInicioCiclo en MENSUAL', (mesInicioCiclo) => {
+      const resultado = PeriodicidadSchema.safeParse({ ...mensual, mesInicioCiclo });
+      expect(camposConError(resultado)).toEqual(['mesInicioCiclo']);
+    });
+  });
+
+  it('Periodicidad es una unión: mesInicioCiclo es number solo en BIMESTRAL (typecheck)', () => {
+    expectTypeOf<
+      Extract<Periodicidad, { tipo: 'BIMESTRAL' }>['mesInicioCiclo']
+    >().toEqualTypeOf<number>();
+    expectTypeOf<
+      Extract<Periodicidad, { tipo: 'MENSUAL' }>['mesInicioCiclo']
+    >().toEqualTypeOf<null>();
+    expectTypeOf<
+      Extract<Periodicidad, { tipo: 'POR_CAMPANIA' }>['mesInicioCiclo']
+    >().toEqualTypeOf<null>();
+  });
+
+  describe('ClienteSchema (representación pública)', () => {
+    it('acepta periodicidad null', () => {
+      const resultado = ClienteSchema.safeParse({ ...clientePrivado, periodicidad: null });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data.periodicidad).toBeNull();
+    });
+
+    it.each([mensual, bimestral, porCampania])('acepta periodicidad $tipo', (periodicidad) => {
+      const resultado = ClienteSchema.safeParse({ ...clientePublico, periodicidad });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data.periodicidad).toEqual(periodicidad);
+    });
+
+    it('rechaza un cliente sin la clave periodicidad: no se completa con null', () => {
+      const { periodicidad: _omitida, ...sinPeriodicidad } = clientePrivado;
+      const resultado = ClienteSchema.safeParse(sinPeriodicidad);
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['periodicidad']);
+    });
+
+    it('rechaza periodicidad undefined explícito', () => {
+      const resultado = ClienteSchema.safeParse({ ...clientePublico, periodicidad: undefined });
+      expect(camposConError(resultado)).toEqual(['periodicidad']);
+    });
+
+    it('Cliente tiene periodicidad obligatoria: Periodicidad | null (typecheck)', () => {
+      expectTypeOf<Cliente['periodicidad']>().toEqualTypeOf<Periodicidad | null>();
+    });
+
+    it('rechaza una periodicidad inválida y marca la ruta anidada', () => {
+      const resultado = ClienteSchema.safeParse({
+        ...clientePrivado,
+        periodicidad: { ...mensual, diaLimite: 29 },
+      });
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['periodicidad.diaLimite']);
+    });
+  });
+
+  describe('CreateClienteSchema', () => {
+    it('acepta un alta sin periodicidad y no agrega la clave', () => {
+      const resultado = CreateClienteSchema.safeParse(altaPrivada);
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data).not.toHaveProperty('periodicidad');
+    });
+
+    it.each([
+      ['público', altaPublica],
+      ['privado', altaPrivada],
+    ])('acepta un alta %s con periodicidad válida y la conserva', (_sector, alta) => {
+      for (const periodicidad of [mensual, bimestral, porCampania]) {
+        const resultado = CreateClienteSchema.safeParse({ ...alta, periodicidad });
+        expect(resultado.success).toBe(true);
+        if (resultado.success) expect(resultado.data.periodicidad).toEqual(periodicidad);
+      }
+    });
+
+    it('rechaza una periodicidad con diaLimite fuera de rango y marca periodicidad.diaLimite', () => {
+      const resultado = CreateClienteSchema.safeParse({
+        ...altaPrivada,
+        periodicidad: { ...mensual, diaLimite: 0 },
+      });
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['periodicidad.diaLimite']);
+    });
+
+    it('rechaza una periodicidad bimestral sin mes y marca periodicidad.mesInicioCiclo', () => {
+      const resultado = CreateClienteSchema.safeParse({
+        ...altaPublica,
+        periodicidad: { tipo: 'BIMESTRAL', diaLimite: 10, mesInicioCiclo: null },
+      });
+      expect(camposConError(resultado)).toEqual(['periodicidad.mesInicioCiclo']);
+    });
+
+    it('rechaza una periodicidad con tipo inexistente', () => {
+      const resultado = CreateClienteSchema.safeParse({
+        ...altaPrivada,
+        periodicidad: { ...mensual, tipo: 'ANUAL' },
+      });
+      expect(camposConError(resultado)).toEqual(['periodicidad.tipo']);
+    });
+
+    it('rechaza periodicidad null: en el alta no hay nada que borrar', () => {
+      const resultado = CreateClienteSchema.safeParse({ ...altaPrivada, periodicidad: null });
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['periodicidad']);
+    });
+
+    it('no altera el resto de las reglas del alta (canal de entrega sigue validándose)', () => {
+      const resultado = CreateClienteSchema.safeParse({
+        ...altaPrivada,
+        canalEntrega: 'PORTAL_WEB',
+        periodicidad: mensual,
+      });
+      expect(camposConError(resultado)).toEqual(['portalUrl']);
+    });
+
+    it('CreateClienteDto tiene periodicidad opcional y sin null (typecheck)', () => {
+      expectTypeOf<CreateClienteDto['periodicidad']>().toEqualTypeOf<Periodicidad | undefined>();
+    });
+  });
+
+  describe('UpdateClienteSchema', () => {
+    it.each([mensual, bimestral, porCampania])(
+      'acepta periodicidad $tipo como único cambio',
+      (periodicidad) => {
+        const resultado = UpdateClienteSchema.safeParse({ periodicidad });
+        expect(resultado.success).toBe(true);
+        if (resultado.success) expect(resultado.data).toEqual({ periodicidad });
+      },
+    );
+
+    it('acepta periodicidad: null como único cambio y lo conserva', () => {
+      const resultado = UpdateClienteSchema.safeParse({ periodicidad: null });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) {
+        expect(resultado.data).toHaveProperty('periodicidad', null);
+        expect(resultado.data).toEqual({ periodicidad: null });
+      }
+    });
+
+    it('sin periodicidad no agrega ninguna: ausente significa no modificar', () => {
+      const resultado = UpdateClienteSchema.safeParse({ razonSocial: 'Otra S.A.' });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) {
+        expect(resultado.data).not.toHaveProperty('periodicidad');
+        expect(resultado.data.periodicidad).toBeUndefined();
+      }
+    });
+
+    it('periodicidad undefined explícito cuenta como ausente (no alcanza como único campo)', () => {
+      expect(UpdateClienteSchema.safeParse({ periodicidad: undefined }).success).toBe(false);
+    });
+
+    it('acepta periodicidad junto con otros campos', () => {
+      const resultado = UpdateClienteSchema.safeParse({
+        denominacion: 'Nuevo Alias',
+        periodicidad: bimestral,
+      });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) {
+        expect(resultado.data).toEqual({ denominacion: 'Nuevo Alias', periodicidad: bimestral });
+      }
+    });
+
+    it('sigue rechazando un pedido vacío', () => {
+      expect(UpdateClienteSchema.safeParse({}).success).toBe(false);
+    });
+
+    it('rechaza una periodicidad inválida y marca la ruta anidada', () => {
+      const resultado = UpdateClienteSchema.safeParse({
+        periodicidad: { tipo: 'BIMESTRAL', diaLimite: 10, mesInicioCiclo: 13 },
+      });
+      expect(resultado.success).toBe(false);
+      expect(camposConError(resultado)).toEqual(['periodicidad.mesInicioCiclo']);
+    });
+
+    it('rechaza una periodicidad vacía {}', () => {
+      expect(UpdateClienteSchema.safeParse({ periodicidad: {} }).success).toBe(false);
+    });
+
+    it('rechaza una periodicidad que no es objeto ni null', () => {
+      expect(UpdateClienteSchema.safeParse({ periodicidad: 'MENSUAL' }).success).toBe(false);
+    });
+
+    it('no altera las reglas de sector/subtipo ni de canal al enviar periodicidad', () => {
+      expect(
+        camposConError(UpdateClienteSchema.safeParse({ sector: 'PUBLICO', periodicidad: mensual })),
+      ).toEqual(['subtipo']);
+      expect(
+        camposConError(
+          UpdateClienteSchema.safeParse({ canalEntrega: 'WHATSAPP', periodicidad: mensual }),
+        ),
+      ).toEqual(['whatsappNumero']);
+    });
+
+    it('UpdateClienteDto admite periodicidad objeto, null o ausente (typecheck)', () => {
+      expectTypeOf<UpdateClienteDto['periodicidad']>().toEqualTypeOf<
+        Periodicidad | null | undefined
+      >();
+    });
   });
 });

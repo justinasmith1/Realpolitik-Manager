@@ -8,6 +8,8 @@ export {
   ClienteSector,
   ClienteSubtipoPublico,
   CanalEntrega,
+  PeriodicidadTipo,
+  PeriodicidadSchema,
   CuitSchema,
   WhatsappNumeroSchema,
   subtiposPorSector,
@@ -30,11 +32,13 @@ export type {
   ClientePrivado,
   CreateClienteDto,
   UpdateClienteDto,
+  Periodicidad,
   IvaCondicion as IvaCondicionType,
   ClienteEstado as ClienteEstadoType,
   ClienteSector as ClienteSectorType,
   ClienteSubtipoPublico as ClienteSubtipoPublicoType,
   CanalEntrega as CanalEntregaType,
+  PeriodicidadTipo as PeriodicidadTipoType,
 } from './schemas/cliente.schema.js';
 
 // ─── Utilidades ───────────────────────────────────────────────────────────────
