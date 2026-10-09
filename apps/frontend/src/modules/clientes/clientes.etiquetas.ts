@@ -1,4 +1,5 @@
 import type {
+  CanalEntregaType,
   ClienteEstadoType,
   ClienteSectorType,
   ClienteSubtipoPublicoType,
@@ -25,6 +26,12 @@ export const etiquetasIvaCondicion: Record<IvaCondicionType, string> = {
   EXENTO: 'Exento',
   CONSUMIDOR_FINAL: 'Consumidor final',
   NO_CATEGORIZADO: 'No categorizado',
+};
+
+export const etiquetasCanalEntrega: Record<CanalEntregaType, string> = {
+  CORREO: 'Correo',
+  PORTAL_WEB: 'Portal web',
+  WHATSAPP: 'WhatsApp',
 };
 
 /** En minúscula: se usa dentro de oraciones ("…está inactivo"). */

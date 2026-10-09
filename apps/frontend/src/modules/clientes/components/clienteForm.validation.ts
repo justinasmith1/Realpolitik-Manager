@@ -7,9 +7,13 @@
 //   campos comunes son idénticos en ambas ramas) y el sector se informa aparte.
 // - Para un campo vacío, Zod responde "Required" o un error de enum en inglés. El contrato
 //   deja esos textos al front, así que un campo vacío usa el mensaje propio de abajo.
+// - La regla del canal de entrega es un `superRefine` en shared, y Zod solo lo corre
+//   si todo lo demás es válido. Para no esconder "falta la URL" hasta que se corrija el CUIT,
+//   los vacíos condicionales (`portalUrl`, `whatsappNumero`) también se chequean acá.
 
 import {
   CreateClienteSchema,
+  type CanalEntregaType,
   type ClienteSectorType,
   type ClienteSubtipoPublicoType,
   type CreateClienteDto,
@@ -28,11 +32,17 @@ export interface ClienteFormValues {
   subtipo: ClienteSubtipoPublicoType | '';
   ivaCondicion: IvaCondicionType | '';
   emailContacto: string;
+  canalEntrega: CanalEntregaType;
+  portalUrl: string;
+  whatsappNumero: string;
 }
 
 export type CampoClienteForm = keyof ClienteFormValues;
 
-/** Sin valores por defecto: los selects arrancan sin opción elegida. */
+/**
+ * Los selects de datos fiscales arrancan sin opción elegida. El canal arranca en CORREO,
+ * igual que el default de la base: es el canal habitual y no obliga a cargar nada extra.
+ */
 export const valoresInicialesClienteForm: ClienteFormValues = {
   razonSocial: '',
   denominacion: '',
@@ -41,6 +51,9 @@ export const valoresInicialesClienteForm: ClienteFormValues = {
   subtipo: '',
   ivaCondicion: '',
   emailContacto: '',
+  canalEntrega: 'CORREO',
+  portalUrl: '',
+  whatsappNumero: '',
 };
 
 const mensajesCampoVacio: Record<CampoClienteForm, string> = {
@@ -51,6 +64,9 @@ const mensajesCampoVacio: Record<CampoClienteForm, string> = {
   subtipo: 'Elegí el subtipo.',
   ivaCondicion: 'Elegí la condición frente al IVA.',
   emailContacto: 'Ingresá el email de contacto.',
+  canalEntrega: 'Elegí el canal de entrega.',
+  portalUrl: 'Ingresá la URL del portal.',
+  whatsappNumero: 'Ingresá el número de WhatsApp.',
 };
 
 const campos = Object.keys(mensajesCampoVacio) as CampoClienteForm[];
@@ -58,15 +74,23 @@ const campos = Object.keys(mensajesCampoVacio) as CampoClienteForm[];
 const esCampo = (valor: unknown): valor is CampoClienteForm =>
   typeof valor === 'string' && valor in mensajesCampoVacio;
 
+// Campos que solo son obligatorios en ciertas condiciones. El resto lo es siempre.
 function estaVacio(campo: CampoClienteForm, valores: ClienteFormValues): boolean {
-  if (campo === 'subtipo') {
-    return valores.sector === 'PUBLICO' && valores.subtipo === '';
+  switch (campo) {
+    case 'subtipo':
+      return valores.sector === 'PUBLICO' && valores.subtipo === '';
+    case 'portalUrl':
+      return valores.canalEntrega === 'PORTAL_WEB' && valores.portalUrl.trim() === '';
+    case 'whatsappNumero':
+      return valores.canalEntrega === 'WHATSAPP' && valores.whatsappNumero.trim() === '';
+    default:
+      return valores[campo].trim() === '';
   }
-  return valores[campo].trim() === '';
 }
 
 // Lo que se valida con shared. El CUIT y el email se recortan porque es común pegarlos con
-// espacios; el resto de la normalización la hace el schema.
+// espacios; el resto de la normalización la hace el schema. Del canal se envía solo el dato
+// que corresponde: una URL tipeada y luego descartada al pasar a WhatsApp no debe viajar.
 function aCandidato(valores: ClienteFormValues): Record<string, unknown> {
   const sector = valores.sector === '' ? 'PRIVADO' : valores.sector;
   return {
@@ -77,12 +101,19 @@ function aCandidato(valores: ClienteFormValues): Record<string, unknown> {
     ...(sector === 'PUBLICO' && valores.subtipo !== '' ? { subtipo: valores.subtipo } : {}),
     ...(valores.ivaCondicion === '' ? {} : { ivaCondicion: valores.ivaCondicion }),
     emailContacto: valores.emailContacto.trim(),
+    canalEntrega: valores.canalEntrega,
+    ...(valores.canalEntrega === 'PORTAL_WEB' && valores.portalUrl.trim() !== ''
+      ? { portalUrl: valores.portalUrl.trim() }
+      : {}),
+    ...(valores.canalEntrega === 'WHATSAPP' && valores.whatsappNumero.trim() !== ''
+      ? { whatsappNumero: valores.whatsappNumero.trim() }
+      : {}),
   };
 }
 
-// Solo los campos de HU1.1, con los valores ya normalizados por shared (CUIT canónico,
-// textos recortados, email en minúsculas). Lo que el schema agrega por defecto
-// (`emailsAdicionales`) no se envía, y un privado nunca lleva subtipo.
+// Solo los campos del formulario, con los valores ya normalizados por shared (CUIT canónico,
+// textos recortados, email en minúsculas, WhatsApp en E.164). Lo que el schema agrega por
+// defecto (`emailsAdicionales`) no se envía, y un privado nunca lleva subtipo.
 function aNuevoCliente(datos: CreateClienteDto): NuevoCliente {
   const comunes = {
     razonSocial: datos.razonSocial,
@@ -90,6 +121,9 @@ function aNuevoCliente(datos: CreateClienteDto): NuevoCliente {
     cuit: datos.cuit,
     ivaCondicion: datos.ivaCondicion,
     emailContacto: datos.emailContacto,
+    canalEntrega: datos.canalEntrega,
+    ...(datos.portalUrl === undefined ? {} : { portalUrl: datos.portalUrl }),
+    ...(datos.whatsappNumero === undefined ? {} : { whatsappNumero: datos.whatsappNumero }),
   };
   return datos.sector === 'PUBLICO'
     ? { ...comunes, sector: 'PUBLICO', subtipo: datos.subtipo }

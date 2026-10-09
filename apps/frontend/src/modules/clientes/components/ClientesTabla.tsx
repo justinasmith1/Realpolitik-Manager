@@ -1,6 +1,7 @@
 import type { Cliente } from '@realpolitik/shared';
 
 import { Button } from '@/components/ui/button';
+import { CanalEntregaBadge } from '@/modules/clientes/components/CanalEntregaBadge';
 import { SectorBadge } from '@/modules/clientes/components/SectorBadge';
 import { SubtipoBadge } from '@/modules/clientes/components/SubtipoBadge';
 
@@ -10,7 +11,7 @@ interface ClientesTablaProps {
   onLimpiarFiltros: () => void;
 }
 
-const columnas = ['Cliente', 'CUIT', 'Sector', 'Subtipo', 'Email de contacto'];
+const columnas = ['Cliente', 'CUIT', 'Sector', 'Subtipo', 'Email de contacto', 'Canal'];
 
 /**
  * Tabla del listado. Con la lista vacía muestra el aviso de "sin resultados": que no haya
@@ -64,6 +65,9 @@ export function ClientesTabla({ clientes, onLimpiarFiltros }: ClientesTablaProps
                 )}
               </td>
               <td className="px-4 py-3 text-content-secondary">{cliente.emailContacto}</td>
+              <td className="px-4 py-3">
+                <CanalEntregaBadge canal={cliente.canalEntrega} />
+              </td>
             </tr>
           ))}
         </tbody>
