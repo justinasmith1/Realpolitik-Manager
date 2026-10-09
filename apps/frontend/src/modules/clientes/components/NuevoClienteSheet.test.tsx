@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 
 import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
@@ -36,6 +36,7 @@ const clienteCreado = {
   ivaCondicion: 'EXENTO',
   emailContacto: 'compras@municipio.example',
   emailsAdicionales: [],
+  periodicidad: null,
   estado: 'ACTIVO',
   creadoEn: '2026-10-08T12:00:00.000Z',
   actualizadoEn: '2026-10-08T12:00:00.000Z',
@@ -102,7 +103,7 @@ function cuerpoEnviado(): unknown {
 }
 
 describe('NuevoClienteSheet', () => {
-  it('muestra un panel "Nuevo cliente" con solo los campos de HU1.1', () => {
+  it('muestra un panel "Nuevo cliente" con solo los campos del alta', () => {
     renderAlta();
 
     expect(screen.getByRole('dialog', { name: 'Nuevo cliente' })).toBeInTheDocument();
@@ -114,6 +115,7 @@ describe('NuevoClienteSheet', () => {
       'Condición frente al IVA',
       'Email de contacto',
       'Canal de entrega',
+      'Periodicidad',
     ]) {
       expect(campo(etiqueta)).toBeInTheDocument();
     }
@@ -123,8 +125,8 @@ describe('NuevoClienteSheet', () => {
     expect(screen.queryByLabelText('URL del portal')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Número de WhatsApp')).not.toBeInTheDocument();
     expect(screen.getAllByRole('textbox')).toHaveLength(4);
-    expect(screen.getAllByRole('combobox')).toHaveLength(3);
-    expect(screen.queryByLabelText(/teléfono|estado|periodicidad/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('combobox')).toHaveLength(4);
+    expect(screen.queryByLabelText(/teléfono|estado/i)).not.toBeInTheDocument();
   });
 
   it('muestra las opciones con nombres legibles y sin una elegida de antemano', () => {
@@ -376,5 +378,216 @@ describe('NuevoClienteSheet', () => {
     await user.click(screen.getByRole('button', { name: 'Cancelar' }));
 
     expect(onAbiertoChange).toHaveBeenCalledWith(false);
+  });
+});
+
+// ─── Periodicidad de rendición (HU1.5) ────────────────────────────────────────
+
+describe('NuevoClienteSheet: periodicidad', () => {
+  const periodicidad = () => campo('Periodicidad');
+  const diaLimite = () => campo('Día límite');
+  const mesInicio = () => campo('Mes de inicio del ciclo');
+
+  /** Envía un alta válida y devuelve el cuerpo del POST. */
+  async function registrarYLeerCuerpo(user: UserEvent) {
+    await user.click(botonRegistrar());
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    return cuerpoEnviado() as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    fetchMock.mockResolvedValue(jsonResponse(clienteCreado, 201));
+  });
+
+  it('arranca en "Sin configurar", opcional, sin día ni mes', () => {
+    renderAlta();
+
+    expect(periodicidad()).toHaveValue('');
+    expect(screen.getByRole('option', { name: 'Sin configurar' })).toHaveValue('');
+    expect(periodicidad()).not.toBeRequired();
+    expect(periodicidad()).toHaveAccessibleDescription(
+      'Cada cuánto se rinde. Podés configurarla más adelante.',
+    );
+    expect(screen.queryByLabelText('Día límite')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
+    // Las opciones se muestran con su nombre, no con el valor técnico.
+    expect(
+      within(periodicidad())
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Sin configurar', 'Mensual', 'Bimestral', 'Por campaña']);
+  });
+
+  it('sin periodicidad, el alta no envía la clave (ni null ni campos del formulario)', async () => {
+    const { user } = renderAlta();
+
+    await completar(user);
+    const cuerpo = await registrarYLeerCuerpo(user);
+
+    expect(cuerpo).not.toHaveProperty('periodicidad');
+    for (const auxiliar of [
+      'periodicidadTipo',
+      'periodicidadDiaLimite',
+      'periodicidadMesInicioCiclo',
+    ]) {
+      expect(cuerpo).not.toHaveProperty(auxiliar);
+    }
+  });
+
+  it.each([
+    ['MENSUAL', 'Mensual'],
+    ['POR_CAMPANIA', 'Por campaña'],
+  ] as const)(
+    '%s muestra solo el día límite y envía el día como número y el mes en null',
+    async (tipo, _etiqueta) => {
+      const { user } = renderAlta();
+
+      await completar(user);
+      await user.selectOptions(periodicidad(), tipo);
+      expect(diaLimite()).toBeRequired();
+      expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
+      await user.type(diaLimite(), '10');
+      const cuerpo = await registrarYLeerCuerpo(user);
+
+      expect(cuerpo.periodicidad).toStrictEqual({ tipo, diaLimite: 10, mesInicioCiclo: null });
+      expect(cuerpo).not.toHaveProperty('periodicidadDiaLimite');
+    },
+  );
+
+  it('BIMESTRAL muestra día y mes, y envía ambos como números', async () => {
+    const { user } = renderAlta();
+
+    await completar(user);
+    await user.selectOptions(periodicidad(), 'BIMESTRAL');
+    expect(mesInicio()).toBeRequired();
+    expect(mesInicio()).toHaveValue('');
+    expect(screen.getByRole('option', { name: 'Marzo' })).toHaveValue('3');
+    await user.type(diaLimite(), '28');
+    await user.selectOptions(mesInicio(), 'Marzo');
+    const cuerpo = await registrarYLeerCuerpo(user);
+
+    expect(cuerpo.periodicidad).toStrictEqual({
+      tipo: 'BIMESTRAL',
+      diaLimite: 28,
+      mesInicioCiclo: 3,
+    });
+  });
+
+  it('con un tipo elegido pide el día límite', async () => {
+    const { user } = renderAlta();
+
+    await completar(user);
+    await user.selectOptions(periodicidad(), 'MENSUAL');
+    await user.click(botonRegistrar());
+
+    expect(screen.getByText('Ingresá el día límite.')).toBeInTheDocument();
+    expect(diaLimite()).toHaveAttribute('aria-invalid', 'true');
+    expect(diaLimite()).toHaveFocus();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // La regla es de shared; acá solo se comprueba que el formulario no redondea ni interpreta.
+  it.each(['0', '29', '10.5', 'diez', '1e1'])(
+    'rechaza el día límite "%s" con el mensaje de shared y no envía',
+    async (dia) => {
+      const { user } = renderAlta();
+
+      await completar(user);
+      await user.selectOptions(periodicidad(), 'MENSUAL');
+      await user.type(diaLimite(), dia);
+      await user.click(botonRegistrar());
+
+      expect(diaLimite()).toHaveAttribute('aria-invalid', 'true');
+      expect(diaLimite()).toHaveAccessibleDescription(
+        expect.stringMatching(/El día límite debe (ser un número entero|estar) entre 1 y 28\./),
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('BIMESTRAL sin mes marca el mes y no envía', async () => {
+    const { user } = renderAlta();
+
+    await completar(user);
+    await user.selectOptions(periodicidad(), 'BIMESTRAL');
+    await user.type(diaLimite(), '10');
+    await user.click(botonRegistrar());
+
+    expect(screen.getByText('Elegí el mes de inicio del ciclo.')).toBeInTheDocument();
+    expect(mesInicio()).toHaveAttribute('aria-invalid', 'true');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('al pasar de BIMESTRAL a MENSUAL descarta el mes: no reaparece ni viaja', async () => {
+    const { user } = renderAlta();
+
+    await completar(user);
+    await user.selectOptions(periodicidad(), 'BIMESTRAL');
+    await user.type(diaLimite(), '10');
+    await user.selectOptions(mesInicio(), 'Marzo');
+    await user.selectOptions(periodicidad(), 'MENSUAL');
+    expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
+    // El día sigue valiendo para el tipo nuevo.
+    expect(diaLimite()).toHaveValue('10');
+
+    await user.selectOptions(periodicidad(), 'BIMESTRAL');
+    expect(mesInicio()).toHaveValue('');
+    await user.selectOptions(periodicidad(), 'MENSUAL');
+    const cuerpo = await registrarYLeerCuerpo(user);
+
+    expect(cuerpo.periodicidad).toStrictEqual({
+      tipo: 'MENSUAL',
+      diaLimite: 10,
+      mesInicioCiclo: null,
+    });
+  });
+
+  it('al volver a "Sin configurar" se van el día, el mes y sus errores, y no se envía nada', async () => {
+    const { user } = renderAlta();
+
+    await completar(user);
+    await user.selectOptions(periodicidad(), 'BIMESTRAL');
+    await user.type(diaLimite(), '29');
+    await user.click(botonRegistrar());
+    expect(diaLimite()).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Elegí el mes de inicio del ciclo.')).toBeInTheDocument();
+
+    await user.selectOptions(periodicidad(), '');
+
+    expect(screen.queryByLabelText('Día límite')).not.toBeInTheDocument();
+    expect(screen.queryByText(/día límite|mes de inicio/i)).not.toBeInTheDocument();
+    // Al volver a elegir un tipo, el día anterior no reaparece.
+    await user.selectOptions(periodicidad(), 'MENSUAL');
+    expect(diaLimite()).toHaveValue('');
+    expect(diaLimite()).not.toHaveAttribute('aria-invalid');
+    await user.selectOptions(periodicidad(), '');
+
+    const cuerpo = await registrarYLeerCuerpo(user);
+    expect(cuerpo).not.toHaveProperty('periodicidad');
+  });
+
+  it('si el servidor rechaza la periodicidad, marca el campo del formulario que corresponde', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Los datos enviados no son válidos',
+            details: [{ campo: 'periodicidad.diaLimite', mensaje: 'x' }],
+          },
+        },
+        400,
+      ),
+    );
+    const { user } = renderAlta();
+
+    await completar(user);
+    await user.selectOptions(periodicidad(), 'MENSUAL');
+    await user.type(diaLimite(), '10');
+    await user.click(botonRegistrar());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Algunos datos no son válidos.');
+    expect(diaLimite()).toHaveAttribute('aria-invalid', 'true');
+    expect(diaLimite()).toHaveAccessibleDescription(expect.stringContaining('Revisá este dato.'));
   });
 });

@@ -7,7 +7,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { interpretarFalloAlta, type NuevoCliente } from '@/modules/clientes/api/clientes.api';
+import {
+  interpretarFalloAlta,
+  type CambiosCliente,
+  type NuevoCliente,
+} from '@/modules/clientes/api/clientes.api';
 import { ClienteForm, type ErroresDeEnvio } from '@/modules/clientes/components/ClienteForm';
 import { clienteAValoresForm } from '@/modules/clientes/components/clienteForm.validation';
 import { erroresParaElFormulario } from '@/modules/clientes/components/erroresDeEnvio';
@@ -31,8 +35,14 @@ export function EditarClienteSheet({ cliente, onClose, onActualizado }: EditarCl
     if (cliente === null) {
       return undefined;
     }
+    // El formulario no envía la periodicidad si quedó "Sin configurar". Si el cliente tenía
+    // una, eso significa borrarla: en la edición, ausente sería "no modificar".
+    const cambios: CambiosCliente =
+      datos.periodicidad === undefined && cliente.periodicidad !== null
+        ? { ...datos, periodicidad: null }
+        : datos;
     try {
-      onActualizado(await edicion.mutateAsync({ id: cliente.id, datos }));
+      onActualizado(await edicion.mutateAsync({ id: cliente.id, datos: cambios }));
       return undefined;
     } catch (error) {
       return erroresParaElFormulario(interpretarFalloAlta(error), MENSAJE_INESPERADO);
@@ -56,7 +66,7 @@ export function EditarClienteSheet({ cliente, onClose, onActualizado }: EditarCl
         <SheetHeader className="pr-12">
           <SheetTitle>Editar cliente</SheetTitle>
           <SheetDescription>
-            Modificá los datos de {cliente?.razonSocial}. Todos los campos son obligatorios.
+            Modificá los datos de {cliente?.razonSocial} y guardá los cambios.
           </SheetDescription>
         </SheetHeader>
         {cliente !== null && (

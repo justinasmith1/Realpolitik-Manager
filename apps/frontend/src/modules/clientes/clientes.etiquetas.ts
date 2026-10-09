@@ -4,6 +4,7 @@ import type {
   ClienteSectorType,
   ClienteSubtipoPublicoType,
   IvaCondicionType,
+  PeriodicidadTipoType,
 } from '@realpolitik/shared';
 
 // Textos visibles de los valores del dominio. `Record` obliga a cubrir cada valor del enum
@@ -33,6 +34,33 @@ export const etiquetasCanalEntrega: Record<CanalEntregaType, string> = {
   PORTAL_WEB: 'Portal web',
   WHATSAPP: 'WhatsApp',
 };
+
+export const etiquetasPeriodicidad: Record<PeriodicidadTipoType, string> = {
+  MENSUAL: 'Mensual',
+  BIMESTRAL: 'Bimestral',
+  POR_CAMPANIA: 'Por campaña',
+};
+
+/** Nombre de cada mes, en orden: el índice 0 es el mes 1 (Enero). */
+export const nombresDeMes = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+] as const;
+
+/** Nombre del mes `mes` (1 a 12). Shared ya garantiza el rango del dato que llega. */
+export function etiquetaDeMes(mes: number): string {
+  return nombresDeMes[mes - 1] ?? String(mes);
+}
 
 /** En minúscula: se usa dentro de oraciones ("…está inactivo"). */
 export const etiquetasEstado: Record<ClienteEstadoType, string> = {
