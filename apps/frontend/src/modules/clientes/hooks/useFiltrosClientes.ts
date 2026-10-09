@@ -12,13 +12,16 @@ import { useSearchParams } from 'react-router';
 export const RETARDO_BUSQUEDA_MS = 300;
 
 /**
- * Filtros del listado, guardados en los search params de la URL (`q`, `sector`, `subtipo`):
+ * Filtros del listado, guardados en los search params de la URL (`q`, `estado`, `sector`, `subtipo`):
  * se pueden compartir y sobreviven a una recarga. El texto de búsqueda se escribe en un
  * estado local (`textoBusqueda`) y llega a la URL, y de ahí a la consulta, con debounce.
  */
 export function useFiltrosClientes() {
   const [params, setParams] = useSearchParams();
 
+  // Solo se distingue INACTIVO: sin el parámetro (o con cualquier otro valor) es la vista de
+  // activos, que es la que la API devuelve por defecto.
+  const estado: 'ACTIVO' | 'INACTIVO' = params.get('estado') === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO';
   const sector = ClienteSector.safeParse(params.get('sector')).data;
   // El subtipo solo existe en el sector público: un valor suelto con sector PRIVADO se ignora.
   const subtipoDeUrl = ClienteSubtipoPublico.safeParse(params.get('subtipo')).data;
@@ -65,6 +68,9 @@ export function useFiltrosClientes() {
     );
   };
 
+  const elegirEstado = (nuevo: 'ACTIVO' | 'INACTIVO') =>
+    actualizar({ estado: nuevo === 'INACTIVO' ? 'INACTIVO' : undefined }, false);
+
   const elegirSector = (nuevo: ClienteSectorType | undefined) => {
     const siguiente = cambiarSector({ sector, subtipo }, nuevo);
     actualizar({ sector: siguiente.sector, subtipo: siguiente.subtipo }, false);
@@ -76,15 +82,23 @@ export function useFiltrosClientes() {
   const limpiar = () => {
     cancelarBusquedaPendiente();
     setTextoBusqueda('');
-    actualizar({ q: undefined, sector: undefined, subtipo: undefined }, false);
+    actualizar({ q: undefined, estado: undefined, sector: undefined, subtipo: undefined }, false);
   };
 
   return {
     /** Filtros vigentes: los que usa la consulta. */
-    filtros: { q: q === '' ? undefined : q, sector, subtipo },
-    hayFiltros: q !== '' || sector !== undefined || subtipo !== undefined,
+    filtros: {
+      q: q === '' ? undefined : q,
+      estado: estado === 'INACTIVO' ? ('INACTIVO' as const) : undefined,
+      sector,
+      subtipo,
+    },
+    /** Vista que se está mirando. Los activos son la vista por defecto, no un filtro. */
+    estado,
+    hayFiltros: q !== '' || estado === 'INACTIVO' || sector !== undefined || subtipo !== undefined,
     textoBusqueda,
     cambiarTexto,
+    elegirEstado,
     elegirSector,
     elegirSubtipo,
     limpiar,

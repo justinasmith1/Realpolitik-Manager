@@ -1,5 +1,6 @@
 import { ClienteSchema, type Cliente } from '@realpolitik/shared';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 
@@ -80,5 +81,190 @@ describe('ClientesTabla: periodicidad (HU1.5)', () => {
     const tabla = screen.getByRole('table');
 
     expect(tabla).not.toHaveTextContent(/MENSUAL|BIMESTRAL|POR_CAMPANIA|mesInicioCiclo/);
+  });
+});
+
+describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
+  const activo = cliente('55555555-5555-4555-a555-555555555555', 'Activa S.A.', null);
+  const inactivo = ClienteSchema.parse({
+    ...base,
+    id: '66666666-6666-4666-a666-666666666666',
+    razonSocial: 'Inactiva S.A.',
+    estado: 'INACTIVO',
+    periodicidad: null,
+  });
+
+  const filaDe = (razonSocial: string) =>
+    within(screen.getByRole('row', { name: new RegExp(razonSocial) }));
+  const botonDelMenu = (razonSocial: string) =>
+    screen.getByRole('button', { name: `Acciones de ${razonSocial}` });
+  const abrirMenu = async (razonSocial: string) => {
+    await userEvent.click(botonDelMenu(razonSocial));
+    return within(await screen.findByRole('menu'));
+  };
+  const opciones = () => screen.getAllByRole('menuitem').map((item) => item.textContent);
+
+  it('cada fila tiene un solo botón de menú, con la razón social en su nombre accesible', () => {
+    render(<ClientesTabla clientes={[activo, inactivo]} onLimpiarFiltros={() => undefined} />);
+
+    expect(botonDelMenu('Activa S.A.')).toBeInTheDocument();
+    expect(botonDelMenu('Inactiva S.A.')).toBeInTheDocument();
+    // Las acciones no están sueltas en la fila: solo existe el botón del menú.
+    expect(filaDe('Activa').getAllByRole('button')).toHaveLength(1);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
+  });
+
+  it('el botón del menú está en la columna Acciones, a la derecha de la fila', () => {
+    render(<ClientesTabla clientes={[activo]} onLimpiarFiltros={() => undefined} />);
+
+    const encabezados = screen.getAllByRole('columnheader');
+    expect(encabezados.at(-1)).toHaveTextContent('Acciones');
+    expect(encabezados.at(-1)).toHaveClass('text-right');
+    const celdas = filaDe('Activa').getAllByRole('cell');
+    expect(within(celdas.at(-1) as HTMLElement).getByRole('button')).toBe(
+      botonDelMenu('Activa S.A.'),
+    );
+  });
+
+  it('un cliente activo se identifica sin badge y su menú ofrece Editar, Contactos y Desactivar', async () => {
+    render(<ClientesTabla clientes={[activo]} onLimpiarFiltros={() => undefined} />);
+
+    expect(filaDe('Activa').queryByText('Inactivo')).not.toBeInTheDocument();
+    const menu = await abrirMenu('Activa S.A.');
+
+    expect(opciones()).toEqual(['Editar', 'Contactos', 'Desactivar']);
+    expect(menu.queryByRole('menuitem', { name: 'Reactivar' })).not.toBeInTheDocument();
+  });
+
+  it('un cliente inactivo lleva el badge "Inactivo" y su menú ofrece Editar, Contactos y Reactivar', async () => {
+    render(<ClientesTabla clientes={[inactivo]} onLimpiarFiltros={() => undefined} />);
+
+    expect(filaDe('Inactiva').getByText('Inactivo')).toBeInTheDocument();
+    const menu = await abrirMenu('Inactiva S.A.');
+
+    expect(opciones()).toEqual(['Editar', 'Contactos', 'Reactivar']);
+    expect(menu.queryByRole('menuitem', { name: 'Desactivar' })).not.toBeInTheDocument();
+  });
+
+  it('Desactivar es destructivo y va separado; Reactivar es normal y también va separado', async () => {
+    render(<ClientesTabla clientes={[activo, inactivo]} onLimpiarFiltros={() => undefined} />);
+
+    const menuActivo = await abrirMenu('Activa S.A.');
+    expect(menuActivo.getByRole('menuitem', { name: 'Desactivar' })).toHaveAttribute(
+      'data-variant',
+      'destructive',
+    );
+    expect(menuActivo.getByRole('menuitem', { name: 'Editar' })).toHaveAttribute(
+      'data-variant',
+      'default',
+    );
+    expect(menuActivo.getByRole('separator')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await vi.waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+
+    const menuInactivo = await abrirMenu('Inactiva S.A.');
+    expect(menuInactivo.getByRole('menuitem', { name: 'Reactivar' })).toHaveAttribute(
+      'data-variant',
+      'default',
+    );
+    expect(menuInactivo.getByRole('separator')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['Editar', 'onEditar', 'Activa S.A.', activo],
+    ['Contactos', 'onAdministrarContactos', 'Activa S.A.', activo],
+    ['Desactivar', 'onDesactivar', 'Activa S.A.', activo],
+    ['Reactivar', 'onReactivar', 'Inactiva S.A.', inactivo],
+  ] as const)(
+    'elegir %s avisa con el cliente de su fila y cierra el menú',
+    async (opcion, callback, razonSocial, esperado) => {
+      const acciones = {
+        onEditar: vi.fn(),
+        onAdministrarContactos: vi.fn(),
+        onDesactivar: vi.fn(),
+        onReactivar: vi.fn(),
+      };
+      render(
+        <ClientesTabla
+          clientes={[activo, inactivo]}
+          onLimpiarFiltros={() => undefined}
+          {...acciones}
+        />,
+      );
+
+      const menu = await abrirMenu(razonSocial);
+      await userEvent.click(menu.getByRole('menuitem', { name: opcion }));
+
+      expect(acciones[callback]).toHaveBeenCalledTimes(1);
+      expect(acciones[callback]).toHaveBeenCalledWith(esperado);
+      await vi.waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    },
+  );
+
+  it('se maneja con el teclado: Enter abre el menú, las flechas se mueven y Escape lo cierra', async () => {
+    const onEditar = vi.fn();
+    const onAdministrarContactos = vi.fn();
+    render(
+      <ClientesTabla
+        clientes={[activo]}
+        onLimpiarFiltros={() => undefined}
+        onEditar={onEditar}
+        onAdministrarContactos={onAdministrarContactos}
+      />,
+    );
+
+    await userEvent.tab();
+    expect(botonDelMenu('Activa S.A.')).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    const menu = within(await screen.findByRole('menu'));
+    expect(menu.getAllByRole('menuitem')).toHaveLength(3);
+    // Al abrir con el teclado queda enfocada la primera opción.
+    expect(menu.getByRole('menuitem', { name: 'Editar' })).toHaveFocus();
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect(menu.getByRole('menuitem', { name: 'Contactos' })).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(onAdministrarContactos).toHaveBeenCalledWith(activo);
+    expect(onEditar).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+  });
+
+  it('Escape cierra el menú sin elegir nada', async () => {
+    const onEditar = vi.fn();
+    render(
+      <ClientesTabla clientes={[activo]} onLimpiarFiltros={() => undefined} onEditar={onEditar} />,
+    );
+
+    await abrirMenu('Activa S.A.');
+    await userEvent.keyboard('{Escape}');
+
+    await vi.waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    expect(onEditar).not.toHaveBeenCalled();
+  });
+
+  it('deshabilita Desactivar/Reactivar del cliente cuyo cambio de estado está en curso', async () => {
+    render(
+      <ClientesTabla
+        clientes={[activo, inactivo]}
+        onLimpiarFiltros={() => undefined}
+        idCambiandoEstado={activo.id}
+      />,
+    );
+
+    const menuActivo = await abrirMenu('Activa S.A.');
+    expect(menuActivo.getByRole('menuitem', { name: 'Desactivar' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await userEvent.keyboard('{Escape}');
+    await vi.waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+
+    const menuInactivo = await abrirMenu('Inactiva S.A.');
+    expect(menuInactivo.getByRole('menuitem', { name: 'Reactivar' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 });

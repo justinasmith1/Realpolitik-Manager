@@ -3,6 +3,7 @@
 
 import {
   ClienteEstado,
+  type ActualizarEstadoClienteDto,
   ClienteSchema,
   type Cliente,
   type ClienteEstadoType,
@@ -29,12 +30,14 @@ export const clientesQueryKey = ['clientes'] as const;
 /** Filtros del listado. Lo que está ausente no filtra. */
 export interface FiltrosClientes {
   q?: string | undefined;
+  /** Sin `estado`, la API devuelve solo los clientes activos. */
+  estado?: ClienteEstadoType | undefined;
   sector?: ClienteSectorType | undefined;
   subtipo?: ClienteSubtipoPublicoType | undefined;
 }
 
 /**
- * `GET /clientes`. Devuelve los clientes activos que cumplen los filtros, ordenados por
+ * `GET /clientes`. Devuelve los clientes que cumplen los filtros (activos, salvo que se pida otro estado), ordenados por
  * razón social (lo resuelve el backend), validados con el schema compartido.
  */
 export async function listarClientes(
@@ -113,6 +116,40 @@ export async function actualizarCliente(id: string, datos: CambiosCliente): Prom
     body: JSON.stringify(datos),
   });
   return ClienteSchema.parse(await response.json());
+}
+
+/** Estados que la API deja asignar (HU1.8). SUSPENDIDO está reservado y no se ofrece. */
+export type EstadoAsignable = ActualizarEstadoClienteDto['estado'];
+
+/**
+ * `PATCH /clientes/:id/estado`. Desactiva o reactiva un cliente: no borra nada. Devuelve el
+ * cliente con su estado nuevo, validado con el schema compartido. Pedir el estado que ya
+ * tiene no es un error. Los errores llegan sin modificar; `interpretarFalloCambioEstado`
+ * los traduce.
+ */
+export async function cambiarEstadoCliente(id: string, estado: EstadoAsignable): Promise<Cliente> {
+  const response = await http(`/clientes/${encodeURIComponent(id)}/estado`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado }),
+  });
+  return ClienteSchema.parse(await response.json());
+}
+
+/** Por qué no se pudo cambiar el estado, en términos del dominio. */
+export type FalloCambioEstado = { tipo: 'no-existe' } | { tipo: 'inesperado' };
+
+/**
+ * Traduce el error de `cambiarEstadoCliente`. Un 404 con el formato del contrato es que el
+ * cliente ya no existe (o se dio de baja); cualquier otra cosa es `inesperado`.
+ */
+export function interpretarFalloCambioEstado(error: unknown): FalloCambioEstado {
+  if (!(error instanceof ApiClientError) || error.kind !== 'http' || error.status !== 404) {
+    return { tipo: 'inesperado' };
+  }
+  return leerCuerpoDeError(error.payload)?.code === 'NOT_FOUND'
+    ? { tipo: 'no-existe' }
+    : { tipo: 'inesperado' };
 }
 
 export interface ClienteExistente {

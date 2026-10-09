@@ -3,6 +3,8 @@ import type { Cliente, Periodicidad } from '@realpolitik/shared';
 import { Button } from '@/components/ui/button';
 import { etiquetaDeMes, etiquetasPeriodicidad } from '@/modules/clientes/clientes.etiquetas';
 import { CanalEntregaBadge } from '@/modules/clientes/components/CanalEntregaBadge';
+import { ClienteAccionesMenu } from '@/modules/clientes/components/ClienteAccionesMenu';
+import { EstadoBadge } from '@/modules/clientes/components/EstadoBadge';
 import { SectorBadge } from '@/modules/clientes/components/SectorBadge';
 import { SubtipoBadge } from '@/modules/clientes/components/SubtipoBadge';
 
@@ -52,9 +54,17 @@ export function ClientesTabla({
   onLimpiarFiltros,
   onAdministrarContactos,
   onEditar,
+  onDesactivar,
+  onReactivar,
+  idCambiandoEstado = null,
 }: ClientesTablaProps & {
   onAdministrarContactos?: (cliente: Cliente) => void;
   onEditar?: (cliente: Cliente) => void;
+  /** Pide desactivar un cliente activo (la confirmación la resuelve quien la usa). */
+  onDesactivar?: (cliente: Cliente) => void;
+  onReactivar?: (cliente: Cliente) => void;
+  /** Cliente cuyo cambio de estado está en curso: su botón se deshabilita. */
+  idCambiandoEstado?: string | null;
 }) {
   if (clientes.length === 0) {
     return (
@@ -77,7 +87,11 @@ export function ClientesTabla({
         <thead className="border-b bg-table-head text-xs font-medium text-content-secondary">
           <tr>
             {columnas.map((columna) => (
-              <th key={columna} scope="col" className="px-4 py-3">
+              <th
+                key={columna}
+                scope="col"
+                className={columna === 'Acciones' ? 'px-4 py-3 text-right' : 'px-4 py-3'}
+              >
                 {columna}
               </th>
             ))}
@@ -88,6 +102,11 @@ export function ClientesTabla({
             <tr key={cliente.id}>
               <th scope="row" className="px-4 py-3 font-medium">
                 {cliente.razonSocial}
+                {cliente.estado !== 'ACTIVO' && (
+                  <span className="ml-2 align-middle">
+                    <EstadoBadge estado={cliente.estado} />
+                  </span>
+                )}
               </th>
               <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{cliente.cuit}</td>
               <td className="px-4 py-3">
@@ -110,17 +129,15 @@ export function ClientesTabla({
                 <PeriodicidadCelda periodicidad={cliente.periodicidad} />
               </td>
               <td className="px-4 py-3">
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => onEditar?.(cliente)}>
-                    Editar
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onAdministrarContactos?.(cliente)}
-                  >
-                    Contactos
-                  </Button>
+                <div className="flex justify-end">
+                  <ClienteAccionesMenu
+                    cliente={cliente}
+                    onEditar={onEditar}
+                    onAdministrarContactos={onAdministrarContactos}
+                    onDesactivar={onDesactivar}
+                    onReactivar={onReactivar}
+                    cambiandoEstado={idCambiandoEstado === cliente.id}
+                  />
                 </div>
               </td>
             </tr>
