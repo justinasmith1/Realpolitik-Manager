@@ -7,51 +7,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import {
-  interpretarFalloAlta,
-  type FalloAltaCliente,
-  type NuevoCliente,
-} from '@/modules/clientes/api/clientes.api';
-import { etiquetasEstado } from '@/modules/clientes/clientes.etiquetas';
+import { interpretarFalloAlta, type NuevoCliente } from '@/modules/clientes/api/clientes.api';
 import { ClienteForm, type ErroresDeEnvio } from '@/modules/clientes/components/ClienteForm';
+import { erroresParaElFormulario } from '@/modules/clientes/components/erroresDeEnvio';
 import { useCrearCliente } from '@/modules/clientes/hooks/useCrearCliente';
 
-const camposDelFormulario = new Set<string>([
-  'razonSocial',
-  'denominacion',
-  'cuit',
-  'sector',
-  'subtipo',
-  'ivaCondicion',
-  'emailContacto',
-]);
-
-/** Texto para la interfaz de cada fallo del alta. Nunca muestra detalles técnicos. */
-function erroresParaElFormulario(fallo: FalloAltaCliente): ErroresDeEnvio {
-  switch (fallo.tipo) {
-    case 'cuit-duplicado': {
-      const existente = fallo.clienteExistente;
-      return {
-        campos: {
-          cuit:
-            existente === null
-              ? 'Ya existe un cliente registrado con este CUIT.'
-              : `Ya existe un cliente registrado con este CUIT: ${existente.razonSocial} (${etiquetasEstado[existente.estado]}).`,
-        },
-      };
-    }
-    case 'datos-invalidos': {
-      const campos = Object.fromEntries(
-        fallo.campos
-          .filter((campo) => camposDelFormulario.has(campo))
-          .map((campo) => [campo, 'Revisá este dato.']),
-      );
-      return { campos, general: 'Algunos datos no son válidos. Revisá los campos marcados.' };
-    }
-    case 'inesperado':
-      return { general: 'No pudimos registrar el cliente. Probá de nuevo en unos segundos.' };
-  }
-}
+const MENSAJE_INESPERADO = 'No pudimos registrar el cliente. Probá de nuevo en unos segundos.';
 
 interface NuevoClienteSheetProps {
   abierto: boolean;
@@ -69,7 +30,7 @@ export function NuevoClienteSheet({ abierto, onAbiertoChange, onCreado }: NuevoC
       onCreado(await alta.mutateAsync(datos));
       return undefined;
     } catch (error) {
-      return erroresParaElFormulario(interpretarFalloAlta(error));
+      return erroresParaElFormulario(interpretarFalloAlta(error), MENSAJE_INESPERADO);
     }
   }
 
