@@ -14,6 +14,7 @@
 import {
   CreateClienteSchema,
   type CanalEntregaType,
+  type Cliente,
   type ClienteSectorType,
   type ClienteSubtipoPublicoType,
   type CreateClienteDto,
@@ -55,6 +56,22 @@ export const valoresInicialesClienteForm: ClienteFormValues = {
   portalUrl: '',
   whatsappNumero: '',
 };
+
+/** Valores iniciales del formulario de edición: los datos que ya tiene el cliente. */
+export function clienteAValoresForm(cliente: Cliente): ClienteFormValues {
+  return {
+    razonSocial: cliente.razonSocial,
+    denominacion: cliente.denominacion,
+    cuit: cliente.cuit,
+    sector: cliente.sector,
+    subtipo: cliente.sector === 'PUBLICO' ? cliente.subtipo : '',
+    ivaCondicion: cliente.ivaCondicion,
+    emailContacto: cliente.emailContacto,
+    canalEntrega: cliente.canalEntrega,
+    portalUrl: cliente.portalUrl ?? '',
+    whatsappNumero: cliente.whatsappNumero ?? '',
+  };
+}
 
 const mensajesCampoVacio: Record<CampoClienteForm, string> = {
   razonSocial: 'Ingresá la razón social.',

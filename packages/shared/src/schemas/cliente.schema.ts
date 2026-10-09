@@ -356,45 +356,61 @@ export const CreateClienteSchema = z
 
 export type CreateClienteDto = z.infer<typeof CreateClienteSchema>;
 
+/** Campos del cliente que una edición puede modificar (todos opcionales). */
+const CAMPOS_EDITABLES = {
+  razonSocial: true,
+  denominacion: true,
+  cuit: true,
+  ivaCondicion: true,
+  emailContacto: true,
+  emailsAdicionales: true,
+  telefono: true,
+  portalUrl: true,
+  canalEntrega: true,
+  whatsappNumero: true,
+} as const;
+
 /**
- * DTO para la actualización parcial de un cliente.
- * Todos los campos son opcionales excepto el discriminador `sector`.
+ * DTO para la actualización parcial de un cliente (`PATCH /clientes/:id`).
  *
- * La unión se mantiene para preservar el narrowing de `subtipo`.
+ * Cualquier subconjunto de los campos editables, con al menos uno. `id`, `estado`, `creadoEn`
+ * y `actualizadoEn` no se editan por acá: si llegan, Zod los descarta como cualquier clave
+ * desconocida y no es un error (el estado tiene su propio endpoint).
+ *
+ * `.partial()` va sobre los campos de la base, que traen `default` (`canalEntrega`,
+ * `emailsAdicionales`): un campo ausente queda ausente y no pisa lo guardado. Por eso no
+ * es una unión discriminada: acá `sector` y `subtipo` son opcionales y la regla que los
+ * relaciona es el `superRefine`.
  */
-export const UpdateClienteSchema = z
-  .discriminatedUnion('sector', [
-    ClientePublicoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }).partial({
-      razonSocial: true,
-      denominacion: true,
-      cuit: true,
-      ivaCondicion: true,
-      emailContacto: true,
-      emailsAdicionales: true,
-      telefono: true,
-      portalUrl: true,
-      canalEntrega: true,
-      whatsappNumero: true,
-      estado: true,
-      subtipo: true,
-    }),
-    ClientePrivadoSchema.omit({ id: true, creadoEn: true, actualizadoEn: true }).partial({
-      razonSocial: true,
-      denominacion: true,
-      cuit: true,
-      ivaCondicion: true,
-      emailContacto: true,
-      emailsAdicionales: true,
-      telefono: true,
-      portalUrl: true,
-      canalEntrega: true,
-      whatsappNumero: true,
-      estado: true,
-      subtipo: true,
-    }),
-  ])
-  // En la edición la regla solo aplica si el pedido cambia el canal: quien pasa a PORTAL_WEB
-  // o WHATSAPP debe enviar el dato correspondiente en el mismo pedido (como sector/subtipo).
-  .superRefine(validarCanalEntrega);
+export const UpdateClienteSchema = ClienteCamposBase.pick(CAMPOS_EDITABLES)
+  .extend({ sector: ClienteSector, subtipo: ClienteSubtipoPublico })
+  .partial()
+  .superRefine((datos, ctx) => {
+    if (Object.values(datos).every((valor) => valor === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Enviá al menos un campo para modificar.',
+      });
+    }
+
+    // Lo que depende del sector guardado (un `subtipo` sin `sector`) lo valida el backend.
+    if (datos.sector === 'PUBLICO' && datos.subtipo === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['subtipo'],
+        message: 'Si el sector es Público, elegí el subtipo.',
+      });
+    }
+    if (datos.sector === 'PRIVADO' && datos.subtipo !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['subtipo'],
+        message: 'Los clientes privados no tienen subtipo.',
+      });
+    }
+
+    // Como en el alta: quien pasa a PORTAL_WEB o WHATSAPP envía el dato en el mismo pedido.
+    validarCanalEntrega(datos, ctx);
+  });
 
 export type UpdateClienteDto = z.infer<typeof UpdateClienteSchema>;

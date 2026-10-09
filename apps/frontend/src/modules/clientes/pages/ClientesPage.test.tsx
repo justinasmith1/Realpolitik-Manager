@@ -627,3 +627,76 @@ describe('ClientesPage: alta de cliente', () => {
     expect(llamadasPost()).toHaveLength(1);
   });
 });
+
+// ─── Edición de cliente (HU1.7) ───────────────────────────────────────────────
+
+describe('ClientesPage: edición de cliente', () => {
+  const panelDeEdicion = () => screen.queryByRole('dialog', { name: 'Editar cliente' });
+  const llamadasPatch = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'PATCH');
+
+  it('el botón Editar abre el panel con los datos de esa fila', async () => {
+    simularServidor();
+    const { user } = renderPage();
+    await screen.findByRole('table');
+
+    await user.click(within(filaDe('Zeta Producciones')).getByRole('button', { name: 'Editar' }));
+
+    const panel = within(screen.getByRole('dialog', { name: 'Editar cliente' }));
+    expect(panel.getByLabelText('Razón social')).toHaveValue('Zeta Producciones S.A.');
+    expect(panel.getByLabelText('CUIT')).toHaveValue('20-12345678-6');
+    expect(panel.getByLabelText('Sector')).toHaveValue('PRIVADO');
+    // La ficha no se pide aparte: los datos salen del listado.
+    expect(urlsPedidas()).toEqual(['https://api.example/clientes']);
+  });
+
+  it('al guardar hace el PATCH, cierra el panel, confirma y el listado muestra el cambio', async () => {
+    let clientes: ClienteJson[] = [...catalogo];
+    fetchMock.mockImplementation((entrada, init) => {
+      if (init?.method === 'PATCH') {
+        clientes = clientes.map((c) =>
+          c.id === clientePrivado.id ? { ...c, razonSocial: 'Zeta Renombrada S.A.' } : c,
+        );
+        return Promise.resolve(json({ ...clientePrivado, razonSocial: 'Zeta Renombrada S.A.' }));
+      }
+      return Promise.resolve(json(listadoSegunQuery(urlDe(entrada), clientes)));
+    });
+    const { user, queryClient } = renderPage();
+    const invalidar = vi.spyOn(queryClient, 'invalidateQueries');
+    await screen.findByRole('table');
+
+    await user.click(within(filaDe('Zeta Producciones')).getByRole('button', { name: 'Editar' }));
+    const razonSocial = within(
+      screen.getByRole('dialog', { name: 'Editar cliente' }),
+    ).getByLabelText('Razón social');
+    await user.clear(razonSocial);
+    await user.type(razonSocial, 'Zeta Renombrada S.A.');
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Se actualizó el cliente Zeta Renombrada S.A.',
+    );
+    await vi.waitFor(() => expect(panelDeEdicion()).not.toBeInTheDocument());
+    expect(llamadasPatch()).toHaveLength(1);
+    expect(urlDe(llamadasPatch()[0]?.[0] ?? '')).toBe(
+      `https://api.example/clientes/${clientePrivado.id}`,
+    );
+    expect(invalidar).toHaveBeenCalledWith({ queryKey: ['clientes'] });
+    // El listado se volvió a pedir y ya no tiene el nombre anterior.
+    expect(await screen.findByText('Zeta Renombrada S.A.', { selector: 'th' })).toBeInTheDocument();
+    expect(
+      screen.queryByText('Zeta Producciones S.A.', { selector: 'th' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('Cancelar cierra el panel sin enviar nada', async () => {
+    simularServidor();
+    const { user } = renderPage();
+    await screen.findByRole('table');
+
+    await user.click(within(filaDe('Zeta Producciones')).getByRole('button', { name: 'Editar' }));
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    await vi.waitFor(() => expect(panelDeEdicion()).not.toBeInTheDocument());
+    expect(llamadasPatch()).toHaveLength(0);
+  });
+});
