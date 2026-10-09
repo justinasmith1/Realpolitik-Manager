@@ -21,6 +21,8 @@ export function toClienteDto(row: ClienteRow): Cliente {
     emailsAdicionales: row.emailsAdicionales,
     ...(row.telefono === null ? {} : { telefono: row.telefono }),
     ...(row.portalUrl === null ? {} : { portalUrl: row.portalUrl }),
+    canalEntrega: row.canalEntrega,
+    ...(row.whatsappNumero === null ? {} : { whatsappNumero: row.whatsappNumero }),
     sector: row.sector,
     ...(row.subtipo === null ? {} : { subtipo: row.subtipo }),
     estado: row.estado,

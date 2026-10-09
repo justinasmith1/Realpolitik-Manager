@@ -34,6 +34,13 @@ enum ClienteEstado {
   SUSPENDIDO
 }
 
+/// Canal habitual por el que se entregan las rendiciones al cliente (HU1.4).
+enum CanalEntrega {
+  CORREO
+  PORTAL_WEB
+  WHATSAPP
+}
+
 // ─── Modelo Cliente ───────────────────────────────────────────────────────────
 
 // TODO [DEUDA TÉCNICA]: La regla de negocio "si sector = PUBLICO entonces subtipo != null"
@@ -57,6 +64,13 @@ model Cliente {
   emailsAdicionales  String[] @default([])
   telefono           String?  @db.VarChar(25)
   portalUrl          String?  @db.VarChar(500)
+
+  // Canal de entrega habitual
+  // TODO [DEUDA TÉCNICA]: "PORTAL_WEB ⇒ portalUrl != null" y "WHATSAPP ⇒ whatsappNumero != null"
+  // se validan solo en la capa de aplicación (Zod superRefine), igual que sector/subtipo.
+  canalEntrega       CanalEntrega @default(CORREO)
+  /// Número de WhatsApp normalizado a E.164 (+5493511234567). Obligatorio si canalEntrega = WHATSAPP.
+  whatsappNumero     String?  @db.VarChar(16)
 
   // Categorización (ADR-0002 §2)
   sector   Sector
