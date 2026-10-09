@@ -501,3 +501,18 @@ export const UpdateClienteSchema = ClienteCamposBase.pick(CAMPOS_EDITABLES)
   });
 
 export type UpdateClienteDto = z.infer<typeof UpdateClienteSchema>;
+
+/**
+ * Cuerpo de `PATCH /clientes/:id/estado` (HU1.8): activar o desactivar un cliente.
+ *
+ * Solo acepta ACTIVO e INACTIVO. SUSPENDIDO existe en `ClienteEstado` pero está reservado
+ * para un sprint futuro y no se asigna desde la API. Es un schema aparte de `UpdateClienteSchema`
+ * a propósito: ahí `estado` no se edita.
+ */
+export const ActualizarEstadoClienteSchema = z.object({
+  estado: z.enum(['ACTIVO', 'INACTIVO'], {
+    errorMap: () => ({ message: 'El estado debe ser ACTIVO o INACTIVO.' }),
+  }),
+});
+
+export type ActualizarEstadoClienteDto = z.infer<typeof ActualizarEstadoClienteSchema>;

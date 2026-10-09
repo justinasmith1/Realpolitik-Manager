@@ -7,6 +7,16 @@ describe('ListarClientesQuerySchema', () => {
     expect(ListarClientesQuerySchema.parse({})).toEqual({ estado: 'ACTIVO' });
   });
 
+  it.each(['ACTIVO', 'INACTIVO', 'SUSPENDIDO'] as const)('acepta estado=%s', (estado) => {
+    expect(ListarClientesQuerySchema.parse({ estado })).toEqual({ estado });
+  });
+
+  it('estado INACTIVO se combina con búsqueda y sector', () => {
+    expect(
+      ListarClientesQuerySchema.parse({ estado: 'INACTIVO', q: ' muni ', sector: 'PUBLICO' }),
+    ).toEqual({ estado: 'INACTIVO', q: 'muni', sector: 'PUBLICO' });
+  });
+
   it('acepta todos los parámetros válidos', () => {
     const query = {
       q: 'muni',
