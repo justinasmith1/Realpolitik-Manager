@@ -240,10 +240,14 @@ describe('ContactosForm: errores del servidor', () => {
     await user.click(botonGuardar());
 
     const aviso = await screen.findByRole('alert');
-    // La lista de contactos puede ser larga y desplazarse; el aviso no es parte de ella.
+    // La lista de contactos puede ser larga y desplazarse; el aviso no es parte de ella: está
+    // en una zona fija del formulario, antes de la lista, y se ve sin tener que hacer scroll.
     const lista = screen.getByRole('group', { name: 'Contacto 1' }).parentElement;
     expect(lista).not.toContainElement(aviso);
-    expect(aviso.parentElement).toBe(botonGuardar().closest('form'));
+    expect(botonGuardar().closest('form')).toContainElement(aviso);
+    expect(aviso.compareDocumentPosition(lista as HTMLElement)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it('el aviso general se va al reintentar con éxito', async () => {

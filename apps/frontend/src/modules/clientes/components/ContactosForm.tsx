@@ -1,6 +1,6 @@
 import { ReemplazarContactosSchema, type Contacto } from '@realpolitik/shared';
 import { PlusIcon, TrashIcon } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import {
   Controller,
   useFieldArray,
@@ -11,6 +11,7 @@ import {
   type Resolver,
 } from 'react-hook-form';
 
+import { Alert } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +25,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { describirCampo, FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
+import { LoadingButton } from '@/components/ui/loading-button';
 import type { ContactoAGuardar } from '@/modules/clientes/api/contactos.api';
 import type {
   CampoContacto,
@@ -112,43 +115,6 @@ interface ContactosFormProps {
   onCancel: () => void;
 }
 
-interface CampoProps {
-  id: string;
-  etiqueta: string;
-  error: FieldError | undefined;
-  /** Clases extra del contenedor (p. ej. para ocupar todo el ancho de la grilla). */
-  className?: string;
-  children: ReactNode;
-}
-
-// Mismo patrón que `ClienteForm` (etiqueta, control, error): se repite acá a propósito para no
-// tocar ese formulario en este cambio; extraerlo a un componente común queda para el bloque de UX.
-function Campo({ id, etiqueta, error, className = '', children }: CampoProps) {
-  return (
-    <div className={`flex flex-col gap-1.5 ${className}`}>
-      <label htmlFor={id} className="text-sm font-medium">
-        {etiqueta}
-      </label>
-      {children}
-      {error?.message !== undefined && (
-        <p id={`${id}-error`} className="text-[13px] text-destructive">
-          {error.message}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** Atributos que conectan el control con su error y lo marcan como obligatorio. */
-function describirCampo(id: string, error: FieldError | undefined) {
-  return {
-    id,
-    required: true,
-    'aria-invalid': error ? true : undefined,
-    'aria-describedby': error ? `${id}-error` : undefined,
-  };
-}
-
 export function ContactosForm({ contactosIniciales, onSave, onCancel }: ContactosFormProps) {
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
@@ -201,7 +167,15 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
 
   return (
     <form noValidate onSubmit={(e) => void guardar(e)} className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
+      {/* Zona fija, fuera del área con scroll: con varios contactos el aviso quedaría
+          debajo de lo visible. */}
+      {avisoGeneral !== null && (
+        <div className="px-5 pt-4">
+          <Alert>{avisoGeneral}</Alert>
+        </div>
+      )}
+
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
         {fields.map((field, index) => {
           const errores = errors.contactos?.[index];
           const idDe = (campo: CampoContacto) => `${field.id}-${campo}`;
@@ -213,7 +187,7 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
               className="flex flex-col gap-3 rounded-card border bg-card p-4"
             >
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold">Contacto {index + 1}</h4>
+                <h3 className="text-sm font-semibold">Contacto {index + 1}</h3>
                 <AlertDialog>
                   <AlertDialogTrigger
                     render={
@@ -244,23 +218,23 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <Campo id={idDe('nombre')} etiqueta="Nombre" error={errores?.nombre}>
+                <FormField id={idDe('nombre')} label="Nombre" error={errores?.nombre}>
                   <Input
                     autoComplete="off"
                     {...register(`contactos.${index}.nombre`)}
                     {...describirCampo(idDe('nombre'), errores?.nombre)}
                   />
-                </Campo>
-                <Campo id={idDe('area')} etiqueta="Área" error={errores?.area}>
+                </FormField>
+                <FormField id={idDe('area')} label="Área" error={errores?.area}>
                   <Input
                     autoComplete="off"
                     {...register(`contactos.${index}.area`)}
                     {...describirCampo(idDe('area'), errores?.area)}
                   />
-                </Campo>
-                <Campo
+                </FormField>
+                <FormField
                   id={idDe('email')}
-                  etiqueta="Email"
+                  label="Email"
                   error={errores?.email}
                   className="sm:col-span-2"
                 >
@@ -270,7 +244,7 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
                     {...register(`contactos.${index}.email`)}
                     {...describirCampo(idDe('email'), errores?.email)}
                   />
-                </Campo>
+                </FormField>
                 <div className="flex items-center gap-2 sm:col-span-2">
                   <Controller
                     name={`contactos.${index}.recibeRendiciones`}
@@ -303,23 +277,18 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
         </Button>
       </div>
 
-      {/* Fuera del área con scroll: con varios contactos el aviso quedaría debajo de lo visible. */}
-      {avisoGeneral !== null && (
-        <p
-          role="alert"
-          className="mx-4 mb-3 rounded-control border border-destructive-border bg-destructive-soft px-3 py-2 text-sm text-destructive"
-        >
-          {avisoGeneral}
-        </p>
-      )}
-
-      <div className="flex justify-end gap-2 border-t p-4">
+      <div className="flex justify-end gap-2 border-t bg-panel-alt px-5 py-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
           Cancelar
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Guardando…' : 'Guardar contactos'}
-        </Button>
+        <LoadingButton
+          type="submit"
+          loading={isSubmitting}
+          loadingText="Guardando…"
+          className="min-w-44"
+        >
+          Guardar contactos
+        </LoadingButton>
       </div>
     </form>
   );

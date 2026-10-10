@@ -51,8 +51,8 @@ export function GestionarContactosSheet({ cliente, onClose }: GestionarContactos
         if (!abrir && !guardar.isPending) onClose();
       }}
     >
-      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-md flex flex-col">
-        <SheetHeader className="pr-12">
+      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-lg flex flex-col">
+        <SheetHeader>
           <SheetTitle>Contactos de {cliente?.razonSocial}</SheetTitle>
           <SheetDescription>
             Administrá los contactos para el envío de notificaciones.

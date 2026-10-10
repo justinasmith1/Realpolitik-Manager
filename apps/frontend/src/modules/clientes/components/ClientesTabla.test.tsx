@@ -147,7 +147,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     expect(menu.queryByRole('menuitem', { name: 'Desactivar' })).not.toBeInTheDocument();
   });
 
-  it('Desactivar es destructivo y va separado; Reactivar es normal y también va separado', async () => {
+  it('Desactivar es destructivo (rojo) y Reactivar es de éxito (verde); los dos van separados', async () => {
     render(<ClientesTabla clientes={[activo, inactivo]} onLimpiarFiltros={() => undefined} />);
 
     const menuActivo = await abrirMenu('Activa S.A.');
@@ -166,7 +166,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     const menuInactivo = await abrirMenu('Inactiva S.A.');
     expect(menuInactivo.getByRole('menuitem', { name: 'Reactivar' })).toHaveAttribute(
       'data-variant',
-      'default',
+      'success',
     );
     expect(menuInactivo.getByRole('separator')).toBeInTheDocument();
   });

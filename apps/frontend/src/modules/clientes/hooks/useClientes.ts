@@ -11,10 +11,11 @@ import {
  * lo invalida. Mientras llega la respuesta de un filtro nuevo se sigue mostrando la
  * anterior (`placeholderData`), para que la tabla no se vacíe al filtrar.
  */
-export function useClientes(filtros: FiltrosClientes) {
+export function useClientes(filtros: FiltrosClientes, { enabled = true } = {}) {
   return useQuery({
     queryKey: [...clientesQueryKey, 'lista', filtros],
     queryFn: ({ signal }) => listarClientes(filtros, signal),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }

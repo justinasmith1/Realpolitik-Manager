@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
+import { elegirOpcion, etiquetaDeOpcion } from '@/test/select';
 
 // La API se simula en `fetch`: el test recorre formulario → mutation → clientes.api → http().
 const fetchMock = vi.fn<typeof fetch>();
@@ -82,11 +83,11 @@ describe('EditarClienteSheet', () => {
     expect(campo('Razón social')).toHaveValue('Municipio de Ejemplo');
     expect(campo('Denominación')).toHaveValue('Muni Ejemplo');
     expect(campo('CUIT')).toHaveValue('30-50001274-5');
-    expect(campo('Sector')).toHaveValue('PUBLICO');
-    expect(campo('Subtipo público')).toHaveValue('MUNICIPAL');
-    expect(campo('Condición frente al IVA')).toHaveValue('EXENTO');
+    expect(campo('Sector')).toHaveTextContent(etiquetaDeOpcion('PUBLICO'));
+    expect(campo('Subtipo público')).toHaveTextContent(etiquetaDeOpcion('MUNICIPAL'));
+    expect(campo('Condición frente al IVA')).toHaveTextContent(etiquetaDeOpcion('EXENTO'));
     expect(campo('Email de contacto')).toHaveValue('compras@municipio.example');
-    expect(campo('Canal de entrega')).toHaveValue('PORTAL_WEB');
+    expect(campo('Canal de entrega')).toHaveTextContent(etiquetaDeOpcion('PORTAL_WEB'));
     expect(campo('URL del portal')).toHaveValue('https://portal.ejemplo.gob.ar');
     expect(botonGuardar()).toBeInTheDocument();
   });
@@ -221,7 +222,7 @@ describe('EditarClienteSheet: periodicidad', () => {
   it('sin periodicidad precarga "Sin configurar" y no muestra día ni mes', () => {
     renderEdicion();
 
-    expect(campo('Periodicidad')).toHaveValue('');
+    expect(campo('Periodicidad')).toHaveTextContent('Sin configurar');
     expect(screen.queryByLabelText('Día límite')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
   });
@@ -232,18 +233,22 @@ describe('EditarClienteSheet: periodicidad', () => {
   ] as const)('precarga una periodicidad %s con su día y sin mes', (tipo, periodicidad) => {
     renderEdicion(conPeriodicidad(periodicidad));
 
-    expect(campo('Periodicidad')).toHaveValue(tipo);
+    expect(campo('Periodicidad')).toHaveTextContent(etiquetaDeOpcion(tipo));
     expect(campo('Día límite')).toHaveValue(String(periodicidad.diaLimite));
     expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
   });
 
-  it('precarga una periodicidad BIMESTRAL con su día y su mes', () => {
-    renderEdicion(conPeriodicidad(bimestral));
+  it('precarga una periodicidad BIMESTRAL con su día y su mes', async () => {
+    const { user } = renderEdicion(conPeriodicidad(bimestral));
 
-    expect(campo('Periodicidad')).toHaveValue('BIMESTRAL');
+    expect(campo('Periodicidad')).toHaveTextContent(etiquetaDeOpcion('BIMESTRAL'));
     expect(campo('Día límite')).toHaveValue('15');
-    expect(campo('Mes de inicio del ciclo')).toHaveValue('3');
-    expect(screen.getByRole('option', { name: 'Marzo', selected: true })).toBeInTheDocument();
+    expect(campo('Mes de inicio del ciclo')).toHaveTextContent(etiquetaDeOpcion('3'));
+    // El mes cargado figura como la opción elegida al abrir la lista.
+    await user.click(campo('Mes de inicio del ciclo'));
+    expect(
+      await screen.findByRole('option', { name: 'Marzo', selected: true }),
+    ).toBeInTheDocument();
   });
 
   it('si nunca tuvo periodicidad y sigue sin configurar, no la envía', async () => {
@@ -257,7 +262,7 @@ describe('EditarClienteSheet: periodicidad', () => {
   it('configurar una periodicidad envía el objeto con números', async () => {
     const { user } = renderEdicion();
 
-    await user.selectOptions(campo('Periodicidad'), 'POR_CAMPANIA');
+    await elegirOpcion(user, campo('Periodicidad'), 'POR_CAMPANIA');
     await user.type(campo('Día límite'), '7');
     const cuerpo = await guardarYLeerCuerpo(user);
 
@@ -273,7 +278,7 @@ describe('EditarClienteSheet: periodicidad', () => {
 
     await user.clear(campo('Día límite'));
     await user.type(campo('Día límite'), '20');
-    await user.selectOptions(campo('Mes de inicio del ciclo'), 'Noviembre');
+    await elegirOpcion(user, campo('Mes de inicio del ciclo'), 'Noviembre');
     const cuerpo = await guardarYLeerCuerpo(user);
 
     expect(cuerpo.periodicidad).toStrictEqual({
@@ -286,7 +291,7 @@ describe('EditarClienteSheet: periodicidad', () => {
   it('al pasar de BIMESTRAL a MENSUAL el mes guardado no viaja', async () => {
     const { user } = renderEdicion(conPeriodicidad(bimestral));
 
-    await user.selectOptions(campo('Periodicidad'), 'MENSUAL');
+    await elegirOpcion(user, campo('Periodicidad'), 'MENSUAL');
     const cuerpo = await guardarYLeerCuerpo(user);
 
     expect(cuerpo.periodicidad).toStrictEqual({
@@ -299,7 +304,7 @@ describe('EditarClienteSheet: periodicidad', () => {
   it('si tenía periodicidad y pasa a "Sin configurar", envía periodicidad: null', async () => {
     const { user } = renderEdicion(conPeriodicidad(bimestral));
 
-    await user.selectOptions(campo('Periodicidad'), '');
+    await elegirOpcion(user, campo('Periodicidad'), '');
     const cuerpo = await guardarYLeerCuerpo(user);
 
     expect(cuerpo).toHaveProperty('periodicidad', null);
@@ -310,16 +315,16 @@ describe('EditarClienteSheet: periodicidad', () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: { code: 'INTERNAL_ERROR' } }, 500));
     const { user, onActualizado, onClose } = renderEdicion(conPeriodicidad(bimestral));
 
-    await user.selectOptions(campo('Mes de inicio del ciclo'), 'Junio');
+    await elegirOpcion(user, campo('Mes de inicio del ciclo'), 'Junio');
     await user.click(botonGuardar());
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'No pudimos guardar los cambios. Probá de nuevo en unos segundos.',
     );
     expect(screen.getByRole('dialog', { name: 'Editar cliente' })).toBeInTheDocument();
-    expect(campo('Periodicidad')).toHaveValue('BIMESTRAL');
+    expect(campo('Periodicidad')).toHaveTextContent(etiquetaDeOpcion('BIMESTRAL'));
     expect(campo('Día límite')).toHaveValue('15');
-    expect(campo('Mes de inicio del ciclo')).toHaveValue('6');
+    expect(campo('Mes de inicio del ciclo')).toHaveTextContent(etiquetaDeOpcion('6'));
     expect(onActualizado).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });

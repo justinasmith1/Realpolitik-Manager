@@ -1,10 +1,13 @@
-import type { Cliente, Periodicidad } from '@realpolitik/shared';
+import type { Cliente } from '@realpolitik/shared';
 
 import { Button } from '@/components/ui/button';
-import { etiquetaDeMes, etiquetasPeriodicidad } from '@/modules/clientes/clientes.etiquetas';
+import { useIsCompactLayout } from '@/hooks/use-media-query';
+import { cn } from '@/lib/utils';
 import { CanalEntregaBadge } from '@/modules/clientes/components/CanalEntregaBadge';
 import { ClienteAccionesMenu } from '@/modules/clientes/components/ClienteAccionesMenu';
+import { ClienteTarjeta } from '@/modules/clientes/components/ClienteTarjeta';
 import { EstadoBadge } from '@/modules/clientes/components/EstadoBadge';
+import { PeriodicidadTexto } from '@/modules/clientes/components/PeriodicidadTexto';
 import { SectorBadge } from '@/modules/clientes/components/SectorBadge';
 import { SubtipoBadge } from '@/modules/clientes/components/SubtipoBadge';
 
@@ -14,6 +17,8 @@ interface ClientesTablaProps {
   onLimpiarFiltros: () => void;
 }
 
+// Columnas con su primer nivel de lectura: quién es (Cliente), cómo se identifica (CUIT) y cómo
+// se clasifica (Sector y Subtipo). Contacto, canal y periodicidad son datos de segundo nivel.
 const columnas = [
   'Cliente',
   'CUIT',
@@ -25,29 +30,15 @@ const columnas = [
   'Acciones',
 ];
 
-/**
- * Periodicidad en texto y no como badge: la fila ya tiene sector, subtipo y canal como
- * badges. El tipo va arriba y el detalle abajo, en texto secundario como el email.
- */
-function PeriodicidadCelda({ periodicidad }: { periodicidad: Periodicidad | null }) {
-  if (periodicidad === null) {
-    return <span className="text-content-secondary">Sin configurar</span>;
-  }
-  const detalle =
-    periodicidad.tipo === 'BIMESTRAL'
-      ? `Día ${periodicidad.diaLimite} · desde ${etiquetaDeMes(periodicidad.mesInicioCiclo)}`
-      : `Día ${periodicidad.diaLimite}`;
-  return (
-    <div className="flex flex-col whitespace-nowrap">
-      <span>{etiquetasPeriodicidad[periodicidad.tipo]}</span>
-      <span className="text-xs text-content-secondary">{detalle}</span>
-    </div>
-  );
-}
+// La columna de acciones queda fija a la derecha: si la ventana no alcanza para toda la tabla y
+// aparece el scroll horizontal, el menú ⋯ de cada fila sigue a la vista.
+const claseAcciones = 'sticky right-0 bg-card px-2 py-2 shadow-[-1px_0_0_var(--border)]';
 
 /**
- * Tabla del listado. Con la lista vacía muestra el aviso de "sin resultados": que no haya
- * ningún cliente en absoluto lo resuelve la página con `ClientesEmptyState`.
+ * Listado de clientes. Con ancho suficiente es una tabla; debajo de ~1280px, tarjetas (la tabla
+ * de escritorio no se comprime hasta un celular). Con la lista vacía muestra el aviso de "sin
+ * resultados": que no haya ningún cliente en absoluto lo resuelve la página con
+ * `ClientesEmptyState`.
  */
 export function ClientesTabla({
   clientes,
@@ -66,6 +57,8 @@ export function ClientesTabla({
   /** Cliente cuyo cambio de estado está en curso: su botón se deshabilita. */
   idCambiandoEstado?: string | null;
 }) {
+  const compacto = useIsCompactLayout();
+
   if (clientes.length === 0) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">
@@ -80,17 +73,44 @@ export function ClientesTabla({
     );
   }
 
+  const accionesDe = (cliente: Cliente) => ({
+    onEditar,
+    onAdministrarContactos,
+    onDesactivar,
+    onReactivar,
+    cambiandoEstado: idCambiandoEstado === cliente.id,
+  });
+
+  if (compacto) {
+    return (
+      // Las columnas dependen del ancho del listado (container query), no del de la ventana: a
+      // 768px con el Sidebar abierto quedan ~500px y dos tarjetas no entran sin cortar datos.
+      <div className="@container">
+        <ul aria-label="Clientes" className="grid gap-3 @2xl:grid-cols-2">
+          {clientes.map((cliente) => (
+            <ClienteTarjeta key={cliente.id} cliente={cliente} acciones={accionesDe(cliente)} />
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-x-auto rounded-card border bg-card">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">Clientes</caption>
-        <thead className="border-b bg-table-head text-xs font-medium text-content-secondary">
+        <thead className="border-b bg-table-head text-xs text-content-secondary">
           <tr>
             {columnas.map((columna) => (
               <th
                 key={columna}
                 scope="col"
-                className={columna === 'Acciones' ? 'px-4 py-3 text-right' : 'px-4 py-3'}
+                className={cn(
+                  'px-2.5 py-3 font-medium whitespace-nowrap',
+                  columna === 'Cliente' && 'min-w-48 pl-4',
+                  columna === 'Acciones' &&
+                    'sticky right-0 bg-table-head text-right shadow-[-1px_0_0_var(--border)]',
+                )}
               >
                 {columna}
               </th>
@@ -99,45 +119,54 @@ export function ClientesTabla({
         </thead>
         <tbody className="divide-y divide-border">
           {clientes.map((cliente) => (
-            <tr key={cliente.id}>
-              <th scope="row" className="px-4 py-3 font-medium">
-                {cliente.razonSocial}
-                {cliente.estado !== 'ACTIVO' && (
-                  <span className="ml-2 align-middle">
-                    <EstadoBadge estado={cliente.estado} />
-                  </span>
-                )}
+            <tr key={cliente.id} className="group hover:bg-panel-alt">
+              <th scope="row" className="py-3 pr-2.5 pl-4 text-left font-normal">
+                <span
+                  className="line-clamp-2 leading-snug font-medium break-words"
+                  title={cliente.razonSocial}
+                >
+                  {cliente.razonSocial}
+                </span>
+                <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-content-secondary">
+                  <span className="truncate">{cliente.denominacion}</span>
+                  {cliente.estado !== 'ACTIVO' && <EstadoBadge estado={cliente.estado} />}
+                </span>
               </th>
-              <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{cliente.cuit}</td>
-              <td className="px-4 py-3">
+              <td className="px-2.5 py-3 font-mono text-xs whitespace-nowrap">{cliente.cuit}</td>
+              <td className="px-2.5 py-3">
                 <SectorBadge sector={cliente.sector} />
               </td>
-              <td className="px-4 py-3">
-                {cliente.sector === 'PUBLICO' ? (
-                  <SubtipoBadge subtipo={cliente.subtipo} />
-                ) : (
-                  <span aria-label="Sin subtipo" className="text-content-secondary">
-                    —
-                  </span>
-                )}
+              <td className="px-2.5 py-3">
+                {/* Los subtipos largos ("Provincial u organismo público") se recortan con elipsis
+                    para que las 8 columnas entren a 1280px; el badge lleva el nombre completo en
+                    `title`. */}
+                <div className="flex max-w-28">
+                  {cliente.sector === 'PUBLICO' ? (
+                    <SubtipoBadge subtipo={cliente.subtipo} />
+                  ) : (
+                    <span aria-label="Sin subtipo" className="text-content-secondary">
+                      —
+                    </span>
+                  )}
+                </div>
               </td>
-              <td className="px-4 py-3 text-content-secondary">{cliente.emailContacto}</td>
-              <td className="px-4 py-3">
+              <td className="max-w-40 px-2.5 py-3">
+                <span
+                  className="block truncate text-content-secondary"
+                  title={cliente.emailContacto}
+                >
+                  {cliente.emailContacto}
+                </span>
+              </td>
+              <td className="px-2.5 py-3">
                 <CanalEntregaBadge canal={cliente.canalEntrega} />
               </td>
-              <td className="px-4 py-3">
-                <PeriodicidadCelda periodicidad={cliente.periodicidad} />
+              <td className="px-2.5 py-3">
+                <PeriodicidadTexto periodicidad={cliente.periodicidad} />
               </td>
-              <td className="px-4 py-3">
+              <td className={cn(claseAcciones, 'group-hover:bg-panel-alt')}>
                 <div className="flex justify-end">
-                  <ClienteAccionesMenu
-                    cliente={cliente}
-                    onEditar={onEditar}
-                    onAdministrarContactos={onAdministrarContactos}
-                    onDesactivar={onDesactivar}
-                    onReactivar={onReactivar}
-                    cambiandoEstado={idCambiandoEstado === cliente.id}
-                  />
+                  <ClienteAccionesMenu cliente={cliente} {...accionesDe(cliente)} />
                 </div>
               </td>
             </tr>

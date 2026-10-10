@@ -51,6 +51,8 @@
   --warning: #a97914;
   --warning-soft: #fbf3e3;
   --success: #1f5f3f;
+  --success-soft: #edf6f0;
+  --success-border: #bcdcc9;
 
   /* Clasificación del cliente (badges de sector y subtipo). Son colores propios: no
      reutilizan los de estado ni el de error. */
@@ -117,6 +119,8 @@
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
   --color-sector-publico: var(--sector-publico);
   --color-sector-publico-soft: var(--sector-publico-soft);
   --color-sector-publico-border: var(--sector-publico-border);

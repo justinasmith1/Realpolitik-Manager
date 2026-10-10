@@ -45,11 +45,12 @@ export function NuevoClienteSheet({ abierto, onAbiertoChange, onCreado }: NuevoC
         onAbiertoChange(abrir);
       }}
     >
-      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-md">
-        <SheetHeader className="pr-12">
+      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
+        <SheetHeader>
           <SheetTitle>Nuevo cliente</SheetTitle>
           <SheetDescription>
-            Completá los datos para registrarlo en el catálogo. La periodicidad es opcional.
+            Completá los datos para registrarlo en el catálogo. Todos los campos son obligatorios,
+            salvo los marcados como opcionales.
           </SheetDescription>
         </SheetHeader>
         <ClienteForm

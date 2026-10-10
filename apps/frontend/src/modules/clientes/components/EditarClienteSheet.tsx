@@ -62,8 +62,8 @@ export function EditarClienteSheet({ cliente, onClose, onActualizado }: EditarCl
         }
       }}
     >
-      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-md">
-        <SheetHeader className="pr-12">
+      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
+        <SheetHeader>
           <SheetTitle>Editar cliente</SheetTitle>
           <SheetDescription>
             Modificá los datos de {cliente?.razonSocial} y guardá los cambios.
