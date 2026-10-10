@@ -40,11 +40,22 @@ Nunca se versionan secretos. `VITE_API_URL` tampoco es un secreto, pero su valor
 
 ## Integración continua
 
-El workflow [`ci.yml`](../.github/workflows/ci.yml) corre en cada Pull Request y en cada push a `main`, con permisos mínimos (`contents: read`), sin secretos y sin base de datos (los tests actuales no la necesitan; `prisma generate` tampoco requiere `DATABASE_URL`).
+El workflow [`ci.yml`](../.github/workflows/ci.yml) corre en cada Pull Request y en cada push a `main`, con permisos mínimos (`contents: read`) y sin secretos.
 
-Pasos, en orden: instalación con `--frozen-lockfile`, generación del cliente Prisma, `format:check`, `lint`, `typecheck`, tests de `shared`, `backend` y `frontend`, y build de `frontend` y `backend`.
+Levanta un **PostgreSQL efímero** (`postgres:16-alpine`, base `realpolitik_test`) como service del job. Sus credenciales están escritas en el workflow a propósito: el contenedor nace y muere con el job y no tiene datos reales. El nombre termina en `_test` para que las guardas de los tests permitan usarla.
 
-Para reproducirlo en local, desde la raíz:
+Pasos, en orden:
+
+1. instalación con `--frozen-lockfile` y generación del cliente Prisma;
+2. `format:check`, `lint`, `typecheck`;
+3. tests de `shared` y tests **unitarios** del backend (sin base);
+4. `db:migrate:deploy` sobre la base vacía: aplica **todo** el historial de migraciones, CHECK incluidos. Si alguna falla, el CI falla;
+5. tests de **integración** del backend contra PostgreSQL (`test:integration`: todos los `*.integration.test.ts`);
+6. tests del frontend;
+7. tests del frontend **contra la API real** (`test:api`): levanta el backend contra la misma base, espera `/health`, corre los `*.api.test.tsx` y apaga el backend aunque fallen;
+8. build de `frontend` y `backend`.
+
+Para reproducirlo en local (con la base descartable de [Base de datos](development/database.md#tests-de-integración)):
 
 ```bash
 pnpm install --frozen-lockfile
@@ -53,6 +64,7 @@ pnpm lint
 pnpm typecheck
 pnpm --filter @realpolitik/shared test
 pnpm --filter @realpolitik/backend test
+pnpm --filter @realpolitik/backend test:integration   # con TEST_DATABASE_URL
 pnpm --filter @realpolitik/frontend test
 pnpm --filter @realpolitik/frontend build
 pnpm --filter @realpolitik/backend build

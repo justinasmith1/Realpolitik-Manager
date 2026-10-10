@@ -93,8 +93,9 @@ export function erroresParaElFormulario(
 }
 
 /**
- * Mensaje para cuando falla desactivar o reactivar un cliente. Si ya no existe se avisa
- * eso (el listado se refresca solo); lo demás es genérico, sin detalles técnicos.
+ * Mensaje para cuando falla desactivar o reactivar un cliente. Si ya no existe se dice eso, y
+ * nada más: el listado se vuelve a pedir, pero ese pedido también podría fallar, así que no se
+ * promete que "se actualizó" (lo muestra el listado). Lo demás es genérico, sin detalles técnicos.
  */
 export function mensajeFalloCambioEstado(
   fallo: FalloCambioEstado,
@@ -102,7 +103,7 @@ export function mensajeFalloCambioEstado(
 ): string {
   switch (fallo.tipo) {
     case 'no-existe':
-      return 'Este cliente ya no existe. Actualizamos el listado.';
+      return 'Este cliente ya no existe.';
     case 'inesperado':
       return `No pudimos ${accion} el cliente. Probá de nuevo en unos segundos.`;
   }

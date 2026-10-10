@@ -22,7 +22,10 @@ import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteS
 import { mensajeFalloCambioEstado } from '@/modules/clientes/components/erroresDeEnvio';
 import { GestionarContactosSheet } from '@/modules/clientes/components/GestionarContactosSheet';
 import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
-import { useCambiarEstadoCliente } from '@/modules/clientes/hooks/useCambiarEstadoCliente';
+import {
+  useCambiarEstadoCliente,
+  useClientesCambiandoEstado,
+} from '@/modules/clientes/hooks/useCambiarEstadoCliente';
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
 import { useFiltrosClientes } from '@/modules/clientes/hooks/useFiltrosClientes';
 
@@ -40,6 +43,7 @@ export function ClientesPage() {
   const { filtros, hayFiltros, estado, textoBusqueda, ...acciones } = useFiltrosClientes();
   const consulta = useClientes(filtros);
   const cambioDeEstado = useCambiarEstadoCliente();
+  const idsCambiandoEstado = useClientesCambiandoEstado();
 
   const abrirAlta = () => {
     setUltimoCreado(null);
@@ -186,9 +190,7 @@ export function ClientesPage() {
               onEditar={abrirEdicion}
               onDesactivar={setClienteADesactivar}
               onReactivar={(cliente) => void cambiarEstado(cliente, 'ACTIVO')}
-              idCambiandoEstado={
-                cambioDeEstado.isPending ? (cambioDeEstado.variables?.id ?? null) : null
-              }
+              idsCambiandoEstado={idsCambiandoEstado}
             />
           )}
         </>

@@ -249,7 +249,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
       <ClientesTabla
         clientes={[activo, inactivo]}
         onLimpiarFiltros={() => undefined}
-        idCambiandoEstado={activo.id}
+        idsCambiandoEstado={[activo.id]}
       />,
     );
 

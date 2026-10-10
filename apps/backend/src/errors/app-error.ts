@@ -1,4 +1,5 @@
-export type ErrorCode = 'VALIDATION_ERROR' | 'NOT_FOUND' | 'CONFLICT' | 'INTERNAL_ERROR';
+export type ErrorCode =
+  'VALIDATION_ERROR' | 'NOT_FOUND' | 'CONFLICT' | 'PAYLOAD_TOO_LARGE' | 'INTERNAL_ERROR';
 
 export interface ValidationDetail {
   campo: string;

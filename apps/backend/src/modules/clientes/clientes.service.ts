@@ -144,30 +144,58 @@ function validarEmailsResultantes(
   }
 }
 
+// Cuántas veces se vuelve a intentar si el estado cambia entre la escritura condicional y la
+// lectura (otro pedido lo cambió justo en medio). Alcanza con pocas: hace falta que el estado
+// oscile en cada intento para agotarlas.
+const INTENTOS_DE_CAMBIO_DE_ESTADO = 3;
+
 /**
  * Activa o desactiva un cliente (HU1.8). Solo cambia `estado`: los datos, los contactos y
  * lo demás no se tocan, y no se usa la baja lógica (`isDeleted`), que es otra cosa. Pedir el
- * estado que el cliente ya tiene responde igual con el cliente, sin error (idempotente).
+ * estado que el cliente ya tiene responde 200 con el cliente tal cual, SIN escribir la fila
+ * (`updatedAt` no cambia).
  *
- * `isDeleted: false` va en el `where` del `update`: un cliente dado de baja es un 404, como
- * si no existiera. Prisma lo informa con P2025, así que no hace falta una consulta previa.
+ * Una sola sentencia decide si hay que escribir: `UPDATE … WHERE id AND NOT isDeleted AND
+ * estado <> nuevo RETURNING …` (el `update` de Prisma con filtros extra en el `where`).
+ * - Si escribe, devuelve la fila que escribió: respuesta y escritura coinciden.
+ * - Si no matchea (P2025), el cliente no existe, está dado de baja o ya tiene ese estado: se
+ *   lee para distinguirlo. Leer y escribir por separado ("leer, y si difiere, actualizar")
+ *   dejaría escribir dos veces a dos pedidos simultáneos; acá la condición la evalúa
+ *   PostgreSQL al tomar el lock de la fila, así que de dos pedidos iguales solo uno escribe.
+ * - Si al leer el estado ya no es el pedido, otro pedido lo cambió entre la escritura y la
+ *   lectura: se reintenta, para que la respuesta muestre el estado que se pidió.
+ *
+ * No hace falta una transacción: cada paso es una sentencia atómica y ninguno depende de un
+ * dato leído en otro. Tampoco SQL crudo.
  */
 export async function cambiarEstadoCliente(
   id: string,
   estado: ActualizarEstadoClienteDto['estado'],
 ): Promise<Cliente> {
-  try {
-    const actualizado = await prisma.cliente.update({
-      where: { id, isDeleted: false },
-      data: { estado },
-    });
-    return toClienteDto(actualizado);
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+  for (let intento = 1; intento <= INTENTOS_DE_CAMBIO_DE_ESTADO; intento++) {
+    try {
+      const actualizado = await prisma.cliente.update({
+        where: { id, isDeleted: false, estado: { not: estado } },
+        data: { estado },
+      });
+      return toClienteDto(actualizado);
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2025') {
+        throw error;
+      }
+    }
+
+    const actual = await prisma.cliente.findFirst({ where: { id, isDeleted: false } });
+    if (actual === null) {
       throw notFound('Cliente no encontrado');
     }
-    throw error;
+    if (actual.estado === estado) {
+      return toClienteDto(actual);
+    }
   }
+  throw new Error(
+    `El estado del cliente ${id} cambió durante ${INTENTOS_DE_CAMBIO_DE_ESTADO} intentos seguidos.`,
+  );
 }
 
 /**

@@ -140,10 +140,13 @@ pnpm lint
 pnpm typecheck
 pnpm --filter @realpolitik/shared test
 pnpm --filter @realpolitik/backend test
+pnpm --filter @realpolitik/backend test:integration   # necesita TEST_DATABASE_URL
 pnpm --filter @realpolitik/frontend test
 pnpm --filter @realpolitik/frontend build
 pnpm --filter @realpolitik/backend build
 ```
+
+Los tests de integración (`test:integration` del backend y `test:api` del frontend) necesitan una base descartable: ver [Base de datos](database.md#tests-de-integración).
 
 ## Siguiente lectura
 

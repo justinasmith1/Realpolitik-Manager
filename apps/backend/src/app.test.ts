@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
-import { createApp } from './app';
+import { createApp, LIMITE_CUERPO_JSON } from './app';
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -35,6 +35,54 @@ describe('JSON mal formado', () => {
         details: [{ campo: 'body', mensaje: 'El JSON enviado está mal formado' }],
       },
     });
+  });
+});
+
+describe('cuerpo demasiado grande', () => {
+  // `100kb` de body-parser son 100 * 1024 bytes.
+  const LIMITE = 100 * 1024;
+  const cuerpoDe = (bytes: number) => {
+    const envoltura = '{"razonSocial":""}';
+    return `{"razonSocial":"${'x'.repeat(bytes - envoltura.length)}"}`;
+  };
+
+  it('declara el límite de 100kb', () => {
+    expect(LIMITE_CUERPO_JSON).toBe('100kb');
+  });
+
+  it('pasado el límite responde 413 PAYLOAD_TOO_LARGE, sin detalles internos', async () => {
+    const res = await request(app)
+      .post('/clientes')
+      .set('Content-Type', 'application/json')
+      .send(cuerpoDe(LIMITE + 1));
+
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({
+      error: {
+        code: 'PAYLOAD_TOO_LARGE',
+        message: 'El cuerpo de la solicitud es demasiado grande',
+      },
+    });
+  });
+
+  it('justo en el límite el cuerpo se lee y sigue a la validación normal (400, no 413)', async () => {
+    const res = await request(app)
+      .post('/clientes')
+      .set('Content-Type', 'application/json')
+      .send(cuerpoDe(LIMITE));
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+  });
+
+  it('el JSON mal formado sigue siendo 400, no 413', async () => {
+    const res = await request(app)
+      .patch('/clientes/c3d4e5f6-a7b8-4901-8def-012345678901')
+      .set('Content-Type', 'application/json')
+      .send('{"razonSocial": ');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
   });
 });
 

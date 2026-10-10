@@ -574,7 +574,7 @@ describe('PUT /clientes/:id/contactos: reconciliación', () => {
       const actualizaciones = transaccion.contacto.update.mock.invocationCallOrder;
       expect(transaccion.contacto.updateMany).toHaveBeenCalledWith({
         where: { id: { in: [ID_A, ID_B] }, clienteId: CLIENTE },
-        data: { isDeleted: true },
+        data: { isDeleted: true, deletedAt: expect.any(Date) as unknown },
       });
       expect(actualizaciones).toHaveLength(2);
       expect(estacionar).toBeLessThan(Math.min(...actualizaciones));

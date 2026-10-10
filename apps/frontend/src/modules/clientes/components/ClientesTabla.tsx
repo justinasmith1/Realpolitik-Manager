@@ -47,15 +47,15 @@ export function ClientesTabla({
   onEditar,
   onDesactivar,
   onReactivar,
-  idCambiandoEstado = null,
+  idsCambiandoEstado = [],
 }: ClientesTablaProps & {
   onAdministrarContactos?: (cliente: Cliente) => void;
   onEditar?: (cliente: Cliente) => void;
   /** Pide desactivar un cliente activo (la confirmación la resuelve quien la usa). */
   onDesactivar?: (cliente: Cliente) => void;
   onReactivar?: (cliente: Cliente) => void;
-  /** Cliente cuyo cambio de estado está en curso: su botón se deshabilita. */
-  idCambiandoEstado?: string | null;
+  /** Clientes con un cambio de estado en curso: su Desactivar/Reactivar se deshabilita. */
+  idsCambiandoEstado?: readonly string[];
 }) {
   const compacto = useIsCompactLayout();
 
@@ -78,7 +78,7 @@ export function ClientesTabla({
     onAdministrarContactos,
     onDesactivar,
     onReactivar,
-    cambiandoEstado: idCambiandoEstado === cliente.id,
+    cambiandoEstado: idsCambiandoEstado.includes(cliente.id),
   });
 
   if (compacto) {

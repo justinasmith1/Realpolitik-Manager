@@ -41,4 +41,5 @@ Se mantienen abiertas y no se resuelven en este documento:
 - mecanismo de autenticación;
 - almacenamiento de archivos;
 - proveedores de infraestructura;
-- configuración en GitHub de secret scanning, push protection y reglas de protección de ramas: verificar y dejar constancia cuando se confirmen.
+- configuración en GitHub de secret scanning, push protection y reglas de protección de ramas: verificar y dejar constancia cuando se confirmen;
+- hardening HTTP del backend: headers de seguridad (Helmet o equivalente, con CSP definida junto al frontend) y rate limiting. Hoy la API no tiene autenticación, `x-powered-by` está deshabilitado, CORS es una lista explícita y el cuerpo JSON está limitado a 100 KB (`413 PAYLOAD_TOO_LARGE`); se suma cuando haya autenticación y un entorno desplegado que lo justifique.

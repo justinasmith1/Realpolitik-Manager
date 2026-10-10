@@ -215,7 +215,10 @@ export async function reemplazarContactos(
         if (cambianDeEmail.length > 0) {
           await tx.contacto.updateMany({
             where: { id: { in: cambianDeEmail.map(({ actual }) => actual.id) }, clienteId },
-            data: { isDeleted: true },
+            // Con fecha, como cualquier baja: `ck_contacto_baja_logica` exige que vayan juntas y
+            // PostgreSQL controla los CHECK en cada sentencia (no al final de la transacción).
+            // El paso 3 los reactiva y vuelve a poner `deletedAt` en null.
+            data: { isDeleted: true, deletedAt: new Date() },
           });
         }
 

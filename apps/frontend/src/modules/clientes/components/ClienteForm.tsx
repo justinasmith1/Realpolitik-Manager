@@ -25,6 +25,10 @@ import {
   nombresDeMes,
 } from '@/modules/clientes/clientes.etiquetas';
 import {
+  camposModificados,
+  type CamposModificados,
+} from '@/modules/clientes/components/cambiosDeEdicion';
+import {
   clienteFormResolver,
   valoresInicialesClienteForm,
   type CampoClienteForm,
@@ -37,13 +41,30 @@ export interface ErroresDeEnvio {
   general?: string;
 }
 
+/** Lo que acompaña a los datos al enviar. */
+export interface EnvioDelFormulario {
+  /**
+   * Campos modificados respecto de `valoresIniciales`. La edición los usa para mandar solo lo
+   * que cambió (ver `construirCambiosCliente`); el alta no los necesita.
+   */
+  modificados: CamposModificados;
+}
+
 interface ClienteFormProps {
-  /** Recibe los datos ya validados. Devuelve los errores del servidor, o nada si salió bien. */
-  onSubmit: (datos: NuevoCliente) => Promise<ErroresDeEnvio | undefined>;
+  /**
+   * Recibe los datos ya validados (el formulario completo) y qué campos se modificaron.
+   * Devuelve los errores del servidor, o nada si salió bien.
+   */
+  onSubmit: (datos: NuevoCliente, envio: EnvioDelFormulario) => Promise<ErroresDeEnvio | undefined>;
   onCancel: () => void;
   textoEnviar: string;
   /** Datos con los que arranca el formulario. Sin ellos arranca vacío (alta). */
   valoresIniciales?: ClienteFormValues;
+  /**
+   * El envío solo tiene sentido si algo cambió (la edición): mientras el formulario siga igual a
+   * `valoresIniciales`, el botón de enviar queda deshabilitado y se avisa por qué.
+   */
+  soloConCambios?: boolean;
 }
 
 // Opciones de cada select, derivadas de los enums compartidos y sus etiquetas.
@@ -177,6 +198,7 @@ export function ClienteForm({
   onCancel,
   textoEnviar,
   valoresIniciales = valoresInicialesClienteForm,
+  soloConCambios = false,
 }: ClienteFormProps) {
   const id = useId();
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
@@ -189,7 +211,7 @@ export function ClienteForm({
     clearErrors,
     setError,
     trigger,
-    formState: { errors, isSubmitting, submitCount },
+    formState,
   } = useForm<ClienteFormValues, unknown, NuevoCliente>({
     defaultValues: valoresIniciales,
     resolver: clienteFormResolver,
@@ -199,6 +221,10 @@ export function ClienteForm({
     reValidateMode: 'onChange',
     shouldFocusError: false,
   });
+  // `dirtyFields` se lee en el render para que RHF lo siga (`formState` es un proxy): así el
+  // botón se habilita apenas hay un cambio y `formState.dirtyFields` está al día al enviar.
+  const { errors, isSubmitting, submitCount, isDirty } = formState;
+  const sinCambios = soloConCambios && !isDirty;
   const sector = useWatch({ control, name: 'sector' });
   const canalEntrega = useWatch({ control, name: 'canalEntrega' });
   const periodicidadTipo = useWatch({ control, name: 'periodicidadTipo' });
@@ -240,7 +266,9 @@ export function ClienteForm({
   const enviar = handleSubmit(
     async (datos) => {
       setErrorGeneral(null);
-      const errores = await onSubmit(datos);
+      const errores = await onSubmit(datos, {
+        modificados: camposModificados(formState.dirtyFields),
+      });
       if (errores === undefined) {
         return;
       }
@@ -318,7 +346,7 @@ export function ClienteForm({
                 placeholder="Elegí el sector"
                 // Un subtipo elegido para un público no puede quedar guardado si pasa a privado.
                 onCambio={() => {
-                  setValue('subtipo', '');
+                  setValue('subtipo', '', { shouldDirty: true });
                   clearErrors('subtipo');
                 }}
               />
@@ -386,8 +414,8 @@ export function ClienteForm({
               // Igual que sector/subtipo: el dato del canal anterior no debe quedar guardado
               // ni mostrar un error de un campo que ya no está en pantalla.
               onCambio={() => {
-                setValue('portalUrl', '');
-                setValue('whatsappNumero', '');
+                setValue('portalUrl', '', { shouldDirty: true });
+                setValue('whatsappNumero', '', { shouldDirty: true });
                 clearErrors(['portalUrl', 'whatsappNumero']);
               }}
             />
@@ -449,11 +477,11 @@ export function ClienteForm({
               // no quedan colgados de un campo que ya no está en pantalla.
               onCambio={(tipo) => {
                 if (tipo !== 'BIMESTRAL') {
-                  setValue('periodicidadMesInicioCiclo', '');
+                  setValue('periodicidadMesInicioCiclo', '', { shouldDirty: true });
                   clearErrors('periodicidadMesInicioCiclo');
                 }
                 if (tipo === '') {
-                  setValue('periodicidadDiaLimite', '');
+                  setValue('periodicidadDiaLimite', '', { shouldDirty: true });
                   clearErrors('periodicidadDiaLimite');
                 }
               }}
@@ -499,7 +527,12 @@ export function ClienteForm({
         </FormSection>
       </div>
 
-      <div className="flex justify-end gap-2 border-t bg-panel-alt px-5 py-4">
+      <div className="flex items-center justify-end gap-2 border-t bg-panel-alt px-5 py-4">
+        {sinCambios && (
+          <p id={`${id}-sin-cambios`} className="mr-auto text-xs text-muted-foreground">
+            Sin cambios para guardar.
+          </p>
+        )}
         <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
           Cancelar
         </Button>
@@ -507,6 +540,10 @@ export function ClienteForm({
           type="submit"
           loading={isSubmitting}
           loadingText="Guardando…"
+          // Sin cambios no hay nada que enviar: el botón espera al primer cambio (y vuelve a
+          // deshabilitarse si todo regresa a como estaba).
+          disabled={sinCambios}
+          aria-describedby={sinCambios ? `${id}-sin-cambios` : undefined}
           className="min-w-40"
         >
           {textoEnviar}

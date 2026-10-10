@@ -1011,9 +1011,7 @@ describe('ClientesPage: desactivar y reactivar', () => {
         within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desactivar cliente' }),
       );
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        'Este cliente ya no existe. Actualizamos el listado.',
-      );
+      expect(await screen.findByRole('alert')).toHaveTextContent('Este cliente ya no existe.');
       await vi.waitFor(() => expect(urlsGet().length).toBeGreaterThan(pedidosAntes));
       await vi.waitFor(() =>
         expect(screen.queryByText('Zeta Producciones S.A.')).not.toBeInTheDocument(),
@@ -1041,6 +1039,82 @@ describe('ClientesPage: desactivar y reactivar', () => {
       );
       expect(screen.getByText('Zeta Producciones S.A.')).toBeInTheDocument();
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['un 500', () => Promise.resolve(json({ error: { code: 'INTERNAL_ERROR' } }, 500))],
+      ['un fallo de red', () => Promise.reject(new TypeError('Failed to fetch'))],
+    ])(
+      'ante %s no vuelve a pedir el listado: en la base no cambió nada',
+      async (_caso, respuestaDelPatch) => {
+        simularServidorConEstado(catalogo);
+        const { user } = renderPage();
+        await screen.findByRole('table');
+        const servidor = fetchMock.getMockImplementation();
+        fetchMock.mockImplementation((entrada, init) =>
+          init?.method === 'PATCH'
+            ? respuestaDelPatch()
+            : (servidor?.(entrada, init) ?? Promise.reject(new Error('sin servidor'))),
+        );
+        const pedidosAntes = urlsGet().length;
+
+        await elegirAccion(user, 'Ministerio de Ejemplo', 'Desactivar');
+        await user.click(
+          within(screen.getByRole('alertdialog')).getByRole('button', {
+            name: 'Desactivar cliente',
+          }),
+        );
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos desactivar');
+        // Se da tiempo a que un refetch, si lo hubiera, salga.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(urlsGet()).toHaveLength(pedidosAntes);
+      },
+    );
+  });
+
+  describe('cambios simultáneos', () => {
+    it('mientras un cambio sigue en curso, su acción queda deshabilitada aunque se cambie otro cliente', async () => {
+      const datos = simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      // Los PATCH quedan colgados hasta que el test los responde.
+      const pendientes: (() => void)[] = [];
+      const servidor = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((entrada, init) =>
+        init?.method === 'PATCH'
+          ? new Promise<Response>((resolve) => {
+              pendientes.push(() => {
+                const id = urlDe(entrada).split('/').at(-2);
+                const cliente = datos.find((c) => c.id === id);
+                resolve(json({ ...cliente, estado: 'INACTIVO' }));
+              });
+            })
+          : (servidor?.(entrada, init) ?? Promise.reject(new Error('sin servidor'))),
+      );
+      const desactivar = async (razonSocial: string) => {
+        await elegirAccion(user, razonSocial, 'Desactivar');
+        await user.click(
+          within(screen.getByRole('alertdialog')).getByRole('button', {
+            name: 'Desactivar cliente',
+          }),
+        );
+      };
+
+      await desactivar('Zeta Producciones');
+      await desactivar('Ministerio de Ejemplo');
+      await vi.waitFor(() => expect(pendientes).toHaveLength(2));
+
+      // El primero sigue en vuelo: no se puede volver a pedir.
+      const menu = await abrirMenuDe(user, 'Zeta Producciones');
+      expect(menu.getByRole('menuitem', { name: 'Desactivar' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      await user.keyboard('{Escape}');
+
+      for (const responder of pendientes) responder();
+      await vi.waitFor(() => expect(screen.getAllByRole('status')).not.toHaveLength(0));
     });
   });
 });
