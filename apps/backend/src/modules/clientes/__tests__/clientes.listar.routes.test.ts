@@ -178,6 +178,44 @@ describe('GET /clientes', () => {
     expect(condicionesDeCuit().some((fragmento) => publica.cuit.includes(fragmento))).toBe(true);
   });
 
+  // Prisma no escapa los comodines de LIKE: el service lo hace para que `q` se busque tal cual.
+  // Que PostgreSQL los interprete de verdad se prueba en `clientes.integration.test.ts`.
+  it.each([
+    ['%', '%25', '\\%'],
+    ['_', '_', '\\_'],
+    ['una barra invertida', '%5C', '\\\\'],
+    ['50% y Plan_B', '50%25%20y%20Plan_B', '50\\% y Plan\\_B'],
+  ])('q con %s se envía escapado a la base', async (_caso, qCodificado, escapado) => {
+    await request(app).get(`/clientes?q=${qCodificado}`);
+
+    expect(whereEnviado()?.OR).toEqual([
+      { razonSocial: { contains: escapado, mode: 'insensitive' } },
+      { denominacion: { contains: escapado, mode: 'insensitive' } },
+    ]);
+  });
+
+  it('q acepta 150 caracteres y rechaza 151 con 400 sin llegar a la base', async () => {
+    const bien = await request(app).get(`/clientes?q=${'a'.repeat(150)}`);
+    expect(bien.status).toBe(200);
+    expect(prismaMock.cliente.findMany).toHaveBeenCalledTimes(1);
+
+    prismaMock.cliente.findMany.mockClear();
+    const mal = await request(app).get(`/clientes?q=${'a'.repeat(151)}`);
+    expect(mal.status).toBe(400);
+    expect(mal.body).toMatchObject({
+      error: { code: 'VALIDATION_ERROR', details: [{ campo: 'q' }] },
+    });
+    expect(prismaMock.cliente.findMany).not.toHaveBeenCalled();
+  });
+
+  it('q con un NUL responde 400 sin llegar a la base', async () => {
+    const res = await request(app).get('/clientes?q=abc%00');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: { details: [{ campo: 'q' }] } });
+    expect(prismaMock.cliente.findMany).not.toHaveBeenCalled();
+  });
+
   it('ignora q en blanco', async () => {
     await request(app).get('/clientes?q=%20%20');
 

@@ -573,7 +573,7 @@ describe('NuevoClienteSheet: periodicidad', () => {
           error: {
             code: 'VALIDATION_ERROR',
             message: 'Los datos enviados no son válidos',
-            details: [{ campo: 'periodicidad.diaLimite', mensaje: 'x' }],
+            details: [{ campo: 'periodicidad.diaLimite', mensaje: 'Required' }],
           },
         },
         400,

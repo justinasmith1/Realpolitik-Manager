@@ -324,3 +324,120 @@ describe('EditarClienteSheet: periodicidad', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+// ─── Errores del servidor y URL del portal (endurecimiento de entrada) ──────────
+
+describe('EditarClienteSheet: errores del servidor por campo', () => {
+  const rechazo = (...details: { campo: string; mensaje: string }[]) =>
+    jsonResponse(
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Los datos enviados no son válidos',
+          details,
+        },
+      },
+      400,
+    );
+
+  it('rechaza en el formulario una URL que no es http(s), sin llegar al servidor', async () => {
+    const { user, onActualizado } = renderEdicion();
+
+    await user.clear(campo('URL del portal'));
+    await user.type(campo('URL del portal'), 'javascript:alert(1)');
+    await user.click(botonGuardar());
+
+    expect(
+      await screen.findByText(
+        'La URL del portal debe ser una URL HTTP o HTTPS válida (por ejemplo, https://portal.ejemplo.com).',
+      ),
+    ).toBeInTheDocument();
+    expect(campo('URL del portal')).toHaveAttribute('aria-invalid', 'true');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onActualizado).not.toHaveBeenCalled();
+  });
+
+  it('rechaza en el formulario una URL con usuario y contraseña', async () => {
+    const { user } = renderEdicion();
+
+    await user.clear(campo('URL del portal'));
+    await user.type(campo('URL del portal'), 'https://usuario:clave@portal.ejemplo.gob.ar');
+    await user.click(botonGuardar());
+
+    expect(
+      await screen.findByText('La URL del portal no puede incluir usuario ni contraseña.'),
+    ).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('un 400 sobre portalUrl se muestra en ese campo con el texto del servidor', async () => {
+    fetchMock.mockResolvedValue(
+      rechazo({
+        campo: 'portalUrl',
+        mensaje: 'Para cargar la URL del portal, el canal tiene que ser Portal web.',
+      }),
+    );
+    const { user, onActualizado } = renderEdicion();
+
+    await user.click(botonGuardar());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Algunos datos no son válidos. Revisá los campos marcados.',
+    );
+    expect(campo('URL del portal')).toHaveAttribute('aria-invalid', 'true');
+    expect(campo('URL del portal')).toHaveAccessibleDescription(
+      expect.stringContaining('Para cargar la URL del portal, el canal tiene que ser Portal web.'),
+    );
+    expect(onActualizado).not.toHaveBeenCalled();
+  });
+
+  it('un 400 sobre el canal de entrega se muestra en el selector del canal', async () => {
+    fetchMock.mockResolvedValue(rechazo({ campo: 'canalEntrega', mensaje: 'Required' }));
+    const { user } = renderEdicion();
+
+    await user.click(botonGuardar());
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(campo('Canal de entrega')).toHaveAttribute('aria-invalid', 'true');
+    // El texto por defecto de Zod, en inglés, no se muestra.
+    expect(campo('Canal de entrega')).toHaveAccessibleDescription(
+      expect.stringContaining('Revisá este dato.'),
+    );
+    expect(screen.queryByText('Required')).not.toBeInTheDocument();
+  });
+
+  it('un 400 sobre el email de contacto se muestra en ese campo', async () => {
+    fetchMock.mockResolvedValue(
+      rechazo({
+        campo: 'emailContacto',
+        mensaje: 'El email de contacto no puede superar los 254 caracteres.',
+      }),
+    );
+    const { user } = renderEdicion();
+
+    await user.click(botonGuardar());
+
+    await screen.findByRole('alert');
+    expect(campo('Email de contacto')).toHaveAttribute('aria-invalid', 'true');
+    expect(campo('Email de contacto')).toHaveAccessibleDescription(
+      expect.stringContaining('El email de contacto no puede superar los 254 caracteres.'),
+    );
+  });
+
+  it('un 400 sobre un dato que el formulario no tiene va al aviso general, sin marcar campos', async () => {
+    fetchMock.mockResolvedValue(
+      rechazo({ campo: 'telefono', mensaje: 'El teléfono no tiene un formato válido.' }),
+    );
+    const { user, onClose } = renderEdicion();
+
+    await user.click(botonGuardar());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'El teléfono no tiene un formato válido.',
+    );
+    for (const etiqueta of ['URL del portal', 'Email de contacto', 'CUIT', 'Razón social']) {
+      expect(campo(etiqueta)).not.toHaveAttribute('aria-invalid', 'true');
+    }
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});

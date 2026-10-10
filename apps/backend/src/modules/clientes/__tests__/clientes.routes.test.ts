@@ -315,6 +315,85 @@ describe('POST /clientes', () => {
     });
   });
 
+  // Lo que la base no podría guardar (columna más corta, NUL) o que no es un dato válido se
+  // rechaza con 400 antes de llegar a Prisma. Contra PostgreSQL real: `clientes.integration.test.ts`.
+  describe('datos que la base no aceptaría', () => {
+    const email = (largo: number) => `${'a'.repeat(largo - '@e.example'.length)}@e.example`;
+    const conPortal = (portalUrl: string) => ({
+      ...altaPrivada,
+      canalEntrega: 'PORTAL_WEB',
+      portalUrl,
+    });
+
+    it.each([
+      ['razonSocial de 151 caracteres', { razonSocial: 'x'.repeat(151) }, 'razonSocial'],
+      ['denominacion de 61 caracteres', { denominacion: 'x'.repeat(61) }, 'denominacion'],
+      ['emailContacto de 255 caracteres', { emailContacto: email(255) }, 'emailContacto'],
+      ['un email adicional de 255', { emailsAdicionales: [email(255)] }, 'emailsAdicionales.0'],
+      ['razonSocial con NUL', { razonSocial: 'Empresa\u0000S.A.' }, 'razonSocial'],
+      ['denominacion con salto de línea', { denominacion: 'Emp\nresa' }, 'denominacion'],
+      [
+        'emails adicionales repetidos',
+        { emailsAdicionales: ['A@e.example', 'a@e.example'] },
+        'emailsAdicionales.0',
+      ],
+      [
+        'un adicional igual al principal',
+        { emailsAdicionales: ['ADMIN@empresa.example'] },
+        'emailsAdicionales.0',
+      ],
+      [
+        'portalUrl de 501 caracteres',
+        conPortal(`https://e.example/${'a'.repeat(483)}`),
+        'portalUrl',
+      ],
+      ['portalUrl javascript:', conPortal('javascript:alert(1)'), 'portalUrl'],
+      ['portalUrl data:', conPortal('data:text/html,<script>alert(1)</script>'), 'portalUrl'],
+      ['portalUrl ftp:', conPortal('ftp://e.example/x'), 'portalUrl'],
+      ['portalUrl con credenciales', conPortal('https://usuario:clave@e.example'), 'portalUrl'],
+      [
+        'whatsappNumero de 16 dígitos',
+        { canalEntrega: 'WHATSAPP', whatsappNumero: '5493511234567890' },
+        'whatsappNumero',
+      ],
+    ])('responde 400 con %s, sin tocar la base', async (_caso, cambios, campo) => {
+      const res = await postClientes({ ...altaPrivada, ...cambios });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({
+        error: {
+          code: 'VALIDATION_ERROR',
+          details: expect.arrayContaining([expect.objectContaining({ campo })]) as unknown,
+        },
+      });
+      expect(prismaMock.cliente.create).not.toHaveBeenCalled();
+    });
+
+    it('acepta los máximos exactos y los envía tal cual a la base', async () => {
+      const portalUrl = `https://e.example/${'a'.repeat(482)}`;
+      expect(portalUrl).toHaveLength(500);
+
+      const res = await postClientes({
+        ...altaPrivada,
+        razonSocial: 'x'.repeat(150),
+        denominacion: 'x'.repeat(60),
+        emailContacto: email(254),
+        canalEntrega: 'PORTAL_WEB',
+        portalUrl,
+      });
+
+      expect(res.status).toBe(201);
+      expect(prismaMock.cliente.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          razonSocial: 'x'.repeat(150),
+          denominacion: 'x'.repeat(60),
+          emailContacto: email(254),
+          portalUrl,
+        }) as unknown,
+      });
+    });
+  });
+
   describe('CUIT duplicado', () => {
     it.each(['ACTIVO', 'INACTIVO', 'SUSPENDIDO'] as const)(
       'responde 409 con el cliente %s que ya tiene el CUIT',
