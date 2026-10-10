@@ -1,11 +1,17 @@
 import { PrismaClient, Sector, SubtipoPublico, IvaCondicion, ClienteEstado } from '@prisma/client';
 
+import { verificarSeedPermitido } from '../src/lib/seed-guard';
+
 const prisma = new PrismaClient();
 
 async function main() {
+  // Primero la guarda, antes de cualquier operación sobre la base: este seed borra clientes.
+  verificarSeedPermitido();
+
   console.log('🌱 Seeding database...');
 
-  // Limpia la tabla antes de re-seedear para garantizar idempotencia
+  // DESTRUCTIVO: borra todos los clientes (y sus contactos, en cascada) antes de cargar los
+  // de ejemplo. Solo para una base de desarrollo local.
   await prisma.cliente.deleteMany();
 
   await prisma.cliente.createMany({
