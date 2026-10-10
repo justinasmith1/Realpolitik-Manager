@@ -1,5 +1,6 @@
 import {
   ClienteSector,
+  MAX_BUSQUEDA_CLIENTES,
   ClienteSubtipoPublico,
   subtiposPorSector,
   type ClienteSectorType,
@@ -73,6 +74,7 @@ export function ClientesFiltros({
             id="filtro-busqueda"
             type="search"
             placeholder="Razón social, denominación o CUIT"
+            maxLength={MAX_BUSQUEDA_CLIENTES}
             value={textoBusqueda}
             onChange={(e) => onTextoChange(e.target.value)}
             className="pl-8"

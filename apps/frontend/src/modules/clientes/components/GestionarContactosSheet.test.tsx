@@ -26,8 +26,8 @@ const contactoJson = (id: string, clienteId: string, nombre: string, email: stri
   area: 'Tesorería',
   email,
   recibeRendiciones: false,
-  createdAt: '2026-10-08T12:00:00.000Z',
-  updatedAt: '2026-10-08T12:00:00.000Z',
+  creadoEn: '2026-10-08T12:00:00.000Z',
+  actualizadoEn: '2026-10-08T12:00:00.000Z',
 });
 
 const ana = contactoJson(ID_ANA, CLIENTE_A, 'Ana Pérez', 'ana@ejemplo.example');

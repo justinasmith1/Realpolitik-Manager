@@ -13,8 +13,8 @@ const contactoJson = {
   area: 'Tesorería',
   email: 'ana@ejemplo.example',
   recibeRendiciones: true,
-  createdAt: '2026-10-08T12:00:00.000Z',
-  updatedAt: '2026-10-08T12:00:00.000Z',
+  creadoEn: '2026-10-08T12:00:00.000Z',
+  actualizadoEn: '2026-10-08T12:00:00.000Z',
 };
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -97,7 +97,7 @@ describe('guardarContactos', () => {
 
     expect(guardados).toHaveLength(1);
     expect(guardados[0]).toMatchObject({ id: ID_A, nombre: 'Ana Pérez' });
-    expect(guardados[0]?.createdAt).toBeInstanceOf(Date);
+    expect(guardados[0]?.creadoEn).toBeInstanceOf(Date);
   });
 
   it('rechaza con el ApiClientError de http() sin modificarlo', async () => {
