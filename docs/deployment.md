@@ -116,6 +116,7 @@ El backend se construye y arranca desde la raíz del repositorio (Root Directory
 | `CORS_ORIGINS`          | Origen de producción del frontend | Manual                                         | No      |
 | `RAILPACK_NODE_VERSION` | `24`                              | Manual                                         | No      |
 
+- `NODE_ENV=production` hay que definirlo siempre en el proveedor: el servidor arranca igual sin ella y asume `development` (conveniente en local, engañoso en producción). Si se olvida, el servidor no avisa; la única pista es el arranque, que imprime el entorno (`Backend escuchando en … (development)`). Lo que cambia por no definirla es poco hoy (no se registran las consultas de Prisma, que solo se activan con `NODE_ENV=development` explícito), pero cualquier lógica futura que dependa de `production` quedaría apagada. Por eso las guardas de seguridad no dependen solo de esta variable (ver el seed, abajo).
 - `CORS_ORIGINS` es el origen exacto, `https://<host>` **sin barra final**. Se admiten varios, separados por comas. Si falta o es inválido, el servidor no arranca y el deploy falla el healthcheck. No se usa `*`.
 - Los previews de Vercel tienen un hostname distinto en cada deploy y **no** se agregan a `CORS_ORIGINS`.
 - Usar la URL **privada** de la base (mismo proyecto de Railway). La URL pública (proxy TCP) factura tráfico de salida y expone la base fuera de la red privada: no se usa.
@@ -130,7 +131,7 @@ El backend se construye y arranca desde la raíz del repositorio (Root Directory
 
 - En producción solo se aplican migraciones con **`db:migrate:deploy`** (`prisma migrate deploy`): ejecuta las migraciones ya versionadas en `apps/backend/prisma/migrations/`.
 - **`db:migrate` (`prisma migrate dev`) no se usa en producción.** Crea migraciones y es solo para desarrollo.
-- **El seed no se ejecuta en producción.** `db:seed` es solo para desarrollo local y **borra todos los clientes** antes de insertar los de ejemplo. No lo ejecutes con un `DATABASE_URL` de producción, y no pongas esa URL en tu `.env` local.
+- **El seed no se ejecuta en producción.** `db:seed` es solo para desarrollo local y **borra todos los clientes** antes de insertar los de ejemplo. No lo ejecutes con un `DATABASE_URL` de producción, y no pongas esa URL en tu `.env` local. Como red de seguridad, el seed se niega a correr si `NODE_ENV=production` o si el host de `DATABASE_URL` no es `localhost`, `127.0.0.1` o `::1`; no hay forma de saltear esa guarda con una variable.
 - Prisma Studio (`db:studio`) no forma parte del despliegue.
 - Docker Compose (`docker-compose.yml`) es solo para la base local de desarrollo; Railway no lo usa y no hay Dockerfile.
 - Una migración nueva se crea en desarrollo, se revisa y se versiona en el Pull Request; el pre-deploy la aplica al desplegar.

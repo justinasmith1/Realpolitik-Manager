@@ -109,12 +109,12 @@ El servidor escucha en `http://localhost:3000` (variable `PORT`). Las rutas no l
 1. Copiá `apps/backend/.env.example` como `apps/backend/.env` (Git lo ignora).
 2. Ajustá los valores. El script `dev` lo carga con `--env-file=.env`.
 
-| Variable       | Obligatoria | Descripción                                                              |
-| -------------- | ----------- | ------------------------------------------------------------------------ |
-| `NODE_ENV`     | No          | `development` (default), `test` o `production`.                          |
-| `PORT`         | No          | Entero entre 1 y 65535 (default 3000).                                   |
-| `DATABASE_URL` | Sí          | URL de PostgreSQL. Si tu Docker usa otro puerto (p. ej. 5433), ajustalo. |
-| `CORS_ORIGINS` | Sí          | Orígenes del frontend permitidos, separados por comas y sin barra final. |
+| Variable       | Obligatoria | Descripción                                                                                                           |
+| -------------- | ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`     | No          | `development` (default), `test` o `production`. En producción se define siempre (ver [Despliegue](../deployment.md)). |
+| `PORT`         | No          | Entero entre 1 y 65535 (default 3000).                                                                                |
+| `DATABASE_URL` | Sí          | URL de PostgreSQL. Si tu Docker usa otro puerto (p. ej. 5433), ajustalo.                                              |
+| `CORS_ORIGINS` | Sí          | Orígenes del frontend permitidos, separados por comas y sin barra final.                                              |
 
 Si falta o es inválida alguna, el servidor no arranca y el mensaje nombra la variable sin mostrar su valor (`DATABASE_URL` contiene la contraseña). En producción las variables vienen del entorno del servidor, no de un archivo `.env`.
 

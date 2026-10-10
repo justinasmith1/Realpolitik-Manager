@@ -47,7 +47,7 @@ pnpm --filter @realpolitik/backend db:generate
 pnpm --filter @realpolitik/backend db:migrate
 ```
 
-Prisma pedirá un nombre para la nueva migración (por ejemplo: `init_cliente`). Crea y aplica la migración, y regenera el cliente.
+Aplica las migraciones que falten en tu base local y regenera el cliente. Si cambiaste `schema.prisma`, Prisma te pide un nombre y crea además una migración nueva (por ejemplo: `init_cliente`). Es un comando **solo de desarrollo** (ver [Scripts disponibles](#scripts-disponibles)).
 
 ### 6. Seedear datos de prueba
 
@@ -55,7 +55,7 @@ Prisma pedirá un nombre para la nueva migración (por ejemplo: `init_cliente`).
 pnpm --filter @realpolitik/backend db:seed
 ```
 
-Inserta datos iniciales (10 clientes de ejemplo).
+Inserta datos iniciales (10 clientes de ejemplo). **Antes borra todos los clientes** (y, en cascada, sus contactos): úsalo solo en tu base local de desarrollo.
 
 ### 7. Verificar en Prisma Studio (opcional)
 
@@ -67,15 +67,27 @@ Abre una UI en `http://localhost:5555` para explorar y editar los datos directam
 
 ## Scripts disponibles
 
-| Script              | Qué hace                                                |
-| ------------------- | ------------------------------------------------------- |
-| `db:generate`       | Regenera el cliente Prisma a partir del schema          |
-| `db:migrate`        | Crea y aplica una nueva migración en desarrollo         |
-| `db:migrate:deploy` | Aplica migraciones pendientes sin crearlas (producción) |
-| `db:seed`           | Inserta datos de prueba en la base de datos             |
-| `db:studio`         | Abre Prisma Studio en `http://localhost:5555`           |
+| Script              | Qué hace                                                       | Dónde se usa              |
+| ------------------- | -------------------------------------------------------------- | ------------------------- |
+| `db:generate`       | Regenera el cliente Prisma a partir del schema                 | Cualquier entorno         |
+| `db:migrate`        | `prisma migrate dev`: crea y aplica migraciones                | **Solo desarrollo**       |
+| `db:migrate:deploy` | `prisma migrate deploy`: aplica las migraciones ya versionadas | Producción y staging      |
+| `db:seed`           | Borra los clientes e inserta datos de ejemplo                  | **Solo desarrollo local** |
+| `db:studio`         | Abre Prisma Studio en `http://localhost:5555`                  | Desarrollo                |
 
 Todos se ejecutan con `pnpm --filter @realpolitik/backend <script>`.
+
+### `db:migrate` (solo desarrollo)
+
+Es `prisma migrate dev`. Puede **crear** migraciones nuevas a partir de los cambios del schema y, si la base local no coincide con el historial de migraciones (drift, o una migración ya aplicada fue modificada), **propone resetearla**: eso borra todos sus datos. Por eso nunca se apunta a una base que importe.
+
+### `db:migrate:deploy` (producción y staging)
+
+Es `prisma migrate deploy`. Solo aplica las migraciones que ya están versionadas en `apps/backend/prisma/migrations/`; no crea migraciones, no compara contra el schema y no ofrece resetear nada. Es el único comando de migraciones que se usa en producción (ver [Despliegue](../deployment.md)).
+
+### `db:seed` (destructivo, solo desarrollo)
+
+Borra **todos los clientes** (los contactos caen en cascada) y los reemplaza por los de ejemplo. No es incremental ni se puede deshacer. Nunca se ejecuta en producción: el seed se niega a correr si `NODE_ENV=production` o si el host de `DATABASE_URL` no es `localhost`, `127.0.0.1` o `::1`, y no hay una variable para saltear esa guarda. Con la base en Docker de esta guía (`localhost`) no hace falta hacer nada especial.
 
 ## Siguiente lectura
 
