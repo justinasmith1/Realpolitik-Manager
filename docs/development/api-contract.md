@@ -180,23 +180,43 @@ Un contacto pertenece a un cliente.
 }
 ```
 
-- `nombre`, `area` y `email` son obligatorios. El `email` debe tener formato válido y se guarda en minúsculas.
+- `nombre`, `area` y `email` son obligatorios. El `email` debe tener formato válido, no superar los 254 caracteres y se guarda en minúsculas y sin espacios en los bordes.
 - `recibeRendiciones` es `false` por defecto. Los contactos con `true` son los destinatarios de las rendiciones del cliente, además del email de rendición.
 - Dentro de un mismo cliente no puede haber dos contactos no eliminados con el mismo email.
 - Eliminar un contacto es una baja lógica: deja de figurar en el listado, pero queda registrado.
 - Se pueden ver y modificar los contactos de un cliente inactivo.
+- Un cliente dado de baja lógica (`isDeleted`) se trata como inexistente: **todas** las operaciones de contactos responden `404 NOT_FOUND`, igual que los endpoints del cliente. No es lo mismo que un cliente `INACTIVO`, que sigue existiendo.
+- Los ids de la ruta (`:id`, `:contactoId`) se validan: uno que no es un uuid responde `400 VALIDATION_ERROR`, nunca un error del servidor.
 
 | Método y ruta                                | Qué hace                                                                               | Código HTTP         | Pedido (shared)                   | Respuesta (shared)                |
 | -------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------- | --------------------------------- | --------------------------------- |
 | `GET /clientes/:id/contactos`                | Lista los contactos del cliente. Primero los que reciben rendiciones, luego por nombre | 200 con la lista    | Sin cuerpo                        | A crear en shared (ver sección 5) |
 | `POST /clientes/:id/contactos`               | Agrega un contacto                                                                     | 201 con el contacto | A crear en shared (ver sección 5) | A crear en shared (ver sección 5) |
-| `PATCH /clientes/:id/contactos/:contactoId`  | Modifica un contacto o marca si recibe rendiciones. Al menos un campo                  | 200 con el contacto | A crear en shared (ver sección 5) | A crear en shared (ver sección 5) |
+| `PUT /clientes/:id/contactos`                | Guarda la colección completa de contactos, todo o nada (ver abajo)                     | 200 con la lista    | `ReemplazarContactosSchema`       | Lista de contactos                |
+| `PATCH /clientes/:id/contactos/:contactoId`  | Modifica un contacto o marca si recibe rendiciones. Al menos un campo (`{}` es 400)    | 200 con el contacto | A crear en shared (ver sección 5) | A crear en shared (ver sección 5) |
 | `DELETE /clientes/:id/contactos/:contactoId` | Elimina un contacto                                                                    | 204 sin cuerpo      | Sin cuerpo                        | Sin cuerpo                        |
 
-**Errores:**
+### `PUT /clientes/:id/contactos`
 
-- `400 VALIDATION_ERROR`: email con formato inválido, falta un campo obligatorio, ids que no son uuid.
-- `404 NOT_FOUND`: el cliente o el contacto no existe, o el contacto no pertenece a ese cliente.
+Guarda de una vez todos los contactos del cliente, como los muestra el editor. Los endpoints de a un contacto siguen existiendo.
+
+- **Pedido:** `{ "contactos": [ { "id"?, "nombre", "area", "email", "recibeRendiciones" } ] }`.
+  - Con `id`, el contacto ya existe y se actualiza; sin `id`, es nuevo.
+  - Lo que el cliente ya tiene y **no** viene en la lista se elimina (baja lógica). Una lista vacía elimina todos.
+  - No se envían `clienteId`, fechas ni baja lógica: si llegan, se ignoran. No hay un máximo de contactos.
+  - No puede haber dos contactos con el mismo email (comparado sin espacios y en minúsculas) ni el mismo `id` en la lista.
+- **Respuesta 200:** la colección final de contactos activos, ordenada igual que `GET`.
+- **Todo o nada:** el guardado ocurre en una única transacción. Si algo falla, no se aplica ningún cambio. Los contactos que no cambiaron no se modifican.
+- **Emails intercambiados:** permitido. Dos contactos pueden intercambiar sus emails, y uno puede tomar el email de otro que se elimina en el mismo guardado, sin conflicto.
+- **Errores:**
+  - `400 VALIDATION_ERROR`: estructura inválida, dato inválido de algún contacto (`campo` es la ruta, por ejemplo `contactos.1.email`), email o `id` repetido dentro de la lista.
+  - `404 NOT_FOUND`: el cliente no existe o está dado de baja; o un `id` no corresponde a un contacto activo de este cliente.
+  - `409 CONFLICT`: `motivo: "EMAIL_DUPLICADO"` si un email choca con un contacto ajeno al guardado (no debería ocurrir salvo concurrencia), o `motivo: "CONTACTOS_MODIFICADOS"` si otra operación modificó los contactos del cliente mientras se guardaba; se reintenta.
+
+### Errores de los endpoints de a un contacto
+
+- `400 VALIDATION_ERROR`: email con formato inválido o de más de 254 caracteres, falta un campo obligatorio, `PATCH` sin ningún campo, ids que no son uuid.
+- `404 NOT_FOUND`: el cliente no existe o está dado de baja, o el contacto no existe, está eliminado o no pertenece a ese cliente.
 - `409 CONFLICT`: el email ya existe en otro contacto del mismo cliente. `details` trae `motivo: "EMAIL_DUPLICADO"` y el contacto existente (`id` y `nombre`).
 
 ## 4. Fuera del alcance de este documento
