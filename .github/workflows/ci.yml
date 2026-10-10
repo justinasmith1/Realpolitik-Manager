@@ -16,7 +16,29 @@ jobs:
   verify:
     name: Lint, typecheck, test y build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    # PostgreSQL efímero, solo para este job. Las credenciales NO son secretas: el contenedor
+    # nace y muere con el job y no tiene datos reales. El nombre termina en `_test` para que las
+    # guardas de los tests (`baseDescartable`) permitan usarla.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: realpolitik_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d realpolitik_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/realpolitik_test?schema=public
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/realpolitik_test?schema=public
 
     steps:
       - name: Checkout
@@ -40,7 +62,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Los scripts del backend ya lo hacen solos; se deja explícito para que el CI
-      # no dependa de eso. No necesita DATABASE_URL ni base de datos.
+      # no dependa de eso. No necesita base de datos.
       - name: Generate Prisma Client
         run: pnpm --filter @realpolitik/backend db:generate
 
@@ -56,11 +78,39 @@ jobs:
       - name: Test shared
         run: pnpm --filter @realpolitik/shared test
 
-      - name: Test backend
+      - name: Test backend (unitarios)
         run: pnpm --filter @realpolitik/backend test
+
+      # Aplica TODO el historial de migraciones sobre la base vacía: si alguna falla (o un CHECK
+      # nuevo no se puede crear), el CI falla acá.
+      - name: Migrar base de test (desde cero)
+        run: pnpm --filter @realpolitik/backend db:migrate:deploy
+
+      - name: Test backend (integración PostgreSQL)
+        run: pnpm --filter @realpolitik/backend test:integration
 
       - name: Test frontend
         run: pnpm --filter @realpolitik/frontend test
+
+      # Frontend (Vitest/jsdom) → backend real → PostgreSQL. Sin Vite: solo hace falta la API.
+      # El backend corre en un único proceso Node para poder apagarlo con el trap, pase o falle.
+      - name: Test frontend contra la API real
+        shell: bash
+        env:
+          TEST_API_URL: http://127.0.0.1:3999
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/backend-api-test.log"
+          (cd apps/backend && PORT=3999 CORS_ORIGINS=http://localhost:5173 NODE_ENV=test \
+            exec node --import tsx src/server.ts) > "$LOG" 2>&1 &
+          BACKEND_PID=$!
+          trap 'kill "$BACKEND_PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3999/health > /dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3999/health > /dev/null || { cat "$LOG"; exit 1; }
+          pnpm --filter @realpolitik/frontend test:api || { cat "$LOG"; exit 1; }
 
       - name: Build frontend
         run: pnpm --filter @realpolitik/frontend build

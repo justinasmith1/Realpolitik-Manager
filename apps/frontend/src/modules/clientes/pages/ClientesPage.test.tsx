@@ -4,6 +4,7 @@ import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
+import { elegirOpcion, etiquetaDeOpcion } from '@/test/select';
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -165,8 +166,8 @@ async function completarAltaValida(user: UserEvent) {
   await user.type(q.getByLabelText('Razón social'), 'Empresa de Ejemplo S.A.');
   await user.type(q.getByLabelText('Denominación'), 'Empresa Ejemplo');
   await user.type(q.getByLabelText('CUIT'), '20-12345678-6');
-  await user.selectOptions(q.getByLabelText('Sector'), 'PRIVADO');
-  await user.selectOptions(q.getByLabelText('Condición frente al IVA'), 'RESPONSABLE_INSCRIPTO');
+  await elegirOpcion(user, q.getByLabelText('Sector'), 'PRIVADO');
+  await elegirOpcion(user, q.getByLabelText('Condición frente al IVA'), 'RESPONSABLE_INSCRIPTO');
   await user.type(q.getByLabelText('Email de contacto'), 'admin@empresa.example');
 }
 
@@ -176,7 +177,12 @@ function expectFormularioLimpio() {
   const q = dialog ? within(dialog) : screen;
   for (const etiqueta of camposDelAlta) {
     const control = q.getByLabelText(etiqueta);
-    expect(control).toHaveValue('');
+    if (control.getAttribute('role') === 'combobox') {
+      // Un select sin elección muestra su placeholder ("Elegí …").
+      expect(control).toHaveTextContent(/^Elegí /);
+    } else {
+      expect(control).toHaveValue('');
+    }
     expect(control).not.toHaveAttribute('aria-invalid');
   }
   expect(q.queryByLabelText('Subtipo público')).not.toBeInTheDocument();
@@ -297,7 +303,8 @@ describe('ClientesPage: tabla', () => {
     expect(within(fila).getByRole('rowheader')).toHaveTextContent('Municipalidad de Ejemplo');
     expect(celdas[0]).toHaveTextContent('30-50001274-5');
     expect(celdas[3]).toHaveTextContent('muni@ejemplo.example');
-    expect(within(fila).queryByText('Muni Ejemplo')).not.toBeInTheDocument();
+    // La denominación acompaña a la razón social como segunda línea de la misma celda.
+    expect(within(fila).getByRole('rowheader')).toHaveTextContent('Muni Ejemplo');
     expect(screen.getAllByRole('row')).toHaveLength(1 + catalogo.length);
     expect(screen.getByText('3 clientes')).toBeInTheDocument();
   });
@@ -326,7 +333,7 @@ describe('ClientesPage: filtros por sector y subtipo (HU1.2)', () => {
     const { user } = renderPage();
     await screen.findByRole('table');
 
-    await user.selectOptions(screen.getByLabelText('Sector'), 'PRIVADO');
+    await elegirOpcion(user, screen.getByLabelText('Sector'), 'PRIVADO');
 
     await vi.waitFor(() => expect(screen.queryByText('Municipalidad de Ejemplo')).toBeNull());
     expect(ultimaUrl()).toBe('https://api.example/clientes?sector=PRIVADO');
@@ -338,7 +345,7 @@ describe('ClientesPage: filtros por sector y subtipo (HU1.2)', () => {
     const { user } = renderPage();
     await screen.findByRole('table');
 
-    await user.selectOptions(screen.getByLabelText('Subtipo'), 'MUNICIPAL');
+    await elegirOpcion(user, screen.getByLabelText('Subtipo'), 'MUNICIPAL');
 
     await vi.waitFor(() => expect(screen.queryByText('Ministerio de Ejemplo')).toBeNull());
     expect(ultimaUrl()).toBe('https://api.example/clientes?subtipo=MUNICIPAL');
@@ -347,10 +354,10 @@ describe('ClientesPage: filtros por sector y subtipo (HU1.2)', () => {
   });
 
   it('el selector de subtipo ofrece los subtipos del sector público', async () => {
-    renderPage();
+    const { user } = renderPage();
     await screen.findByRole('table');
-
-    const opciones = within(screen.getByLabelText('Subtipo'))
+    await user.click(screen.getByLabelText('Subtipo'));
+    const opciones = within(await screen.findByRole('listbox'))
       .getAllByRole('option')
       .map((o) => o.textContent);
 
@@ -365,15 +372,15 @@ describe('ClientesPage: filtros por sector y subtipo (HU1.2)', () => {
   it('al pasar a Privado el subtipo elegido se descarta y el selector queda deshabilitado', async () => {
     const { user } = renderPage();
     await screen.findByRole('table');
-    await user.selectOptions(screen.getByLabelText('Sector'), 'PUBLICO');
-    await user.selectOptions(screen.getByLabelText('Subtipo'), 'MUNICIPAL');
+    await elegirOpcion(user, screen.getByLabelText('Sector'), 'PUBLICO');
+    await elegirOpcion(user, screen.getByLabelText('Subtipo'), 'MUNICIPAL');
     await vi.waitFor(() => expect(ultimaUrl()).toContain('subtipo=MUNICIPAL'));
 
-    await user.selectOptions(screen.getByLabelText('Sector'), 'PRIVADO');
+    await elegirOpcion(user, screen.getByLabelText('Sector'), 'PRIVADO');
 
     await vi.waitFor(() => expect(ultimaUrl()).toBe('https://api.example/clientes?sector=PRIVADO'));
     expect(screen.getByLabelText('Subtipo')).toBeDisabled();
-    expect(screen.getByLabelText('Subtipo')).toHaveValue('');
+    expect(screen.getByLabelText('Subtipo')).toHaveTextContent('No aplica a privados');
   });
 
   it('con el sector Privado el subtipo está deshabilitado desde el primer momento', async () => {
@@ -391,8 +398,8 @@ describe('ClientesPage: filtros por sector y subtipo (HU1.2)', () => {
     expect(urlsPedidas()).toEqual([
       'https://api.example/clientes?sector=PUBLICO&subtipo=MUNICIPAL',
     ]);
-    expect(screen.getByLabelText('Sector')).toHaveValue('PUBLICO');
-    expect(screen.getByLabelText('Subtipo')).toHaveValue('MUNICIPAL');
+    expect(screen.getByLabelText('Sector')).toHaveTextContent(etiquetaDeOpcion('PUBLICO'));
+    expect(screen.getByLabelText('Subtipo')).toHaveTextContent(etiquetaDeOpcion('MUNICIPAL'));
   });
 
   it('ignora valores inválidos de la URL', async () => {
@@ -407,7 +414,7 @@ describe('ClientesPage: filtros por sector y subtipo (HU1.2)', () => {
     await screen.findByRole('table');
     fetchMock.mockReturnValue(new Promise<Response>(() => undefined));
 
-    await user.selectOptions(screen.getByLabelText('Sector'), 'PRIVADO');
+    await elegirOpcion(user, screen.getByLabelText('Sector'), 'PRIVADO');
 
     await vi.waitFor(() => expect(ultimaUrl()).toContain('sector=PRIVADO'));
     expect(screen.getByText('Municipalidad de Ejemplo')).toBeInTheDocument();
@@ -419,7 +426,7 @@ describe('ClientesPage: filtros por sector y subtipo (HU1.2)', () => {
     const { user } = renderPage();
     await screen.findByRole('table');
 
-    await user.selectOptions(screen.getByLabelText('Sector'), 'PRIVADO');
+    await elegirOpcion(user, screen.getByLabelText('Sector'), 'PRIVADO');
     await user.type(screen.getByLabelText('Buscar cliente'), 'municipalidad');
 
     expect(await screen.findByText('No hay clientes que coincidan')).toBeVisible();
@@ -432,7 +439,7 @@ describe('ClientesPage: filtros por sector y subtipo (HU1.2)', () => {
     expect(await screen.findByRole('table')).toBeInTheDocument();
     expect(screen.getAllByRole('row')).toHaveLength(1 + catalogo.length);
     expect(screen.getByLabelText('Buscar cliente')).toHaveValue('');
-    expect(screen.getByLabelText('Sector')).toHaveValue('');
+    expect(screen.getByLabelText('Sector')).toHaveTextContent('Todos');
     expect(emptyHeading()).not.toBeInTheDocument();
   });
 });
@@ -481,8 +488,8 @@ describe('ClientesPage: buscador', () => {
   it('se combina con los filtros de sector y subtipo', async () => {
     const { user } = renderPage();
     await screen.findByRole('table');
-    await user.selectOptions(screen.getByLabelText('Sector'), 'PUBLICO');
-    await user.selectOptions(screen.getByLabelText('Subtipo'), 'PROVINCIAL_ORGANISMO');
+    await elegirOpcion(user, screen.getByLabelText('Sector'), 'PUBLICO');
+    await elegirOpcion(user, screen.getByLabelText('Subtipo'), 'PROVINCIAL_ORGANISMO');
 
     await user.type(screen.getByLabelText('Buscar cliente'), 'ejemplo');
 
@@ -568,7 +575,7 @@ describe('ClientesPage: alta de cliente', () => {
     await user.click(screen.getByRole('button', { name: 'Registrar cliente' }));
 
     expect(await screen.findByRole('table')).toBeInTheDocument();
-    expect(screen.getByText('Empresa de Ejemplo S.A.', { selector: 'th' })).toBeInTheDocument();
+    expect(screen.getByText('Empresa de Ejemplo S.A.')).toBeInTheDocument();
     expect(emptyHeading()).not.toBeInTheDocument();
   });
 
@@ -598,7 +605,7 @@ describe('ClientesPage: alta de cliente', () => {
 
     await user.click(screen.getByRole('button', { name: 'Nuevo cliente' }));
     await user.type(screen.getByLabelText('CUIT'), '20-12345678-5');
-    await user.selectOptions(screen.getByLabelText('Sector'), 'PUBLICO');
+    await elegirOpcion(user, screen.getByLabelText('Sector'), 'PUBLICO');
     await user.click(screen.getByRole('button', { name: 'Registrar cliente' }));
     expect(screen.getByLabelText('CUIT')).toHaveAttribute('aria-invalid', 'true');
     await user.click(screen.getByRole('button', { name: 'Cancelar' }));
@@ -663,7 +670,7 @@ describe('ClientesPage: edición de cliente', () => {
     const panel = within(screen.getByRole('dialog', { name: 'Editar cliente' }));
     expect(panel.getByLabelText('Razón social')).toHaveValue('Zeta Producciones S.A.');
     expect(panel.getByLabelText('CUIT')).toHaveValue('20-12345678-6');
-    expect(panel.getByLabelText('Sector')).toHaveValue('PRIVADO');
+    expect(panel.getByLabelText('Sector')).toHaveTextContent(etiquetaDeOpcion('PRIVADO'));
     // La ficha no se pide aparte: los datos salen del listado.
     expect(urlsPedidas()).toEqual(['https://api.example/clientes']);
   });
@@ -701,10 +708,8 @@ describe('ClientesPage: edición de cliente', () => {
     );
     expect(invalidar).toHaveBeenCalledWith({ queryKey: ['clientes'] });
     // El listado se volvió a pedir y ya no tiene el nombre anterior.
-    expect(await screen.findByText('Zeta Renombrada S.A.', { selector: 'th' })).toBeInTheDocument();
-    expect(
-      screen.queryByText('Zeta Producciones S.A.', { selector: 'th' }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText('Zeta Renombrada S.A.')).toBeInTheDocument();
+    expect(screen.queryByText('Zeta Producciones S.A.')).not.toBeInTheDocument();
   });
 
   it('Cancelar cierra el panel sin enviar nada', async () => {
@@ -812,11 +817,9 @@ describe('ClientesPage: desactivar y reactivar', () => {
       expect(cuerpoDelPatch()).toEqual({ estado: 'INACTIVO' });
       expect(invalidar).toHaveBeenCalledWith({ queryKey: ['clientes'] });
       await vi.waitFor(() =>
-        expect(
-          screen.queryByText('Zeta Producciones S.A.', { selector: 'th' }),
-        ).not.toBeInTheDocument(),
+        expect(screen.queryByText('Zeta Producciones S.A.')).not.toBeInTheDocument(),
       );
-      expect(screen.getByText('Municipalidad de Ejemplo', { selector: 'th' })).toBeInTheDocument();
+      expect(screen.getByText('Municipalidad de Ejemplo')).toBeInTheDocument();
       expect(dialogoDeConfirmacion()).not.toBeInTheDocument();
     });
 
@@ -860,13 +863,11 @@ describe('ClientesPage: desactivar y reactivar', () => {
       simularServidorConEstado([clienteMunicipal, clientePrivado, clienteInactivo]);
       const { user } = renderPage();
       await screen.findByRole('table');
-      expect(screen.getByLabelText('Estado')).toHaveValue('ACTIVO');
+      expect(screen.getByLabelText('Estado')).toHaveTextContent(etiquetaDeOpcion('ACTIVO'));
 
-      await user.selectOptions(screen.getByLabelText('Estado'), 'INACTIVO');
+      await elegirOpcion(user, screen.getByLabelText('Estado'), 'INACTIVO');
 
-      expect(
-        await screen.findByText('Ministerio de Ejemplo', { selector: 'th' }),
-      ).toBeInTheDocument();
+      expect(await screen.findByText('Ministerio de Ejemplo')).toBeInTheDocument();
       expect(ultimaUrl()).toBe('https://api.example/clientes?estado=INACTIVO');
       expect(within(filaDe('Ministerio de Ejemplo')).getByText('Inactivo')).toBeInTheDocument();
       // El menú ofrece Reactivar (no Desactivar), y Editar y Contactos siguen disponibles.
@@ -878,23 +879,19 @@ describe('ClientesPage: desactivar y reactivar', () => {
       ]);
       expect(menu.getByRole('menuitem', { name: 'Reactivar' })).toHaveAttribute(
         'data-variant',
-        'default',
+        'success',
       );
       await user.keyboard('{Escape}');
       // Los activos no aparecen en esta vista.
-      expect(
-        screen.queryByText('Zeta Producciones S.A.', { selector: 'th' }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Zeta Producciones S.A.')).not.toBeInTheDocument();
     });
 
     it('el estado queda en la URL: abrir ?estado=INACTIVO muestra directamente los inactivos', async () => {
       simularServidorConEstado([clienteMunicipal, clienteInactivo]);
       renderPage('/clientes?estado=INACTIVO');
 
-      expect(
-        await screen.findByText('Ministerio de Ejemplo', { selector: 'th' }),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText('Estado')).toHaveValue('INACTIVO');
+      expect(await screen.findByText('Ministerio de Ejemplo')).toBeInTheDocument();
+      expect(screen.getByLabelText('Estado')).toHaveTextContent(etiquetaDeOpcion('INACTIVO'));
       expect(urlsGet()).toEqual(['https://api.example/clientes?estado=INACTIVO']);
     });
 
@@ -903,7 +900,7 @@ describe('ClientesPage: desactivar y reactivar', () => {
       const { user } = renderPage();
       await screen.findByRole('table');
 
-      await user.selectOptions(screen.getByLabelText('Estado'), 'INACTIVO');
+      await elegirOpcion(user, screen.getByLabelText('Estado'), 'INACTIVO');
 
       expect(
         await screen.findByRole('heading', { name: 'No hay clientes inactivos' }),
@@ -911,7 +908,7 @@ describe('ClientesPage: desactivar y reactivar', () => {
       expect(emptyHeading()).not.toBeInTheDocument();
       expect(screen.queryByRole('table')).not.toBeInTheDocument();
 
-      await user.selectOptions(screen.getByLabelText('Estado'), 'ACTIVO');
+      await elegirOpcion(user, screen.getByLabelText('Estado'), 'ACTIVO');
 
       expect(await screen.findByRole('table')).toBeInTheDocument();
       expect(ultimaUrl()).toBe('https://api.example/clientes');
@@ -922,7 +919,7 @@ describe('ClientesPage: desactivar y reactivar', () => {
     it('no pide confirmación: llama a la API, avisa y el cliente vuelve a los activos', async () => {
       simularServidorConEstado([clienteMunicipal, clienteInactivo]);
       const { user } = renderPage('/clientes?estado=INACTIVO');
-      await screen.findByText('Ministerio de Ejemplo', { selector: 'th' });
+      await screen.findByText('Ministerio de Ejemplo');
 
       await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
 
@@ -941,10 +938,8 @@ describe('ClientesPage: desactivar y reactivar', () => {
       ).toBeVisible();
 
       // …y el cliente aparece de nuevo entre los activos.
-      await user.selectOptions(screen.getByLabelText('Estado'), 'ACTIVO');
-      expect(
-        await screen.findByText('Ministerio de Ejemplo', { selector: 'th' }),
-      ).toBeInTheDocument();
+      await elegirOpcion(user, screen.getByLabelText('Estado'), 'ACTIVO');
+      expect(await screen.findByText('Ministerio de Ejemplo')).toBeInTheDocument();
       expect(screen.queryByText('Inactivo')).not.toBeInTheDocument();
     });
   });
@@ -954,7 +949,7 @@ describe('ClientesPage: desactivar y reactivar', () => {
       simularServidorConEstado([clienteMunicipal, clienteInactivo]);
       renderPage('/clientes?estado=INACTIVO&sector=PUBLICO&q=minis');
 
-      await screen.findByText('Ministerio de Ejemplo', { selector: 'th' });
+      await screen.findByText('Ministerio de Ejemplo');
 
       const params = new URL(ultimaUrl()).searchParams;
       expect(Object.fromEntries(params)).toEqual({
@@ -969,9 +964,9 @@ describe('ClientesPage: desactivar y reactivar', () => {
       const { user } = renderPage('/clientes?sector=PUBLICO');
       await screen.findByRole('table');
 
-      await user.selectOptions(screen.getByLabelText('Estado'), 'INACTIVO');
+      await elegirOpcion(user, screen.getByLabelText('Estado'), 'INACTIVO');
 
-      await screen.findByText('Ministerio de Ejemplo', { selector: 'th' });
+      await screen.findByText('Ministerio de Ejemplo');
       expect(Object.fromEntries(new URL(ultimaUrl()).searchParams)).toEqual({
         estado: 'INACTIVO',
         sector: 'PUBLICO',
@@ -989,14 +984,12 @@ describe('ClientesPage: desactivar y reactivar', () => {
     it('Limpiar filtros vuelve a la vista de activos', async () => {
       simularServidorConEstado([clienteMunicipal, clienteInactivo]);
       const { user } = renderPage('/clientes?estado=INACTIVO');
-      await screen.findByText('Ministerio de Ejemplo', { selector: 'th' });
+      await screen.findByText('Ministerio de Ejemplo');
 
       await user.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
 
-      expect(
-        await screen.findByText('Municipalidad de Ejemplo', { selector: 'th' }),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText('Estado')).toHaveValue('ACTIVO');
+      expect(await screen.findByText('Municipalidad de Ejemplo')).toBeInTheDocument();
+      expect(screen.getByLabelText('Estado')).toHaveTextContent(etiquetaDeOpcion('ACTIVO'));
       expect(ultimaUrl()).toBe('https://api.example/clientes');
     });
   });
@@ -1018,14 +1011,10 @@ describe('ClientesPage: desactivar y reactivar', () => {
         within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desactivar cliente' }),
       );
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        'Este cliente ya no existe. Actualizamos el listado.',
-      );
+      expect(await screen.findByRole('alert')).toHaveTextContent('Este cliente ya no existe.');
       await vi.waitFor(() => expect(urlsGet().length).toBeGreaterThan(pedidosAntes));
       await vi.waitFor(() =>
-        expect(
-          screen.queryByText('Zeta Producciones S.A.', { selector: 'th' }),
-        ).not.toBeInTheDocument(),
+        expect(screen.queryByText('Zeta Producciones S.A.')).not.toBeInTheDocument(),
       );
     });
 
@@ -1048,8 +1037,120 @@ describe('ClientesPage: desactivar y reactivar', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(
         'No pudimos desactivar el cliente. Probá de nuevo en unos segundos.',
       );
-      expect(screen.getByText('Zeta Producciones S.A.', { selector: 'th' })).toBeInTheDocument();
+      expect(screen.getByText('Zeta Producciones S.A.')).toBeInTheDocument();
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
+
+    it.each([
+      ['un 500', () => Promise.resolve(json({ error: { code: 'INTERNAL_ERROR' } }, 500))],
+      ['un fallo de red', () => Promise.reject(new TypeError('Failed to fetch'))],
+    ])(
+      'ante %s no vuelve a pedir el listado: en la base no cambió nada',
+      async (_caso, respuestaDelPatch) => {
+        simularServidorConEstado(catalogo);
+        const { user } = renderPage();
+        await screen.findByRole('table');
+        const servidor = fetchMock.getMockImplementation();
+        fetchMock.mockImplementation((entrada, init) =>
+          init?.method === 'PATCH'
+            ? respuestaDelPatch()
+            : (servidor?.(entrada, init) ?? Promise.reject(new Error('sin servidor'))),
+        );
+        const pedidosAntes = urlsGet().length;
+
+        await elegirAccion(user, 'Ministerio de Ejemplo', 'Desactivar');
+        await user.click(
+          within(screen.getByRole('alertdialog')).getByRole('button', {
+            name: 'Desactivar cliente',
+          }),
+        );
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos desactivar');
+        // Se da tiempo a que un refetch, si lo hubiera, salga.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(urlsGet()).toHaveLength(pedidosAntes);
+      },
+    );
+  });
+
+  describe('cambios simultáneos', () => {
+    it('mientras un cambio sigue en curso, su acción queda deshabilitada aunque se cambie otro cliente', async () => {
+      const datos = simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      // Los PATCH quedan colgados hasta que el test los responde.
+      const pendientes: (() => void)[] = [];
+      const servidor = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((entrada, init) =>
+        init?.method === 'PATCH'
+          ? new Promise<Response>((resolve) => {
+              pendientes.push(() => {
+                const id = urlDe(entrada).split('/').at(-2);
+                const cliente = datos.find((c) => c.id === id);
+                resolve(json({ ...cliente, estado: 'INACTIVO' }));
+              });
+            })
+          : (servidor?.(entrada, init) ?? Promise.reject(new Error('sin servidor'))),
+      );
+      const desactivar = async (razonSocial: string) => {
+        await elegirAccion(user, razonSocial, 'Desactivar');
+        await user.click(
+          within(screen.getByRole('alertdialog')).getByRole('button', {
+            name: 'Desactivar cliente',
+          }),
+        );
+      };
+
+      await desactivar('Zeta Producciones');
+      await desactivar('Ministerio de Ejemplo');
+      await vi.waitFor(() => expect(pendientes).toHaveLength(2));
+
+      // El primero sigue en vuelo: no se puede volver a pedir.
+      const menu = await abrirMenuDe(user, 'Zeta Producciones');
+      expect(menu.getByRole('menuitem', { name: 'Desactivar' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      await user.keyboard('{Escape}');
+
+      for (const responder of pendientes) responder();
+      await vi.waitFor(() => expect(screen.getAllByRole('status')).not.toHaveLength(0));
+    });
+  });
+});
+
+// ─── Sin activos: primer uso vs. todos desactivados ───────────────────────────
+
+describe('ClientesPage: sin clientes activos', () => {
+  const inactivo = { ...clientePrivado, estado: 'INACTIVO' };
+
+  it('si todos están desactivados no dice "todavía no cargaste": avisa cuántos hay y deja pasar a Inactivos', async () => {
+    fetchMock.mockImplementation((entrada) =>
+      Promise.resolve(
+        json(new URL(urlDe(entrada)).searchParams.get('estado') === 'INACTIVO' ? [inactivo] : []),
+      ),
+    );
+    const { user } = renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'No hay clientes activos' })).toBeVisible();
+    expect(screen.getByText(/Hay 1 cliente inactivo/)).toBeInTheDocument();
+    expect(emptyHeading()).not.toBeInTheDocument();
+    // El selector de estado sigue accesible, y el botón lleva a la vista de inactivos.
+    expect(screen.getByLabelText('Estado')).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Ver clientes inactivos' }));
+
+    expect(await screen.findByText(inactivo.razonSocial)).toBeInTheDocument();
+    expect(screen.getByLabelText('Estado')).toHaveTextContent('Inactivos');
+  });
+
+  it('sin ningún cliente (ni inactivos) es el primer uso, con la invitación a registrar el primero', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(json([])));
+    const { user } = renderPage();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Todavía no cargaste clientes' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Registrar el primer cliente' }));
+    expect(panelDeAlta()).toBeInTheDocument();
   });
 });

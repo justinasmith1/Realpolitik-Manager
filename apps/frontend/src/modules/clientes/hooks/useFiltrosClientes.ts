@@ -68,6 +68,28 @@ export function useFiltrosClientes() {
     );
   };
 
+  // URL canónica: lo que la interfaz no reconoce se quita de la URL. Hoy ya se ignora al
+  // mostrar (la vista no cambia), pero la dirección compartida o recargada seguiría diciendo
+  // algo que no es cierto. Con `replace`, para no dejar una entrada extra en el historial.
+  // - estado: activos = sin parámetro; inactivos = `estado=INACTIVO`. Cualquier otro valor
+  //   (`ACTIVO` explícito, `SUSPENDIDO`, uno inventado) se quita.
+  // - sector: solo `PUBLICO` o `PRIVADO`.
+  // - subtipo: solo un subtipo válido Y con sector público (o sin sector). Con sector PRIVADO
+  //   no aplica y se quita.
+  // Los valores válidos (incluidos `q` y los demás filtros) no se tocan.
+  const estadoEnUrl = params.get('estado');
+  const sectorEnUrl = params.get('sector');
+  const subtipoEnUrl = params.get('subtipo');
+  useEffect(() => {
+    const aQuitar: Record<string, undefined> = {};
+    if (estadoEnUrl !== null && estadoEnUrl !== 'INACTIVO') aQuitar.estado = undefined;
+    if (sectorEnUrl !== null && sector === undefined) aQuitar.sector = undefined;
+    if (subtipoEnUrl !== null && subtipo === undefined) aQuitar.subtipo = undefined;
+    if (Object.keys(aQuitar).length > 0) {
+      actualizar(aQuitar, true);
+    }
+  }, [estadoEnUrl, sectorEnUrl, subtipoEnUrl, sector, subtipo, actualizar]);
+
   const elegirEstado = (nuevo: 'ACTIVO' | 'INACTIVO') =>
     actualizar({ estado: nuevo === 'INACTIVO' ? 'INACTIVO' : undefined }, false);
 

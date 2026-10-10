@@ -273,16 +273,36 @@ describe('interpretarFalloAlta', () => {
     });
   });
 
-  it('lista los campos de un 400 VALIDATION_ERROR', () => {
+  it('lista los campos de un 400 VALIDATION_ERROR con su mensaje', () => {
     const error = errorHttp(400, {
       error: {
         code: 'VALIDATION_ERROR',
         message: 'Los datos enviados no son válidos',
-        details: [{ campo: 'cuit', mensaje: 'Required' }, { otro: 1 }],
+        details: [
+          { campo: 'cuit', mensaje: 'Required' },
+          { campo: 'portalUrl' },
+          { campo: 'emailsAdicionales.0', mensaje: 7 },
+          { otro: 1 },
+        ],
       },
     });
 
-    expect(interpretarFalloAlta(error)).toEqual({ tipo: 'datos-invalidos', campos: ['cuit'] });
+    expect(interpretarFalloAlta(error)).toEqual({
+      tipo: 'datos-invalidos',
+      detalles: [
+        { campo: 'cuit', mensaje: 'Required' },
+        { campo: 'portalUrl', mensaje: null },
+        { campo: 'emailsAdicionales.0', mensaje: null },
+      ],
+    });
+  });
+
+  it('un 400 VALIDATION_ERROR sin detalles legibles no tiene campos', () => {
+    const error = errorHttp(400, {
+      error: { code: 'VALIDATION_ERROR', message: 'x', details: 'no es una lista' },
+    });
+
+    expect(interpretarFalloAlta(error)).toEqual({ tipo: 'datos-invalidos', detalles: [] });
   });
 
   it.each([

@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 
 import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
+import { elegirOpcion } from '@/test/select';
 
 // La API se simula en `fetch`: el test recorre formulario → mutation → clientes.api → http().
 const fetchMock = vi.fn<typeof fetch>();
@@ -87,11 +88,11 @@ async function completar(user: UserEvent, datos: Datos = {}) {
   await escribir('Razón social', valores.razonSocial);
   await escribir('Denominación', valores.denominacion);
   await escribir('CUIT', valores.cuit);
-  await user.selectOptions(campo('Sector'), valores.sector);
+  await elegirOpcion(user, campo('Sector'), valores.sector);
   if (valores.sector === 'PUBLICO' && valores.subtipo !== '') {
-    await user.selectOptions(campo('Subtipo público'), valores.subtipo);
+    await elegirOpcion(user, campo('Subtipo público'), valores.subtipo);
   }
-  await user.selectOptions(campo('Condición frente al IVA'), valores.iva);
+  await elegirOpcion(user, campo('Condición frente al IVA'), valores.iva);
   await escribir('Email de contacto', valores.email);
 }
 
@@ -129,15 +130,26 @@ describe('NuevoClienteSheet', () => {
     expect(screen.queryByLabelText(/teléfono|estado/i)).not.toBeInTheDocument();
   });
 
-  it('muestra las opciones con nombres legibles y sin una elegida de antemano', () => {
-    renderAlta();
+  it('muestra las opciones con nombres legibles y sin una elegida de antemano', async () => {
+    const { user } = renderAlta();
 
-    expect(campo('Sector')).toHaveValue('');
-    expect(campo('Condición frente al IVA')).toHaveValue('');
-    expect(screen.getByRole('option', { name: 'Público' })).toHaveValue('PUBLICO');
-    expect(screen.getByRole('option', { name: 'Responsable inscripto' })).toHaveValue(
-      'RESPONSABLE_INSCRIPTO',
-    );
+    expect(campo('Sector')).toHaveTextContent('Elegí el sector');
+    expect(campo('Condición frente al IVA')).toHaveTextContent('Elegí la condición');
+
+    await user.click(campo('Sector'));
+    expect(
+      within(await screen.findByRole('listbox'))
+        .getAllByRole('option')
+        .map((opcion) => opcion.textContent),
+    ).toEqual(['Público', 'Privado']);
+    await user.keyboard('{Escape}');
+
+    await user.click(campo('Condición frente al IVA'));
+    expect(
+      within(await screen.findByRole('listbox'))
+        .getAllByRole('option')
+        .map((opcion) => opcion.textContent),
+    ).toContain('Responsable inscripto');
   });
 
   it('con el formulario vacío marca cada dato faltante y no envía nada', async () => {
@@ -205,7 +217,7 @@ describe('NuevoClienteSheet', () => {
     const { user } = renderAlta();
 
     await completar(user, { subtipo: '' });
-    expect(campo('Subtipo público')).toHaveValue('');
+    expect(campo('Subtipo público')).toHaveTextContent('Elegí el subtipo');
     await user.click(botonRegistrar());
 
     expect(screen.getByText('Elegí el subtipo.')).toBeInTheDocument();
@@ -219,14 +231,14 @@ describe('NuevoClienteSheet', () => {
     const { user } = renderAlta();
 
     await completar(user, { sector: 'PUBLICO', subtipo: 'SINDICAL_OBRA_SOCIAL' });
-    await user.selectOptions(campo('Sector'), 'PRIVADO');
+    await elegirOpcion(user, campo('Sector'), 'PRIVADO');
     expect(screen.queryByLabelText('Subtipo público')).not.toBeInTheDocument();
 
     // Si vuelve a público, el subtipo anterior no reaparece.
-    await user.selectOptions(campo('Sector'), 'PUBLICO');
-    expect(campo('Subtipo público')).toHaveValue('');
+    await elegirOpcion(user, campo('Sector'), 'PUBLICO');
+    expect(campo('Subtipo público')).toHaveTextContent('Elegí el subtipo');
 
-    await user.selectOptions(campo('Sector'), 'PRIVADO');
+    await elegirOpcion(user, campo('Sector'), 'PRIVADO');
     await user.click(botonRegistrar());
 
     expect(cuerpoEnviado()).not.toHaveProperty('subtipo');
@@ -399,20 +411,21 @@ describe('NuevoClienteSheet: periodicidad', () => {
     fetchMock.mockResolvedValue(jsonResponse(clienteCreado, 201));
   });
 
-  it('arranca en "Sin configurar", opcional, sin día ni mes', () => {
-    renderAlta();
+  it('arranca en "Sin configurar", opcional, sin día ni mes', async () => {
+    const { user } = renderAlta();
 
-    expect(periodicidad()).toHaveValue('');
-    expect(screen.getByRole('option', { name: 'Sin configurar' })).toHaveValue('');
+    expect(periodicidad()).toHaveTextContent('Sin configurar');
     expect(periodicidad()).not.toBeRequired();
+    expect(screen.getByText('Opcional')).toBeInTheDocument();
     expect(periodicidad()).toHaveAccessibleDescription(
       'Cada cuánto se rinde. Podés configurarla más adelante.',
     );
     expect(screen.queryByLabelText('Día límite')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
     // Las opciones se muestran con su nombre, no con el valor técnico.
+    await user.click(periodicidad());
     expect(
-      within(periodicidad())
+      within(await screen.findByRole('listbox'))
         .getAllByRole('option')
         .map((o) => o.textContent),
     ).toEqual(['Sin configurar', 'Mensual', 'Bimestral', 'Por campaña']);
@@ -443,7 +456,7 @@ describe('NuevoClienteSheet: periodicidad', () => {
       const { user } = renderAlta();
 
       await completar(user);
-      await user.selectOptions(periodicidad(), tipo);
+      await elegirOpcion(user, periodicidad(), tipo);
       expect(diaLimite()).toBeRequired();
       expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
       await user.type(diaLimite(), '10');
@@ -458,12 +471,11 @@ describe('NuevoClienteSheet: periodicidad', () => {
     const { user } = renderAlta();
 
     await completar(user);
-    await user.selectOptions(periodicidad(), 'BIMESTRAL');
+    await elegirOpcion(user, periodicidad(), 'BIMESTRAL');
     expect(mesInicio()).toBeRequired();
-    expect(mesInicio()).toHaveValue('');
-    expect(screen.getByRole('option', { name: 'Marzo' })).toHaveValue('3');
+    expect(mesInicio()).toHaveTextContent('Elegí el mes');
     await user.type(diaLimite(), '28');
-    await user.selectOptions(mesInicio(), 'Marzo');
+    await elegirOpcion(user, mesInicio(), 'Marzo');
     const cuerpo = await registrarYLeerCuerpo(user);
 
     expect(cuerpo.periodicidad).toStrictEqual({
@@ -477,7 +489,7 @@ describe('NuevoClienteSheet: periodicidad', () => {
     const { user } = renderAlta();
 
     await completar(user);
-    await user.selectOptions(periodicidad(), 'MENSUAL');
+    await elegirOpcion(user, periodicidad(), 'MENSUAL');
     await user.click(botonRegistrar());
 
     expect(screen.getByText('Ingresá el día límite.')).toBeInTheDocument();
@@ -493,7 +505,7 @@ describe('NuevoClienteSheet: periodicidad', () => {
       const { user } = renderAlta();
 
       await completar(user);
-      await user.selectOptions(periodicidad(), 'MENSUAL');
+      await elegirOpcion(user, periodicidad(), 'MENSUAL');
       await user.type(diaLimite(), dia);
       await user.click(botonRegistrar());
 
@@ -509,7 +521,7 @@ describe('NuevoClienteSheet: periodicidad', () => {
     const { user } = renderAlta();
 
     await completar(user);
-    await user.selectOptions(periodicidad(), 'BIMESTRAL');
+    await elegirOpcion(user, periodicidad(), 'BIMESTRAL');
     await user.type(diaLimite(), '10');
     await user.click(botonRegistrar());
 
@@ -522,17 +534,17 @@ describe('NuevoClienteSheet: periodicidad', () => {
     const { user } = renderAlta();
 
     await completar(user);
-    await user.selectOptions(periodicidad(), 'BIMESTRAL');
+    await elegirOpcion(user, periodicidad(), 'BIMESTRAL');
     await user.type(diaLimite(), '10');
-    await user.selectOptions(mesInicio(), 'Marzo');
-    await user.selectOptions(periodicidad(), 'MENSUAL');
+    await elegirOpcion(user, mesInicio(), 'Marzo');
+    await elegirOpcion(user, periodicidad(), 'MENSUAL');
     expect(screen.queryByLabelText('Mes de inicio del ciclo')).not.toBeInTheDocument();
     // El día sigue valiendo para el tipo nuevo.
     expect(diaLimite()).toHaveValue('10');
 
-    await user.selectOptions(periodicidad(), 'BIMESTRAL');
-    expect(mesInicio()).toHaveValue('');
-    await user.selectOptions(periodicidad(), 'MENSUAL');
+    await elegirOpcion(user, periodicidad(), 'BIMESTRAL');
+    expect(mesInicio()).toHaveTextContent('Elegí el mes');
+    await elegirOpcion(user, periodicidad(), 'MENSUAL');
     const cuerpo = await registrarYLeerCuerpo(user);
 
     expect(cuerpo.periodicidad).toStrictEqual({
@@ -546,21 +558,21 @@ describe('NuevoClienteSheet: periodicidad', () => {
     const { user } = renderAlta();
 
     await completar(user);
-    await user.selectOptions(periodicidad(), 'BIMESTRAL');
+    await elegirOpcion(user, periodicidad(), 'BIMESTRAL');
     await user.type(diaLimite(), '29');
     await user.click(botonRegistrar());
     expect(diaLimite()).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByText('Elegí el mes de inicio del ciclo.')).toBeInTheDocument();
 
-    await user.selectOptions(periodicidad(), '');
+    await elegirOpcion(user, periodicidad(), '');
 
     expect(screen.queryByLabelText('Día límite')).not.toBeInTheDocument();
     expect(screen.queryByText(/día límite|mes de inicio/i)).not.toBeInTheDocument();
     // Al volver a elegir un tipo, el día anterior no reaparece.
-    await user.selectOptions(periodicidad(), 'MENSUAL');
+    await elegirOpcion(user, periodicidad(), 'MENSUAL');
     expect(diaLimite()).toHaveValue('');
     expect(diaLimite()).not.toHaveAttribute('aria-invalid');
-    await user.selectOptions(periodicidad(), '');
+    await elegirOpcion(user, periodicidad(), '');
 
     const cuerpo = await registrarYLeerCuerpo(user);
     expect(cuerpo).not.toHaveProperty('periodicidad');
@@ -573,7 +585,7 @@ describe('NuevoClienteSheet: periodicidad', () => {
           error: {
             code: 'VALIDATION_ERROR',
             message: 'Los datos enviados no son válidos',
-            details: [{ campo: 'periodicidad.diaLimite', mensaje: 'x' }],
+            details: [{ campo: 'periodicidad.diaLimite', mensaje: 'Required' }],
           },
         },
         400,
@@ -582,7 +594,7 @@ describe('NuevoClienteSheet: periodicidad', () => {
     const { user } = renderAlta();
 
     await completar(user);
-    await user.selectOptions(periodicidad(), 'MENSUAL');
+    await elegirOpcion(user, periodicidad(), 'MENSUAL');
     await user.type(diaLimite(), '10');
     await user.click(botonRegistrar());
 

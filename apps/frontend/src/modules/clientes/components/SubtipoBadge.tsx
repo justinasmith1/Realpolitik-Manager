@@ -1,5 +1,6 @@
 import type { ClienteSubtipoPublico } from '@realpolitik/shared';
 
+import { Badge } from '@/components/ui/badge';
 import { etiquetasSubtipo } from '@/modules/clientes/clientes.etiquetas';
 
 // Cada subtipo tiene su propia tonalidad (tokens `subtipo-*`), distinta de las de los
@@ -19,10 +20,9 @@ interface SubtipoBadgeProps {
 /** Subtipo de un cliente público. */
 export function SubtipoBadge({ subtipo }: SubtipoBadgeProps) {
   return (
-    <span
-      className={`inline-flex items-center rounded-pill border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${claseDeSubtipo[subtipo]}`}
-    >
+    // `title`: con el espacio justo el texto se recorta, y el nombre completo sigue a mano.
+    <Badge className={claseDeSubtipo[subtipo]} title={etiquetasSubtipo[subtipo]}>
       {etiquetasSubtipo[subtipo]}
-    </span>
+    </Badge>
   );
 }

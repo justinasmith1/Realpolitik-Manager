@@ -40,11 +40,22 @@ Nunca se versionan secretos. `VITE_API_URL` tampoco es un secreto, pero su valor
 
 ## Integración continua
 
-El workflow [`ci.yml`](../.github/workflows/ci.yml) corre en cada Pull Request y en cada push a `main`, con permisos mínimos (`contents: read`), sin secretos y sin base de datos (los tests actuales no la necesitan; `prisma generate` tampoco requiere `DATABASE_URL`).
+El workflow [`ci.yml`](../.github/workflows/ci.yml) corre en cada Pull Request y en cada push a `main`, con permisos mínimos (`contents: read`) y sin secretos.
 
-Pasos, en orden: instalación con `--frozen-lockfile`, generación del cliente Prisma, `format:check`, `lint`, `typecheck`, tests de `shared`, `backend` y `frontend`, y build de `frontend` y `backend`.
+Levanta un **PostgreSQL efímero** (`postgres:16-alpine`, base `realpolitik_test`) como service del job. Sus credenciales están escritas en el workflow a propósito: el contenedor nace y muere con el job y no tiene datos reales. El nombre termina en `_test` para que las guardas de los tests permitan usarla.
 
-Para reproducirlo en local, desde la raíz:
+Pasos, en orden:
+
+1. instalación con `--frozen-lockfile` y generación del cliente Prisma;
+2. `format:check`, `lint`, `typecheck`;
+3. tests de `shared` y tests **unitarios** del backend (sin base);
+4. `db:migrate:deploy` sobre la base vacía: aplica **todo** el historial de migraciones, CHECK incluidos. Si alguna falla, el CI falla;
+5. tests de **integración** del backend contra PostgreSQL (`test:integration`: todos los `*.integration.test.ts`);
+6. tests del frontend;
+7. tests del frontend **contra la API real** (`test:api`): levanta el backend contra la misma base, espera `/health`, corre los `*.api.test.tsx` y apaga el backend aunque fallen;
+8. build de `frontend` y `backend`.
+
+Para reproducirlo en local (con la base descartable de [Base de datos](development/database.md#tests-de-integración)):
 
 ```bash
 pnpm install --frozen-lockfile
@@ -53,6 +64,7 @@ pnpm lint
 pnpm typecheck
 pnpm --filter @realpolitik/shared test
 pnpm --filter @realpolitik/backend test
+pnpm --filter @realpolitik/backend test:integration   # con TEST_DATABASE_URL
 pnpm --filter @realpolitik/frontend test
 pnpm --filter @realpolitik/frontend build
 pnpm --filter @realpolitik/backend build
@@ -116,6 +128,7 @@ El backend se construye y arranca desde la raíz del repositorio (Root Directory
 | `CORS_ORIGINS`          | Origen de producción del frontend | Manual                                         | No      |
 | `RAILPACK_NODE_VERSION` | `24`                              | Manual                                         | No      |
 
+- `NODE_ENV=production` hay que definirlo siempre en el proveedor: el servidor arranca igual sin ella y asume `development` (conveniente en local, engañoso en producción). Si se olvida, el servidor no avisa; la única pista es el arranque, que imprime el entorno (`Backend escuchando en … (development)`). Lo que cambia por no definirla es poco hoy (no se registran las consultas de Prisma, que solo se activan con `NODE_ENV=development` explícito), pero cualquier lógica futura que dependa de `production` quedaría apagada. Por eso las guardas de seguridad no dependen solo de esta variable (ver el seed, abajo).
 - `CORS_ORIGINS` es el origen exacto, `https://<host>` **sin barra final**. Se admiten varios, separados por comas. Si falta o es inválido, el servidor no arranca y el deploy falla el healthcheck. No se usa `*`.
 - Los previews de Vercel tienen un hostname distinto en cada deploy y **no** se agregan a `CORS_ORIGINS`.
 - Usar la URL **privada** de la base (mismo proyecto de Railway). La URL pública (proxy TCP) factura tráfico de salida y expone la base fuera de la red privada: no se usa.
@@ -130,7 +143,7 @@ El backend se construye y arranca desde la raíz del repositorio (Root Directory
 
 - En producción solo se aplican migraciones con **`db:migrate:deploy`** (`prisma migrate deploy`): ejecuta las migraciones ya versionadas en `apps/backend/prisma/migrations/`.
 - **`db:migrate` (`prisma migrate dev`) no se usa en producción.** Crea migraciones y es solo para desarrollo.
-- **El seed no se ejecuta en producción.** `db:seed` es solo para desarrollo local y **borra todos los clientes** antes de insertar los de ejemplo. No lo ejecutes con un `DATABASE_URL` de producción, y no pongas esa URL en tu `.env` local.
+- **El seed no se ejecuta en producción.** `db:seed` es solo para desarrollo local y **borra todos los clientes** antes de insertar los de ejemplo. No lo ejecutes con un `DATABASE_URL` de producción, y no pongas esa URL en tu `.env` local. Como red de seguridad, el seed se niega a correr si `NODE_ENV=production` o si el host de `DATABASE_URL` no es `localhost`, `127.0.0.1` o `::1`; no hay forma de saltear esa guarda con una variable.
 - Prisma Studio (`db:studio`) no forma parte del despliegue.
 - Docker Compose (`docker-compose.yml`) es solo para la base local de desarrollo; Railway no lo usa y no hay Dockerfile.
 - Una migración nueva se crea en desarrollo, se revisa y se versiona en el Pull Request; el pre-deploy la aplica al desplegar.

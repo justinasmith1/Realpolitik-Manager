@@ -1,11 +1,19 @@
+/* eslint-disable no-console -- Script de línea de comandos: informar el progreso por consola es
+   su salida esperada (no es código de la aplicación). */
 import { PrismaClient, Sector, SubtipoPublico, IvaCondicion, ClienteEstado } from '@prisma/client';
+
+import { verificarSeedPermitido } from '../src/lib/seed-guard';
 
 const prisma = new PrismaClient();
 
 async function main() {
+  // Primero la guarda, antes de cualquier operación sobre la base: este seed borra clientes.
+  verificarSeedPermitido();
+
   console.log('🌱 Seeding database...');
 
-  // Limpia la tabla antes de re-seedear para garantizar idempotencia
+  // DESTRUCTIVO: borra todos los clientes (y sus contactos, en cascada) antes de cargar los
+  // de ejemplo. Solo para una base de desarrollo local.
   await prisma.cliente.deleteMany();
 
   await prisma.cliente.createMany({
@@ -61,7 +69,9 @@ async function main() {
         estado: ClienteEstado.INACTIVO,
       },
 
-      // 5. Provincial/Organismo — SUSPENDIDO (suspensión temporal)
+      // 5. Provincial/Organismo — INACTIVO. SUSPENDIDO sigue reservado en el enum para el futuro,
+      //    pero la UI actual no lo ofrece ni lo lista (ni en Activos ni en Inactivos): un cliente
+      //    demo suspendido quedaría invisible.
       {
         razonSocial: 'Legislatura de la Ciudad Autónoma de Buenos Aires',
         denominacion: 'Legislatura CABA',
@@ -71,7 +81,7 @@ async function main() {
         portalUrl: 'https://compras.legislatura.gob.ar',
         sector: Sector.PUBLICO,
         subtipo: SubtipoPublico.PROVINCIAL_ORGANISMO,
-        estado: ClienteEstado.SUSPENDIDO,
+        estado: ClienteEstado.INACTIVO,
       },
 
       // 6. Sindical/Obra Social — baja lógica (isDeleted = true)

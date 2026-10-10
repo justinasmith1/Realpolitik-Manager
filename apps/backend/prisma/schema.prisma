@@ -50,10 +50,17 @@ enum PeriodicidadTipo {
 
 // ─── Modelo Cliente ───────────────────────────────────────────────────────────
 
-// TODO [DEUDA TÉCNICA]: La regla de negocio "si sector = PUBLICO entonces subtipo != null"
-// no puede expresarse como CHECK constraint en Prisma v5 con tipos ENUM.
-// Se valida únicamente en la capa de aplicación (Zod discriminatedUnion).
-// Evaluar en versiones futuras de Prisma o migrar Sector/Subtipo a tablas relacionales (ADR futuro).
+// Reglas de integridad de Cliente y Contacto: se validan PRIMERO en la aplicación (shared/Zod y
+// el backend, que responden 400) y PostgreSQL además las garantiza con CHECK constraints definidos
+// en SQL, en la migración `20261010120000_integridad_cliente_contacto`. Prisma Schema no puede
+// representar esos CHECK: no aparecen acá, pero `prisma migrate deploy` los crea y la base
+// rechaza cualquier escritura que los viole (scripts, Prisma Studio, SQL manual).
+//   ck_cliente_sector_subtipo         PUBLICO ⇒ subtipo; PRIVADO ⇒ sin subtipo
+//   ck_cliente_portal_requerido       PORTAL_WEB ⇒ portalUrl no vacía
+//   ck_cliente_whatsapp_requerido     WHATSAPP ⇒ whatsappNumero no vacío
+//   ck_cliente_periodicidad_coherente sin configurar, o tipo + día 1..28 (+ mes 1..12 si BIMESTRAL)
+//   ck_cliente_baja_logica            isDeleted ⇔ deletedAt
+//   ck_contacto_baja_logica           isDeleted ⇔ deletedAt
 
 model Cliente {
   id            String  @id @default(uuid()) @db.Uuid
@@ -72,31 +79,31 @@ model Cliente {
   telefono           String?  @db.VarChar(25)
   portalUrl          String?  @db.VarChar(500)
 
-  // Canal de entrega habitual
-  // TODO [DEUDA TÉCNICA]: "PORTAL_WEB ⇒ portalUrl != null" y "WHATSAPP ⇒ whatsappNumero != null"
-  // se validan solo en la capa de aplicación (Zod superRefine), igual que sector/subtipo.
+  // Canal de entrega habitual. "PORTAL_WEB ⇒ portalUrl" y "WHATSAPP ⇒ whatsappNumero": shared
+  // (superRefine) + CHECK ck_cliente_portal_requerido / ck_cliente_whatsapp_requerido. No se exige
+  // que los datos de los otros canales estén vacíos.
   canalEntrega       CanalEntrega @default(CORREO)
   /// Número de WhatsApp normalizado a E.164 (+5493511234567). Obligatorio si canalEntrega = WHATSAPP.
   whatsappNumero     String?  @db.VarChar(16)
 
-  // Periodicidad de rendición (HU1.5). Sin configurar = las tres columnas en null.
-  // TODO [DEUDA TÉCNICA]: las reglas "las tres columnas van juntas", "diaLimite entre 1 y 28" y
-  // "mesInicioCiclo solo en BIMESTRAL" se validan solo en la capa de aplicación (Zod
-  // PeriodicidadSchema), igual que sector/subtipo. El mapper no corrige estados inconsistentes.
+  // Periodicidad de rendición (HU1.5). Sin configurar = las tres columnas en null. "Las tres van
+  // juntas", "diaLimite 1..28" y "mesInicioCiclo solo en BIMESTRAL": shared (PeriodicidadSchema)
+  // + CHECK ck_cliente_periodicidad_coherente.
   periodicidadTipo           PeriodicidadTipo?
   /// Día del mes límite para rendir (1 a 28).
   periodicidadDiaLimite      Int?              @db.SmallInt
   /// Mes (1 a 12) en que arranca el ciclo bimestral. Null para MENSUAL y POR_CAMPANIA.
   periodicidadMesInicioCiclo Int?              @db.SmallInt
 
-  // Categorización (ADR-0002 §2)
+  // Categorización (ADR-0002 §2). shared + CHECK ck_cliente_sector_subtipo.
   sector   Sector
   subtipo  SubtipoPublico? // null para clientes PRIVADO
 
-  // Estado comercial (ADR-0002 §3)
+  // Estado comercial (ADR-0002 §3). SUSPENDIDO existe pero está reservado: la API no lo asigna y
+  // la UI no lo ofrece ni lo lista.
   estado  ClienteEstado @default(ACTIVO)
 
-  // Baja lógica (ADR-0002 §3)
+  // Baja lógica (ADR-0002 §3). CHECK ck_cliente_baja_logica: isDeleted ⇔ deletedAt.
   isDeleted  Boolean   @default(false)
   deletedAt  DateTime?
 
@@ -121,7 +128,7 @@ model Contacto {
   clienteId         String   @db.Uuid
   cliente           Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
-  // Baja lógica (HU1.3)
+  // Baja lógica (HU1.3). CHECK ck_contacto_baja_logica: isDeleted ⇔ deletedAt.
   isDeleted         Boolean   @default(false)
   deletedAt         DateTime?
 

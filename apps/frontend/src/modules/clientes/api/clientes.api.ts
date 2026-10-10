@@ -152,6 +152,12 @@ export function interpretarFalloCambioEstado(error: unknown): FalloCambioEstado 
     : { tipo: 'inesperado' };
 }
 
+/** Un dato que el servidor rechazó: el campo (notación de puntos) y su mensaje, si lo informó. */
+export interface DetalleInvalido {
+  campo: string;
+  mensaje: string | null;
+}
+
 export interface ClienteExistente {
   id: string;
   razonSocial: string;
@@ -161,7 +167,7 @@ export interface ClienteExistente {
 /** Por qué no se pudo registrar el cliente, en términos del dominio. */
 export type FalloAltaCliente =
   | { tipo: 'cuit-duplicado'; clienteExistente: ClienteExistente | null }
-  | { tipo: 'datos-invalidos'; campos: string[] }
+  | { tipo: 'datos-invalidos'; detalles: DetalleInvalido[] }
   | { tipo: 'inesperado' };
 
 const esObjeto = (valor: unknown): valor is Record<string, unknown> =>
@@ -185,12 +191,19 @@ function leerClienteExistente(valor: unknown): ClienteExistente | null {
     : null;
 }
 
-function leerCamposInvalidos(details: unknown): string[] {
+function leerDetallesInvalidos(details: unknown): DetalleInvalido[] {
   if (!Array.isArray(details)) {
     return [];
   }
   return details.flatMap((detalle) =>
-    esObjeto(detalle) && typeof detalle.campo === 'string' ? [detalle.campo] : [],
+    esObjeto(detalle) && typeof detalle.campo === 'string'
+      ? [
+          {
+            campo: detalle.campo,
+            mensaje: typeof detalle.mensaje === 'string' ? detalle.mensaje : null,
+          },
+        ]
+      : [],
   );
 }
 
@@ -217,7 +230,7 @@ export function interpretarFalloAlta(error: unknown): FalloAltaCliente {
   }
 
   if (error.status === 400 && cuerpo?.code === 'VALIDATION_ERROR') {
-    return { tipo: 'datos-invalidos', campos: leerCamposInvalidos(cuerpo.details) };
+    return { tipo: 'datos-invalidos', detalles: leerDetallesInvalidos(cuerpo.details) };
   }
 
   return { tipo: 'inesperado' };
