@@ -20,9 +20,17 @@ export {
   ContactoSchema,
   CreateContactoSchema,
   UpdateContactoSchema,
+  ContactoGuardadoSchema,
+  ReemplazarContactosSchema,
 } from './schemas/contacto.schema.js';
 
-export type { Contacto, CreateContactoDto, UpdateContactoDto } from './schemas/contacto.schema.js';
+export type {
+  Contacto,
+  CreateContactoDto,
+  UpdateContactoDto,
+  ContactoGuardadoDto,
+  ReemplazarContactosDto,
+} from './schemas/contacto.schema.js';
 
 export { ListarClientesQuerySchema } from './schemas/listarClientesQuery.schema.js';
 export type { ListarClientesQuery } from './schemas/listarClientesQuery.schema.js';
