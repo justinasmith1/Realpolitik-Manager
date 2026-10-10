@@ -1,4 +1,4 @@
-import type { Cliente, CreateContactoDto } from '@realpolitik/shared';
+import type { Cliente } from '@realpolitik/shared';
 
 import {
   Sheet,
@@ -7,70 +7,50 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { ApiClientError } from '@/lib/http';
-
+import type { ContactoAGuardar } from '@/modules/clientes/api/contactos.api';
+import { ContactosForm } from '@/modules/clientes/components/ContactosForm';
 import {
-  useActualizarContacto,
-  useContactos,
-  useCrearContacto,
-  useEliminarContacto,
-} from '../hooks/useContactos';
-
-import { ContactosForm } from './ContactosForm';
+  erroresDeGuardadoDeContactos,
+  type ErroresDeContactos,
+} from '@/modules/clientes/components/erroresDeContactos';
+import { useContactos, useGuardarContactos } from '@/modules/clientes/hooks/useContactos';
 
 interface GestionarContactosSheetProps {
   cliente: Cliente | null;
   onClose: () => void;
 }
 
+/**
+ * Panel de los contactos de un cliente. "Guardar contactos" envía la lista completa con UNA
+ * request (`PUT`), que se aplica entera o no se aplica. Si falla, el panel queda abierto y el
+ * formulario conserva lo escrito; si sale bien, se cierra.
+ */
 export function GestionarContactosSheet({ cliente, onClose }: GestionarContactosSheetProps) {
   const abierto = cliente !== null;
   const consulta = useContactos(cliente?.id ?? '');
-
-  const crear = useCrearContacto();
-  const actualizar = useActualizarContacto();
-  const eliminar = useEliminarContacto();
+  const guardar = useGuardarContactos();
 
   const handleSave = async (
-    nuevos: (CreateContactoDto & { _id?: string })[],
-    borradosIds: string[],
-  ) => {
-    if (!cliente) return;
-
+    contactos: ContactoAGuardar[],
+  ): Promise<ErroresDeContactos | undefined> => {
+    if (!cliente) return undefined;
     try {
-      // 1. Eliminar los borrados
-      for (const id of borradosIds) {
-        await eliminar.mutateAsync({ clienteId: cliente.id, contactoId: id });
-      }
-
-      // 2. Crear y actualizar
-      for (const c of nuevos) {
-        if (c._id) {
-          // Si tiene _id y es un string que no está en borrados, se actualiza
-          // Solo llamamos actualizar si hubo cambios reales (opcional) pero por simplicidad se manda
-          await actualizar.mutateAsync({
-            clienteId: cliente.id,
-            contactoId: c._id,
-            datos: c,
-          });
-        } else {
-          // Es nuevo
-          await crear.mutateAsync({ clienteId: cliente.id, datos: c });
-        }
-      }
-
+      await guardar.mutateAsync({ clienteId: cliente.id, contactos });
       onClose();
       return undefined;
     } catch (error) {
-      if (error instanceof ApiClientError && error.status === 409) {
-        return 'Ya existe un contacto con ese email en este cliente.';
-      }
-      return 'Ocurrió un error al guardar los contactos.';
+      return erroresDeGuardadoDeContactos(error);
     }
   };
 
   return (
-    <Sheet open={abierto} onOpenChange={(open) => !open && onClose()}>
+    <Sheet
+      open={abierto}
+      onOpenChange={(abrir) => {
+        // Mientras se guarda no se cierra: el resultado del envío tiene que verse.
+        if (!abrir && !guardar.isPending) onClose();
+      }}
+    >
       <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-md flex flex-col">
         <SheetHeader className="pr-12">
           <SheetTitle>Contactos de {cliente?.razonSocial}</SheetTitle>
@@ -82,10 +62,14 @@ export function GestionarContactosSheet({ cliente, onClose }: GestionarContactos
         {consulta.isPending ? (
           <div className="p-4 text-sm">Cargando contactos...</div>
         ) : consulta.isError ? (
-          <div className="p-4 text-sm text-destructive">Error al cargar contactos</div>
+          <div role="alert" className="p-4 text-sm text-destructive">
+            Error al cargar contactos
+          </div>
         ) : (
+          // El formulario se monta una vez por cliente. Que la query se vuelva a pedir NO lo
+          // reinicia: lo escrito sin guardar no se pierde.
           <ContactosForm
-            key={`${cliente?.id}-${consulta.dataUpdatedAt}`}
+            key={cliente?.id}
             contactosIniciales={consulta.data}
             onSave={handleSave}
             onCancel={onClose}
