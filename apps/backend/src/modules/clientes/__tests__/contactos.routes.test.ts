@@ -733,3 +733,22 @@ describe('PUT /clientes/:id/contactos: reconciliación', () => {
     });
   });
 });
+
+// ─── Fechas del contacto en la API ─────────────────────────────────────────────
+
+describe('contactos: fechas de la respuesta', () => {
+  it('GET expone creadoEn y actualizadoEn (como el cliente), no los nombres de la base', async () => {
+    prismaMock.contacto.findMany.mockResolvedValue([filaA]);
+
+    const res = await request(app).get(`/clientes/${CLIENTE}/contactos`);
+
+    expect(res.status).toBe(200);
+    const [contacto] = res.body as Record<string, unknown>[];
+    expect(contacto).toMatchObject({
+      creadoEn: AHORA.toISOString(),
+      actualizadoEn: AHORA.toISOString(),
+    });
+    expect(contacto).not.toHaveProperty('createdAt');
+    expect(contacto).not.toHaveProperty('updatedAt');
+  });
+});

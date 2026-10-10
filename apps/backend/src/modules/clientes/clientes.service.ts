@@ -1,14 +1,16 @@
 import { Prisma, type Cliente as ClienteRow } from '@prisma/client';
-import type {
-  ActualizarEstadoClienteDto,
-  Cliente,
-  CreateClienteDto,
-  ListarClientesQuery,
-  Periodicidad,
-  UpdateClienteDto,
+import {
+  problemasDeEmails,
+  type ActualizarEstadoClienteDto,
+  type Cliente,
+  type CreateClienteDto,
+  type ListarClientesQuery,
+  type Periodicidad,
+  type UpdateClienteDto,
 } from '@realpolitik/shared';
 
 import { conflict, notFound, validationError, type AppError } from '../../errors/app-error';
+import { escaparComodinesDeLike } from '../../lib/like';
 import { prisma } from '../../lib/prisma';
 
 import { toClienteDto } from './cliente.mapper';
@@ -43,11 +45,13 @@ export async function crearCliente(input: CreateClienteDto): Promise<Cliente> {
 export async function actualizarCliente(id: string, input: UpdateClienteDto): Promise<Cliente> {
   const actual = await prisma.cliente.findFirst({
     where: { id, isDeleted: false },
-    select: { sector: true, canalEntrega: true },
+    select: { sector: true, canalEntrega: true, emailContacto: true, emailsAdicionales: true },
   });
   if (actual === null) {
     throw notFound('Cliente no encontrado');
   }
+
+  validarEmailsResultantes(input, actual);
 
   // Un `subtipo` suelto se valida contra el sector guardado; con `sector` ya lo validó shared.
   if (input.sector === undefined && input.subtipo !== undefined && actual.sector === 'PRIVADO') {
@@ -98,6 +102,49 @@ export async function actualizarCliente(id: string, input: UpdateClienteDto): Pr
 }
 
 /**
+ * La regla de los emails (shared) se aplica al estado RESULTANTE de la edición: lo enviado más
+ * lo guardado. El schema solo ve el pedido, y un PATCH que trae uno de los dos campos (el
+ * principal o los adicionales) podría chocar con el otro, que ya está en la base.
+ *
+ * Si el pedido no trae los adicionales, solo importa que el principal nuevo no esté entre los
+ * guardados; los repetidos que ya hubiera entre ellos no se tocan ni bloquean la edición.
+ */
+function validarEmailsResultantes(
+  input: UpdateClienteDto,
+  actual: Pick<ClienteRow, 'emailContacto' | 'emailsAdicionales'>,
+): void {
+  if (input.emailContacto === undefined && input.emailsAdicionales === undefined) return;
+
+  const problemas = problemasDeEmails({
+    emailContacto: input.emailContacto ?? actual.emailContacto,
+    emailsAdicionales: input.emailsAdicionales ?? actual.emailsAdicionales,
+  });
+
+  if (input.emailsAdicionales !== undefined) {
+    if (problemas.length > 0) {
+      throw validationError(
+        problemas.map(({ indice, mensaje }) => ({
+          campo: `emailsAdicionales.${indice}`,
+          mensaje,
+        })),
+      );
+    }
+    return;
+  }
+
+  // Los adicionales no vienen en el pedido: el error es del principal que se quiere cargar.
+  if (problemas.some(({ tipo }) => tipo === 'IGUAL_AL_PRINCIPAL')) {
+    throw validationError([
+      {
+        campo: 'emailContacto',
+        mensaje:
+          'Este email ya está cargado como email adicional del cliente: quitalo de los adicionales o usá otro.',
+      },
+    ]);
+  }
+}
+
+/**
  * Activa o desactiva un cliente (HU1.8). Solo cambia `estado`: los datos, los contactos y
  * lo demás no se tocan, y no se usa la baja lógica (`isDeleted`), que es otra cosa. Pedir el
  * estado que el cliente ya tiene responde igual con el cliente, sin error (idempotente).
@@ -140,18 +187,21 @@ export async function listarClientes(filtros: ListarClientesQuery): Promise<Clie
   return filas.map(toClienteDto);
 }
 
-// Busca `q` en razón social, denominación y CUIT, sin distinguir mayúsculas.
+// Busca `q` en razón social, denominación y CUIT, sin distinguir mayúsculas. El texto se busca
+// literalmente: `contains` no escapa los comodines de LIKE (ver `escaparComodinesDeLike`).
 function condicionesDeBusqueda(q: string): Prisma.ClienteWhereInput[] {
+  const texto = escaparComodinesDeLike(q);
   return [
-    { razonSocial: { contains: q, mode: 'insensitive' } },
-    { denominacion: { contains: q, mode: 'insensitive' } },
+    { razonSocial: { contains: texto, mode: 'insensitive' } },
+    { denominacion: { contains: texto, mode: 'insensitive' } },
     ...fragmentosDeCuit(q).map((fragmento) => ({ cuit: { contains: fragmento } })),
   ];
 }
 
 // El CUIT se guarda como XX-XXXXXXXX-X, pero se busca con o sin guiones. Si `q` solo tiene
 // dígitos, guiones y espacios, se prueba el fragmento en cada posición posible del CUIT,
-// con los guiones que le tocarían ahí (la base no puede ignorarlos al comparar).
+// con los guiones que le tocarían ahí (la base no puede ignorarlos al comparar). Solo lleva
+// dígitos y guiones, así que no hay comodines que escapar.
 function fragmentosDeCuit(q: string): string[] {
   if (!/^[\d\s-]+$/.test(q)) return [];
   const digitos = q.replace(/\D/g, '');

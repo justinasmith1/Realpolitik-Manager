@@ -9,7 +9,7 @@
 //     pnpm --filter @realpolitik/backend exec vitest run contactos.integration
 //
 // Cada test crea sus propios clientes y los borra al final; no usa seed ni toca otros datos.
-// Por seguridad, se niega a correr si la base no se llama `*_audit` o `*_test`.
+// Por seguridad, se niega a correr si la base no se llama `*_audit` o `*_test` (ver `baseDescartable`).
 
 import type { PrismaClient } from '@prisma/client';
 import type { Express } from 'express';
@@ -19,17 +19,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppError } from '../../../errors/app-error';
 import type * as ContactosService from '../contactos.service';
 
-const url = process.env.TEST_DATABASE_URL;
+import { urlDeBaseDescartable } from './baseDescartable';
 
-function nombreDeLaBase(conexion: string): string {
-  return new URL(conexion).pathname.replace(/^\//, '');
-}
-
-if (url !== undefined && !/_(audit|test)$/.test(nombreDeLaBase(url))) {
-  throw new Error(
-    `TEST_DATABASE_URL apunta a "${nombreDeLaBase(url)}": solo se permiten bases descartables (*_audit o *_test).`,
-  );
-}
+const url = urlDeBaseDescartable();
 
 let service: typeof ContactosService;
 let prisma: PrismaClient;
