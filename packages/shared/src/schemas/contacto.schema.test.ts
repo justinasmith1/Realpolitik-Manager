@@ -77,6 +77,51 @@ describe('email del contacto', () => {
   });
 });
 
+describe('nombre y área del contacto: columnas de 150 y 100', () => {
+  it.each([
+    ['nombre', 150],
+    ['area', 100],
+  ] as const)('%s acepta %i caracteres y rechaza uno más', (campo, maximo) => {
+    expect(
+      CreateContactoSchema.safeParse({ ...contacto, [campo]: 'x'.repeat(maximo) }).success,
+    ).toBe(true);
+    const resultado = CreateContactoSchema.safeParse({
+      ...contacto,
+      [campo]: 'x'.repeat(maximo + 1),
+    });
+    expect(rutas(resultado)).toEqual([campo]);
+  });
+
+  it.each(['nombre', 'area'] as const)(
+    '%s rechaza NUL y otros caracteres de control, que PostgreSQL no guardaría',
+    (campo) => {
+      for (const control of ['\u0000', '\n', '\t', '\u007F']) {
+        const resultado = CreateContactoSchema.safeParse({
+          ...contacto,
+          [campo]: `Ab${control}cd`,
+        });
+        expect(rutas(resultado)).toEqual([campo]);
+      }
+    },
+  );
+
+  it('el mensaje dice por qué', () => {
+    expect(mensajes(CreateContactoSchema.safeParse({ ...contacto, nombre: 'Ab\u0000cd' }))).toEqual(
+      ['El nombre no puede contener caracteres de control.'],
+    );
+    expect(mensajes(CreateContactoSchema.safeParse({ ...contacto, area: 'Ab\u0000cd' }))).toEqual([
+      'El área no puede contener caracteres de control.',
+    ]);
+  });
+
+  it('también rige en cada contacto del guardado completo', () => {
+    const resultado = ReemplazarContactosSchema.safeParse({
+      contactos: [contacto, { ...contacto, email: 'otro@ejemplo.example', nombre: 'Ab\u0000cd' }],
+    });
+    expect(rutas(resultado)).toEqual(['contactos.1.nombre']);
+  });
+});
+
 describe('UpdateContactoSchema', () => {
   it.each([
     ['nombre', { nombre: 'Otro Nombre' }],
@@ -155,14 +200,14 @@ describe('ReemplazarContactosSchema', () => {
       {
         ...contacto,
         clienteId: ID_B,
-        createdAt: '2020-01-01',
+        creadoEn: '2020-01-01',
         isDeleted: true,
         deletedAt: '2020-01-01',
       },
     ]);
     expect(resultado.success).toBe(true);
     if (resultado.success) {
-      for (const campo of ['clienteId', 'createdAt', 'isDeleted', 'deletedAt']) {
+      for (const campo of ['clienteId', 'creadoEn', 'isDeleted', 'deletedAt']) {
         expect(resultado.data.contactos[0]).not.toHaveProperty(campo);
       }
     }

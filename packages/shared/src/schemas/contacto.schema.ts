@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-/** Largo máximo del email: es el `VarChar(254)` de la columna. Un largo mayor daría un 500. */
-const EMAIL_MAX = 254;
+import { EMAIL_MAX, emailNormalizado, repetidos, sinCaracteresDeControl } from './campos.js';
 
 export const ContactoSchema = z.object({
   id: z.string().uuid({ message: 'El ID debe ser un UUID v4 válido.' }),
@@ -9,25 +8,26 @@ export const ContactoSchema = z.object({
     .string()
     .trim()
     .min(2, { message: 'El nombre debe tener al menos 2 caracteres.' })
-    .max(150, { message: 'El nombre no puede superar los 150 caracteres.' }),
+    .max(150, { message: 'El nombre no puede superar los 150 caracteres.' })
+    .refine(sinCaracteresDeControl, {
+      message: 'El nombre no puede contener caracteres de control.',
+    }),
   area: z
     .string()
     .trim()
     .min(2, { message: 'El área debe tener al menos 2 caracteres.' })
-    .max(100, { message: 'El área no puede superar los 100 caracteres.' }),
-  // `.trim()` va antes de `.max()`: el largo se mide sobre el valor ya normalizado.
-  email: z
-    .string()
-    .trim()
-    .max(EMAIL_MAX, {
-      message: `El email del contacto no puede superar los ${EMAIL_MAX} caracteres.`,
-    })
-    .email({ message: 'El email del contacto no tiene un formato válido.' })
-    .toLowerCase(),
+    .max(100, { message: 'El área no puede superar los 100 caracteres.' })
+    .refine(sinCaracteresDeControl, {
+      message: 'El área no puede contener caracteres de control.',
+    }),
+  email: emailNormalizado({
+    formato: 'El email del contacto no tiene un formato válido.',
+    largo: `El email del contacto no puede superar los ${EMAIL_MAX} caracteres.`,
+  }),
   recibeRendiciones: z.boolean().default(false),
   clienteId: z.string().uuid(),
-  createdAt: z.coerce.date().optional(),
-  updatedAt: z.coerce.date().optional(),
+  creadoEn: z.coerce.date().optional(),
+  actualizadoEn: z.coerce.date().optional(),
 });
 
 export type Contacto = z.infer<typeof ContactoSchema>;
@@ -35,8 +35,8 @@ export type Contacto = z.infer<typeof ContactoSchema>;
 export const CreateContactoSchema = ContactoSchema.omit({
   id: true,
   clienteId: true,
-  createdAt: true,
-  updatedAt: true,
+  creadoEn: true,
+  actualizadoEn: true,
 });
 
 export type CreateContactoDto = z.infer<typeof CreateContactoSchema>;
@@ -72,16 +72,6 @@ export type ContactoGuardadoDto = z.infer<typeof ContactoGuardadoSchema>;
 interface ContactoRepetible {
   id?: string | undefined;
   email: string;
-}
-
-/** Posiciones de cada valor que aparece más de una vez. */
-function repetidos(valores: (string | undefined)[]): number[][] {
-  const posiciones = new Map<string, number[]>();
-  valores.forEach((valor, indice) => {
-    if (valor === undefined) return;
-    posiciones.set(valor, [...(posiciones.get(valor) ?? []), indice]);
-  });
-  return [...posiciones.values()].filter((indices) => indices.length > 1);
 }
 
 /**

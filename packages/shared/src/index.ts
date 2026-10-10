@@ -14,6 +14,7 @@ export {
   CuitSchema,
   WhatsappNumeroSchema,
   subtiposPorSector,
+  problemasDeEmails,
 } from './schemas/cliente.schema.js';
 
 export {
@@ -32,10 +33,15 @@ export type {
   ReemplazarContactosDto,
 } from './schemas/contacto.schema.js';
 
-export { ListarClientesQuerySchema } from './schemas/listarClientesQuery.schema.js';
+export {
+  ListarClientesQuerySchema,
+  MAX_BUSQUEDA_CLIENTES,
+} from './schemas/listarClientesQuery.schema.js';
 export type { ListarClientesQuery } from './schemas/listarClientesQuery.schema.js';
 
 export type {
+  DatosEmails,
+  ProblemaDeEmail,
   Cliente,
   ClientePublico,
   ClientePrivado,
