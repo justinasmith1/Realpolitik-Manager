@@ -1,6 +1,7 @@
-// Traduce un fallo del servidor (alta o edición) a los errores que muestra `ClienteForm`.
+// Traduce un fallo del servidor (alta, edición o cambio de estado) a texto de la interfaz:
+// los errores por campo de `ClienteForm` o, para el cambio de estado, un mensaje suelto.
 
-import type { FalloAltaCliente } from '@/modules/clientes/api/clientes.api';
+import type { FalloAltaCliente, FalloCambioEstado } from '@/modules/clientes/api/clientes.api';
 import { etiquetasEstado } from '@/modules/clientes/clientes.etiquetas';
 import type { ErroresDeEnvio } from '@/modules/clientes/components/ClienteForm';
 
@@ -56,5 +57,21 @@ export function erroresParaElFormulario(
     }
     case 'inesperado':
       return { general: mensajeInesperado };
+  }
+}
+
+/**
+ * Mensaje para cuando falla desactivar o reactivar un cliente. Si ya no existe se avisa
+ * eso (el listado se refresca solo); lo demás es genérico, sin detalles técnicos.
+ */
+export function mensajeFalloCambioEstado(
+  fallo: FalloCambioEstado,
+  accion: 'desactivar' | 'reactivar',
+): string {
+  switch (fallo.tipo) {
+    case 'no-existe':
+      return 'Este cliente ya no existe. Actualizamos el listado.';
+    case 'inesperado':
+      return `No pudimos ${accion} el cliente. Probá de nuevo en unos segundos.`;
   }
 }

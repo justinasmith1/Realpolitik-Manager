@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { ZodError } from 'zod';
 
 import {
+  ActualizarEstadoClienteSchema,
   ClienteSchema,
   ClienteSubtipoPublico,
   CreateClienteSchema,
@@ -1189,5 +1190,42 @@ describe('Periodicidad de rendición (HU1.5)', () => {
         Periodicidad | null | undefined
       >();
     });
+  });
+});
+
+// ─── Cuerpo de PATCH /clientes/:id/estado (HU1.8) ─────────────────────────────
+
+describe('ActualizarEstadoClienteSchema', () => {
+  it.each(['ACTIVO', 'INACTIVO'] as const)('acepta el estado %s', (estado) => {
+    const resultado = ActualizarEstadoClienteSchema.safeParse({ estado });
+    expect(resultado.success).toBe(true);
+    if (resultado.success) expect(resultado.data).toEqual({ estado });
+  });
+
+  it('rechaza SUSPENDIDO: es un estado reservado que no se asigna por la API', () => {
+    const resultado = ActualizarEstadoClienteSchema.safeParse({ estado: 'SUSPENDIDO' });
+    expect(resultado.success).toBe(false);
+    expect(resultado.error?.issues[0]?.path).toEqual(['estado']);
+  });
+
+  it.each([['BORRADO'], ['activo'], [''], [1], [null]])('rechaza el valor %j', (estado) => {
+    const resultado = ActualizarEstadoClienteSchema.safeParse({ estado });
+    expect(resultado.success).toBe(false);
+    expect(resultado.error?.issues[0]?.path).toEqual(['estado']);
+  });
+
+  it('rechaza un cuerpo sin estado', () => {
+    const resultado = ActualizarEstadoClienteSchema.safeParse({});
+    expect(resultado.success).toBe(false);
+    expect(resultado.error?.issues[0]?.path).toEqual(['estado']);
+  });
+
+  it('ignora cualquier otro campo del cuerpo', () => {
+    const resultado = ActualizarEstadoClienteSchema.safeParse({
+      estado: 'INACTIVO',
+      razonSocial: 'Otra S.A.',
+    });
+    expect(resultado.success).toBe(true);
+    if (resultado.success) expect(resultado.data).toEqual({ estado: 'INACTIVO' });
   });
 });

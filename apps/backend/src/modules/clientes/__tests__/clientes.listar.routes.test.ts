@@ -110,6 +110,26 @@ describe('GET /clientes', () => {
     expect(whereEnviado()).toEqual({ isDeleted: false, estado: 'INACTIVO' });
   });
 
+  it('con estado=INACTIVO devuelve los clientes identificados como inactivos', async () => {
+    prismaMock.cliente.findMany.mockResolvedValue([{ ...publica, estado: 'INACTIVO' }]);
+
+    const res = await request(app).get('/clientes?estado=INACTIVO');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([expect.objectContaining({ id: publica.id, estado: 'INACTIVO' })]);
+  });
+
+  it('combina el estado INACTIVO con sector, subtipo y búsqueda', async () => {
+    await request(app).get('/clientes?estado=INACTIVO&sector=PUBLICO&subtipo=MUNICIPAL&q=muni');
+
+    expect(whereEnviado()).toMatchObject({
+      isDeleted: false,
+      estado: 'INACTIVO',
+      sector: 'PUBLICO',
+      subtipo: 'MUNICIPAL',
+    });
+  });
+
   it('filtra por sector', async () => {
     await request(app).get('/clientes?sector=PRIVADO');
 

@@ -1,4 +1,5 @@
 import {
+  ActualizarEstadoClienteSchema,
   CreateClienteSchema,
   ListarClientesQuerySchema,
   CreateContactoSchema,
@@ -12,6 +13,7 @@ import { validate } from '../../middleware/validate';
 
 import {
   actualizarClienteController,
+  cambiarEstadoClienteController,
   crearClienteController,
   listarClientesController,
 } from './clientes.controller';
@@ -35,6 +37,12 @@ clientesRouter.patch(
   '/:id',
   validate({ params: ClienteIdParamsSchema, body: UpdateClienteSchema }),
   actualizarClienteController,
+);
+
+clientesRouter.patch(
+  '/:id/estado',
+  validate({ params: ClienteIdParamsSchema, body: ActualizarEstadoClienteSchema }),
+  cambiarEstadoClienteController,
 );
 
 clientesRouter.get('/:id/contactos', listarContactosController);

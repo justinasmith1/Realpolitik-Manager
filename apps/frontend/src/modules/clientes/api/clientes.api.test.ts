@@ -1,11 +1,13 @@
 import { ApiClientError } from '@/lib/http';
 import {
   actualizarCliente,
+  cambiarEstadoCliente,
   causaDeError,
   crearCliente,
   diagnosticoDeError,
   listarClientes,
   interpretarFalloAlta,
+  interpretarFalloCambioEstado,
   type NuevoCliente,
 } from '@/modules/clientes/api/clientes.api';
 
@@ -162,6 +164,82 @@ describe('actualizarCliente', () => {
 
     expect(error).toBeInstanceOf(ApiClientError);
     expect(error).toMatchObject({ kind: 'http', status: 404 });
+  });
+});
+
+describe('cambiarEstadoCliente', () => {
+  it('hace PATCH /clientes/:id/estado con el estado en JSON', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...clienteCreado, estado: 'INACTIVO' }, 200));
+
+    await cambiarEstadoCliente(clienteCreado.id, 'INACTIVO');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(`https://api.example/clientes/${clienteCreado.id}/estado`);
+    expect(init?.method).toBe('PATCH');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+    expect(JSON.parse(init?.body as string)).toEqual({ estado: 'INACTIVO' });
+  });
+
+  it('devuelve el cliente con su estado nuevo validado con el schema compartido', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...clienteCreado, estado: 'INACTIVO' }, 200));
+
+    const cliente = await cambiarEstadoCliente(clienteCreado.id, 'INACTIVO');
+
+    expect(cliente).toMatchObject({ id: clienteCreado.id, estado: 'INACTIVO' });
+  });
+
+  it('rechaza con el ApiClientError de http() sin modificarlo', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: { code: 'NOT_FOUND', message: 'x' } }, 404));
+
+    const error = await cambiarEstadoCliente(clienteCreado.id, 'ACTIVO').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiClientError);
+    expect(error).toMatchObject({ kind: 'http', status: 404 });
+  });
+});
+
+describe('interpretarFalloCambioEstado', () => {
+  it('un 404 NOT_FOUND es que el cliente ya no existe', () => {
+    const error = errorHttp(404, { error: { code: 'NOT_FOUND', message: 'x' } });
+
+    expect(interpretarFalloCambioEstado(error)).toEqual({ tipo: 'no-existe' });
+  });
+
+  it.each([
+    ['un 404 sin el formato del contrato', errorHttp(404, '<html>')],
+    ['un 400', errorHttp(400, { error: { code: 'VALIDATION_ERROR', details: [] } })],
+    ['un 500', errorHttp(500, { error: { code: 'INTERNAL_ERROR' } })],
+    [
+      'un fallo de red',
+      new ApiClientError({ kind: 'network', message: 'sin conexión', payload: undefined }),
+    ],
+    ['un error cualquiera', new Error('boom')],
+  ])('%s es inesperado', (_caso, error) => {
+    expect(interpretarFalloCambioEstado(error)).toEqual({ tipo: 'inesperado' });
+  });
+});
+
+describe('listarClientes: estado', () => {
+  it('sin estado no envía el parámetro (la API devuelve los activos)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([], 200));
+
+    await listarClientes({});
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example/clientes');
+  });
+
+  it('con estado INACTIVO lo envía junto con los demás filtros', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([], 200));
+
+    await listarClientes({ estado: 'INACTIVO', sector: 'PUBLICO', q: 'muni' });
+
+    const url = new URL(fetchMock.mock.calls[0]?.[0] as string);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      estado: 'INACTIVO',
+      sector: 'PUBLICO',
+      q: 'muni',
+    });
   });
 });
 

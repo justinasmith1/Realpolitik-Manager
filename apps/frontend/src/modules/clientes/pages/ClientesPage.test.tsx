@@ -133,6 +133,22 @@ const emptyHeading = () => screen.queryByRole('heading', { name: 'Todavía no ca
 const panelDeAlta = () => screen.queryByRole('dialog', { name: 'Nuevo cliente' });
 const filaDe = (razonSocial: string) => screen.getByRole('row', { name: new RegExp(razonSocial) });
 
+/** Botón "⋯" del menú de acciones de la fila de ese cliente. */
+const botonDelMenu = (razonSocial: string) =>
+  screen.getByRole('button', { name: new RegExp(`^Acciones de .*${razonSocial}`) });
+
+/** Abre el menú de acciones de la fila y devuelve su contenido. */
+async function abrirMenuDe(user: UserEvent, razonSocial: string) {
+  await user.click(botonDelMenu(razonSocial));
+  return within(await screen.findByRole('menu'));
+}
+
+/** Abre el menú de acciones de la fila y elige una opción. */
+async function elegirAccion(user: UserEvent, razonSocial: string, accion: string) {
+  const menu = await abrirMenuDe(user, razonSocial);
+  await user.click(menu.getByRole('menuitem', { name: accion }));
+}
+
 const camposDelAlta = [
   'Razón social',
   'Denominación',
@@ -642,7 +658,7 @@ describe('ClientesPage: edición de cliente', () => {
     const { user } = renderPage();
     await screen.findByRole('table');
 
-    await user.click(within(filaDe('Zeta Producciones')).getByRole('button', { name: 'Editar' }));
+    await elegirAccion(user, 'Zeta Producciones', 'Editar');
 
     const panel = within(screen.getByRole('dialog', { name: 'Editar cliente' }));
     expect(panel.getByLabelText('Razón social')).toHaveValue('Zeta Producciones S.A.');
@@ -667,7 +683,7 @@ describe('ClientesPage: edición de cliente', () => {
     const invalidar = vi.spyOn(queryClient, 'invalidateQueries');
     await screen.findByRole('table');
 
-    await user.click(within(filaDe('Zeta Producciones')).getByRole('button', { name: 'Editar' }));
+    await elegirAccion(user, 'Zeta Producciones', 'Editar');
     const razonSocial = within(
       screen.getByRole('dialog', { name: 'Editar cliente' }),
     ).getByLabelText('Razón social');
@@ -696,10 +712,344 @@ describe('ClientesPage: edición de cliente', () => {
     const { user } = renderPage();
     await screen.findByRole('table');
 
-    await user.click(within(filaDe('Zeta Producciones')).getByRole('button', { name: 'Editar' }));
+    await elegirAccion(user, 'Zeta Producciones', 'Editar');
     await user.click(screen.getByRole('button', { name: 'Cancelar' }));
 
     await vi.waitFor(() => expect(panelDeEdicion()).not.toBeInTheDocument());
     expect(llamadasPatch()).toHaveLength(0);
+  });
+});
+
+// ─── Desactivar y reactivar clientes (HU1.8) ──────────────────────────────────
+
+describe('ClientesPage: desactivar y reactivar', () => {
+  const clienteInactivo = { ...clienteProvincial, estado: 'INACTIVO' };
+
+  const llamadasPatch = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'PATCH');
+  const urlsGet = () =>
+    fetchMock.mock.calls.filter(([, init]) => init?.method !== 'PATCH').map(([url]) => urlDe(url));
+  const cuerpoDelPatch = (indice = 0): unknown =>
+    JSON.parse(llamadasPatch()[indice]?.[1]?.body as string);
+  const dialogoDeConfirmacion = () => screen.queryByRole('alertdialog');
+
+  /** Servidor simulado: el GET filtra por estado como el backend y el PATCH cambia el estado. */
+  function simularServidorConEstado(inicial: ClienteJson[]) {
+    const datos = inicial.map((c) => ({ ...c }));
+    fetchMock.mockImplementation((entrada, init) => {
+      const url = urlDe(entrada);
+      if (init?.method === 'PATCH') {
+        const id = url.split('/').at(-2);
+        const cliente = datos.find((c) => c.id === id);
+        if (cliente === undefined) {
+          return Promise.resolve(json({ error: { code: 'NOT_FOUND', message: 'No existe' } }, 404));
+        }
+        cliente.estado = (JSON.parse(init.body as string) as { estado: string }).estado;
+        return Promise.resolve(json(cliente));
+      }
+      const estado = new URL(url).searchParams.get('estado') ?? 'ACTIVO';
+      return Promise.resolve(
+        json(
+          listadoSegunQuery(
+            url,
+            datos.filter((c) => c.estado === estado),
+          ),
+        ),
+      );
+    });
+    return datos;
+  }
+
+  describe('desactivar', () => {
+    it('pide confirmación, aclara que los datos se conservan y no llama a la API hasta confirmar', async () => {
+      simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+
+      const dialogo = within(screen.getByRole('alertdialog'));
+      expect(dialogo.getByText('¿Desactivar este cliente?')).toBeInTheDocument();
+      expect(
+        dialogo.getByText(/Zeta Producciones S\.A\. dejará de aparecer en el listado de activos/),
+      ).toBeInTheDocument();
+      expect(dialogo.getByText(/Sus datos se conservan/)).toBeInTheDocument();
+      expect(llamadasPatch()).toHaveLength(0);
+    });
+
+    it('Cancelar cierra el diálogo sin llamar a la API', async () => {
+      simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancelar' }),
+      );
+
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+      expect(llamadasPatch()).toHaveLength(0);
+      expect(filaDe('Zeta Producciones')).toBeInTheDocument();
+    });
+
+    it('al confirmar hace el PATCH, avisa y el cliente sale del listado de activos', async () => {
+      simularServidorConEstado(catalogo);
+      const { user, queryClient } = renderPage();
+      const invalidar = vi.spyOn(queryClient, 'invalidateQueries');
+      await screen.findByRole('table');
+
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desactivar cliente' }),
+      );
+
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        'Se desactivó el cliente Zeta Producciones S.A.',
+      );
+      expect(llamadasPatch()).toHaveLength(1);
+      expect(urlDe(llamadasPatch()[0]?.[0] ?? '')).toBe(
+        `https://api.example/clientes/${clientePrivado.id}/estado`,
+      );
+      expect(cuerpoDelPatch()).toEqual({ estado: 'INACTIVO' });
+      expect(invalidar).toHaveBeenCalledWith({ queryKey: ['clientes'] });
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByText('Zeta Producciones S.A.', { selector: 'th' }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(screen.getByText('Municipalidad de Ejemplo', { selector: 'th' })).toBeInTheDocument();
+      expect(dialogoDeConfirmacion()).not.toBeInTheDocument();
+    });
+
+    it('en la vista de activos los clientes no llevan badge ni la acción Reactivar', async () => {
+      simularServidorConEstado(catalogo);
+      renderPage();
+      await screen.findByRole('table');
+
+      expect(screen.queryByText('Inactivo')).not.toBeInTheDocument();
+      // Un solo botón de menú por fila, con la razón social en su nombre accesible.
+      expect(screen.getAllByRole('button', { name: /^Acciones de / })).toHaveLength(
+        catalogo.length,
+      );
+      expect(botonDelMenu('Zeta Producciones')).toHaveAccessibleName(
+        'Acciones de Zeta Producciones S.A.',
+      );
+      expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
+    });
+
+    it('el menú de un cliente activo ofrece Editar, Contactos y Desactivar, sin Reactivar', async () => {
+      simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+
+      const menu = await abrirMenuDe(user, 'Zeta Producciones');
+
+      expect(menu.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+        'Editar',
+        'Contactos',
+        'Desactivar',
+      ]);
+      expect(menu.getByRole('menuitem', { name: 'Desactivar' })).toHaveAttribute(
+        'data-variant',
+        'destructive',
+      );
+    });
+  });
+
+  describe('vista de inactivos', () => {
+    it('el selector pide los inactivos a la API y los muestra con el badge y la acción Reactivar', async () => {
+      simularServidorConEstado([clienteMunicipal, clientePrivado, clienteInactivo]);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      expect(screen.getByLabelText('Estado')).toHaveValue('ACTIVO');
+
+      await user.selectOptions(screen.getByLabelText('Estado'), 'INACTIVO');
+
+      expect(
+        await screen.findByText('Ministerio de Ejemplo', { selector: 'th' }),
+      ).toBeInTheDocument();
+      expect(ultimaUrl()).toBe('https://api.example/clientes?estado=INACTIVO');
+      expect(within(filaDe('Ministerio de Ejemplo')).getByText('Inactivo')).toBeInTheDocument();
+      // El menú ofrece Reactivar (no Desactivar), y Editar y Contactos siguen disponibles.
+      const menu = await abrirMenuDe(user, 'Ministerio de Ejemplo');
+      expect(menu.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+        'Editar',
+        'Contactos',
+        'Reactivar',
+      ]);
+      expect(menu.getByRole('menuitem', { name: 'Reactivar' })).toHaveAttribute(
+        'data-variant',
+        'default',
+      );
+      await user.keyboard('{Escape}');
+      // Los activos no aparecen en esta vista.
+      expect(
+        screen.queryByText('Zeta Producciones S.A.', { selector: 'th' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('el estado queda en la URL: abrir ?estado=INACTIVO muestra directamente los inactivos', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      renderPage('/clientes?estado=INACTIVO');
+
+      expect(
+        await screen.findByText('Ministerio de Ejemplo', { selector: 'th' }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText('Estado')).toHaveValue('INACTIVO');
+      expect(urlsGet()).toEqual(['https://api.example/clientes?estado=INACTIVO']);
+    });
+
+    it('sin clientes inactivos dice "No hay clientes inactivos" y deja volver a los activos', async () => {
+      simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+
+      await user.selectOptions(screen.getByLabelText('Estado'), 'INACTIVO');
+
+      expect(
+        await screen.findByRole('heading', { name: 'No hay clientes inactivos' }),
+      ).toBeVisible();
+      expect(emptyHeading()).not.toBeInTheDocument();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText('Estado'), 'ACTIVO');
+
+      expect(await screen.findByRole('table')).toBeInTheDocument();
+      expect(ultimaUrl()).toBe('https://api.example/clientes');
+    });
+  });
+
+  describe('reactivar', () => {
+    it('no pide confirmación: llama a la API, avisa y el cliente vuelve a los activos', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      const { user } = renderPage('/clientes?estado=INACTIVO');
+      await screen.findByText('Ministerio de Ejemplo', { selector: 'th' });
+
+      await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
+
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        'Se reactivó el cliente Ministerio de Ejemplo.',
+      );
+      expect(dialogoDeConfirmacion()).not.toBeInTheDocument();
+      expect(llamadasPatch()).toHaveLength(1);
+      expect(urlDe(llamadasPatch()[0]?.[0] ?? '')).toBe(
+        `https://api.example/clientes/${clienteProvincial.id}/estado`,
+      );
+      expect(cuerpoDelPatch()).toEqual({ estado: 'ACTIVO' });
+      // Ya no hay inactivos en esta vista…
+      expect(
+        await screen.findByRole('heading', { name: 'No hay clientes inactivos' }),
+      ).toBeVisible();
+
+      // …y el cliente aparece de nuevo entre los activos.
+      await user.selectOptions(screen.getByLabelText('Estado'), 'ACTIVO');
+      expect(
+        await screen.findByText('Ministerio de Ejemplo', { selector: 'th' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Inactivo')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('filtros combinados', () => {
+    it('el estado se combina con la búsqueda y el sector en el mismo pedido', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      renderPage('/clientes?estado=INACTIVO&sector=PUBLICO&q=minis');
+
+      await screen.findByText('Ministerio de Ejemplo', { selector: 'th' });
+
+      const params = new URL(ultimaUrl()).searchParams;
+      expect(Object.fromEntries(params)).toEqual({
+        estado: 'INACTIVO',
+        sector: 'PUBLICO',
+        q: 'minis',
+      });
+    });
+
+    it('cambiar de vista conserva la búsqueda y el sector', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      const { user } = renderPage('/clientes?sector=PUBLICO');
+      await screen.findByRole('table');
+
+      await user.selectOptions(screen.getByLabelText('Estado'), 'INACTIVO');
+
+      await screen.findByText('Ministerio de Ejemplo', { selector: 'th' });
+      expect(Object.fromEntries(new URL(ultimaUrl()).searchParams)).toEqual({
+        estado: 'INACTIVO',
+        sector: 'PUBLICO',
+      });
+    });
+
+    it('con un filtro que no coincide en inactivos dice "no hay clientes que coincidan"', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      renderPage('/clientes?estado=INACTIVO&sector=PRIVADO');
+
+      expect(await screen.findByText('No hay clientes que coincidan')).toBeVisible();
+      expect(screen.queryByText('No hay clientes inactivos')).not.toBeInTheDocument();
+    });
+
+    it('Limpiar filtros vuelve a la vista de activos', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      const { user } = renderPage('/clientes?estado=INACTIVO');
+      await screen.findByText('Ministerio de Ejemplo', { selector: 'th' });
+
+      await user.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+
+      expect(
+        await screen.findByText('Municipalidad de Ejemplo', { selector: 'th' }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText('Estado')).toHaveValue('ACTIVO');
+      expect(ultimaUrl()).toBe('https://api.example/clientes');
+    });
+  });
+
+  describe('errores', () => {
+    it('si el cliente ya no existe (404) avisa y vuelve a pedir el listado', async () => {
+      const datos = simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      const pedidosAntes = urlsGet().length;
+      // Otro usuario lo dio de baja mientras tanto.
+      datos.splice(
+        datos.findIndex((c) => c.id === clientePrivado.id),
+        1,
+      );
+
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desactivar cliente' }),
+      );
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Este cliente ya no existe. Actualizamos el listado.',
+      );
+      await vi.waitFor(() => expect(urlsGet().length).toBeGreaterThan(pedidosAntes));
+      await vi.waitFor(() =>
+        expect(
+          screen.queryByText('Zeta Producciones S.A.', { selector: 'th' }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    it('ante un error inesperado muestra un mensaje genérico y el cliente sigue en la lista', async () => {
+      simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      const servidor = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((entrada, init) =>
+        init?.method === 'PATCH'
+          ? Promise.resolve(json({ error: { code: 'INTERNAL_ERROR' } }, 500))
+          : (servidor?.(entrada, init) ?? Promise.reject(new Error('sin servidor'))),
+      );
+
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desactivar cliente' }),
+      );
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'No pudimos desactivar el cliente. Probá de nuevo en unos segundos.',
+      );
+      expect(screen.getByText('Zeta Producciones S.A.', { selector: 'th' })).toBeInTheDocument();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
   });
 });

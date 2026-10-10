@@ -12,14 +12,24 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { etiquetasSector, etiquetasSubtipo } from '@/modules/clientes/clientes.etiquetas';
 
+/** Vistas del listado por estado. Las dos que la interfaz ofrece; SUSPENDIDO no se usa. */
+export type VistaEstado = 'ACTIVO' | 'INACTIVO';
+
+const opcionesDeEstado: { valor: VistaEstado; etiqueta: string }[] = [
+  { valor: 'ACTIVO', etiqueta: 'Activos' },
+  { valor: 'INACTIVO', etiqueta: 'Inactivos' },
+];
+
 interface ClientesFiltrosProps {
   textoBusqueda: string;
+  estado: VistaEstado;
   sector: ClienteSectorType | undefined;
   subtipo: ClienteSubtipoPublicoType | undefined;
   hayFiltros: boolean;
   /** Cantidad de resultados, anunciada a lectores de pantalla. */
   total: number;
   onTextoChange: (texto: string) => void;
+  onEstadoChange: (estado: VistaEstado) => void;
   onSectorChange: (sector: ClienteSectorType | undefined) => void;
   onSubtipoChange: (subtipo: ClienteSubtipoPublicoType | undefined) => void;
   onLimpiar: () => void;
@@ -31,11 +41,13 @@ interface ClientesFiltrosProps {
  */
 export function ClientesFiltros({
   textoBusqueda,
+  estado,
   sector,
   subtipo,
   hayFiltros,
   total,
   onTextoChange,
+  onEstadoChange,
   onSectorChange,
   onSubtipoChange,
   onLimpiar,
@@ -66,6 +78,23 @@ export function ClientesFiltros({
             className="pl-8"
           />
         </div>
+      </div>
+
+      <div className="flex w-36 flex-col gap-1">
+        <label htmlFor="filtro-estado" className="text-xs font-medium">
+          Estado
+        </label>
+        <NativeSelect
+          id="filtro-estado"
+          value={estado}
+          onChange={(e) => onEstadoChange(e.target.value === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO')}
+        >
+          {opcionesDeEstado.map(({ valor, etiqueta }) => (
+            <option key={valor} value={valor}>
+              {etiqueta}
+            </option>
+          ))}
+        </NativeSelect>
       </div>
 
       <div className="flex w-44 flex-col gap-1">

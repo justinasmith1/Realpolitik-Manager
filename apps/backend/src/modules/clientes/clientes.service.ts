@@ -1,5 +1,6 @@
 import { Prisma, type Cliente as ClienteRow } from '@prisma/client';
 import type {
+  ActualizarEstadoClienteDto,
   Cliente,
   CreateClienteDto,
   ListarClientesQuery,
@@ -94,6 +95,32 @@ export async function actualizarCliente(id: string, input: UpdateClienteDto): Pr
     throw error;
   }
   return toClienteDto(actualizado);
+}
+
+/**
+ * Activa o desactiva un cliente (HU1.8). Solo cambia `estado`: los datos, los contactos y
+ * lo demás no se tocan, y no se usa la baja lógica (`isDeleted`), que es otra cosa. Pedir el
+ * estado que el cliente ya tiene responde igual con el cliente, sin error (idempotente).
+ *
+ * `isDeleted: false` va en el `where` del `update`: un cliente dado de baja es un 404, como
+ * si no existiera. Prisma lo informa con P2025, así que no hace falta una consulta previa.
+ */
+export async function cambiarEstadoCliente(
+  id: string,
+  estado: ActualizarEstadoClienteDto['estado'],
+): Promise<Cliente> {
+  try {
+    const actualizado = await prisma.cliente.update({
+      where: { id, isDeleted: false },
+      data: { estado },
+    });
+    return toClienteDto(actualizado);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw notFound('Cliente no encontrado');
+    }
+    throw error;
+  }
 }
 
 /**
