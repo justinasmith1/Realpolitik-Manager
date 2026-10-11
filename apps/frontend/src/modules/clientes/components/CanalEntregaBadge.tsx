@@ -1,6 +1,7 @@
 import type { CanalEntrega } from '@realpolitik/shared';
 import { GlobeIcon, MailIcon, MessageCircleIcon, type LucideIcon } from 'lucide-react';
 
+import { Badge } from '@/components/ui/badge';
 import { etiquetasCanalEntrega } from '@/modules/clientes/clientes.etiquetas';
 
 // Ícono de cada canal. `Record` obliga a cubrir cada canal: si shared agrega uno, esto deja
@@ -24,9 +25,9 @@ interface CanalEntregaBadgeProps {
 export function CanalEntregaBadge({ canal }: CanalEntregaBadgeProps) {
   const Icono = iconoDeCanal[canal];
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-pill border bg-muted px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-foreground">
+    <Badge layout="icon" tone="neutral">
       <Icono aria-hidden="true" className="size-3.5" />
       {etiquetasCanalEntrega[canal]}
-    </span>
+    </Badge>
   );
 }

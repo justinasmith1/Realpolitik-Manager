@@ -26,6 +26,13 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, next) 
   }
 
   const bodyError = readBodyParserError(err);
+  // Cuerpo más grande que el límite de `json()`: 413, sin detalles (ni el límite ni el tamaño).
+  if (bodyError?.type === 'entity.too.large') {
+    res
+      .status(413)
+      .json(buildBody('PAYLOAD_TOO_LARGE', 'El cuerpo de la solicitud es demasiado grande'));
+    return;
+  }
   if (bodyError) {
     const mensaje =
       bodyError.type === 'entity.parse.failed'

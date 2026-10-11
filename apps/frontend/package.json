@@ -13,7 +13,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "pretest": "pnpm run build:shared",
-    "test": "vitest run",
+    "test": "vitest run --exclude \"**/*.api.test.tsx\"",
+    "pretest:api": "pnpm run build:shared",
+    "test:api": "node -e \"if(!process.env.TEST_API_URL||!process.env.TEST_DATABASE_URL){console.error('test:api necesita TEST_API_URL (un backend contra una base descartable) y TEST_DATABASE_URL (esa misma base, *_audit o *_test).');process.exit(1)}\" && vitest run .api.test.tsx",
     "pretest:watch": "pnpm run build:shared",
     "test:watch": "vitest"
   },

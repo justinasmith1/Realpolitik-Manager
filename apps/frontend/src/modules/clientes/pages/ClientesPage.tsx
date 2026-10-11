@@ -2,6 +2,7 @@ import type { Cliente } from '@realpolitik/shared';
 import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   causaDeError,
@@ -14,13 +15,17 @@ import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorS
 import { ClientesFiltros } from '@/modules/clientes/components/ClientesFiltros';
 import { ClientesInactivosVacio } from '@/modules/clientes/components/ClientesInactivosVacio';
 import { ClientesLoadingState } from '@/modules/clientes/components/ClientesLoadingState';
+import { ClientesSinActivos } from '@/modules/clientes/components/ClientesSinActivos';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 import { DesactivarClienteDialog } from '@/modules/clientes/components/DesactivarClienteDialog';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import { mensajeFalloCambioEstado } from '@/modules/clientes/components/erroresDeEnvio';
 import { GestionarContactosSheet } from '@/modules/clientes/components/GestionarContactosSheet';
 import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
-import { useCambiarEstadoCliente } from '@/modules/clientes/hooks/useCambiarEstadoCliente';
+import {
+  useCambiarEstadoCliente,
+  useClientesCambiandoEstado,
+} from '@/modules/clientes/hooks/useCambiarEstadoCliente';
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
 import { useFiltrosClientes } from '@/modules/clientes/hooks/useFiltrosClientes';
 
@@ -38,6 +43,7 @@ export function ClientesPage() {
   const { filtros, hayFiltros, estado, textoBusqueda, ...acciones } = useFiltrosClientes();
   const consulta = useClientes(filtros);
   const cambioDeEstado = useCambiarEstadoCliente();
+  const idsCambiandoEstado = useClientesCambiandoEstado();
 
   const abrirAlta = () => {
     setUltimoCreado(null);
@@ -96,7 +102,15 @@ export function ClientesPage() {
   const clientes = consulta.data;
   // Mientras se pide un filtro nuevo, `data` es la respuesta anterior: no sirve para concluir
   // que "no hay ningún cliente".
-  const sinClientes = clientes?.length === 0 && !hayFiltros && !consulta.isPlaceholderData;
+  const sinActivos = clientes?.length === 0 && !hayFiltros && !consulta.isPlaceholderData;
+  // Sin activos todavía no se sabe si es el primer uso o si están todos desactivados: se
+  // consulta cuántos inactivos hay para no decir "todavía no cargaste clientes" si los hay.
+  const inactivos = useClientes({ estado: 'INACTIVO' }, { enabled: sinActivos });
+  const cantidadInactivos = inactivos.data?.length ?? 0;
+  // Un dato viejo (el listado se invalidó al desactivar el último) no sirve: se espera el fresco.
+  const verificandoInactivos = sinActivos && (inactivos.isPending || inactivos.isFetching);
+  const sinClientes = sinActivos && cantidadInactivos === 0 && !verificandoInactivos;
+  const soloInactivos = sinActivos && cantidadInactivos > 0;
   // Vista de inactivos vacía y sin búsqueda ni otros filtros: no es el primer uso, así que se
   // dice que no hay inactivos y los filtros siguen a la vista para poder volver a los activos.
   const sinInactivos =
@@ -108,43 +122,35 @@ export function ClientesPage() {
     !consulta.isPlaceholderData;
 
   return (
-    <div className="flex flex-col gap-3.5 px-6 pt-5.5 pb-10">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold tracking-tight">Clientes</h1>
-        <Button onClick={abrirAlta}>
+    <div className="flex flex-col gap-4 px-4 pt-5 pb-10 md:px-6 md:pt-6">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight">Clientes</h1>
+          <p className="mt-0.5 text-sm text-content-secondary">
+            Catálogo de clientes y su configuración de rendición.
+          </p>
+        </div>
+        <Button variant="brand" onClick={abrirAlta} className="max-sm:w-full">
           <PlusIcon aria-hidden="true" />
           Nuevo cliente
         </Button>
       </div>
 
       {ultimoCreado !== null && (
-        <p role="status" className="rounded-control border bg-card px-3 py-2 text-sm text-success">
+        <Alert variant="success">
           Se registró el cliente {ultimoCreado.razonSocial} (CUIT {ultimoCreado.cuit}).
-        </p>
+        </Alert>
       )}
 
       {ultimoEditado !== null && (
-        <p role="status" className="rounded-control border bg-card px-3 py-2 text-sm text-success">
-          Se actualizó el cliente {ultimoEditado.razonSocial}.
-        </p>
+        <Alert variant="success">Se actualizó el cliente {ultimoEditado.razonSocial}.</Alert>
       )}
 
-      {avisoEstado?.tipo === 'exito' && (
-        <p role="status" className="rounded-control border bg-card px-3 py-2 text-sm text-success">
-          {avisoEstado.texto}
-        </p>
-      )}
+      {avisoEstado?.tipo === 'exito' && <Alert variant="success">{avisoEstado.texto}</Alert>}
 
-      {avisoEstado?.tipo === 'error' && (
-        <p
-          role="alert"
-          className="rounded-control border border-destructive-border bg-destructive-soft px-3 py-2 text-sm text-destructive"
-        >
-          {avisoEstado.texto}
-        </p>
-      )}
+      {avisoEstado?.tipo === 'error' && <Alert>{avisoEstado.texto}</Alert>}
 
-      {consulta.isPending ? (
+      {consulta.isPending || verificandoInactivos ? (
         <ClientesLoadingState />
       ) : consulta.isError ? (
         <ClientesErrorState
@@ -169,7 +175,12 @@ export function ClientesPage() {
             onSubtipoChange={acciones.elegirSubtipo}
             onLimpiar={acciones.limpiar}
           />
-          {sinInactivos ? (
+          {soloInactivos ? (
+            <ClientesSinActivos
+              cantidadInactivos={cantidadInactivos}
+              onVerInactivos={() => acciones.elegirEstado('INACTIVO')}
+            />
+          ) : sinInactivos ? (
             <ClientesInactivosVacio />
           ) : (
             <ClientesTabla
@@ -179,9 +190,7 @@ export function ClientesPage() {
               onEditar={abrirEdicion}
               onDesactivar={setClienteADesactivar}
               onReactivar={(cliente) => void cambiarEstado(cliente, 'ACTIVO')}
-              idCambiandoEstado={
-                cambioDeEstado.isPending ? (cambioDeEstado.variables?.id ?? null) : null
-              }
+              idsCambiandoEstado={idsCambiandoEstado}
             />
           )}
         </>

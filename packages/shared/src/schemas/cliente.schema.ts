@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { validateCuit } from '../utils/validateCuit.js';
 
+import { EMAIL_MAX, emailNormalizado, repetidos, sinCaracteresDeControl } from './campos.js';
+
 // ─── Enums base ───────────────────────────────────────────────────────────────
 
 /**
@@ -169,6 +171,55 @@ export const PeriodicidadSchema = z.discriminatedUnion('tipo', [
 
 export type Periodicidad = z.infer<typeof PeriodicidadSchema>;
 
+// ─── URL del portal ───────────────────────────────────────────────────────────
+
+const PORTAL_URL_MAX = 500;
+
+/**
+ * Por qué la URL del portal es solo `http:` o `https:`: el front la muestra como enlace, y
+ * `new URL()` también acepta `javascript:`, `data:`, `file:` o `ftp:`, que no son un portal web.
+ * Tampoco se admiten credenciales embebidas (`https://usuario:clave@host`): quedarían guardadas
+ * en claro y a la vista de cualquiera que abra el cliente. Sí se admiten ruta, query y fragmento.
+ *
+ * Un solo `superRefine` y no varios `refine`: Zod corre cada `refine` aunque el anterior haya
+ * fallado, y un mismo valor mal formado informaría varios errores sobre el mismo campo.
+ */
+const PortalUrlSchema = z
+  .string()
+  .trim()
+  .max(PORTAL_URL_MAX, {
+    message: `La URL del portal no puede superar los ${PORTAL_URL_MAX} caracteres.`,
+  })
+  .superRefine((valor, ctx) => {
+    const problema = problemaDeUrlDelPortal(valor);
+    if (problema !== null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: problema });
+    }
+  });
+
+/** Por qué la URL no sirve, o `null` si es una URL http(s) válida y sin credenciales. */
+function problemaDeUrlDelPortal(valor: string): string | null {
+  // Antes de parsear: `new URL()` descarta tabulaciones y saltos de línea, pero el texto
+  // guardado los conservaría.
+  if (!sinCaracteresDeControl(valor)) {
+    return 'La URL del portal no puede contener caracteres de control.';
+  }
+  const esHttp = /^https?:\/\//i.test(valor);
+  let url: URL | undefined;
+  try {
+    url = new URL(valor);
+  } catch {
+    url = undefined;
+  }
+  if (!esHttp || url === undefined) {
+    return 'La URL del portal debe ser una URL HTTP o HTTPS válida (por ejemplo, https://portal.ejemplo.com).';
+  }
+  if (url.username !== '' || url.password !== '') {
+    return 'La URL del portal no puede incluir usuario ni contraseña.';
+  }
+  return null;
+}
+
 // ─── Campos comunes ───────────────────────────────────────────────────────────
 
 /**
@@ -187,7 +238,10 @@ const ClienteCamposBase = z.object({
     .string()
     .trim()
     .min(2, { message: 'La razón social debe tener al menos 2 caracteres.' })
-    .max(150, { message: 'La razón social no puede superar los 150 caracteres.' }),
+    .max(150, { message: 'La razón social no puede superar los 150 caracteres.' })
+    .refine(sinCaracteresDeControl, {
+      message: 'La razón social no puede contener caracteres de control.',
+    }),
 
   /**
    * Denominación corta o alias del cliente.
@@ -198,7 +252,10 @@ const ClienteCamposBase = z.object({
     .string()
     .trim()
     .min(2, { message: 'La denominación debe tener al menos 2 caracteres.' })
-    .max(60, { message: 'La denominación no puede superar los 60 caracteres.' }),
+    .max(60, { message: 'La denominación no puede superar los 60 caracteres.' })
+    .refine(sinCaracteresDeControl, {
+      message: 'La denominación no puede contener caracteres de control.',
+    }),
 
   /** CUIT/CUIL con o sin guiones — se valida con Módulo 11 */
   cuit: CuitSchema,
@@ -206,33 +263,37 @@ const ClienteCamposBase = z.object({
   /** Condición frente al IVA */
   ivaCondicion: IvaCondicion,
 
-  /** Email de contacto principal */
-  emailContacto: z
-    .string()
-    .email({ message: 'El email de contacto no tiene un formato válido.' })
-    .toLowerCase(),
+  /** Email de contacto principal: sin espacios en los bordes, en minúsculas y de hasta 254 caracteres. */
+  emailContacto: emailNormalizado({
+    formato: 'El email de contacto no tiene un formato válido.',
+    largo: `El email de contacto no puede superar los ${EMAIL_MAX} caracteres.`,
+  }),
 
-  /** Emails de contacto adicionales (opcional) */
+  /** Emails de contacto adicionales (opcional), normalizados como el principal. */
   emailsAdicionales: z
-    .array(z.string().email({ message: 'Uno o más emails adicionales no son válidos.' }))
+    .array(
+      emailNormalizado({
+        formato: 'Uno o más emails adicionales no son válidos.',
+        largo: `Un email adicional no puede superar los ${EMAIL_MAX} caracteres.`,
+      }),
+    )
     .max(10, { message: 'Se permiten como máximo 10 emails adicionales.' })
     .optional()
     .default([]),
 
   /** Teléfono de contacto en formato internacional (opcional) */
+  // Solo dígitos, espacio común, `+` inicial, `-`, `(`, `)` y `.`: `\s` aceptaría tabulaciones y
+  // saltos de línea. `.trim()` va antes del patrón, que mide el largo del valor ya recortado.
   telefono: z
     .string()
-    .regex(/^\+?[\d\s\-().]{7,20}$/, {
+    .trim()
+    .regex(/^\+?[\d ()\-.]{7,20}$/, {
       message: 'El teléfono no tiene un formato válido.',
     })
     .optional(),
 
   /** URL del portal web donde se deben entregar los legajos. Obligatoria si el canal es PORTAL_WEB. */
-  portalUrl: z
-    .string()
-    .trim()
-    .url({ message: 'La URL del portal no tiene un formato válido.' })
-    .optional(),
+  portalUrl: PortalUrlSchema.optional(),
 
   /** Canal habitual de entrega de rendiciones. Por defecto, CORREO (igual que la base). */
   canalEntrega: CanalEntrega.default('CORREO'),
@@ -376,6 +437,67 @@ function validarCanalEntrega(datos: DatosCanalEntrega, ctx: z.RefinementCtx): vo
   }
 }
 
+// ─── Validación de los emails ─────────────────────────────────────────────────
+
+export interface DatosEmails {
+  emailContacto?: string | undefined;
+  emailsAdicionales?: string[] | undefined;
+}
+
+/** Un email adicional que rompe la regla: su posición, cuál regla y el texto para mostrarlo. */
+export interface ProblemaDeEmail {
+  indice: number;
+  tipo: 'IGUAL_AL_PRINCIPAL' | 'REPETIDO';
+  mensaje: string;
+}
+
+/**
+ * Los emails adicionales no pueden repetirse entre sí ni repetir el email principal. Se
+ * compara ya normalizado (sin espacios y en minúsculas) y se rechaza el pedido en lugar de
+ * quitar el repetido en silencio: quien lo envió se entera y corrige su dato.
+ *
+ * Por qué repetir el principal es un error: los destinatarios de una rendición por correo son
+ * el principal más los adicionales, así que repetirlo solo la mandaría dos veces. El contrato
+ * no define otra regla; esta es la que menos sorprende.
+ *
+ * Es una función pura sobre un estado completo (principal + adicionales): en una edición
+ * parcial el schema solo ve lo que viaja en el pedido, y el backend la vuelve a aplicar sobre
+ * el estado resultante (lo enviado más lo guardado). Se exporta para que sea la misma regla.
+ * Es una regla de escritura: `ClienteSchema`, que lee lo guardado, no la aplica, para que un
+ * registro anterior a ella no haga fallar el listado.
+ */
+export function problemasDeEmails(datos: DatosEmails): ProblemaDeEmail[] {
+  const adicionales = (datos.emailsAdicionales ?? []).map((email) => email.trim().toLowerCase());
+  const principal = datos.emailContacto?.trim().toLowerCase();
+  const repetidosEntreSi = new Set(repetidos(adicionales).flat());
+
+  return adicionales.flatMap((email, indice): ProblemaDeEmail[] => {
+    if (email === principal) {
+      return [
+        {
+          indice,
+          tipo: 'IGUAL_AL_PRINCIPAL',
+          mensaje: 'Este email ya es el email de contacto principal: no hace falta repetirlo.',
+        },
+      ];
+    }
+    if (repetidosEntreSi.has(indice)) {
+      return [{ indice, tipo: 'REPETIDO', mensaje: 'Este email adicional está repetido.' }];
+    }
+    return [];
+  });
+}
+
+function validarEmails(datos: DatosEmails, ctx: z.RefinementCtx): void {
+  for (const { indice, mensaje } of problemasDeEmails(datos)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['emailsAdicionales', indice],
+      message: mensaje,
+    });
+  }
+}
+
 // ─── Schema principal (discriminated union) ───────────────────────────────────
 
 /**
@@ -432,7 +554,10 @@ export const CreateClienteSchema = z
     ClientePublicoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA).extend(PERIODICIDAD_EN_ALTA),
     ClientePrivadoSchema.omit(CAMPOS_DEL_SERVIDOR_EN_ALTA).extend(PERIODICIDAD_EN_ALTA),
   ])
-  .superRefine(validarCanalEntrega);
+  .superRefine((datos, ctx) => {
+    validarCanalEntrega(datos, ctx);
+    validarEmails(datos, ctx);
+  });
 
 export type CreateClienteDto = z.infer<typeof CreateClienteSchema>;
 
@@ -498,6 +623,7 @@ export const UpdateClienteSchema = ClienteCamposBase.pick(CAMPOS_EDITABLES)
 
     // Como en el alta: quien pasa a PORTAL_WEB o WHATSAPP envía el dato en el mismo pedido.
     validarCanalEntrega(datos, ctx);
+    validarEmails(datos, ctx);
   });
 
 export type UpdateClienteDto = z.infer<typeof UpdateClienteSchema>;

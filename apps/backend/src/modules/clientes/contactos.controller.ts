@@ -1,50 +1,77 @@
-import type { Contacto, CreateContactoSchema, UpdateContactoSchema } from '@realpolitik/shared';
+import type {
+  Contacto,
+  CreateContactoSchema,
+  ReemplazarContactosSchema,
+  UpdateContactoSchema,
+} from '@realpolitik/shared';
 import type { Request, Response } from 'express';
 
 import type { ValidatedLocals } from '../../middleware/validate';
 
+import type { ClienteIdParamsSchema, ContactoParamsSchema } from './clientes.routes';
 import {
   actualizarContacto,
   crearContacto,
   eliminarContacto,
   listarContactos,
+  reemplazarContactos,
 } from './contactos.service';
 
-type CrearContactoLocals = ValidatedLocals<{ body: typeof CreateContactoSchema }>;
-type ActualizarContactoLocals = ValidatedLocals<{ body: typeof UpdateContactoSchema }>;
+type ListarContactosLocals = ValidatedLocals<{ params: typeof ClienteIdParamsSchema }>;
+type CrearContactoLocals = ValidatedLocals<{
+  params: typeof ClienteIdParamsSchema;
+  body: typeof CreateContactoSchema;
+}>;
+type ReemplazarContactosLocals = ValidatedLocals<{
+  params: typeof ClienteIdParamsSchema;
+  body: typeof ReemplazarContactosSchema;
+}>;
+type ActualizarContactoLocals = ValidatedLocals<{
+  params: typeof ContactoParamsSchema;
+  body: typeof UpdateContactoSchema;
+}>;
+type EliminarContactoLocals = ValidatedLocals<{ params: typeof ContactoParamsSchema }>;
 
 export async function listarContactosController(
-  req: Request<{ id: string }>,
-  res: Response<Contacto[]>,
+  _req: Request,
+  res: Response<Contacto[], ListarContactosLocals>,
 ): Promise<void> {
-  const contactos = await listarContactos(req.params.id);
+  const contactos = await listarContactos(res.locals.validated.params.id);
   res.status(200).json(contactos);
 }
 
 export async function crearContactoController(
-  req: Request<{ id: string }>,
+  _req: Request,
   res: Response<Contacto, CrearContactoLocals>,
 ): Promise<void> {
-  const contacto = await crearContacto(req.params.id, res.locals.validated.body);
+  const { params, body } = res.locals.validated;
+  const contacto = await crearContacto(params.id, body);
   res.status(201).json(contacto);
 }
 
+export async function reemplazarContactosController(
+  _req: Request,
+  res: Response<Contacto[], ReemplazarContactosLocals>,
+): Promise<void> {
+  const { params, body } = res.locals.validated;
+  const contactos = await reemplazarContactos(params.id, body);
+  res.status(200).json(contactos);
+}
+
 export async function actualizarContactoController(
-  req: Request<{ id: string; contactoId: string }>,
+  _req: Request,
   res: Response<Contacto, ActualizarContactoLocals>,
 ): Promise<void> {
-  const contacto = await actualizarContacto(
-    req.params.id,
-    req.params.contactoId,
-    res.locals.validated.body,
-  );
+  const { params, body } = res.locals.validated;
+  const contacto = await actualizarContacto(params.id, params.contactoId, body);
   res.status(200).json(contacto);
 }
 
 export async function eliminarContactoController(
-  req: Request<{ id: string; contactoId: string }>,
-  res: Response<void>,
+  _req: Request,
+  res: Response<void, EliminarContactoLocals>,
 ): Promise<void> {
-  await eliminarContacto(req.params.id, req.params.contactoId);
+  const { params } = res.locals.validated;
+  await eliminarContacto(params.id, params.contactoId);
   res.status(204).end();
 }

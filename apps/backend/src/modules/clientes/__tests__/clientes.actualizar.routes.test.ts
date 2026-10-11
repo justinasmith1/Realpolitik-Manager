@@ -7,10 +7,15 @@ import { createApp } from '../../../app';
 
 // Igual que en el alta: Prisma se reemplaza por dobles y se recorre la cadena real
 // route → validate → controller → service → mapper → errorHandler.
+/** Lo que el service lee del cliente guardado antes de editarlo (el `select` de `findFirst`). */
+type ClienteGuardado = Pick<
+  ClienteRow,
+  'sector' | 'canalEntrega' | 'emailContacto' | 'emailsAdicionales'
+>;
+
 const prismaMock = vi.hoisted(() => ({
   cliente: {
-    findFirst:
-      vi.fn<(args: unknown) => Promise<Pick<ClienteRow, 'sector' | 'canalEntrega'> | null>>(),
+    findFirst: vi.fn<(args: unknown) => Promise<ClienteGuardado | null>>(),
     update:
       vi.fn<
         (args: {
@@ -79,6 +84,15 @@ function errorDeIndiceUnico(campos: string[]) {
   );
 }
 
+/** El cliente guardado que ve el service: por defecto, el de `filaGuardada`. */
+const guardado = (extra: Partial<ClienteGuardado> = {}): ClienteGuardado => ({
+  sector: filaGuardada.sector,
+  canalEntrega: filaGuardada.canalEntrega,
+  emailContacto: filaGuardada.emailContacto,
+  emailsAdicionales: filaGuardada.emailsAdicionales,
+  ...extra,
+});
+
 const patchCliente = (id: string, body: object) => request(app).patch(`/clientes/${id}`).send(body);
 
 /** Los `data` con los que el service llamó a `update`. */
@@ -88,7 +102,9 @@ const detalleDeValidacion = (res: request.Response) =>
   (res.body as { error: { details: { campo: string }[] } }).error.details.map((d) => d.campo);
 
 beforeEach(() => {
-  prismaMock.cliente.findFirst.mockResolvedValue({ sector: 'PUBLICO', canalEntrega: 'CORREO' });
+  prismaMock.cliente.findFirst.mockResolvedValue(
+    guardado({ sector: 'PUBLICO', canalEntrega: 'CORREO' }),
+  );
   prismaMock.cliente.update.mockImplementation(({ data }) =>
     Promise.resolve(filaActualizada(data)),
   );
@@ -116,7 +132,7 @@ describe('PATCH /clientes/:id', () => {
       expect(ClienteSchema.safeParse(res.body).success).toBe(true);
       expect(prismaMock.cliente.findFirst).toHaveBeenCalledWith({
         where: { id: ID, isDeleted: false },
-        select: { sector: true, canalEntrega: true },
+        select: { sector: true, canalEntrega: true, emailContacto: true, emailsAdicionales: true },
       });
       // Solo viaja lo enviado: no se pisa telefono, emailsAdicionales ni el canal.
       expect(prismaMock.cliente.update).toHaveBeenCalledWith({
@@ -177,7 +193,9 @@ describe('PATCH /clientes/:id', () => {
     });
 
     it('de PRIVADO a PUBLICO guarda el subtipo del mismo pedido', async () => {
-      prismaMock.cliente.findFirst.mockResolvedValue({ sector: 'PRIVADO', canalEntrega: 'CORREO' });
+      prismaMock.cliente.findFirst.mockResolvedValue(
+        guardado({ sector: 'PRIVADO', canalEntrega: 'CORREO' }),
+      );
       prismaMock.cliente.update.mockImplementation(({ data }) =>
         Promise.resolve(
           filaActualizada(data, { ...filaGuardada, sector: 'PRIVADO', subtipo: null }),
@@ -240,10 +258,9 @@ describe('PATCH /clientes/:id', () => {
     });
 
     it('permite cambiar solo la URL de un cliente que ya está en PORTAL_WEB', async () => {
-      prismaMock.cliente.findFirst.mockResolvedValue({
-        sector: 'PUBLICO',
-        canalEntrega: 'PORTAL_WEB',
-      });
+      prismaMock.cliente.findFirst.mockResolvedValue(
+        guardado({ sector: 'PUBLICO', canalEntrega: 'PORTAL_WEB' }),
+      );
 
       const res = await patchCliente(ID, { portalUrl: 'https://nuevo.ejemplo.gob.ar' });
 
@@ -253,10 +270,9 @@ describe('PATCH /clientes/:id', () => {
     });
 
     it('permite cambiar solo el número de un cliente que ya está en WHATSAPP', async () => {
-      prismaMock.cliente.findFirst.mockResolvedValue({
-        sector: 'PUBLICO',
-        canalEntrega: 'WHATSAPP',
-      });
+      prismaMock.cliente.findFirst.mockResolvedValue(
+        guardado({ sector: 'PUBLICO', canalEntrega: 'WHATSAPP' }),
+      );
 
       const res = await patchCliente(ID, { whatsappNumero: '+54 9 351 765 4321' });
 
@@ -301,10 +317,9 @@ describe('PATCH /clientes/:id', () => {
     });
 
     it('responde 400 si envía solo portalUrl y el canal guardado es WHATSAPP', async () => {
-      prismaMock.cliente.findFirst.mockResolvedValue({
-        sector: 'PUBLICO',
-        canalEntrega: 'WHATSAPP',
-      });
+      prismaMock.cliente.findFirst.mockResolvedValue(
+        guardado({ sector: 'PUBLICO', canalEntrega: 'WHATSAPP' }),
+      );
 
       const res = await patchCliente(ID, { portalUrl: 'https://nuevo.ejemplo.gob.ar' });
 
@@ -488,7 +503,9 @@ describe('PATCH /clientes/:id', () => {
     });
 
     it('responde 400 si envía subtipo, sin sector, para un cliente privado guardado', async () => {
-      prismaMock.cliente.findFirst.mockResolvedValue({ sector: 'PRIVADO', canalEntrega: 'CORREO' });
+      prismaMock.cliente.findFirst.mockResolvedValue(
+        guardado({ sector: 'PRIVADO', canalEntrega: 'CORREO' }),
+      );
 
       const res = await patchCliente(ID, { subtipo: 'MUNICIPAL' });
 
@@ -509,6 +526,82 @@ describe('PATCH /clientes/:id', () => {
 
       expect(res.status).toBe(400);
       expect(detalleDeValidacion(res)).toEqual(['whatsappNumero']);
+    });
+  });
+
+  // El schema solo ve el pedido; la regla de los emails se aplica sobre el estado resultante
+  // (lo enviado más lo guardado: principal 'compras@…' y adicionales ['otro@…']).
+  describe('emails en una edición parcial', () => {
+    it('responde 400 si el nuevo emailContacto ya es un adicional guardado', async () => {
+      const res = await patchCliente(ID, { emailContacto: ' OTRO@municipio.example ' });
+
+      expect(res.status).toBe(400);
+      expect(detalleDeValidacion(res)).toEqual(['emailContacto']);
+      expect(prismaMock.cliente.update).not.toHaveBeenCalled();
+    });
+
+    it('responde 400 si los nuevos adicionales incluyen el emailContacto guardado', async () => {
+      const res = await patchCliente(ID, {
+        emailsAdicionales: ['nuevo@municipio.example', 'COMPRAS@municipio.example'],
+      });
+
+      expect(res.status).toBe(400);
+      expect(detalleDeValidacion(res)).toEqual(['emailsAdicionales.1']);
+      expect(prismaMock.cliente.update).not.toHaveBeenCalled();
+    });
+
+    it('cambiar solo el emailContacto a un email libre es válido', async () => {
+      const res = await patchCliente(ID, { emailContacto: 'nuevo@municipio.example' });
+
+      expect(res.status).toBe(200);
+      expect(dataEnviada()).toEqual({ emailContacto: 'nuevo@municipio.example' });
+    });
+
+    it('cambiar solo los adicionales a emails libres es válido', async () => {
+      const res = await patchCliente(ID, { emailsAdicionales: ['uno@municipio.example'] });
+
+      expect(res.status).toBe(200);
+      expect(dataEnviada()).toEqual({ emailsAdicionales: ['uno@municipio.example'] });
+    });
+
+    it('reenviar el mismo emailContacto o vaciar los adicionales es válido', async () => {
+      expect((await patchCliente(ID, { emailContacto: 'compras@municipio.example' })).status).toBe(
+        200,
+      );
+      expect((await patchCliente(ID, { emailsAdicionales: [] })).status).toBe(200);
+    });
+
+    it('un PATCH que no toca los emails no los compara, aunque lo guardado ya repita', async () => {
+      prismaMock.cliente.findFirst.mockResolvedValue(
+        guardado({
+          emailsAdicionales: ['compras@municipio.example', 'x@m.example', 'x@m.example'],
+        }),
+      );
+
+      const res = await patchCliente(ID, { razonSocial: 'Otro Nombre' });
+
+      expect(res.status).toBe(200);
+    });
+
+    it('cambiar el principal solo se compara con los adicionales guardados, no entre ellos', async () => {
+      prismaMock.cliente.findFirst.mockResolvedValue(
+        guardado({ emailsAdicionales: ['x@m.example', 'x@m.example'] }),
+      );
+
+      const libre = await patchCliente(ID, { emailContacto: 'nuevo@municipio.example' });
+      expect(libre.status).toBe(200);
+
+      const repetido = await patchCliente(ID, { emailContacto: 'X@m.example' });
+      expect(repetido.status).toBe(400);
+      expect(detalleDeValidacion(repetido)).toEqual(['emailContacto']);
+    });
+
+    it('un pedido con repetidos entre sí se rechaza antes de consultar la base', async () => {
+      const res = await patchCliente(ID, { emailsAdicionales: ['a@m.example', 'A@m.example'] });
+
+      expect(res.status).toBe(400);
+      expect(detalleDeValidacion(res)).toEqual(['emailsAdicionales.0', 'emailsAdicionales.1']);
+      expect(prismaMock.cliente.findFirst).not.toHaveBeenCalled();
     });
   });
 

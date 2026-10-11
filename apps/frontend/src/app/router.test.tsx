@@ -19,7 +19,8 @@ describe('router', () => {
   it('renderiza /clientes dentro del shell con su encabezado accesible', () => {
     renderRoute('/clientes');
 
-    expect(screen.getByRole('banner')).toBeInTheDocument();
+    // En escritorio el shell es el Sidebar (navegación) y el contenido; el Header es solo mobile.
+    expect(screen.getByRole('navigation', { name: 'Principal' })).toBeInTheDocument();
     const main = screen.getByRole('main');
     expect(within(main).getByRole('heading', { level: 1, name: 'Clientes' })).toBeInTheDocument();
   });

@@ -1,14 +1,16 @@
 import { Prisma, type Cliente as ClienteRow } from '@prisma/client';
-import type {
-  ActualizarEstadoClienteDto,
-  Cliente,
-  CreateClienteDto,
-  ListarClientesQuery,
-  Periodicidad,
-  UpdateClienteDto,
+import {
+  problemasDeEmails,
+  type ActualizarEstadoClienteDto,
+  type Cliente,
+  type CreateClienteDto,
+  type ListarClientesQuery,
+  type Periodicidad,
+  type UpdateClienteDto,
 } from '@realpolitik/shared';
 
 import { conflict, notFound, validationError, type AppError } from '../../errors/app-error';
+import { escaparComodinesDeLike } from '../../lib/like';
 import { prisma } from '../../lib/prisma';
 
 import { toClienteDto } from './cliente.mapper';
@@ -43,11 +45,13 @@ export async function crearCliente(input: CreateClienteDto): Promise<Cliente> {
 export async function actualizarCliente(id: string, input: UpdateClienteDto): Promise<Cliente> {
   const actual = await prisma.cliente.findFirst({
     where: { id, isDeleted: false },
-    select: { sector: true, canalEntrega: true },
+    select: { sector: true, canalEntrega: true, emailContacto: true, emailsAdicionales: true },
   });
   if (actual === null) {
     throw notFound('Cliente no encontrado');
   }
+
+  validarEmailsResultantes(input, actual);
 
   // Un `subtipo` suelto se valida contra el sector guardado; con `sector` ya lo validó shared.
   if (input.sector === undefined && input.subtipo !== undefined && actual.sector === 'PRIVADO') {
@@ -98,29 +102,100 @@ export async function actualizarCliente(id: string, input: UpdateClienteDto): Pr
 }
 
 /**
+ * La regla de los emails (shared) se aplica al estado RESULTANTE de la edición: lo enviado más
+ * lo guardado. El schema solo ve el pedido, y un PATCH que trae uno de los dos campos (el
+ * principal o los adicionales) podría chocar con el otro, que ya está en la base.
+ *
+ * Si el pedido no trae los adicionales, solo importa que el principal nuevo no esté entre los
+ * guardados; los repetidos que ya hubiera entre ellos no se tocan ni bloquean la edición.
+ */
+function validarEmailsResultantes(
+  input: UpdateClienteDto,
+  actual: Pick<ClienteRow, 'emailContacto' | 'emailsAdicionales'>,
+): void {
+  if (input.emailContacto === undefined && input.emailsAdicionales === undefined) return;
+
+  const problemas = problemasDeEmails({
+    emailContacto: input.emailContacto ?? actual.emailContacto,
+    emailsAdicionales: input.emailsAdicionales ?? actual.emailsAdicionales,
+  });
+
+  if (input.emailsAdicionales !== undefined) {
+    if (problemas.length > 0) {
+      throw validationError(
+        problemas.map(({ indice, mensaje }) => ({
+          campo: `emailsAdicionales.${indice}`,
+          mensaje,
+        })),
+      );
+    }
+    return;
+  }
+
+  // Los adicionales no vienen en el pedido: el error es del principal que se quiere cargar.
+  if (problemas.some(({ tipo }) => tipo === 'IGUAL_AL_PRINCIPAL')) {
+    throw validationError([
+      {
+        campo: 'emailContacto',
+        mensaje:
+          'Este email ya está cargado como email adicional del cliente: quitalo de los adicionales o usá otro.',
+      },
+    ]);
+  }
+}
+
+// Cuántas veces se vuelve a intentar si el estado cambia entre la escritura condicional y la
+// lectura (otro pedido lo cambió justo en medio). Alcanza con pocas: hace falta que el estado
+// oscile en cada intento para agotarlas.
+const INTENTOS_DE_CAMBIO_DE_ESTADO = 3;
+
+/**
  * Activa o desactiva un cliente (HU1.8). Solo cambia `estado`: los datos, los contactos y
  * lo demás no se tocan, y no se usa la baja lógica (`isDeleted`), que es otra cosa. Pedir el
- * estado que el cliente ya tiene responde igual con el cliente, sin error (idempotente).
+ * estado que el cliente ya tiene responde 200 con el cliente tal cual, SIN escribir la fila
+ * (`updatedAt` no cambia).
  *
- * `isDeleted: false` va en el `where` del `update`: un cliente dado de baja es un 404, como
- * si no existiera. Prisma lo informa con P2025, así que no hace falta una consulta previa.
+ * Una sola sentencia decide si hay que escribir: `UPDATE … WHERE id AND NOT isDeleted AND
+ * estado <> nuevo RETURNING …` (el `update` de Prisma con filtros extra en el `where`).
+ * - Si escribe, devuelve la fila que escribió: respuesta y escritura coinciden.
+ * - Si no matchea (P2025), el cliente no existe, está dado de baja o ya tiene ese estado: se
+ *   lee para distinguirlo. Leer y escribir por separado ("leer, y si difiere, actualizar")
+ *   dejaría escribir dos veces a dos pedidos simultáneos; acá la condición la evalúa
+ *   PostgreSQL al tomar el lock de la fila, así que de dos pedidos iguales solo uno escribe.
+ * - Si al leer el estado ya no es el pedido, otro pedido lo cambió entre la escritura y la
+ *   lectura: se reintenta, para que la respuesta muestre el estado que se pidió.
+ *
+ * No hace falta una transacción: cada paso es una sentencia atómica y ninguno depende de un
+ * dato leído en otro. Tampoco SQL crudo.
  */
 export async function cambiarEstadoCliente(
   id: string,
   estado: ActualizarEstadoClienteDto['estado'],
 ): Promise<Cliente> {
-  try {
-    const actualizado = await prisma.cliente.update({
-      where: { id, isDeleted: false },
-      data: { estado },
-    });
-    return toClienteDto(actualizado);
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+  for (let intento = 1; intento <= INTENTOS_DE_CAMBIO_DE_ESTADO; intento++) {
+    try {
+      const actualizado = await prisma.cliente.update({
+        where: { id, isDeleted: false, estado: { not: estado } },
+        data: { estado },
+      });
+      return toClienteDto(actualizado);
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2025') {
+        throw error;
+      }
+    }
+
+    const actual = await prisma.cliente.findFirst({ where: { id, isDeleted: false } });
+    if (actual === null) {
       throw notFound('Cliente no encontrado');
     }
-    throw error;
+    if (actual.estado === estado) {
+      return toClienteDto(actual);
+    }
   }
+  throw new Error(
+    `El estado del cliente ${id} cambió durante ${INTENTOS_DE_CAMBIO_DE_ESTADO} intentos seguidos.`,
+  );
 }
 
 /**
@@ -140,18 +215,21 @@ export async function listarClientes(filtros: ListarClientesQuery): Promise<Clie
   return filas.map(toClienteDto);
 }
 
-// Busca `q` en razón social, denominación y CUIT, sin distinguir mayúsculas.
+// Busca `q` en razón social, denominación y CUIT, sin distinguir mayúsculas. El texto se busca
+// literalmente: `contains` no escapa los comodines de LIKE (ver `escaparComodinesDeLike`).
 function condicionesDeBusqueda(q: string): Prisma.ClienteWhereInput[] {
+  const texto = escaparComodinesDeLike(q);
   return [
-    { razonSocial: { contains: q, mode: 'insensitive' } },
-    { denominacion: { contains: q, mode: 'insensitive' } },
+    { razonSocial: { contains: texto, mode: 'insensitive' } },
+    { denominacion: { contains: texto, mode: 'insensitive' } },
     ...fragmentosDeCuit(q).map((fragmento) => ({ cuit: { contains: fragmento } })),
   ];
 }
 
 // El CUIT se guarda como XX-XXXXXXXX-X, pero se busca con o sin guiones. Si `q` solo tiene
 // dígitos, guiones y espacios, se prueba el fragmento en cada posición posible del CUIT,
-// con los guiones que le tocarían ahí (la base no puede ignorarlos al comparar).
+// con los guiones que le tocarían ahí (la base no puede ignorarlos al comparar). Solo lleva
+// dígitos y guiones, así que no hay comodines que escapar.
 function fragmentosDeCuit(q: string): string[] {
   if (!/^[\d\s-]+$/.test(q)) return [];
   const digitos = q.replace(/\D/g, '');

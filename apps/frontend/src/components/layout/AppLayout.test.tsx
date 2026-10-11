@@ -51,10 +51,20 @@ describe('AppLayout', () => {
     expect(links[0]).toHaveAttribute('aria-current', 'page');
   });
 
-  it('indica en el Header la sección actual', () => {
+  it('en escritorio no repite el título: no hay Header y la página conserva su h1', () => {
     renderRoute('/clientes');
 
-    expect(within(screen.getByRole('banner')).getByText('Clientes')).toBeInTheDocument();
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Clientes' })).toBeInTheDocument();
+  });
+
+  it('en mobile el Header muestra la sección actual junto al botón del menú', () => {
+    mockMobileViewport();
+    renderRoute('/clientes');
+
+    const header = within(screen.getByRole('banner'));
+    expect(header.getByText('Clientes')).toBeInTheDocument();
+    expect(header.getByRole('button', { name: 'Alternar barra lateral' })).toBeInTheDocument();
   });
 
   it('no marca Clientes como actual en una ruta desconocida', () => {
@@ -67,30 +77,60 @@ describe('AppLayout', () => {
     ).not.toHaveAttribute('aria-current');
   });
 
-  it('colapsa y expande el Sidebar con el botón accesible, sin perder la navegación', async () => {
+  it('colapsa y expande el Sidebar desde un botón en su encabezado, junto a la marca', async () => {
     const user = userEvent.setup();
     renderRoute('/clientes');
 
-    const toggle = screen.getByRole('button', { name: 'Alternar barra lateral' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const encabezado = screen
+      .getByText('Realpolitik Manager')
+      .closest('[data-slot="sidebar-header"]');
+    const toggle = screen.getByRole('button', { name: 'Contraer barra lateral' });
+    expect(encabezado).toContainElement(toggle);
 
     await user.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // Colapsado, el botón cambia su nombre a la acción siguiente y la navegación sigue ahí.
+    expect(screen.getByRole('button', { name: 'Expandir barra lateral' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Contraer barra lateral' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Clientes' })).toBeInTheDocument();
     expect(screen.getByText('Realpolitik Manager')).toBeInTheDocument();
 
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await user.click(screen.getByRole('button', { name: 'Expandir barra lateral' }));
+    expect(screen.getByRole('button', { name: 'Contraer barra lateral' })).toBeInTheDocument();
   });
 
-  it('permite alcanzar el botón del Sidebar y el enlace con el teclado', async () => {
+  it('el botón del Sidebar es lo primero del recorrido con teclado y alterna con Enter sin perder el foco', async () => {
     const user = userEvent.setup();
     renderRoute('/clientes');
 
     await user.tab();
-    expect(screen.getByRole('link', { name: 'Clientes' })).toHaveFocus();
+    const contraer = screen.getByRole('button', { name: 'Contraer barra lateral' });
+    expect(contraer).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole('button', { name: 'Alternar barra lateral' })).toHaveFocus();
+    expect(screen.getByRole('link', { name: 'Clientes' })).toHaveFocus();
+
+    await user.tab({ shift: true });
+    await user.keyboard('{Enter}');
+    const expandir = screen.getByRole('button', { name: 'Expandir barra lateral' });
+    // Es el mismo botón (no se vuelve a montar): el foco sigue ahí al colapsar y al expandir.
+    expect(expandir).toBe(contraer);
+    expect(expandir).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Contraer barra lateral' })).toHaveFocus();
+  });
+
+  it('el botón del Sidebar tiene un tooltip que dice qué hace', async () => {
+    const user = userEvent.setup();
+    renderRoute('/clientes');
+
+    await user.hover(screen.getByRole('button', { name: 'Contraer barra lateral' }));
+
+    expect(
+      await screen.findByText('Contraer barra lateral', {
+        selector: '[data-slot="tooltip-content"]',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('en mobile abre el menú con el teclado y un solo Escape lo cierra y devuelve el foco', async () => {
@@ -99,6 +139,8 @@ describe('AppLayout', () => {
     renderRoute('/clientes');
 
     const toggle = screen.getByRole('button', { name: 'Alternar barra lateral' });
+    // En mobile el panel es un cajón: el botón de colapsar del escritorio no existe.
+    expect(screen.queryByRole('button', { name: /(Contraer|Expandir) barra lateral/ })).toBeNull();
     await user.tab();
     expect(toggle).toHaveFocus();
 

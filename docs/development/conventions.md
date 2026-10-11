@@ -32,7 +32,7 @@ docs(repo): agregar documentación base del proyecto
 - Cada PR se asocia a su tarjeta de Trello cuando corresponda.
 - Se completa la plantilla de PR del repositorio (`.github/pull_request_template.md`).
 - Otra persona del equipo revisa el PR antes de considerar la tarea terminada.
-- Se recomienda que `main` esté protegida (PR obligatorio, al menos una aprobación, sin force push). Es una configuración del repositorio en GitHub que el equipo debe mantener y verificar; no puede comprobarse desde los archivos del repo. Hoy no hay integración continua (CI) configurada.
+- Se recomienda que `main` esté protegida (PR obligatorio, al menos una aprobación, sin force push). Es una configuración del repositorio en GitHub que el equipo debe mantener y verificar; no puede comprobarse desde los archivos del repo. El CI está en `.github/workflows/ci.yml` (ver [Despliegue](../deployment.md#integración-continua)).
 
 ## Desarrollo
 

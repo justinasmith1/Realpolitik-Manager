@@ -1,5 +1,6 @@
 import type { ClienteSector } from '@realpolitik/shared';
 
+import { Badge } from '@/components/ui/badge';
 import { etiquetasSector } from '@/modules/clientes/clientes.etiquetas';
 
 // Color de cada sector, con tokens propios del tema (`sector-*`): no se reutilizan los de
@@ -15,11 +16,5 @@ interface SectorBadgeProps {
 
 /** Sector del cliente. El color ayuda a distinguirlo, pero la información la lleva el texto. */
 export function SectorBadge({ sector }: SectorBadgeProps) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-pill border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${claseDeSector[sector]}`}
-    >
-      {etiquetasSector[sector]}
-    </span>
-  );
+  return <Badge className={claseDeSector[sector]}>{etiquetasSector[sector]}</Badge>;
 }
