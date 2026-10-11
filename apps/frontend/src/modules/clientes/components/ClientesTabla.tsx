@@ -1,8 +1,13 @@
 import type { Cliente } from '@realpolitik/shared';
+import { Fragment, type ReactElement } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useIsCompactLayout } from '@/hooks/use-media-query';
 import { cn } from '@/lib/utils';
+import {
+  etiquetasColumnasClientes,
+  type ClienteColumnaConfigurableId,
+} from '@/modules/clientes/clientes.columnas';
 import { CanalEntregaBadge } from '@/modules/clientes/components/CanalEntregaBadge';
 import { ClienteAccionesMenu } from '@/modules/clientes/components/ClienteAccionesMenu';
 import { ClienteTarjeta } from '@/modules/clientes/components/ClienteTarjeta';
@@ -13,35 +18,76 @@ import { SubtipoBadge } from '@/modules/clientes/components/SubtipoBadge';
 
 interface ClientesTablaProps {
   clientes: Cliente[];
+  /**
+   * Columnas opcionales de la tabla de escritorio, en el orden en que se muestran. "Cliente" va
+   * siempre primera y "Acciones" siempre última. No afecta a las tarjetas del layout compacto.
+   */
+  columnasVisibles: readonly ClienteColumnaConfigurableId[];
   /** Acción del aviso "sin resultados", cuando la lista filtrada queda vacía. */
   onLimpiarFiltros: () => void;
 }
 
-// Columnas con su primer nivel de lectura: quién es (Cliente), cómo se identifica (CUIT) y cómo
-// se clasifica (Sector y Subtipo). Contacto, canal y periodicidad son datos de segundo nivel.
-const columnas = [
-  'Cliente',
-  'CUIT',
-  'Sector',
-  'Subtipo',
-  'Email de contacto',
-  'Canal',
-  'Periodicidad',
-  'Acciones',
-];
+const claseEncabezado = 'px-2.5 py-3 font-medium whitespace-nowrap';
 
 // La columna de acciones queda fija a la derecha: si la ventana no alcanza para toda la tabla y
 // aparece el scroll horizontal, el menú ⋯ de cada fila sigue a la vista.
 const claseAcciones = 'sticky right-0 bg-card px-2 py-2 shadow-[-1px_0_0_var(--border)]';
 
+// Celda de cada columna opcional. El `Record` obliga a cubrir cada columna del modelo: si se
+// agrega una, esto deja de compilar hasta que tenga su celda.
+const celdas: Record<ClienteColumnaConfigurableId, (cliente: Cliente) => ReactElement> = {
+  cuit: (cliente) => (
+    <td className="px-2.5 py-3 font-mono text-xs whitespace-nowrap">{cliente.cuit}</td>
+  ),
+  sector: (cliente) => (
+    <td className="px-2.5 py-3">
+      <SectorBadge sector={cliente.sector} />
+    </td>
+  ),
+  subtipo: (cliente) => (
+    <td className="px-2.5 py-3">
+      {/* Los subtipos largos ("Provincial u organismo público") se recortan con elipsis para que
+          las 8 columnas entren a 1280px; el badge lleva el nombre completo en `title`. */}
+      <div className="flex max-w-28">
+        {cliente.sector === 'PUBLICO' ? (
+          <SubtipoBadge subtipo={cliente.subtipo} />
+        ) : (
+          <span aria-label="Sin subtipo" className="text-content-secondary">
+            —
+          </span>
+        )}
+      </div>
+    </td>
+  ),
+  email: (cliente) => (
+    <td className="max-w-40 px-2.5 py-3">
+      <span className="block truncate text-content-secondary" title={cliente.emailContacto}>
+        {cliente.emailContacto}
+      </span>
+    </td>
+  ),
+  canal: (cliente) => (
+    <td className="px-2.5 py-3">
+      <CanalEntregaBadge canal={cliente.canalEntrega} />
+    </td>
+  ),
+  periodicidad: (cliente) => (
+    <td className="px-2.5 py-3">
+      <PeriodicidadTexto periodicidad={cliente.periodicidad} />
+    </td>
+  ),
+};
+
 /**
  * Listado de clientes. Con ancho suficiente es una tabla; debajo de ~1280px, tarjetas (la tabla
- * de escritorio no se comprime hasta un celular). Con la lista vacía muestra el aviso de "sin
- * resultados": que no haya ningún cliente en absoluto lo resuelve la página con
- * `ClientesEmptyState`.
+ * de escritorio no se comprime hasta un celular). La tabla muestra las columnas opcionales que
+ * recibe y en ese orden; las tarjetas muestran siempre todos los datos. Con la lista vacía
+ * muestra el aviso de "sin resultados": que no haya ningún cliente en absoluto lo resuelve la
+ * página con `ClientesEmptyState`.
  */
 export function ClientesTabla({
   clientes,
+  columnasVisibles,
   onLimpiarFiltros,
   onAdministrarContactos,
   onEditar,
@@ -101,20 +147,23 @@ export function ClientesTabla({
         <caption className="sr-only">Clientes</caption>
         <thead className="border-b bg-table-head text-xs text-content-secondary">
           <tr>
-            {columnas.map((columna) => (
-              <th
-                key={columna}
-                scope="col"
-                className={cn(
-                  'px-2.5 py-3 font-medium whitespace-nowrap',
-                  columna === 'Cliente' && 'min-w-48 pl-4',
-                  columna === 'Acciones' &&
-                    'sticky right-0 bg-table-head text-right shadow-[-1px_0_0_var(--border)]',
-                )}
-              >
-                {columna}
+            <th scope="col" className={cn(claseEncabezado, 'min-w-48 pl-4')}>
+              Cliente
+            </th>
+            {columnasVisibles.map((id) => (
+              <th key={id} scope="col" className={claseEncabezado}>
+                {etiquetasColumnasClientes[id]}
               </th>
             ))}
+            <th
+              scope="col"
+              className={cn(
+                claseEncabezado,
+                'sticky right-0 bg-table-head text-right shadow-[-1px_0_0_var(--border)]',
+              )}
+            >
+              Acciones
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -132,38 +181,9 @@ export function ClientesTabla({
                   {cliente.estado !== 'ACTIVO' && <EstadoBadge estado={cliente.estado} />}
                 </span>
               </th>
-              <td className="px-2.5 py-3 font-mono text-xs whitespace-nowrap">{cliente.cuit}</td>
-              <td className="px-2.5 py-3">
-                <SectorBadge sector={cliente.sector} />
-              </td>
-              <td className="px-2.5 py-3">
-                {/* Los subtipos largos ("Provincial u organismo público") se recortan con elipsis
-                    para que las 8 columnas entren a 1280px; el badge lleva el nombre completo en
-                    `title`. */}
-                <div className="flex max-w-28">
-                  {cliente.sector === 'PUBLICO' ? (
-                    <SubtipoBadge subtipo={cliente.subtipo} />
-                  ) : (
-                    <span aria-label="Sin subtipo" className="text-content-secondary">
-                      —
-                    </span>
-                  )}
-                </div>
-              </td>
-              <td className="max-w-40 px-2.5 py-3">
-                <span
-                  className="block truncate text-content-secondary"
-                  title={cliente.emailContacto}
-                >
-                  {cliente.emailContacto}
-                </span>
-              </td>
-              <td className="px-2.5 py-3">
-                <CanalEntregaBadge canal={cliente.canalEntrega} />
-              </td>
-              <td className="px-2.5 py-3">
-                <PeriodicidadTexto periodicidad={cliente.periodicidad} />
-              </td>
+              {columnasVisibles.map((id) => (
+                <Fragment key={id}>{celdas[id](cliente)}</Fragment>
+              ))}
               <td className={cn(claseAcciones, 'group-hover:bg-panel-alt')}>
                 <div className="flex justify-end">
                   <ClienteAccionesMenu cliente={cliente} {...accionesDe(cliente)} />

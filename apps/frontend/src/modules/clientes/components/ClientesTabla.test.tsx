@@ -2,6 +2,7 @@ import { ClienteSchema, type Cliente } from '@realpolitik/shared';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { CLIENTES_COLUMNAS_DEFAULT } from '@/modules/clientes/clientes.columnas';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 
 // Datos ficticios, validados con el schema compartido como los que devuelve la API.
@@ -53,7 +54,13 @@ function celdaDePeriodicidad(razonSocial: string) {
 
 describe('ClientesTabla: periodicidad (HU1.5)', () => {
   beforeEach(() => {
-    render(<ClientesTabla clientes={clientes} onLimpiarFiltros={() => undefined} />);
+    render(
+      <ClientesTabla
+        clientes={clientes}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+      />,
+    );
   });
 
   it('agrega la columna Periodicidad entre Canal y Acciones', () => {
@@ -105,7 +112,13 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   const opciones = () => screen.getAllByRole('menuitem').map((item) => item.textContent);
 
   it('cada fila tiene un solo botón de menú, con la razón social en su nombre accesible', () => {
-    render(<ClientesTabla clientes={[activo, inactivo]} onLimpiarFiltros={() => undefined} />);
+    render(
+      <ClientesTabla
+        clientes={[activo, inactivo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+      />,
+    );
 
     expect(botonDelMenu('Activa S.A.')).toBeInTheDocument();
     expect(botonDelMenu('Inactiva S.A.')).toBeInTheDocument();
@@ -116,7 +129,13 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   });
 
   it('el botón del menú está en la columna Acciones, a la derecha de la fila', () => {
-    render(<ClientesTabla clientes={[activo]} onLimpiarFiltros={() => undefined} />);
+    render(
+      <ClientesTabla
+        clientes={[activo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+      />,
+    );
 
     const encabezados = screen.getAllByRole('columnheader');
     expect(encabezados.at(-1)).toHaveTextContent('Acciones');
@@ -128,7 +147,13 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   });
 
   it('un cliente activo se identifica sin badge y su menú ofrece Editar, Contactos y Desactivar', async () => {
-    render(<ClientesTabla clientes={[activo]} onLimpiarFiltros={() => undefined} />);
+    render(
+      <ClientesTabla
+        clientes={[activo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+      />,
+    );
 
     expect(filaDe('Activa').queryByText('Inactivo')).not.toBeInTheDocument();
     const menu = await abrirMenu('Activa S.A.');
@@ -138,7 +163,13 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   });
 
   it('un cliente inactivo lleva el badge "Inactivo" y su menú ofrece Editar, Contactos y Reactivar', async () => {
-    render(<ClientesTabla clientes={[inactivo]} onLimpiarFiltros={() => undefined} />);
+    render(
+      <ClientesTabla
+        clientes={[inactivo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+      />,
+    );
 
     expect(filaDe('Inactiva').getByText('Inactivo')).toBeInTheDocument();
     const menu = await abrirMenu('Inactiva S.A.');
@@ -148,7 +179,13 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   });
 
   it('Desactivar es destructivo (rojo) y Reactivar es de éxito (verde); los dos van separados', async () => {
-    render(<ClientesTabla clientes={[activo, inactivo]} onLimpiarFiltros={() => undefined} />);
+    render(
+      <ClientesTabla
+        clientes={[activo, inactivo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+      />,
+    );
 
     const menuActivo = await abrirMenu('Activa S.A.');
     expect(menuActivo.getByRole('menuitem', { name: 'Desactivar' })).toHaveAttribute(
@@ -188,6 +225,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
       render(
         <ClientesTabla
           clientes={[activo, inactivo]}
+          columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
           onLimpiarFiltros={() => undefined}
           {...acciones}
         />,
@@ -208,6 +246,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     render(
       <ClientesTabla
         clientes={[activo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
         onEditar={onEditar}
         onAdministrarContactos={onAdministrarContactos}
@@ -234,7 +273,12 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   it('Escape cierra el menú sin elegir nada', async () => {
     const onEditar = vi.fn();
     render(
-      <ClientesTabla clientes={[activo]} onLimpiarFiltros={() => undefined} onEditar={onEditar} />,
+      <ClientesTabla
+        clientes={[activo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+        onEditar={onEditar}
+      />,
     );
 
     await abrirMenu('Activa S.A.');
@@ -248,6 +292,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     render(
       <ClientesTabla
         clientes={[activo, inactivo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
         idsCambiandoEstado={[activo.id]}
       />,

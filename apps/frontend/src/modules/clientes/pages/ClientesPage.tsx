@@ -2,14 +2,23 @@ import type { Cliente } from '@realpolitik/shared';
 import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 
+import { ColumnPicker } from '@/components/data-table/ColumnPicker';
+import { useColumnPreferences } from '@/components/data-table/useColumnPreferences';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { useIsCompactLayout } from '@/hooks/use-media-query';
 import {
   causaDeError,
   diagnosticoDeError,
   interpretarFalloCambioEstado,
   type EstadoAsignable,
 } from '@/modules/clientes/api/clientes.api';
+import {
+  CLIENTES_COLUMNAS_CONFIGURABLES,
+  CLIENTES_COLUMNAS_CONFIGURABLES_IDS,
+  CLIENTES_COLUMNAS_DEFAULT,
+  CLIENTES_TABLA_ID,
+} from '@/modules/clientes/clientes.columnas';
 import { ClientesEmptyState } from '@/modules/clientes/components/ClientesEmptyState';
 import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorState';
 import { ClientesFiltros } from '@/modules/clientes/components/ClientesFiltros';
@@ -44,6 +53,15 @@ export function ClientesPage() {
   const consulta = useClientes(filtros);
   const cambioDeEstado = useCambiarEstadoCliente();
   const idsCambiandoEstado = useClientesCambiandoEstado();
+  // Columnas de la tabla de escritorio. Una sola preferencia para activos e inactivos: es la
+  // misma tabla. Sin auth todavía, el dueño es el anónimo por defecto del hook.
+  const columnas = useColumnPreferences({
+    tableId: CLIENTES_TABLA_ID,
+    availableIds: CLIENTES_COLUMNAS_CONFIGURABLES_IDS,
+    defaultIds: CLIENTES_COLUMNAS_DEFAULT,
+  });
+  // El mismo corte que usa la tabla para pasar a tarjetas, que no tienen columnas que elegir.
+  const compacto = useIsCompactLayout();
 
   const abrirAlta = () => {
     setUltimoCreado(null);
@@ -174,6 +192,18 @@ export function ClientesPage() {
             onSectorChange={acciones.elegirSector}
             onSubtipoChange={acciones.elegirSubtipo}
             onLimpiar={acciones.limpiar}
+            accionesListado={
+              compacto ? undefined : (
+                <ColumnPicker
+                  items={CLIENTES_COLUMNAS_CONFIGURABLES}
+                  visibleIds={columnas.visibleIds}
+                  onVisibleIdsChange={columnas.setVisibleIds}
+                  onReset={columnas.reset}
+                  isCustomized={columnas.isCustomized}
+                  fixedColumnsNote="Cliente y Acciones siempre están visibles."
+                />
+              )
+            }
           />
           {soloInactivos ? (
             <ClientesSinActivos
@@ -185,6 +215,7 @@ export function ClientesPage() {
           ) : (
             <ClientesTabla
               clientes={clientes ?? []}
+              columnasVisibles={columnas.visibleIds}
               onLimpiarFiltros={acciones.limpiar}
               onAdministrarContactos={setClienteAAdministrar}
               onEditar={abrirEdicion}
