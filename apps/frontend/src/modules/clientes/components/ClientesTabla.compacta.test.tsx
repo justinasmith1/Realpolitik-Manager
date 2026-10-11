@@ -2,6 +2,10 @@ import { ClienteSchema, type Cliente } from '@realpolitik/shared';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import {
+  CLIENTES_COLUMNAS_DEFAULT,
+  type ClienteColumnaConfigurableId,
+} from '@/modules/clientes/clientes.columnas';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 
 // En pantallas angostas (< 1280px) el listado son tarjetas, no una tabla comprimida.
@@ -55,7 +59,11 @@ describe('ClientesTabla en pantallas angostas', () => {
 
   it('muestra una lista de tarjetas en lugar de la tabla, con un ítem por cliente', () => {
     render(
-      <ClientesTabla clientes={[privado, publicoInactivo]} onLimpiarFiltros={() => undefined} />,
+      <ClientesTabla
+        clientes={[privado, publicoInactivo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+      />,
     );
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -64,7 +72,13 @@ describe('ClientesTabla en pantallas angostas', () => {
   });
 
   it('cada tarjeta conserva la información de la fila: clasificación, estado, CUIT, email, canal y periodicidad', () => {
-    render(<ClientesTabla clientes={[publicoInactivo]} onLimpiarFiltros={() => undefined} />);
+    render(
+      <ClientesTabla
+        clientes={[publicoInactivo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+      />,
+    );
 
     const tarjeta = within(screen.getByRole('listitem'));
     expect(tarjeta.getByText('Municipio Inactivo')).toBeInTheDocument();
@@ -78,12 +92,40 @@ describe('ClientesTabla en pantallas angostas', () => {
     expect(tarjeta.getByText('Día 15 · desde Marzo')).toBeInTheDocument();
   });
 
+  it('las columnas elegidas para la tabla de escritorio no cambian las tarjetas', () => {
+    const contenidoDeTarjetas = (columnasVisibles: readonly ClienteColumnaConfigurableId[]) => {
+      const { unmount } = render(
+        <ClientesTabla
+          clientes={[privado, publicoInactivo]}
+          columnasVisibles={columnasVisibles}
+          onLimpiarFiltros={() => undefined}
+        />,
+      );
+      const contenido = screen.getAllByRole('listitem').map((tarjeta) => ({
+        texto: tarjeta.textContent,
+        datos: within(tarjeta)
+          .getAllByRole('term')
+          .map((dt) => dt.textContent),
+        acciones: within(tarjeta).getAllByRole('button').length,
+      }));
+      unmount();
+      return contenido;
+    };
+
+    const conDefaults = contenidoDeTarjetas(CLIENTES_COLUMNAS_DEFAULT);
+
+    expect(conDefaults[0]?.datos).toEqual(['CUIT', 'Email', 'Canal', 'Periodicidad']);
+    expect(contenidoDeTarjetas([])).toEqual(conDefaults);
+    expect(contenidoDeTarjetas(['periodicidad', 'cuit'])).toEqual(conDefaults);
+  });
+
   it('el menú ⋯ de la tarjeta ofrece las mismas acciones y avisa con el cliente', async () => {
     const onEditar = vi.fn();
     const onReactivar = vi.fn();
     render(
       <ClientesTabla
         clientes={[privado, publicoInactivo]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
         onEditar={onEditar}
         onReactivar={onReactivar}
@@ -107,7 +149,13 @@ describe('ClientesTabla en pantallas angostas', () => {
   });
 
   it('sin resultados muestra el mismo aviso que en escritorio', () => {
-    render(<ClientesTabla clientes={[]} onLimpiarFiltros={() => undefined} />);
+    render(
+      <ClientesTabla
+        clientes={[]}
+        columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
+        onLimpiarFiltros={() => undefined}
+      />,
+    );
 
     expect(screen.getByRole('heading', { name: 'No hay clientes que coincidan' })).toBeVisible();
   });

@@ -48,6 +48,8 @@ interface ClientesFiltrosProps {
   onSectorChange: (sector: ClienteSectorType | undefined) => void;
   onSubtipoChange: (subtipo: ClienteSubtipoPublicoType | undefined) => void;
   onLimpiar: () => void;
+  /** Controles secundarios del listado (p. ej. elegir columnas), junto al contador. */
+  accionesListado?: ReactNode;
 }
 
 function Filtro({
@@ -78,8 +80,9 @@ function Filtro({
  * Responsive: en escritorio ancho todo va en una fila de columnas fijas (la búsqueda crece
  * hasta 30rem, no domina el panel; "Limpiar filtros" aparece al final sin correr a los demás);
  * en pantallas medianas la búsqueda ocupa su propia fila y los selectores se ordenan debajo; en
- * mobile se apilan, con controles de tamaño táctil. El contador queda fuera del panel, como
- * dato secundario del listado.
+ * mobile se apilan, con controles de tamaño táctil. Debajo del panel va una barra mínima del
+ * listado, sin fondo ni borde: el contador a la izquierda y, a la derecha, los controles de la
+ * vista que reciba (`accionesListado`), que no son filtros.
  */
 export function ClientesFiltros({
   textoBusqueda,
@@ -93,6 +96,7 @@ export function ClientesFiltros({
   onSectorChange,
   onSubtipoChange,
   onLimpiar,
+  accionesListado,
 }: ClientesFiltrosProps) {
   const subtipoDeshabilitado = sector === 'PRIVADO';
 
@@ -161,9 +165,13 @@ export function ClientesFiltros({
         )}
       </div>
 
-      <p aria-live="polite" className="self-end px-1 text-xs text-muted-foreground">
-        {total === 1 ? '1 cliente' : `${total} clientes`}
-      </p>
+      {/* Barra del listado, sin padding lateral para quedar alineada con los bordes de la tabla. */}
+      <div className="flex items-center justify-between gap-3">
+        <p aria-live="polite" className="text-xs text-muted-foreground">
+          {total === 1 ? '1 cliente' : `${total} clientes`}
+        </p>
+        {accionesListado}
+      </div>
     </div>
   );
 }
