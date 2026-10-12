@@ -1,12 +1,13 @@
 import type { Cliente } from '@realpolitik/shared';
 import { PlusIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ColumnPicker } from '@/components/data-table/ColumnPicker';
 import { useColumnPreferences } from '@/components/data-table/useColumnPreferences';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useIsCompactLayout } from '@/hooks/use-media-query';
+import { enfocarYMostrar } from '@/lib/focus';
 import {
   causaDeError,
   diagnosticoDeError,
@@ -19,6 +20,11 @@ import {
   CLIENTES_COLUMNAS_DEFAULT,
   CLIENTES_TABLA_ID,
 } from '@/modules/clientes/clientes.columnas';
+import {
+  CambiarEstadoClienteDialog,
+  type CambioAConfirmar,
+  type ResultadoCambioEstado,
+} from '@/modules/clientes/components/CambiarEstadoClienteDialog';
 import { ClientesEmptyState } from '@/modules/clientes/components/ClientesEmptyState';
 import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorState';
 import { ClientesFiltros } from '@/modules/clientes/components/ClientesFiltros';
@@ -26,7 +32,6 @@ import { ClientesInactivosVacio } from '@/modules/clientes/components/ClientesIn
 import { ClientesLoadingState } from '@/modules/clientes/components/ClientesLoadingState';
 import { ClientesSinActivos } from '@/modules/clientes/components/ClientesSinActivos';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
-import { DesactivarClienteDialog } from '@/modules/clientes/components/DesactivarClienteDialog';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import { mensajeFalloCambioEstado } from '@/modules/clientes/components/erroresDeEnvio';
 import { GestionarContactosSheet } from '@/modules/clientes/components/GestionarContactosSheet';
@@ -38,16 +43,65 @@ import {
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
 import { useFiltrosClientes } from '@/modules/clientes/hooks/useFiltrosClientes';
 
+/**
+ * Resultado de la última acción, sobre el listado. Uno solo a la vez: se retira solo, al tocar su
+ * cerrar o cuando empieza otra acción, que lo limpia o lo reemplaza.
+ *
+ * Cada aviso tiene su `id`: el cierre de uno (su temporizador, su animación de salida) nunca
+ * alcanza a otro que lo reemplazó. `cerrando` = está en la animación de salida.
+ */
+type AvisoPagina = {
+  id: number;
+  variante: 'success' | 'destructive';
+  texto: string;
+  cerrando: boolean;
+} | null;
+
+/** Cuánto queda visible el aviso de la página antes de retirarse solo. */
+const DURACION_AVISO_MS = 8000;
+
 export function ClientesPage() {
   const [altaAbierta, setAltaAbierta] = useState(false);
-  const [ultimoCreado, setUltimoCreado] = useState<Cliente | null>(null);
   const [clienteAAdministrar, setClienteAAdministrar] = useState<Cliente | null>(null);
   const [clienteAEditar, setClienteAEditar] = useState<Cliente | null>(null);
-  const [ultimoEditado, setUltimoEditado] = useState<Cliente | null>(null);
-  const [clienteADesactivar, setClienteADesactivar] = useState<Cliente | null>(null);
-  const [avisoEstado, setAvisoEstado] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(
-    null,
-  );
+  const [cambioAConfirmar, setCambioAConfirmar] = useState<CambioAConfirmar | null>(null);
+  const [aviso, setAviso] = useState<AvisoPagina>(null);
+  // Destino del foco cuando lo que lo tenía desaparece: la fila que salió del listado al
+  // desactivarla o reactivarla, o el botón de cerrar del aviso.
+  const tituloRef = useRef<HTMLHeadingElement>(null);
+  const avisoRef = useRef<HTMLDivElement>(null);
+  const ultimoIdDeAviso = useRef(0);
+
+  const avisar = (variante: 'success' | 'destructive', texto: string) => {
+    ultimoIdDeAviso.current += 1;
+    setAviso({ id: ultimoIdDeAviso.current, variante, texto, cerrando: false });
+  };
+
+  /**
+   * Empieza la salida del aviso `id` (la X y el temporizador pasan por acá). Si el foco estaba en
+   * él (su botón cerrar), pasa al título y no se pierde cuando el aviso se quite.
+   */
+  const cerrarAviso = useCallback((id: number) => {
+    if (avisoRef.current?.contains(document.activeElement)) enfocarYMostrar(tituloRef.current);
+    setAviso((actual) =>
+      actual?.id === id && !actual.cerrando ? { ...actual, cerrando: true } : actual,
+    );
+  }, []);
+
+  /** Terminada la animación de salida del aviso `id`, lo quita (si sigue siendo ese). */
+  const quitarAviso = useCallback((id: number) => {
+    setAviso((actual) => (actual?.id === id ? null : actual));
+  }, []);
+
+  // Cada aviso se retira solo a los `DURACION_AVISO_MS`. Uno nuevo trae su propia cuenta (la del
+  // anterior se cancela), y cerrarlo antes o limpiarlo también la cancela.
+  const idDelAviso = aviso?.id;
+  const avisoCerrando = aviso?.cerrando ?? false;
+  useEffect(() => {
+    if (idDelAviso === undefined || avisoCerrando) return;
+    const temporizador = setTimeout(() => cerrarAviso(idDelAviso), DURACION_AVISO_MS);
+    return () => clearTimeout(temporizador);
+  }, [idDelAviso, avisoCerrando, cerrarAviso]);
 
   const { filtros, hayFiltros, estado, textoBusqueda, ...acciones } = useFiltrosClientes();
   const consulta = useClientes(filtros);
@@ -63,58 +117,73 @@ export function ClientesPage() {
   // El mismo corte que usa la tabla para pasar a tarjetas, que no tienen columnas que elegir.
   const compacto = useIsCompactLayout();
 
+  const avisarExito = (texto: string) => avisar('success', texto);
+
   const abrirAlta = () => {
-    setUltimoCreado(null);
-    setUltimoEditado(null);
-    setAvisoEstado(null);
+    setAviso(null);
     setAltaAbierta(true);
   };
 
-  /** Desactiva o reactiva y avisa el resultado. El listado se refresca desde el hook. */
+  /**
+   * Desactiva o reactiva. El listado se refresca desde el hook (también ante un 404). Devuelve
+   * `null` si salió bien, o el fallo junto con el mensaje para mostrar.
+   */
   const cambiarEstado = async (cliente: Cliente, nuevo: EstadoAsignable) => {
-    setUltimoCreado(null);
-    setUltimoEditado(null);
-    setAvisoEstado(null);
+    setAviso(null);
     try {
       await cambioDeEstado.mutateAsync({ id: cliente.id, estado: nuevo });
-      setAvisoEstado({
-        tipo: 'exito',
-        texto:
-          nuevo === 'INACTIVO'
-            ? `Se desactivó el cliente ${cliente.razonSocial}.`
-            : `Se reactivó el cliente ${cliente.razonSocial}.`,
-      });
+      return null;
     } catch (error) {
-      setAvisoEstado({
-        tipo: 'error',
-        texto: mensajeFalloCambioEstado(
-          interpretarFalloCambioEstado(error),
-          nuevo === 'INACTIVO' ? 'desactivar' : 'reactivar',
-        ),
-      });
+      const fallo = interpretarFalloCambioEstado(error);
+      const accion = nuevo === 'INACTIVO' ? 'desactivar' : 'reactivar';
+      return { ...fallo, mensaje: mensajeFalloCambioEstado(fallo, accion) };
     }
   };
 
-  const confirmarDesactivacion = (cliente: Cliente) => {
-    setClienteADesactivar(null);
-    void cambiarEstado(cliente, 'INACTIVO');
+  /** Desde el diálogo de confirmación: un error cualquiera queda ahí, para reintentar. */
+  const confirmarCambio = async ({
+    cliente,
+    accion,
+  }: CambioAConfirmar): Promise<ResultadoCambioEstado> => {
+    const fallo = await cambiarEstado(cliente, accion === 'desactivar' ? 'INACTIVO' : 'ACTIVO');
+    if (fallo?.tipo === 'inesperado') {
+      return { tipo: 'error', mensaje: fallo.mensaje };
+    }
+    // Salió bien, o el cliente ya no existe y no hay nada que reintentar: se cierra el diálogo
+    // y se avisa en la página.
+    const hecho =
+      accion === 'desactivar'
+        ? `Se desactivó el cliente ${cliente.razonSocial}.`
+        : `Se reactivó el cliente ${cliente.razonSocial}.`;
+    if (fallo === null) avisar('success', hecho);
+    else avisar('destructive', fallo.mensaje);
+    setCambioAConfirmar(null);
+    return fallo === null ? { tipo: 'hecho' } : { tipo: 'no-existe' };
   };
 
   const alCrear = (cliente: Cliente) => {
-    setUltimoCreado(cliente);
+    avisarExito(`Se registró el cliente ${cliente.razonSocial} (CUIT ${cliente.cuit}).`);
     setAltaAbierta(false);
   };
 
   const abrirEdicion = (cliente: Cliente) => {
-    setUltimoCreado(null);
-    setUltimoEditado(null);
-    setAvisoEstado(null);
+    setAviso(null);
     setClienteAEditar(cliente);
   };
 
   const alActualizar = (cliente: Cliente) => {
-    setUltimoEditado(cliente);
+    avisarExito(`Se actualizó el cliente ${cliente.razonSocial}.`);
     setClienteAEditar(null);
+  };
+
+  const abrirContactos = (cliente: Cliente) => {
+    setAviso(null);
+    setClienteAAdministrar(cliente);
+  };
+
+  const alGuardarContactos = (cliente: Cliente) => {
+    avisarExito(`Se guardaron los contactos de ${cliente.razonSocial}.`);
+    setClienteAAdministrar(null);
   };
 
   const clientes = consulta.data;
@@ -143,7 +212,9 @@ export function ClientesPage() {
     <div className="flex flex-col gap-4 px-4 pt-5 pb-10 md:px-6 md:pt-6">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">Clientes</h1>
+          <h1 ref={tituloRef} tabIndex={-1} className="text-xl font-semibold tracking-tight">
+            Clientes
+          </h1>
           <p className="mt-0.5 text-sm text-content-secondary">
             Catálogo de clientes y su configuración de rendición.
           </p>
@@ -154,19 +225,22 @@ export function ClientesPage() {
         </Button>
       </div>
 
-      {ultimoCreado !== null && (
-        <Alert variant="success">
-          Se registró el cliente {ultimoCreado.razonSocial} (CUIT {ultimoCreado.cuit}).
+      {aviso !== null && (
+        <Alert
+          // Un aviso nuevo es otro elemento: entra con su animación y no hereda la salida del
+          // anterior.
+          key={aviso.id}
+          ref={avisoRef}
+          variant={aviso.variante}
+          saliendo={aviso.cerrando}
+          onCerrar={() => cerrarAviso(aviso.id)}
+          onAnimationEnd={(evento) => {
+            if (aviso.cerrando && evento.target === evento.currentTarget) quitarAviso(aviso.id);
+          }}
+        >
+          {aviso.texto}
         </Alert>
       )}
-
-      {ultimoEditado !== null && (
-        <Alert variant="success">Se actualizó el cliente {ultimoEditado.razonSocial}.</Alert>
-      )}
-
-      {avisoEstado?.tipo === 'exito' && <Alert variant="success">{avisoEstado.texto}</Alert>}
-
-      {avisoEstado?.tipo === 'error' && <Alert>{avisoEstado.texto}</Alert>}
 
       {consulta.isPending || verificandoInactivos ? (
         <ClientesLoadingState />
@@ -217,10 +291,10 @@ export function ClientesPage() {
               clientes={clientes ?? []}
               columnasVisibles={columnas.visibleIds}
               onLimpiarFiltros={acciones.limpiar}
-              onAdministrarContactos={setClienteAAdministrar}
+              onAdministrarContactos={abrirContactos}
               onEditar={abrirEdicion}
-              onDesactivar={setClienteADesactivar}
-              onReactivar={(cliente) => void cambiarEstado(cliente, 'ACTIVO')}
+              onDesactivar={(cliente) => setCambioAConfirmar({ cliente, accion: 'desactivar' })}
+              onReactivar={(cliente) => setCambioAConfirmar({ cliente, accion: 'reactivar' })}
               idsCambiandoEstado={idsCambiandoEstado}
             />
           )}
@@ -237,14 +311,16 @@ export function ClientesPage() {
         onClose={() => setClienteAEditar(null)}
         onActualizado={alActualizar}
       />
-      <DesactivarClienteDialog
-        cliente={clienteADesactivar}
-        onConfirmar={confirmarDesactivacion}
-        onCancelar={() => setClienteADesactivar(null)}
+      <CambiarEstadoClienteDialog
+        cambio={cambioAConfirmar}
+        onConfirmar={confirmarCambio}
+        onCancelar={() => setCambioAConfirmar(null)}
+        focoTrasConfirmar={tituloRef}
       />
       <GestionarContactosSheet
         cliente={clienteAAdministrar}
         onClose={() => setClienteAAdministrar(null)}
+        onGuardado={alGuardarContactos}
       />
     </div>
   );

@@ -58,6 +58,15 @@ interface ClienteFormProps {
   onSubmit: (datos: NuevoCliente, envio: EnvioDelFormulario) => Promise<ErroresDeEnvio | undefined>;
   onCancel: () => void;
   textoEnviar: string;
+  /** Texto del botón mientras se envía. */
+  textoEnviando?: string;
+  /** Texto del botón mientras se confirma el éxito. */
+  textoEnviado?: string;
+  /**
+   * El envío salió bien y se está confirmando (ver `useExitoBreve`). Lo decide quien abre el
+   * formulario: el formulario solo lo muestra en el botón.
+   */
+  exito?: boolean;
   /** Datos con los que arranca el formulario. Sin ellos arranca vacío (alta). */
   valoresIniciales?: ClienteFormValues;
   /**
@@ -197,6 +206,9 @@ export function ClienteForm({
   onSubmit,
   onCancel,
   textoEnviar,
+  textoEnviando = 'Guardando…',
+  textoEnviado = 'Guardado',
+  exito = false,
   valoresIniciales = valoresInicialesClienteForm,
   soloConCambios = false,
 }: ClienteFormProps) {
@@ -538,8 +550,12 @@ export function ClienteForm({
         </Button>
         <LoadingButton
           type="submit"
+          // Durante el éxito `isSubmitting` sigue en true (el envío espera la confirmación);
+          // `success` tiene prioridad sobre `loading`.
           loading={isSubmitting}
-          loadingText="Guardando…"
+          loadingText={textoEnviando}
+          success={exito}
+          successText={textoEnviado}
           // Sin cambios no hay nada que enviar: el botón espera al primer cambio (y vuelve a
           // deshabilitarse si todo regresa a como estaba).
           disabled={sinCambios}

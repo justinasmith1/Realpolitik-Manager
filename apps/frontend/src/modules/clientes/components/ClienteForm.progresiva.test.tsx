@@ -247,7 +247,7 @@ describe('ClienteForm: guardando', () => {
     await user.click(botonEnviar());
 
     const guardando = await screen.findByRole('button', { name: 'Guardando…' });
-    expect(guardando).toBeDisabled();
+    expect(guardando).toHaveAttribute('aria-disabled', 'true');
     expect(guardando).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
     await user.click(guardando);
