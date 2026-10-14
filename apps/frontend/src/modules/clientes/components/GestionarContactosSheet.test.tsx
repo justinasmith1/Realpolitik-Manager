@@ -6,6 +6,9 @@ import userEvent from '@testing-library/user-event';
 import { GestionarContactosSheet } from '@/modules/clientes/components/GestionarContactosSheet';
 import { contactosQueryKey } from '@/modules/clientes/hooks/useContactos';
 
+// La pausa de éxito (500 ms) no es el tema de estos tests: se prueba en `*.exito.test.tsx`.
+vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
+
 // La API se simula en `fetch`: el test recorre panel → formulario → mutation → contactos.api → http().
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -75,15 +78,17 @@ const cuerpoDelPut = () =>
 function renderPanel(inicial: Cliente | null = clienteA) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onClose = vi.fn();
+  const onGuardado = vi.fn();
   const arbol = (actual: Cliente | null) => (
     <QueryClientProvider client={queryClient}>
-      <GestionarContactosSheet cliente={actual} onClose={onClose} />
+      <GestionarContactosSheet cliente={actual} onClose={onClose} onGuardado={onGuardado} />
     </QueryClientProvider>
   );
   const vista = render(arbol(inicial));
   return {
     queryClient,
     onClose,
+    onGuardado,
     user: userEvent.setup(),
     cambiarCliente: (actual: Cliente | null) => vista.rerender(arbol(actual)),
   };
@@ -227,8 +232,8 @@ describe('GestionarContactosSheet: lo escrito no se pierde por un refetch', () =
 });
 
 describe('GestionarContactosSheet: guardar', () => {
-  it('guarda con UNA sola request PUT que lleva la colección completa, y cierra', async () => {
-    const { user, onClose } = renderPanel();
+  it('guarda con UNA sola request PUT que lleva la colección completa, y avisa que guardó', async () => {
+    const { user, onGuardado } = renderPanel();
     await formularioCargado();
     await user.clear(grupo(1).getByLabelText('Nombre'));
     await user.type(grupo(1).getByLabelText('Nombre'), 'Ana Renombrada');
@@ -240,7 +245,7 @@ describe('GestionarContactosSheet: guardar', () => {
     await user.type(grupo(3).getByLabelText('Email'), 'carla@ejemplo.example');
     await user.click(botonGuardar());
 
-    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onGuardado).toHaveBeenCalledTimes(1));
     // Una sola request de escritura, y ninguna otra: ni POST/PATCH/DELETE sueltos ni un refetch.
     expect(pedidos('PUT')).toHaveLength(1);
     expect(pedidos('POST')).toHaveLength(0);
@@ -275,26 +280,26 @@ describe('GestionarContactosSheet: guardar', () => {
   });
 
   it('un contacto eliminado simplemente no viaja en la lista', async () => {
-    const { user, onClose } = renderPanel();
+    const { user, onGuardado } = renderPanel();
     await formularioCargado();
 
     await user.click(screen.getByRole('button', { name: 'Eliminar contacto Ana Pérez' }));
     await user.click(screen.getByRole('button', { name: 'Eliminar' }));
     await user.click(botonGuardar());
 
-    await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onGuardado).toHaveBeenCalled());
     expect(pedidos('PUT')).toHaveLength(1);
     expect(cuerpoDelPut().contactos).toStrictEqual([expect.objectContaining({ id: ID_BRUNO })]);
     expect(pedidos('DELETE')).toHaveLength(0);
   });
 
   it('al guardar deja la colección que devolvió el servidor en el caché, sin pedirla otra vez', async () => {
-    const { user, onClose, queryClient } = renderPanel();
+    const { user, onGuardado, queryClient } = renderPanel();
     await formularioCargado();
 
     await user.click(botonGuardar());
 
-    await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onGuardado).toHaveBeenCalled());
     expect(pedidos()).toHaveLength(1);
     expect(queryClient.getQueryData(contactosQueryKey(CLIENTE_A))).toEqual([
       expect.objectContaining({ id: ID_ANA }),
@@ -311,11 +316,14 @@ describe('GestionarContactosSheet: guardar', () => {
           })
         : Promise.resolve(json([ana])),
     );
-    const { user, onClose } = renderPanel();
+    const { user, onClose, onGuardado } = renderPanel();
     await formularioCargado();
 
     await user.click(botonGuardar());
-    expect(await screen.findByRole('button', { name: 'Guardando…' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Guardando…' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
     await user.keyboard('{Escape}');
 
@@ -324,7 +332,7 @@ describe('GestionarContactosSheet: guardar', () => {
     expect(pedidos('PUT')).toHaveLength(1);
 
     responder(json([ana]));
-    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onGuardado).toHaveBeenCalledTimes(1));
   });
 });
 
@@ -364,7 +372,7 @@ describe('GestionarContactosSheet: errores al guardar', () => {
     expect(botonGuardar()).toBeEnabled();
   });
 
-  it('tras el error se puede reintentar y el segundo intento guarda y cierra', async () => {
+  it('tras el error se puede reintentar y el segundo intento guarda y avisa', async () => {
     let intentos = 0;
     fallaElPut(() => {
       intentos += 1;
@@ -372,14 +380,14 @@ describe('GestionarContactosSheet: errores al guardar', () => {
         ? Promise.reject(new TypeError('Failed to fetch'))
         : Promise.resolve(json([ana, bruno]));
     });
-    const { user, onClose } = renderPanel();
+    const { user, onGuardado } = renderPanel();
     await formularioCargado();
 
     await user.click(botonGuardar());
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     await user.click(botonGuardar());
 
-    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onGuardado).toHaveBeenCalledTimes(1));
     expect(pedidos('PUT')).toHaveLength(2);
   });
 
@@ -515,12 +523,12 @@ describe('GestionarContactosSheet: cambio de cliente y reapertura', () => {
   });
 
   it('tras guardar y volver a abrir, muestra lo persistido y no lo que había en el formulario', async () => {
-    const { user, onClose, cambiarCliente } = renderPanel(clienteA);
+    const { user, onGuardado, cambiarCliente } = renderPanel(clienteA);
     await formularioCargado();
     await user.click(screen.getByRole('button', { name: 'Eliminar contacto Bruno Gómez' }));
     await user.click(screen.getByRole('button', { name: 'Eliminar' }));
     await user.click(botonGuardar());
-    await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onGuardado).toHaveBeenCalled());
     cambiarCliente(null);
     await vi.waitFor(() => expect(panel()).not.toBeInTheDocument());
 

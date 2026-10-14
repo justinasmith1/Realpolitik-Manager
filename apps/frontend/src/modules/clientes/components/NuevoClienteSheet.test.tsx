@@ -5,6 +5,9 @@ import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
 import { elegirOpcion } from '@/test/select';
 
+// La pausa de éxito (500 ms) no es el tema de estos tests: se prueba en `*.exito.test.tsx`.
+vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
+
 // La API se simula en `fetch`: el test recorre formulario → mutation → clientes.api → http().
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -283,10 +286,10 @@ describe('NuevoClienteSheet', () => {
     await completar(user);
     await user.click(botonRegistrar());
 
-    const guardando = screen.getByRole('button', { name: 'Guardando…' });
-    expect(guardando).toBeDisabled();
+    const registrando = screen.getByRole('button', { name: 'Registrando…' });
+    expect(registrando).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
-    await user.click(guardando);
+    await user.click(registrando);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     responder(jsonResponse(clienteCreado, 201));

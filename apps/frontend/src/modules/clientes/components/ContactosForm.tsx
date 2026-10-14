@@ -113,9 +113,19 @@ interface ContactosFormProps {
   /** Recibe la lista completa, ya validada. Devuelve los errores del servidor, o nada si salió bien. */
   onSave: (contactos: ContactoAGuardar[]) => Promise<ErroresDeContactos | undefined>;
   onCancel: () => void;
+  /**
+   * El guardado salió bien y se está confirmando (ver `useExitoBreve`). Lo decide quien abre el
+   * formulario: el formulario solo lo muestra en el botón.
+   */
+  exito?: boolean;
 }
 
-export function ContactosForm({ contactosIniciales, onSave, onCancel }: ContactosFormProps) {
+export function ContactosForm({
+  contactosIniciales,
+  onSave,
+  onCancel,
+  exito = false,
+}: ContactosFormProps) {
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
   const {
@@ -285,6 +295,8 @@ export function ContactosForm({ contactosIniciales, onSave, onCancel }: Contacto
           type="submit"
           loading={isSubmitting}
           loadingText="Guardando…"
+          success={exito}
+          successText="Guardado"
           className="min-w-44"
         >
           Guardar contactos

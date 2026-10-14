@@ -1,10 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
 import { elegirOpcion, etiquetaDeOpcion } from '@/test/select';
+import { avanzar, congelarTiempo, esperar } from '@/test/tiempo-congelado';
+
+// La pausa de éxito (500 ms) no es el tema de estos tests: se prueba en `*.exito.test.tsx`.
+vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -640,12 +644,15 @@ describe('ClientesPage: alta de cliente', () => {
     await user.click(screen.getByRole('button', { name: 'Nuevo cliente' }));
     await completarAltaValida(user);
     await user.click(screen.getByRole('button', { name: 'Registrar cliente' }));
-    expect(await screen.findByRole('button', { name: 'Guardando…' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Registrando…' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
 
     await user.keyboard('{Escape}');
 
     expect(panelDeAlta()).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Guardando…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrando…' })).toBeInTheDocument();
     expect(llamadasPost()).toHaveLength(1);
 
     responder(respuesta201());
@@ -736,6 +743,36 @@ describe('ClientesPage: desactivar y reactivar', () => {
   const cuerpoDelPatch = (indice = 0): unknown =>
     JSON.parse(llamadasPatch()[indice]?.[1]?.body as string);
   const dialogoDeConfirmacion = () => screen.queryByRole('alertdialog');
+  const titulo = () => screen.getByRole('heading', { name: 'Clientes', level: 1 });
+
+  /** Los PATCH quedan en vuelo; `seguir()` deja pasar el último al servidor simulado. */
+  function patchEnVuelo() {
+    const servidor = fetchMock.getMockImplementation();
+    const alServidor = (...args: Parameters<typeof fetch>) =>
+      servidor?.(...args) ?? Promise.reject(new Error('sin servidor'));
+    let seguir: () => void = () => undefined;
+    fetchMock.mockImplementation((entrada, init) =>
+      init?.method === 'PATCH'
+        ? new Promise<Response>((resolve, reject) => {
+            seguir = () => void alServidor(entrada, init).then(resolve, reject);
+          })
+        : alServidor(entrada, init),
+    );
+    return () => seguir();
+  }
+
+  /** Desde ahora todo PATCH responde un 500. Devuelve cómo volver al servidor simulado. */
+  function patchFalla() {
+    const servidor = fetchMock.getMockImplementation();
+    const alServidor = (...args: Parameters<typeof fetch>) =>
+      servidor?.(...args) ?? Promise.reject(new Error('sin servidor'));
+    fetchMock.mockImplementation((entrada, init) =>
+      init?.method === 'PATCH'
+        ? Promise.resolve(json({ error: { code: 'INTERNAL_ERROR' } }, 500))
+        : alServidor(entrada, init),
+    );
+    return () => fetchMock.mockImplementation(alServidor);
+  }
 
   /** Servidor simulado: el GET filtra por estado como el backend y el PATCH cambia el estado. */
   function simularServidorConEstado(inicial: ClienteJson[]) {
@@ -821,6 +858,89 @@ describe('ClientesPage: desactivar y reactivar', () => {
       );
       expect(screen.getByText('Municipalidad de Ejemplo')).toBeInTheDocument();
       expect(dialogoDeConfirmacion()).not.toBeInTheDocument();
+    });
+
+    it('mientras desactiva, el diálogo sigue abierto con "Desactivando…" y no se puede cancelar ni repetir', async () => {
+      simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      const seguir = patchEnVuelo();
+
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+      const dialogo = within(screen.getByRole('alertdialog'));
+      expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeEnabled();
+      await user.click(dialogo.getByRole('button', { name: 'Desactivar cliente' }));
+
+      const desactivando = dialogo.getByRole('button', { name: 'Desactivando…' });
+      expect(desactivando).toHaveAttribute('aria-busy', 'true');
+      expect(desactivando).toHaveAttribute('aria-disabled', 'true');
+      expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
+      await user.click(desactivando);
+      // Escape desde el diálogo (no desde el botón ocupado, que se traga las teclas).
+      fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' });
+      expect(dialogoDeConfirmacion()).toBeInTheDocument();
+      expect(llamadasPatch()).toHaveLength(1);
+
+      seguir();
+
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Se desactivó el cliente Zeta Producciones S.A.',
+      );
+      expect(llamadasPatch()).toHaveLength(1);
+    });
+
+    it('al desactivar, el foco va al título: el ⋯ desde el que se abrió ya no está', async () => {
+      simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desactivar cliente' }),
+      );
+
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+      await vi.waitFor(() => expect(titulo()).toHaveFocus());
+    });
+
+    it('al cancelar, el foco vuelve al ⋯ de la fila', async () => {
+      simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancelar' }),
+      );
+
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+      await vi.waitFor(() => expect(botonDelMenu('Zeta Producciones')).toHaveFocus());
+    });
+
+    it('al volver a abrirlo después de un error, no queda ni el error ni "Desactivando…"', async () => {
+      simularServidorConEstado(catalogo);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      patchFalla();
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desactivar cliente' }),
+      );
+      await within(screen.getByRole('alertdialog')).findByRole('alert');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancelar' }),
+      );
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+
+      await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
+
+      const dialogo = within(screen.getByRole('alertdialog'));
+      expect(dialogo.queryByRole('alert')).not.toBeInTheDocument();
+      expect(dialogo.getByRole('button', { name: 'Desactivar cliente' })).not.toHaveAttribute(
+        'aria-busy',
+      );
+      expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeEnabled();
     });
 
     it('en la vista de activos los clientes no llevan badge ni la acción Reactivar', async () => {
@@ -916,17 +1036,28 @@ describe('ClientesPage: desactivar y reactivar', () => {
   });
 
   describe('reactivar', () => {
-    it('no pide confirmación: llama a la API, avisa y el cliente vuelve a los activos', async () => {
+    it('pide confirmación y, al confirmar, llama a la API, avisa y el cliente vuelve a los activos', async () => {
       simularServidorConEstado([clienteMunicipal, clienteInactivo]);
       const { user } = renderPage('/clientes?estado=INACTIVO');
       await screen.findByText('Ministerio de Ejemplo');
 
       await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
 
+      const dialogo = within(screen.getByRole('alertdialog'));
+      expect(dialogo.getByText('¿Reactivar este cliente?')).toBeInTheDocument();
+      expect(
+        dialogo.getByText(
+          /Ministerio de Ejemplo volverá a aparecer en el listado de activos. Sus datos y configuración se conservarán./,
+        ),
+      ).toBeInTheDocument();
+      expect(llamadasPatch()).toHaveLength(0);
+
+      await user.click(dialogo.getByRole('button', { name: 'Reactivar cliente' }));
+
       expect(await screen.findByRole('status')).toHaveTextContent(
         'Se reactivó el cliente Ministerio de Ejemplo.',
       );
-      expect(dialogoDeConfirmacion()).not.toBeInTheDocument();
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
       expect(llamadasPatch()).toHaveLength(1);
       expect(urlDe(llamadasPatch()[0]?.[0] ?? '')).toBe(
         `https://api.example/clientes/${clienteProvincial.id}/estado`,
@@ -941,6 +1072,138 @@ describe('ClientesPage: desactivar y reactivar', () => {
       await elegirOpcion(user, screen.getByLabelText('Estado'), 'ACTIVO');
       expect(await screen.findByText('Ministerio de Ejemplo')).toBeInTheDocument();
       expect(screen.queryByText('Inactivo')).not.toBeInTheDocument();
+    });
+
+    it('Cancelar cierra la confirmación sin llamar a la API y el foco vuelve al ⋯', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      const { user } = renderPage('/clientes?estado=INACTIVO');
+      await screen.findByText('Ministerio de Ejemplo');
+
+      await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancelar' }),
+      );
+
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+      expect(llamadasPatch()).toHaveLength(0);
+      expect(screen.getByText('Ministerio de Ejemplo')).toBeInTheDocument();
+      await vi.waitFor(() => expect(botonDelMenu('Ministerio de Ejemplo')).toHaveFocus());
+    });
+
+    it('mientras reactiva, el diálogo sigue abierto con "Reactivando…" y no se puede cancelar', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      const { user } = renderPage('/clientes?estado=INACTIVO');
+      await screen.findByText('Ministerio de Ejemplo');
+      const seguir = patchEnVuelo();
+
+      await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
+      const dialogo = within(screen.getByRole('alertdialog'));
+      await user.click(dialogo.getByRole('button', { name: 'Reactivar cliente' }));
+
+      expect(dialogo.getByRole('button', { name: 'Reactivando…' })).toHaveAttribute(
+        'aria-busy',
+        'true',
+      );
+      expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
+      fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' });
+      expect(dialogoDeConfirmacion()).toBeInTheDocument();
+      expect(llamadasPatch()).toHaveLength(1);
+
+      seguir();
+
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Se reactivó el cliente Ministerio de Ejemplo.',
+      );
+    });
+
+    it('Desactivar y Reactivar siguen en el menú ⋯: ninguna fila tiene un botón propio', async () => {
+      simularServidorConEstado([clienteMunicipal, clientePrivado, clienteInactivo]);
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      const botonesDe = (razonSocial: string) =>
+        within(filaDe(razonSocial))
+          .getAllByRole('button')
+          .map((boton) => boton.getAttribute('aria-label') ?? boton.textContent);
+
+      expect(botonesDe('Zeta Producciones')).toEqual(['Acciones de Zeta Producciones S.A.']);
+
+      await elegirOpcion(user, screen.getByLabelText('Estado'), 'INACTIVO');
+      await screen.findByText('Ministerio de Ejemplo');
+
+      expect(botonesDe('Ministerio de Ejemplo')).toEqual(['Acciones de Ministerio de Ejemplo']);
+    });
+
+    it('si falla, el diálogo queda abierto con el error y se puede reintentar', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      const { user } = renderPage('/clientes?estado=INACTIVO');
+      await screen.findByText('Ministerio de Ejemplo');
+      const restaurar = patchFalla();
+
+      await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
+      const dialogo = within(screen.getByRole('alertdialog'));
+      await user.click(dialogo.getByRole('button', { name: 'Reactivar cliente' }));
+
+      expect(await dialogo.findByRole('alert')).toHaveTextContent(
+        'No pudimos reactivar el cliente. Probá de nuevo en unos segundos.',
+      );
+      // Solo en el diálogo: ningún aviso en la página.
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.getByText('Ministerio de Ejemplo')).toBeInTheDocument();
+
+      restaurar();
+      await user.click(dialogo.getByRole('button', { name: 'Reactivar cliente' }));
+
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Se reactivó el cliente Ministerio de Ejemplo.',
+      );
+    });
+
+    it('al volver a abrirla después de un error, no queda ni el error ni "Reactivando…"', async () => {
+      simularServidorConEstado([clienteMunicipal, clienteInactivo]);
+      const { user } = renderPage('/clientes?estado=INACTIVO');
+      await screen.findByText('Ministerio de Ejemplo');
+      patchFalla();
+      await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Reactivar cliente' }),
+      );
+      await within(screen.getByRole('alertdialog')).findByRole('alert');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancelar' }),
+      );
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+
+      await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
+
+      const dialogo = within(screen.getByRole('alertdialog'));
+      expect(dialogo.queryByRole('alert')).not.toBeInTheDocument();
+      expect(dialogo.getByRole('button', { name: 'Reactivar cliente' })).not.toHaveAttribute(
+        'aria-busy',
+      );
+      expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeEnabled();
+    });
+
+    it('cuando la fila sale de Inactivos, el foco va al título: el ⋯ que lo tenía ya no está', async () => {
+      const otroInactivo = { ...clientePrivado, estado: 'INACTIVO' };
+      simularServidorConEstado([clienteMunicipal, clienteInactivo, otroInactivo]);
+      const { user } = renderPage('/clientes?estado=INACTIVO');
+      await screen.findByText('Ministerio de Ejemplo');
+
+      await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
+      await user.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Reactivar cliente' }),
+      );
+
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        'Se reactivó el cliente Ministerio de Ejemplo.',
+      );
+      await vi.waitFor(() =>
+        expect(screen.queryByText('Ministerio de Ejemplo')).not.toBeInTheDocument(),
+      );
+      await vi.waitFor(() => expect(titulo()).toHaveFocus());
     });
   });
 
@@ -1011,34 +1274,47 @@ describe('ClientesPage: desactivar y reactivar', () => {
         within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desactivar cliente' }),
       );
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('Este cliente ya no existe.');
+      // No queda un diálogo abierto sobre un cliente que ya no existe: el aviso va a la página.
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+      expect(screen.getByRole('alert')).toHaveTextContent('Este cliente ya no existe.');
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
       await vi.waitFor(() => expect(urlsGet().length).toBeGreaterThan(pedidosAntes));
       await vi.waitFor(() =>
         expect(screen.queryByText('Zeta Producciones S.A.')).not.toBeInTheDocument(),
       );
     });
 
-    it('ante un error inesperado muestra un mensaje genérico y el cliente sigue en la lista', async () => {
+    it('ante un error inesperado el diálogo queda abierto con el error, y se puede reintentar', async () => {
       simularServidorConEstado(catalogo);
       const { user } = renderPage();
       await screen.findByRole('table');
-      const servidor = fetchMock.getMockImplementation();
-      fetchMock.mockImplementation((entrada, init) =>
-        init?.method === 'PATCH'
-          ? Promise.resolve(json({ error: { code: 'INTERNAL_ERROR' } }, 500))
-          : (servidor?.(entrada, init) ?? Promise.reject(new Error('sin servidor'))),
-      );
+      const restaurar = patchFalla();
 
       await elegirAccion(user, 'Zeta Producciones', 'Desactivar');
-      await user.click(
-        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Desactivar cliente' }),
-      );
+      const dialogo = within(screen.getByRole('alertdialog'));
+      await user.click(dialogo.getByRole('button', { name: 'Desactivar cliente' }));
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(
+      expect(await dialogo.findByRole('alert')).toHaveTextContent(
         'No pudimos desactivar el cliente. Probá de nuevo en unos segundos.',
       );
-      expect(screen.getByText('Zeta Producciones S.A.')).toBeInTheDocument();
+      // Solo en el diálogo: ningún aviso en la página.
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(dialogoDeConfirmacion()).toBeInTheDocument();
+      expect(dialogo.getByText(/Zeta Producciones S\.A\. dejará de aparecer/)).toBeInTheDocument();
+      const boton = dialogo.getByRole('button', { name: 'Desactivar cliente' });
+      expect(boton).not.toHaveAttribute('aria-disabled');
+      expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeEnabled();
+      expect(screen.getByText('Zeta Producciones S.A.')).toBeInTheDocument();
+
+      restaurar();
+      await user.click(boton);
+
+      await vi.waitFor(() => expect(dialogoDeConfirmacion()).not.toBeInTheDocument());
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Se desactivó el cliente Zeta Producciones S.A.',
+      );
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it.each([
@@ -1071,51 +1347,6 @@ describe('ClientesPage: desactivar y reactivar', () => {
         expect(urlsGet()).toHaveLength(pedidosAntes);
       },
     );
-  });
-
-  describe('cambios simultáneos', () => {
-    it('mientras un cambio sigue en curso, su acción queda deshabilitada aunque se cambie otro cliente', async () => {
-      const datos = simularServidorConEstado(catalogo);
-      const { user } = renderPage();
-      await screen.findByRole('table');
-      // Los PATCH quedan colgados hasta que el test los responde.
-      const pendientes: (() => void)[] = [];
-      const servidor = fetchMock.getMockImplementation();
-      fetchMock.mockImplementation((entrada, init) =>
-        init?.method === 'PATCH'
-          ? new Promise<Response>((resolve) => {
-              pendientes.push(() => {
-                const id = urlDe(entrada).split('/').at(-2);
-                const cliente = datos.find((c) => c.id === id);
-                resolve(json({ ...cliente, estado: 'INACTIVO' }));
-              });
-            })
-          : (servidor?.(entrada, init) ?? Promise.reject(new Error('sin servidor'))),
-      );
-      const desactivar = async (razonSocial: string) => {
-        await elegirAccion(user, razonSocial, 'Desactivar');
-        await user.click(
-          within(screen.getByRole('alertdialog')).getByRole('button', {
-            name: 'Desactivar cliente',
-          }),
-        );
-      };
-
-      await desactivar('Zeta Producciones');
-      await desactivar('Ministerio de Ejemplo');
-      await vi.waitFor(() => expect(pendientes).toHaveLength(2));
-
-      // El primero sigue en vuelo: no se puede volver a pedir.
-      const menu = await abrirMenuDe(user, 'Zeta Producciones');
-      expect(menu.getByRole('menuitem', { name: 'Desactivar' })).toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
-      await user.keyboard('{Escape}');
-
-      for (const responder of pendientes) responder();
-      await vi.waitFor(() => expect(screen.getAllByRole('status')).not.toHaveLength(0));
-    });
   });
 });
 
@@ -1152,5 +1383,229 @@ describe('ClientesPage: sin clientes activos', () => {
     ).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Registrar el primer cliente' }));
     expect(panelDeAlta()).toBeInTheDocument();
+  });
+});
+
+// ─── Aviso de la última acción ────────────────────────────────────────────────
+
+describe('ClientesPage: aviso de la última acción', () => {
+  /** Avisos de la página (los `Alert`), sea de éxito o de error. */
+  const avisos = () => Array.from(document.querySelectorAll('[data-slot="alert"]'));
+  const panelDeContactos = () => screen.queryByRole('dialog', { name: /^Contactos de/ });
+
+  /** Servidor simulado para todas las acciones de la página: alta, edición, estado y contactos. */
+  function simularServidorCompleto(inicial: ClienteJson[] = catalogo) {
+    const datos = inicial.map((c) => ({ ...c }));
+    fetchMock.mockImplementation((entrada, init) => {
+      const url = urlDe(entrada);
+      const metodo = init?.method ?? 'GET';
+      if (url.includes('/contactos')) return Promise.resolve(json([]));
+      if (metodo === 'POST') return Promise.resolve(respuesta201());
+      if (metodo === 'PATCH') {
+        const estado = url.endsWith('/estado');
+        const id = url.split('/').at(estado ? -2 : -1);
+        const cliente = datos.find((c) => c.id === id);
+        if (cliente === undefined)
+          return Promise.resolve(json({ error: { code: 'NOT_FOUND' } }, 404));
+        Object.assign(cliente, JSON.parse(init?.body as string));
+        return Promise.resolve(json(cliente));
+      }
+      const vista = new URL(url).searchParams.get('estado') ?? 'ACTIVO';
+      return Promise.resolve(
+        json(
+          listadoSegunQuery(
+            url,
+            datos.filter((c) => c.estado === vista),
+          ),
+        ),
+      );
+    });
+  }
+
+  async function editarDenominacion(user: UserEvent, razonSocial: string) {
+    await elegirAccion(user, razonSocial, 'Editar');
+    const panel = within(screen.getByRole('dialog', { name: 'Editar cliente' }));
+    await user.clear(panel.getByLabelText('Denominación'));
+    await user.type(panel.getByLabelText('Denominación'), 'Nueva denominación');
+    await user.click(panel.getByRole('button', { name: 'Guardar cambios' }));
+    await vi.waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Editar cliente' })).not.toBeInTheDocument(),
+    );
+  }
+
+  it('guardar contactos cierra el panel y avisa "Se guardaron los contactos de X."', async () => {
+    simularServidorCompleto();
+    const { user } = renderPage();
+    await screen.findByRole('table');
+
+    await elegirAccion(user, 'Zeta Producciones', 'Contactos');
+    await user.click(await screen.findByRole('button', { name: 'Guardar contactos' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Se guardaron los contactos de Zeta Producciones S.A.',
+    );
+    await vi.waitFor(() => expect(panelDeContactos()).not.toBeInTheDocument());
+    expect(avisos()).toHaveLength(1);
+  });
+
+  it('abrir Contactos limpia el aviso anterior', async () => {
+    simularServidorCompleto();
+    const { user } = renderPage();
+    await screen.findByRole('table');
+    await editarDenominacion(user, 'Zeta Producciones');
+    expect(await screen.findByRole('status')).toHaveTextContent('Se actualizó el cliente');
+
+    await elegirAccion(user, 'Municipalidad de Ejemplo', 'Contactos');
+
+    expect(avisos()).toHaveLength(0);
+  });
+
+  it('cada acción reemplaza el aviso anterior: nunca hay dos a la vez', async () => {
+    simularServidorCompleto();
+    const { user } = renderPage();
+    await screen.findByRole('table');
+
+    await user.click(screen.getByRole('button', { name: 'Nuevo cliente' }));
+    await completarAltaValida(user);
+    await user.click(screen.getByRole('button', { name: 'Registrar cliente' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Se registró el cliente Empresa de Ejemplo S.A. (CUIT 20-12345678-6).',
+    );
+    await vi.waitFor(() => expect(panelDeAlta()).not.toBeInTheDocument());
+
+    await editarDenominacion(user, 'Zeta Producciones');
+    await vi.waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Se actualizó el cliente Zeta Producciones S.A.',
+      ),
+    );
+    expect(avisos()).toHaveLength(1);
+
+    await elegirAccion(user, 'Municipalidad de Ejemplo', 'Contactos');
+    await user.click(await screen.findByRole('button', { name: 'Guardar contactos' }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Se guardaron los contactos de Municipalidad de Ejemplo.',
+      ),
+    );
+    expect(avisos()).toHaveLength(1);
+  });
+
+  it('un 404 al reactivar reemplaza el éxito anterior y se anuncia como alerta en la página', async () => {
+    simularServidorCompleto([
+      clienteMunicipal,
+      clientePrivado,
+      { ...clienteProvincial, estado: 'INACTIVO' },
+    ]);
+    const { user } = renderPage();
+    await screen.findByRole('table');
+    await editarDenominacion(user, 'Zeta Producciones');
+    expect(await screen.findByRole('status')).toBeInTheDocument();
+    await elegirOpcion(user, screen.getByLabelText('Estado'), 'INACTIVO');
+    await screen.findByText('Ministerio de Ejemplo');
+    const servidor = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((entrada, init) =>
+      init?.method === 'PATCH'
+        ? Promise.resolve(json({ error: { code: 'NOT_FOUND', message: 'No existe' } }, 404))
+        : (servidor?.(entrada, init) ?? Promise.reject(new Error('sin servidor'))),
+    );
+
+    await elegirAccion(user, 'Ministerio de Ejemplo', 'Reactivar');
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Reactivar cliente' }),
+    );
+
+    await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveTextContent('Este cliente ya no existe.');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(avisos()).toHaveLength(1);
+  });
+
+  describe('cierre', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const aviso = () => screen.getByRole('status');
+
+    /** Abre Contactos de ese cliente y guarda; con el tiempo congelado, solo eventos sincrónicos. */
+    async function guardarContactosCongelado(razonSocial: string) {
+      fireEvent.click(botonDelMenu(razonSocial));
+      fireEvent.click(await esperar(() => screen.getByRole('menuitem', { name: 'Contactos' })));
+      fireEvent.click(
+        await esperar(() => screen.getByRole('button', { name: 'Guardar contactos' })),
+      );
+      await esperar(() =>
+        expect(screen.getByRole('status')).toHaveTextContent(
+          `Se guardaron los contactos de ${razonSocial}`,
+        ),
+      );
+    }
+
+    it('"Cerrar aviso" lo retira con su animación, y el foco pasa al título', async () => {
+      simularServidorCompleto();
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      await elegirAccion(user, 'Zeta Producciones', 'Contactos');
+      await user.click(await screen.findByRole('button', { name: 'Guardar contactos' }));
+      await screen.findByRole('status');
+      await vi.waitFor(() => expect(panelDeContactos()).not.toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: 'Cerrar aviso' }));
+
+      // Todavía está, saliendo: se quita al terminar la animación, no de golpe.
+      expect(aviso()).toHaveAttribute('data-saliendo');
+      expect(screen.getByRole('heading', { name: 'Clientes', level: 1 })).toHaveFocus();
+      fireEvent.animationEnd(aviso());
+      expect(avisos()).toHaveLength(0);
+    });
+
+    it('a los 8 segundos se retira solo, con la misma animación', async () => {
+      simularServidorCompleto();
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      await elegirAccion(user, 'Zeta Producciones', 'Contactos');
+      await screen.findByRole('button', { name: 'Guardar contactos' });
+      congelarTiempo();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar contactos' }));
+      await esperar(() =>
+        expect(aviso()).toHaveTextContent('Se guardaron los contactos de Zeta Producciones S.A.'),
+      );
+
+      await avanzar(7_900);
+      expect(aviso()).not.toHaveAttribute('data-saliendo');
+      await avanzar(200);
+      expect(aviso()).toHaveAttribute('data-saliendo');
+
+      fireEvent.animationEnd(aviso());
+      expect(avisos()).toHaveLength(0);
+    });
+
+    it('un aviso nuevo trae sus propios 8 segundos: ni el cierre ni la cuenta del anterior lo tocan', async () => {
+      simularServidorCompleto();
+      const { user } = renderPage();
+      await screen.findByRole('table');
+      await elegirAccion(user, 'Zeta Producciones', 'Contactos');
+      await screen.findByRole('button', { name: 'Guardar contactos' });
+      congelarTiempo();
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar contactos' }));
+      await esperar(() => expect(aviso()).toHaveTextContent('Zeta Producciones'));
+      await avanzar(5_000);
+      // El anterior empieza a cerrarse y, antes de que termine, llega otro.
+      fireEvent.click(screen.getByRole('button', { name: 'Cerrar aviso' }));
+
+      await guardarContactosCongelado('Municipalidad de Ejemplo');
+
+      expect(avisos()).toHaveLength(1);
+      expect(aviso()).not.toHaveAttribute('data-saliendo');
+      // Pasa el momento en que vencía el anterior: el nuevo sigue.
+      await avanzar(3_500);
+      expect(aviso()).toHaveTextContent('Municipalidad de Ejemplo');
+      expect(aviso()).not.toHaveAttribute('data-saliendo');
+      // Sus propios 8 segundos.
+      await avanzar(4_600);
+      expect(aviso()).toHaveAttribute('data-saliendo');
+    });
   });
 });

@@ -6,6 +6,9 @@ import userEvent from '@testing-library/user-event';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import { elegirOpcion, etiquetaDeOpcion } from '@/test/select';
 
+// La pausa de éxito (500 ms) no es el tema de estos tests: se prueba en `*.exito.test.tsx`.
+vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
+
 // La API se simula en `fetch`: el test recorre formulario → mutation → clientes.api → http().
 const fetchMock = vi.fn<typeof fetch>();
 
