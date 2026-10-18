@@ -8,6 +8,13 @@ export default defineConfig({
     // El alias `@/*` se declara una sola vez, en tsconfig.json (`paths`).
     tsconfigPaths: true,
   },
+  server: {
+    // Necesario en Docker: escuchar en todas las interfaces para que el host acceda al contenedor.
+    host: true,
+    port: 5173,
+    // Los eventos de archivos no cruzan el bind mount en Windows/WSL: hace falta polling para HMR.
+    watch: { usePolling: true, interval: 300 },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
