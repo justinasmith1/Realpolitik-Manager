@@ -1,0 +1,18 @@
+# Imagen SOLO para desarrollo local (la usa docker-compose.yml). No se usa en producción.
+# Trae Node 20 + pnpm (versión de `packageManager`) y corre como el usuario `node`, no root.
+FROM node:20-bookworm-slim
+
+# openssl: lo necesita el motor de Prisma.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g pnpm@9.7.1
+
+# Directorios de trabajo y store de pnpm, propiedad de `node`.
+RUN mkdir -p /app /pnpm-store && chown -R node:node /app /pnpm-store
+
+ENV npm_config_store_dir=/pnpm-store \
+    CI=true
+
+USER node
+WORKDIR /app
