@@ -36,7 +36,9 @@ pnpm install --frozen-lockfile
 
 ## Entorno completo con Docker Compose (opcional)
 
-Levanta PostgreSQL, backend y frontend con hot-reload, sin instalar Node ni pnpm en tu máquina. Requiere Docker y Docker Compose.
+Levanta PostgreSQL, backend y frontend con hot-reload. Para correr la app no hace falta Node ni pnpm en tu máquina, pero **sí** para el seed (`pnpm --filter @realpolitik/backend db:seed`), que se ejecuta desde el host. Requiere Docker y Docker Compose.
+
+Los puertos `5432` (base) y `3000` (API) se publican solo en `127.0.0.1`. El backend permite CORS únicamente desde `http://localhost:5173`: entrar por `http://127.0.0.1:5173` falla.
 
 ```bash
 cp .env.example .env        # una sola vez
