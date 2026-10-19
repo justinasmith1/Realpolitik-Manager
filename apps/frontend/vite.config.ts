@@ -9,11 +9,11 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   server: {
-    // Necesario en Docker: escuchar en todas las interfaces para que el host acceda al contenedor.
-    host: true,
     port: 5173,
     // Los eventos de archivos no cruzan el bind mount en Windows/WSL: hace falta polling para HMR.
-    watch: { usePolling: true, interval: 300 },
+    // Solo se activa dentro de Docker (docker-compose define CHOKIDAR_USEPOLLING); con `pnpm dev`
+    // en el host no hay polling. El `--host 0.0.0.0` lo pasa el comando del servicio en compose.
+    watch: process.env.CHOKIDAR_USEPOLLING === 'true' ? { usePolling: true, interval: 300 } : null,
   },
   test: {
     environment: 'jsdom',
