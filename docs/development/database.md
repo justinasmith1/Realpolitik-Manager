@@ -13,10 +13,10 @@ Guía para levantar la base de datos PostgreSQL, aplicar migraciones y cargar da
 ### 1. Levantar Postgres
 
 ```bash
-docker compose up -d
+docker compose up -d db
 ```
 
-Levanta el contenedor de PostgreSQL en segundo plano. El servicio queda disponible en `localhost:5432`.
+Levanta solo el contenedor de PostgreSQL en segundo plano (`docker compose up` a secas levanta también backend y frontend, ver [Primeros pasos](getting-started.md)). El servicio queda disponible en `localhost:5432`.
 
 ### 2. Configurar variables de entorno (primera vez)
 

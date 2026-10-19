@@ -1,14 +1,37 @@
+# Entorno de desarrollo local: `docker compose up` levanta db + backend + frontend con hot-reload.
+# Solo desarrollo: no es una configuración de producción.
+#
+# Estrategia de monorepo: se monta TODO el repo en /app (el código se edita en el host) y los
+# `node_modules` viven en volúmenes con nombre. Así los symlinks de pnpm se crean dentro de Linux
+# y nunca se mezclan con los `node_modules` del host (que en Windows no sirven dentro del contenedor).
+
+x-node-dev: &node-dev
+  # La imagen se construye una sola vez, en `deps` (único servicio con `build:`); el resto la reutiliza.
+  image: realpolitik-dev
+  working_dir: /app
+  # Usuario `node` (uid 1000): nada corre como root. En Linux con otro UID, definí UID/GID en .env.
+  user: "${UID:-1000}:${GID:-1000}"
+  environment: &node-env
+    CHOKIDAR_USEPOLLING: "true"
+    WATCHPACK_POLLING: "true"
+  volumes:
+    - .:/app
+    - pnpm_store:/pnpm-store
+    - root_node_modules:/app/node_modules
+    - shared_node_modules:/app/packages/shared/node_modules
+    - backend_node_modules:/app/apps/backend/node_modules
+    - frontend_node_modules:/app/apps/frontend/node_modules
+
 services:
-  postgres:
+  db:
     image: postgres:16-alpine
-    container_name: realpolitik_db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,5 +40,80 @@ services:
       timeout: 5s
       retries: 5
 
+  # Los volúmenes con nombre nacen propiedad de root: se corrige una vez, como único paso con root.
+  perms:
+    image: alpine:3.20
+    user: root
+    volumes:
+      - pnpm_store:/pnpm-store
+      - root_node_modules:/app/node_modules
+      - shared_node_modules:/app/packages/shared/node_modules
+      - backend_node_modules:/app/apps/backend/node_modules
+      - frontend_node_modules:/app/apps/frontend/node_modules
+    command: >
+      chown -R ${UID:-1000}:${GID:-1000} /pnpm-store /app/node_modules
+      /app/packages/shared/node_modules /app/apps/backend/node_modules
+      /app/apps/frontend/node_modules
+
+  # Instala dependencias y prepara `shared` y el cliente Prisma UNA vez (evita que backend y
+  # frontend corran `pnpm install` en paralelo sobre los mismos volúmenes).
+  deps:
+    <<: *node-dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    depends_on:
+      perms:
+        condition: service_completed_successfully
+    command: >
+      sh -c "pnpm install --frozen-lockfile &&
+      pnpm --filter @realpolitik/backend build:deps"
+
+  backend:
+    <<: *node-dev
+    depends_on:
+      db:
+        condition: service_healthy
+      deps:
+        condition: service_completed_successfully
+    working_dir: /app/apps/backend
+    environment:
+      <<: *node-env
+      NODE_ENV: development
+      PORT: 3000
+      # Dentro de la red de compose el host de la base es `db`, no `localhost`.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      CORS_ORIGINS: http://localhost:5173
+    ports:
+      - "127.0.0.1:3000:3000"
+    # `migrate deploy` aplica las migraciones sin prompts. El seed NO corre acá (ver nota abajo).
+    command: >
+      sh -c "pnpm exec prisma migrate deploy --schema=prisma/schema.prisma &&
+      pnpm exec tsx watch src/server.ts"
+
+  frontend:
+    <<: *node-dev
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+    working_dir: /app/apps/frontend
+    environment:
+      <<: *node-env
+      # El navegador (en el host) llama a la API publicada en localhost:3000.
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - "5173:5173"
+    command: pnpm exec vite --host 0.0.0.0 --port 5173
+
+# NOTA sobre el seed: `prisma/seed.ts` borra todos los clientes y su guarda (src/lib/seed-guard.ts)
+# solo permite hosts locales, por eso no se ejecuta dentro del contenedor (host `db`).
+# Se corre manualmente desde el host: `pnpm --filter @realpolitik/backend db:seed`
+# (la base está expuesta en localhost:5432).
+
 volumes:
   postgres_data:
+  pnpm_store:
+  root_node_modules:
+  shared_node_modules:
+  backend_node_modules:
+  frontend_node_modules:

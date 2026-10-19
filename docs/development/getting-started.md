@@ -34,6 +34,25 @@ pnpm install --frozen-lockfile
 
 `--frozen-lockfile` instala exactamente lo que indica `pnpm-lock.yaml` y falla si el lockfile no está sincronizado con los `package.json`.
 
+## Entorno completo con Docker Compose (opcional)
+
+Levanta PostgreSQL, backend y frontend con hot-reload. Para correr la app no hace falta Node ni pnpm en tu máquina, pero **sí** para el seed (`pnpm --filter @realpolitik/backend db:seed`), que se ejecuta desde el host. Requiere Docker y Docker Compose.
+
+Los puertos `5432` (base) y `3000` (API) se publican solo en `127.0.0.1`. El backend permite CORS únicamente desde `http://localhost:5173`: entrar por `http://127.0.0.1:5173` falla.
+
+```bash
+cp .env.example .env        # una sola vez
+docker compose up --build   # primera vez; después alcanza con `docker compose up`
+```
+
+- Frontend: `http://localhost:5173` · Backend: `http://localhost:3000` · PostgreSQL: `localhost:5432`.
+- La primera vez tarda: instala dependencias y genera `shared` y el cliente Prisma (servicio `deps`). El backend aplica las migraciones con `prisma migrate deploy` al arrancar.
+- El código se monta desde tu carpeta: editar archivos recarga el backend (`tsx watch`) y el frontend (HMR de Vite con polling, por Windows/WSL).
+- `node_modules` vive en volúmenes de Docker (no en tu carpeta), así los symlinks de pnpm funcionan dentro de Linux. Si cambian las dependencias, `docker compose up` ejecuta `pnpm install` de nuevo.
+- Los contenedores de Node corren como usuario no root (`UID`/`GID`, default 1000).
+- El seed **no** corre dentro de Docker (borra clientes y su guarda solo acepta `localhost`). Desde el host: `pnpm --filter @realpolitik/backend db:seed`.
+- Solo la base: `docker compose up -d db`. Apagar: `docker compose down` (`-v` borra también los datos y `node_modules`).
+
 ## Scripts de la raíz
 
 | Script              | Qué hace                                                                       |
