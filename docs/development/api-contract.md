@@ -1,11 +1,12 @@
-# Contrato de API: clientes y contactos
+# Contrato de API: clientes, contactos, requisitos y rendiciones
 
 > **Versión:** 1.0, para revisión del equipo (T0.7).
 > **Fuente de verdad de los campos:** los schemas de `@realpolitik/shared`
 > (`packages/shared/src/schemas/`). Este documento define los endpoints, parámetros,
 > respuestas y errores. Si el código contradice a este documento, se corrige el que corresponda
 > en un PR y queda registrado el motivo.
-> La sección 5 lista los cambios que este contrato exigió en `@realpolitik/shared` y en la base de datos; todos están hechos.
+> La sección 6 lista los cambios que este contrato exigió en `@realpolitik/shared` y en la base de datos; todos están hechos.
+> La sección 4 (requisitos y rendiciones, T2.3) es un borrador para revisión: todavía no está implementada.
 
 ## 1. Convenciones generales
 
@@ -37,13 +38,13 @@ Todos los errores responden con la misma forma:
 }
 ```
 
-| `code`              | Estado HTTP | Cuándo                                                                                         | `details`                                                                                                                          |
-| ------------------- | ----------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `VALIDATION_ERROR`  | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`  |
-| `NOT_FOUND`         | 404         | El cliente o el contacto no existe, o la ruta no existe                                        | No lleva                                                                                                                           |
-| `CONFLICT`          | 409         | El pedido choca con datos existentes                                                           | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO` o `contactoExistente` para `EMAIL_DUPLICADO` |
-| `PAYLOAD_TOO_LARGE` | 413         | El cuerpo de la solicitud supera los 100 KB                                                    | No lleva                                                                                                                           |
-| `INTERNAL_ERROR`    | 500         | Error inesperado                                                                               | No lleva. Nunca expone detalles internos                                                                                           |
+| `code`              | Estado HTTP | Cuándo                                                                                                               | `details`                                                                                                                                                                                         |
+| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VALIDATION_ERROR`  | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado                       | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`                                                                 |
+| `NOT_FOUND`         | 404         | El recurso pedido (cliente, contacto, tipo de documento, requisito, rendición o ítem) no existe, o la ruta no existe | No lleva                                                                                                                                                                                          |
+| `CONFLICT`          | 409         | El pedido choca con datos existentes                                                                                 | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO` o `contactoExistente` para `EMAIL_DUPLICADO`. Los motivos de requisitos y rendiciones están en la sección 4 |
+| `PAYLOAD_TOO_LARGE` | 413         | El cuerpo de la solicitud supera los 100 KB                                                                          | No lleva                                                                                                                                                                                          |
+| `INTERNAL_ERROR`    | 500         | Error inesperado                                                                                                     | No lleva. Nunca expone detalles internos                                                                                                                                                          |
 
 > Los textos de `mensaje` pueden estar en inglés cuando no los define `@realpolitik/shared`
 > (por ejemplo, `Required`). El front debe apoyarse en `campo` y mostrar sus propios textos.
@@ -139,8 +140,9 @@ No existe `GET /clientes/:id`: el listado (`GET /clientes`) devuelve cada client
 | `subtipo` | No          | Un subtipo del sector público                                                                                                                                                                                                                                                                                                                                                                                      |
 
 - **Respuesta 200:** lista de clientes **ordenada alfabéticamente por razón social**. Si no hay resultados, devuelve una lista vacía: no es un error. El mensaje de "no hay resultados" y la invitación a registrar el primer cliente los muestra el front.
-- **Estado:** si no se envía `estado`, solo devuelve clientes `ACTIVO`. Para ver los desactivados se pide `estado=INACTIVO` (HU1.8), y se combina con `q`, `sector` y `subtipo`. Por ahora no hay forma de listar activos e inactivos juntos (ver sección 6). El front solo ofrece las vistas de activos e inactivos: `SUSPENDIDO` está reservado.
+- **Estado:** si no se envía `estado`, solo devuelve clientes `ACTIVO`. Para ver los desactivados se pide `estado=INACTIVO` (HU1.8), y se combina con `q`, `sector` y `subtipo`. Por ahora no hay forma de listar activos e inactivos juntos (ver sección 7). El front solo ofrece las vistas de activos e inactivos: `SUSPENDIDO` está reservado.
 - **Errores:** `400 VALIDATION_ERROR` si un parámetro tiene un valor no válido, o si `q` supera los 150 caracteres o tiene caracteres de control.
+- **Sprint 2:** la sección 4.7 agrega el campo `matrizConfigurada` a la respuesta y un filtro por ese campo (borrador, todavía no implementado).
 
 ### `PATCH /clientes/:id` (HU1.7, HU1.2, HU1.4, HU1.5)
 
@@ -167,7 +169,7 @@ No existe `GET /clientes/:id`: el listado (`GET /clientes`) devuelve cada client
   - `409 CONFLICT`: el CUIT nuevo pertenece **a otro** cliente. Mismo `details` que en `POST`. El CUIT del propio cliente no cuenta como duplicado.
 - **Cómo lo usa el front:** envía **solo los campos que la persona modificó** respecto de los datos con los que abrió la edición, con los grupos que la API exige juntos (sector `PUBLICO` con su `subtipo`, el canal nuevo con su dato de entrega, la periodicidad completa o `null`). Así, si otra persona cambió un campo distinto mientras tanto, ese cambio no se pisa. Sin cambios, no envía nada: "Guardar cambios" queda deshabilitado.
 - **Valores idénticos:** el contrato no define un "sin cambios" para este endpoint. Un `PATCH` que envía valores iguales a los guardados responde 200 igual y puede actualizar `actualizadoEn`. El front evita mandar un pedido sin cambios, pero la API no lo garantiza. A diferencia de `PATCH /clientes/:id/estado`, que sí responde 200 sin escribir cuando el estado no cambia.
-- **Concurrencia:** no hay control de versión. Dos ediciones del **mismo** campo se resuelven por la última que llega (_last write wins_). Ver la sección 6.
+- **Concurrencia:** no hay control de versión. Dos ediciones del **mismo** campo se resuelven por la última que llega (_last write wins_). Ver la sección 7.
 
 ### `PATCH /clientes/:id/estado` (HU1.8)
 
@@ -235,12 +237,456 @@ Guarda de una vez todos los contactos del cliente, como los muestra el editor. L
 - `404 NOT_FOUND`: el cliente no existe o está dado de baja, o el contacto no existe, está eliminado o no pertenece a ese cliente.
 - `409 CONFLICT`: el email ya existe en otro contacto del mismo cliente. `details` trae `motivo: "EMAIL_DUPLICADO"` y el contacto existente (`id` y `nombre`).
 
-## 4. Fuera del alcance de este documento
+## 4. Requisitos y rendiciones (Sprint 2, T2.3)
 
-Autenticación y permisos, carga de documentos, requisitos por cliente, rendiciones,
-vencimientos y despacho. Se documentan cuando se implementen.
+> **Estado:** borrador para revisión. Ningún endpoint de esta sección está implementado. El modelo
+> de datos es el de T2.1 (`schema.prisma` y [ADR-0003](../adr/0003-modelado-requisitos-y-rendiciones.md)).
+> Las decisiones de negocio se cerraron con la administradora el 20/10/2026. Lo que surja sin
+> definir va a la sección 4.8, "Preguntas abiertas". Los schemas de `@realpolitik/shared` que hacen
+> falta se listan en la sección 4.9.
 
-## 5. Cambios que este contrato exige
+Reglas que valen para toda la sección (además de las de la sección 1):
+
+- **Cliente borrado:** igual que en clientes y contactos, un cliente con baja lógica (`isDeleted`) se trata como inexistente. Todas las rutas `/clientes/:id/...` responden `404 NOT_FOUND`.
+- **Cliente no activo:** solo un cliente `ACTIVO` puede tener su matriz editada (alta, modificación o baja de requisitos), sus indicaciones de armado editadas, rendiciones nuevas o requisitos agregados a una rendición abierta. `INACTIVO` y `SUSPENDIDO` se tratan igual (un cliente que dejó de operar temporalmente y puede volver): esas operaciones responden `409 CONFLICT` con `motivo: "CLIENTE_NO_ACTIVO"`, y primero hay que reactivarlo. Las lecturas (`GET`) responden igual para cualquier estado. La anulación de una rendición tampoco se restringe, en ningún estado: es la corrección de un error, no una operación nueva.
+- **Ids de la ruta:** `:id` y `:requisitoId` se validan. Uno que no es un uuid responde `400 VALIDATION_ERROR`.
+- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay dos excepciones: `PATCH /rendiciones/:id/estado` (ver 4.6) y `POST /rendiciones/:id/requisitos/:requisitoId`, que con una rendición anulada responde `409 RENDICION_ANULADA` (ver 4.5).
+- **Fechas:** como en clientes y contactos, la API devuelve `creadoEn` y `actualizadoEn`; las columnas `createdAt` y `updatedAt` se traducen en el backend. `isDeleted` y `deletedAt` no se exponen.
+- **Sin requisitos condicionales:** ningún pedido lleva decisiones del tipo "este período aplica / no aplica". Todo requisito activo entra siempre en el checklist.
+- **La factura es un requisito más:** no es implícita. Todo cliente pide al menos la factura, que figura en su matriz como requisito del tipo "Factura".
+- **Canal efectivo:** `Cliente.canalEntrega` es el canal por defecto. `RequisitoCliente.canalEntrega` es un override opcional (`null` = usa el del cliente). El ítem guarda el canal ya resuelto: `requisito.canalEntrega ?? cliente.canalEntrega`.
+- **Snapshot:** al abrir una rendición, los requisitos se copian en ítems. Cambiar después la matriz, renombrar o desactivar un tipo no altera las rendiciones ya abiertas. Única excepción, siempre explícita y nunca automática: la operadora puede agregar a una rendición activa los ítems de un requisito nuevo que el cliente empieza a pedir ese mes (ver 4.5). Los ítems existentes no se tocan.
+- **`matrizConfigurada`:** la mantiene el backend. Pasa a `true` cuando el cliente tiene al menos un requisito activo y vuelve a `false` al dar de baja el último. No tiene endpoint ni se edita a mano.
+
+Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: `details` trae `motivo` y, cuando corresponde, el registro existente):
+
+| `motivo`                    | Datos en `details`       | Cuándo                                                                                                                                          |
+| --------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TIPO_DOCUMENTO_DUPLICADO`  | `tipoDocumentoExistente` | Ya existe un tipo de documento con ese nombre, sin distinguir mayúsculas ni acentos                                                             |
+| `REQUISITO_DUPLICADO`       | `requisitoExistente`     | El cliente ya tiene un requisito activo para ese tipo de documento                                                                              |
+| `RENDICION_DUPLICADA`       | `rendicionExistente`     | Ese número de factura ya está en otra rendición activa del cliente, de cualquier mes y año                                                      |
+| `MATRIZ_VACIA`              | No lleva                 | Se intenta abrir una rendición para un cliente sin requisitos activos                                                                           |
+| `RENDICION_ANULADA`         | No lleva                 | Se intenta agregar un requisito a una rendición anulada                                                                                         |
+| `REQUISITO_YA_EN_RENDICION` | No lleva                 | Se intenta agregar a una rendición un requisito cuyo tipo de documento ya tiene ítems en ella, aunque sea de otro requisito                     |
+| `CLIENTE_NO_ACTIVO`         | `estado` del cliente     | Se intenta editar la matriz o las indicaciones de armado, abrir una rendición o agregarle un requisito, de un cliente `INACTIVO` o `SUSPENDIDO` |
+
+```json
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "El cliente no está activo",
+    "details": { "motivo": "CLIENTE_NO_ACTIVO", "estado": "INACTIVO" }
+  }
+}
+```
+
+### Resumen
+
+| Historia    | Método y ruta                                   | Qué hace                                                      | Código HTTP |
+| ----------- | ----------------------------------------------- | ------------------------------------------------------------- | ----------- |
+| Catálogo    | `GET /tipos-documento`                          | Lista los tipos de documento                                  | 200         |
+| Catálogo    | `POST /tipos-documento`                         | Crea un tipo de documento                                     | 201         |
+| Catálogo    | `PATCH /tipos-documento/:id`                    | Modifica nombre o descripción                                 | 200         |
+| Catálogo    | `PATCH /tipos-documento/:id/estado`             | Activa o desactiva un tipo                                    | 200         |
+| Matriz      | `GET /clientes/:id/requisitos`                  | Lista la matriz del cliente                                   | 200         |
+| Matriz      | `POST /clientes/:id/requisitos`                 | Agrega un requisito                                           | 201         |
+| Matriz      | `PATCH /clientes/:id/requisitos/:requisitoId`   | Modifica un requisito                                         | 200         |
+| Matriz      | `DELETE /clientes/:id/requisitos/:requisitoId`  | Da de baja un requisito (baja lógica)                         | 204         |
+| HU2.3       | `POST /requisitos/masivo`                       | Agrega un mismo requisito a varios clientes                   | 200         |
+| HU2.4       | `GET /clientes/:id/indicaciones-armado`         | Lee las indicaciones de armado                                | 200         |
+| HU2.4       | `PUT /clientes/:id/indicaciones-armado`         | Guarda las indicaciones de armado                             | 200         |
+| Rendiciones | `POST /clientes/:id/rendiciones`                | Abre una rendición y genera su checklist                      | 201         |
+| Rendiciones | `GET /clientes/:id/rendiciones`                 | Lista las rendiciones activas del cliente                     | 200         |
+| Rendiciones | `GET /rendiciones/:id`                          | Trae una rendición con su checklist                           | 200         |
+| Rendiciones | `POST /rendiciones/:id/requisitos/:requisitoId` | Agrega a una rendición activa los ítems de un requisito nuevo | 200         |
+| HU2.5       | `PATCH /rendiciones/:id/estado`                 | Anula una rendición (baja lógica, no reversible)              | 200         |
+| Clientes    | `GET /clientes` (extensión)                     | Agrega `matrizConfigurada` y un filtro por ese campo          | 200         |
+
+El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
+
+### 4.1 Tipos de documento
+
+```json
+{
+  "id": "c1d2e3f4-a5b6-4789-8abc-def012345678",
+  "nombre": "Constancia ARCA",
+  "descripcion": null,
+  "activo": true,
+  "creadoEn": "2026-10-20T12:00:00.000Z",
+  "actualizadoEn": "2026-10-20T12:00:00.000Z"
+}
+```
+
+- **Nombre (`nombre`):** obligatorio, hasta 100 caracteres. Único **sin distinguir mayúsculas ni acentos**: `Constancia ARCA`, `constancia arca` y `Constancía ARCA` son el mismo nombre. Hoy la base solo garantiza la unicidad exacta (`nombre @unique`); implementar la comparación sin mayúsculas ni acentos corresponde a HU2.1.
+- **Descripción (`descripcion`):** opcional, hasta 500 caracteres. Sin descripción se devuelve `null`; la clave siempre está.
+- **Activo (`activo`):** un tipo no se borra. Un tipo inactivo no se puede usar en requisitos nuevos. Los requisitos que ya lo usan **no cambian**: siguen en la matriz y siguen entrando en el checklist de las rendiciones nuevas. Para que un cliente deje de pedirlo, se da de baja ese requisito.
+
+#### `GET /tipos-documento`
+
+| Parámetro          | Obligatorio | Descripción                                                                         |
+| ------------------ | ----------- | ----------------------------------------------------------------------------------- |
+| `incluirInactivos` | No          | `true` devuelve activos e inactivos. Sin el parámetro (o con `false`), solo activos |
+
+- **Respuesta 200:** lista de tipos ordenada alfabéticamente por `nombre`. Lista vacía si no hay resultados.
+- **Errores:** `400 VALIDATION_ERROR` si `incluirInactivos` no es `true` ni `false`.
+
+#### `POST /tipos-documento`
+
+- **Pedido:** `{ "nombre": "Constancia ARCA", "descripcion": "Opcional" }`. No se envían `id`, `activo` ni fechas: si llegan, se ignoran. Un tipo nuevo nace `activo: true`.
+- **Respuesta 201:** el tipo creado.
+- **Errores:**
+  - `400 VALIDATION_ERROR`: falta el nombre, o el nombre o la descripción superan su largo o tienen caracteres de control.
+  - `409 CONFLICT`: `motivo: "TIPO_DOCUMENTO_DUPLICADO"` si ya existe un tipo con ese nombre (sin distinguir mayúsculas ni acentos), activo o inactivo:
+
+```json
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "Ya existe un tipo de documento con ese nombre",
+    "details": {
+      "motivo": "TIPO_DOCUMENTO_DUPLICADO",
+      "tipoDocumentoExistente": { "id": "…", "nombre": "Constancia ARCA", "activo": false }
+    }
+  }
+}
+```
+
+#### `PATCH /tipos-documento/:id`
+
+- **Pedido:** `nombre` y/o `descripcion`, al menos uno (`{}` es `400`). `"descripcion": null` la borra. `activo` se cambia solo con `/estado`; si llega acá, se ignora.
+- **Qué hace con lo ya abierto:** renombrar no cambia los ítems de rendiciones ya abiertas, que guardan el nombre de ese momento (`nombreTipoDocumento`). Los requisitos de las matrices sí muestran el nombre nuevo, porque leen el tipo.
+- **Respuesta 200:** el tipo actualizado.
+- **Errores:** `400 VALIDATION_ERROR` (pedido vacío, largos, caracteres de control, id que no es uuid), `404 NOT_FOUND` (el tipo no existe), `409 CONFLICT` (`TIPO_DOCUMENTO_DUPLICADO`: el nombre nuevo pertenece **a otro** tipo; el propio no cuenta, aunque cambie solo en mayúsculas o acentos).
+
+#### `PATCH /tipos-documento/:id/estado`
+
+- **Pedido:** `{ "activo": false }` o `{ "activo": true }`.
+- **Qué hace:** cambia solo `activo`. Se puede desactivar un tipo en uso: sus requisitos existentes no se tocan y siguen entrando en el checklist. Igual que `PATCH /clientes/:id/estado`, pedir el estado que el tipo ya tiene responde 200 **sin escribir**.
+- **Respuesta 200:** el tipo con su nuevo estado.
+- **Errores:** `400 VALIDATION_ERROR` (`activo` ausente o no booleano, id que no es uuid), `404 NOT_FOUND`.
+
+### 4.2 Requisitos (matriz del cliente)
+
+Un requisito es un documento que el cliente exige en cada rendición.
+
+```json
+{
+  "id": "d1e2f3a4-b5c6-4789-8abc-def012345678",
+  "clienteId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
+  "tipoDocumento": {
+    "id": "c1d2e3f4-a5b6-4789-8abc-def012345678",
+    "nombre": "Print",
+    "activo": true
+  },
+  "cantidad": 3,
+  "diasAproximados": [1, 10, 20],
+  "canalEntrega": null,
+  "nota": "Prints de la pauta de radio",
+  "creadoEn": "2026-10-20T12:00:00.000Z",
+  "actualizadoEn": "2026-10-20T12:00:00.000Z"
+}
+```
+
+- **Tipo (`tipoDocumentoId` en el pedido, `tipoDocumento` en la respuesta):** obligatorio al crear y **no editable**: para cambiar de tipo se da de baja el requisito y se crea otro. Tiene que ser un tipo activo. Un cliente no puede tener dos requisitos **activos** del mismo tipo; uno dado de baja no impide volver a agregarlo.
+- **Cantidad (`cantidad`):** entero, al menos 1, `1` por defecto. Cuántos documentos de ese tipo por rendición. La base no fija un máximo (ver "A resolver" del ADR-0003).
+- **Días aproximados (`diasAproximados`):** lista de enteros de 1 a 31, `[]` por defecto. Vacía, o con **exactamente** `cantidad` días. Se permiten días repetidos y desordenados (`[15, 1, 15]`).
+- **Canal (`canalEntrega`):** `CORREO`, `PORTAL_WEB`, `WHATSAPP` o `null`. `null` (por defecto) significa "usa el canal principal del cliente". La respuesta devuelve el valor guardado, no el canal resuelto.
+- **Nota (`nota`):** opcional, hasta 500 caracteres, `null` si no hay.
+- **Cambios y rendiciones abiertas:** dar de alta, modificar o dar de baja un requisito no altera las rendiciones ya abiertas (snapshot). Solo afecta a las que se abran después.
+
+#### `GET /clientes/:id/requisitos`
+
+- **Respuesta 200:** los requisitos activos del cliente, ordenados alfabéticamente por el nombre del tipo de documento. Lista vacía si no tiene (matriz sin configurar). Responde igual para cualquier estado del cliente.
+- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid), `404 NOT_FOUND` (el cliente no existe o está borrado).
+
+#### `POST /clientes/:id/requisitos`
+
+- **Pedido:**
+
+```json
+{
+  "tipoDocumentoId": "c1d2e3f4-a5b6-4789-8abc-def012345678",
+  "cantidad": 3,
+  "diasAproximados": [1, 10, 20],
+  "canalEntrega": null,
+  "nota": "Prints de la pauta de radio"
+}
+```
+
+Solo `tipoDocumentoId` es obligatorio. No se envían `clienteId`, fechas ni baja lógica: si llegan, se ignoran.
+
+- **Qué hace:** crea el requisito. Si es el primer requisito activo del cliente, `matrizConfigurada` pasa a `true`.
+- **Respuesta 201:** el requisito creado.
+- **Errores:**
+  - `400 VALIDATION_ERROR`: falta `tipoDocumentoId` o no es un uuid; el tipo de documento está inactivo (`campo: "tipoDocumentoId"`); `cantidad` no es un entero o es menor que 1; `diasAproximados` con un día fuera de 1 a 31, con un valor no entero o con una cantidad de días distinta de 0 y de `cantidad`; `canalEntrega` desconocido; `nota` de más de 500 caracteres o con caracteres de control.
+  - `404 NOT_FOUND`: el cliente no existe o está borrado; el tipo de documento no existe.
+  - `409 CONFLICT`: `motivo: "CLIENTE_NO_ACTIVO"` si el cliente es `INACTIVO` o `SUSPENDIDO`; `motivo: "REQUISITO_DUPLICADO"` si el cliente ya tiene un requisito activo de ese tipo:
+
+```json
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "El cliente ya tiene un requisito para ese tipo de documento",
+    "details": {
+      "motivo": "REQUISITO_DUPLICADO",
+      "requisitoExistente": { "id": "…", "tipoDocumentoId": "…", "cantidad": 3 }
+    }
+  }
+}
+```
+
+#### `PATCH /clientes/:id/requisitos/:requisitoId`
+
+- **Pedido:** cualquier subconjunto de `cantidad`, `diasAproximados`, `canalEntrega` y `nota`, con al menos uno (`{}` es `400`). `"canalEntrega": null` quita el override; `"nota": null` borra la nota. `tipoDocumentoId` no es editable: si llega, se ignora.
+- **Regla de los días sobre el resultado:** igual que los emails del cliente, se valida el **estado resultante** (lo enviado más lo guardado). Cambiar solo `cantidad` en un requisito con días cargados, sin enviar la lista nueva, deja días y cantidad incoherentes y es `400 VALIDATION_ERROR`, sin modificar nada.
+- **Respuesta 200:** el requisito actualizado.
+- **Errores:** `400 VALIDATION_ERROR` (pedido vacío, datos inválidos como en `POST`, días incoherentes con la cantidad resultante, ids que no son uuid), `404 NOT_FOUND` (el cliente no existe o está borrado; el requisito no existe, está dado de baja o es de otro cliente), `409 CONFLICT` (`CLIENTE_NO_ACTIVO`).
+
+#### `DELETE /clientes/:id/requisitos/:requisitoId`
+
+- **Qué hace:** baja lógica (`isDeleted`, `deletedAt`). El requisito deja de figurar en la matriz y no entra en las rendiciones que se abran después. Los ítems de rendiciones ya abiertas que salieron de él se conservan sin cambios. Si era el último requisito activo del cliente, `matrizConfigurada` vuelve a `false`.
+- **Respuesta 204:** sin cuerpo.
+- **Errores:** `400 VALIDATION_ERROR` (ids que no son uuid), `404 NOT_FOUND` (el cliente no existe o está borrado; el requisito no existe, ya estaba dado de baja o es de otro cliente), `409 CONFLICT` (`CLIENTE_NO_ACTIVO`).
+
+### 4.3 Carga masiva de un requisito (HU2.3)
+
+Agrega **un mismo** requisito a **varios** clientes a la vez. Reemplaza a "copiar la matriz de otro cliente", que se descartó en la Planning del 18/10/2026.
+
+#### `POST /requisitos/masivo`
+
+- **Pedido:**
+
+```json
+{
+  "tipoDocumentoId": "c1d2e3f4-a5b6-4789-8abc-def012345678",
+  "canalEntrega": "PORTAL_WEB",
+  "nota": "Constancia del mes anterior",
+  "clientes": [
+    { "clienteId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789", "cantidad": 1 },
+    {
+      "clienteId": "b2c3d4e5-f6a7-4890-bcde-f01234567890",
+      "cantidad": 2,
+      "diasAproximados": [5, 20]
+    }
+  ]
+}
+```
+
+| Campo                        | Obligatorio | Descripción                                                                 |
+| ---------------------------- | ----------- | --------------------------------------------------------------------------- |
+| `tipoDocumentoId`            | Sí          | Tipo de documento activo                                                    |
+| `clientes`                   | Sí          | Lista no vacía. Un mismo `clienteId` no puede repetirse                     |
+| `clientes[].clienteId`       | Sí          | uuid del cliente                                                            |
+| `clientes[].cantidad`        | No          | Entero, al menos 1. `1` por defecto                                         |
+| `clientes[].diasAproximados` | No          | Vacía o exactamente `cantidad` días, cada uno de 1 a 31. `[]` por defecto   |
+| `canalEntrega`               | No          | Override de canal. Si se envía, se aplica a todos los requisitos creados    |
+| `nota`                       | No          | Hasta 500 caracteres. Si se envía, se aplica a todos los requisitos creados |
+
+- **Qué hace:** crea el requisito en cada cliente indicado, con las mismas reglas que `POST /clientes/:id/requisitos`. En una sola transacción.
+  - A un cliente que ya tiene un requisito **activo** de ese tipo no se le duplica ni se le modifica: se omite con `motivo: "REQUISITO_EXISTENTE"`.
+  - Un cliente que no está `ACTIVO` (`INACTIVO` o `SUSPENDIDO`) se omite con `motivo: "CLIENTE_NO_ACTIVO"`. No hace fallar el pedido.
+  - En cada cliente al que se le crea el requisito, `matrizConfigurada` pasa a `true` si no lo estaba.
+- **Respuesta 200:** qué clientes recibieron el requisito y cuáles se omitieron. Puede no crearse ninguno (todos omitidos): sigue siendo 200.
+
+```json
+{
+  "creados": ["a1b2c3d4-e5f6-4789-abcd-ef0123456789"],
+  "omitidos": [
+    { "clienteId": "b2c3d4e5-f6a7-4890-bcde-f01234567890", "motivo": "REQUISITO_EXISTENTE" }
+  ]
+}
+```
+
+- **Errores** (en todos los casos no se crea ningún requisito):
+  - `400 VALIDATION_ERROR`: falta `tipoDocumentoId` o no es un uuid; el tipo está inactivo; `clientes` falta o está vacía; un `clienteId` se repite en el pedido o no es un uuid; una `cantidad` inválida; días que no coinciden con la cantidad o fuera de 1 a 31 (`campo` señala el cliente, por ejemplo `clientes.1.diasAproximados`); `canalEntrega` desconocido; `nota` inválida.
+  - `404 NOT_FOUND`: el tipo de documento no existe, o algún cliente no existe o está borrado.
+
+### 4.4 Indicaciones de armado (HU2.4)
+
+Un texto libre por cliente con indicaciones para armar el legajo. Se lee y se guarda aparte de los datos del cliente.
+
+#### `GET /clientes/:id/indicaciones-armado`
+
+- **Respuesta 200:** `{ "indicacionesArmado": "Ordenar los prints por fecha.\nFactura siempre primero." }`. Sin indicaciones cargadas: `{ "indicacionesArmado": null }`.
+- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid), `404 NOT_FOUND` (el cliente no existe o está borrado).
+
+#### `PUT /clientes/:id/indicaciones-armado`
+
+- **Pedido:** `{ "indicacionesArmado": "texto" }` o `{ "indicacionesArmado": null }` para borrarlas. La clave es obligatoria.
+- **Solo clientes activos:** igual que la matriz, las indicaciones de un cliente `INACTIVO` o `SUSPENDIDO` no se pueden editar: primero hay que reactivarlo. `GET` sigue respondiendo en cualquier estado.
+- **Reglas del texto:**
+  - Hasta 1000 caracteres, recortado en los bordes.
+  - Un texto vacío o de solo espacios se guarda como `null`.
+  - **Se admiten saltos de línea:** es una excepción explícita a la regla de la sección 1 sobre caracteres de control. El resto de los caracteres de control sigue siendo `400`.
+- **Respuesta 200:** el mismo objeto que `GET`, con lo guardado.
+- **Errores:** `400 VALIDATION_ERROR` (falta la clave, no es texto ni `null`, supera los 1000 caracteres, tiene caracteres de control que no son saltos de línea, id que no es uuid), `404 NOT_FOUND` (el cliente no existe o está borrado), `409 CONFLICT` (`CLIENTE_NO_ACTIVO`: el cliente es `INACTIVO` o `SUSPENDIDO`).
+
+### 4.5 Rendiciones
+
+Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de un cliente. Un cliente puede tener varias en el mismo mes, una por factura.
+
+> **Nota:** la base todavía usa `referencia` con unicidad por (cliente, año, mes, referencia); se alinea en T2.1b. La orden de compra se modela aparte en otra HU.
+
+```json
+{
+  "id": "e1f2a3b4-c5d6-4789-8abc-def012345678",
+  "clienteId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
+  "anio": 2026,
+  "mes": 10,
+  "numeroFactura": "0001-00001234",
+  "estado": "ACTIVA",
+  "anuladaEn": null,
+  "creadoEn": "2026-10-20T12:00:00.000Z",
+  "actualizadoEn": "2026-10-20T12:00:00.000Z",
+  "items": [
+    {
+      "id": "f1a2b3c4-d5e6-4789-8abc-def012345678",
+      "requisitoClienteId": "d1e2f3a4-b5c6-4789-8abc-def012345678",
+      "tipoDocumentoId": "c1d2e3f4-a5b6-4789-8abc-def012345678",
+      "nombreTipoDocumento": "Print",
+      "ordinal": 1,
+      "totalOrdinal": 3,
+      "diaAproximado": 1,
+      "canalEntrega": "CORREO",
+      "completado": false,
+      "completadoEn": null,
+      "creadoEn": "2026-10-20T12:00:00.000Z",
+      "actualizadoEn": "2026-10-20T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+- **Año (`anio`):** entero de 2020 a 2100.
+- **Mes (`mes`):** entero de 1 a 12.
+- **Número de factura (`numeroFactura`):** obligatorio, hasta 100 caracteres, recortado en los bordes; no puede quedar vacío.
+- **Unicidad:** un número de factura está en una sola rendición **activa** del cliente, sin importar el mes ni el año. La misma factura en dos clientes distintos se acepta. Una rendición anulada no impide volver a usar su número de factura.
+- **Estado (`estado`, `anuladaEn`):** `ACTIVA` o `ANULADA`, derivado de la baja lógica; `anuladaEn` es la fecha de anulación (`deletedAt`) o `null`. Los listados y el detalle solo devuelven `ACTIVA`.
+- **Ítems (`items`):** solo en el detalle y en la respuesta de alta. Cada ítem es un documento a presentar, ordenados por `nombreTipoDocumento` y luego por `ordinal`. `completadoEn` es la columna `completadoAt`, con el mismo criterio de nombres que `creadoEn`. El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
+
+#### `POST /clientes/:id/rendiciones`
+
+- **Pedido:** `{ "anio": 2026, "mes": 10, "numeroFactura": "0001-00001234" }`. Ningún otro dato: no hay decisiones de condicionales, todos los requisitos activos entran.
+- **Qué hace**, en una sola transacción:
+  1. Crea la rendición.
+  2. Por cada requisito **activo** de la matriz del cliente crea `cantidad` ítems, con `ordinal` de 1 a `cantidad` y `totalOrdinal` = `cantidad`. Entran también los requisitos cuyo tipo de documento está inactivo.
+  3. Cada ítem copia: `tipoDocumentoId`, el nombre del tipo en ese momento (`nombreTipoDocumento`), el día de su ocurrencia (`diasAproximados[ordinal - 1]`, o `null` si el requisito no tenía días) y el canal efectivo (`requisito.canalEntrega ?? cliente.canalEntrega`, nunca `null`). Los ítems nacen con `completado: false`.
+  4. No copia la nota del requisito, la descripción del tipo ni datos del cliente.
+- **Respuesta 201:** la rendición con su checklist (`items`).
+- **Errores:**
+  - `400 VALIDATION_ERROR`: falta `anio`, `mes` o `numeroFactura`; `anio` fuera de 2020 a 2100 o no entero; `mes` fuera de 1 a 12 o no entero; `numeroFactura` vacío, de solo espacios, de más de 100 caracteres o con caracteres de control; id que no es uuid.
+  - `404 NOT_FOUND`: el cliente no existe o está borrado.
+  - `409 CONFLICT`:
+    - `motivo: "CLIENTE_NO_ACTIVO"`: el cliente es `INACTIVO` o `SUSPENDIDO`.
+    - `motivo: "MATRIZ_VACIA"`: el cliente no tiene requisitos activos. Todo cliente pide al menos la factura, así que una matriz vacía significa que falta configurarla.
+    - `motivo: "RENDICION_DUPLICADA"`: ese número de factura ya está en otra rendición activa del cliente, de cualquier mes y año. `rendicionExistente` dice en qué período está. También si dos pedidos con la misma factura llegan a la vez: el índice único de la base rechaza el segundo (una vez alineada en T2.1b).
+
+```json
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "Ese número de factura ya está en otra rendición del cliente",
+    "details": {
+      "motivo": "RENDICION_DUPLICADA",
+      "rendicionExistente": { "id": "…", "anio": 2026, "mes": 9, "numeroFactura": "0001-00001234" }
+    }
+  }
+}
+```
+
+#### `GET /clientes/:id/rendiciones`
+
+| Parámetro | Obligatorio | Descripción                                                |
+| --------- | ----------- | ---------------------------------------------------------- |
+| `anio`    | No          | Entero de 2020 a 2100                                      |
+| `mes`     | No          | Entero de 1 a 12. Se puede combinar con `anio` o usar solo |
+
+- **Respuesta 200:** las rendiciones **activas** del cliente, sin `items` y con un resumen de avance. Las anuladas no aparecen. Lista vacía si no tiene. Orden: `anio` descendente, `mes` descendente y, dentro del mismo mes, la más reciente primero (`creadoEn` descendente).
+
+```json
+[
+  {
+    "id": "e1f2a3b4-c5d6-4789-8abc-def012345678",
+    "clienteId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
+    "anio": 2026,
+    "mes": 10,
+    "numeroFactura": "0001-00001234",
+    "estado": "ACTIVA",
+    "anuladaEn": null,
+    "resumen": { "totalItems": 4, "completados": 1 },
+    "creadoEn": "2026-10-20T12:00:00.000Z",
+    "actualizadoEn": "2026-10-20T12:00:00.000Z"
+  }
+]
+```
+
+- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid; `anio` o `mes` fuera de rango o no enteros), `404 NOT_FOUND` (el cliente no existe o está borrado).
+
+#### `GET /rendiciones/:id`
+
+- **Respuesta 200:** la rendición con su checklist (`items`).
+- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid), `404 NOT_FOUND` (la rendición no existe o está anulada, o su cliente está borrado).
+
+#### `POST /rendiciones/:id/requisitos/:requisitoId`
+
+Para cuando un cliente empieza a pedir un documento nuevo justo en un mes cuya rendición ya está abierta: el requisito se agrega a la matriz y también a esa rendición.
+
+- **Pedido:** sin cuerpo. `:id` es la rendición y `:requisitoId`, un requisito activo de la matriz del cliente de esa rendición.
+- **Qué hace:** agrega a la rendición **activa** los ítems de ese requisito, uno por unidad de `cantidad`, con el mismo snapshot que al abrirla (ver `POST /clientes/:id/rendiciones`, pasos 2 a 4): ordinal, nombre del tipo, día y canal efectivo del momento en que se agregan. Los ítems que la rendición ya tenía no cambian.
+- **Se compara por tipo de documento:** si la rendición ya tiene ítems de ese tipo de documento, no se agrega nada, aunque vengan de otro requisito (por ejemplo, uno dado de baja y vuelto a crear, que tiene otro id).
+- **Acción explícita:** la hace la operadora; nunca es automática. El alta en la matriz (`POST /clientes/:id/requisitos`) no cambia y no agrega nada a rendiciones abiertas.
+- **Respuesta 200:** la rendición actualizada, con su checklist (`items`).
+- **Errores:**
+  - `400 VALIDATION_ERROR`: ids que no son uuid.
+  - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado; el requisito no existe, está dado de baja o es de otro cliente.
+  - `409 CONFLICT`:
+    - `motivo: "RENDICION_ANULADA"`: la rendición está anulada.
+    - `motivo: "REQUISITO_YA_EN_RENDICION"`: la rendición ya tiene ítems de ese tipo de documento, aunque sean de otro requisito.
+    - `motivo: "CLIENTE_NO_ACTIVO"`: el cliente es `INACTIVO` o `SUSPENDIDO`.
+- **Cómo lo usa el front:** justo después de agregar un requisito a la matriz, si el cliente tiene una rendición abierta, ofrece agregarlo también a esa rendición.
+
+### 4.6 Anular una rendición (HU2.5)
+
+Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo cambia el estado.
+
+#### `PATCH /rendiciones/:id/estado`
+
+- **Pedido:** `{ "estado": "ANULADA" }`. La anulación **no es reversible**: enviar `ACTIVA` es `400 VALIDATION_ERROR`. No se registra un motivo.
+- **Qué hace:** baja lógica: marca `isDeleted` y guarda `deletedAt`. No borra la rendición ni sus ítems, que conservan su valor fiscal. Desde ese momento no aparece en listados ni en el detalle, y su número de factura se puede usar en otra rendición.
+- **Idempotente:** anular una rendición ya anulada responde 200 con la rendición tal cual, **sin escribir** (`anuladaEn` no cambia), igual que pedir el estado que un cliente ya tiene. Es el único endpoint que responde con una rendición anulada.
+- **Cualquier estado del cliente:** se puede anular aunque el cliente esté `INACTIVO` o `SUSPENDIDO`: es la corrección de un error, no una operación nueva. No responde `CLIENTE_NO_ACTIVO`.
+- **Respuesta 200:** la rendición con `"estado": "ANULADA"` y `anuladaEn`, sin `items`.
+- **Errores:** `400 VALIDATION_ERROR` (estado ausente, `ACTIVA` o un valor desconocido, id que no es uuid), `404 NOT_FOUND` (la rendición no existe o su cliente está borrado).
+- **Cómo lo usa el front:** "Anular" pide confirmación antes de llamar, como "Desactivar" un cliente.
+
+### 4.7 Extensión de `GET /clientes`
+
+- **Campo nuevo en la respuesta:** `matrizConfigurada` (booleano) en cada cliente de `ClienteSchema`. `true` = tiene al menos un requisito activo; `false` = la matriz todavía no se configuró.
+- **Parámetro nuevo:** `matrizConfigurada`, opcional, `true` o `false`. Se combina con `q`, `estado`, `sector` y `subtipo`. Sin el parámetro no se filtra.
+- **Errores:** `400 VALIDATION_ERROR` si `matrizConfigurada` no es `true` ni `false`.
+- El campo lo mantiene el backend (ver las reglas generales de esta sección): no se puede enviar en `POST` ni `PATCH /clientes`; si llega, se ignora. `indicacionesArmado` **no** se agrega a `ClienteSchema`: se lee con su propio endpoint (4.4).
+
+### 4.8 Preguntas abiertas
+
+No quedan preguntas abiertas. Todas se cerraron el 20/10/2026 y están aplicadas en esta sección.
+
+### 4.9 Schemas a crear en `@realpolitik/shared`
+
+Pendientes; se crean al implementar cada endpoint.
+
+1. `TipoDocumentoSchema`, `CreateTipoDocumentoSchema`, `UpdateTipoDocumentoSchema`, `ActualizarEstadoTipoDocumentoSchema` y `ListarTiposDocumentoQuerySchema` (`incluirInactivos`).
+2. `RequisitoClienteSchema`, `CreateRequisitoClienteSchema` y `UpdateRequisitoClienteSchema` (sin `tipoDocumentoId`, con la regla de días sobre el estado resultante).
+3. `CargaMasivaRequisitoSchema` (pedido) y `ResultadoCargaMasivaSchema` (`creados`, `omitidos`).
+4. `IndicacionesArmadoSchema`, que admite saltos de línea.
+5. `RendicionSchema`, `RendicionDetalleSchema` (con `items`), `RendicionResumenSchema` (con `resumen`), `ItemChecklistSchema`, `CreateRendicionSchema` (`anio`, `mes`, `numeroFactura`), `ListarRendicionesQuerySchema` (`anio`, `mes`) y `ActualizarEstadoRendicionSchema` (solo `ANULADA`). Todos usan `numeroFactura`, no `referencia`.
+6. Para `POST /rendiciones/:id/requisitos/:requisitoId` no hace falta schema de pedido (no lleva cuerpo): valida los dos uuid de la ruta y responde con `RendicionDetalleSchema`.
+7. En `ClienteSchema`, el campo `matrizConfigurada`; en `ListarClientesQuerySchema`, el filtro `matrizConfigurada`.
+
+## 5. Fuera del alcance de este documento
+
+Autenticación y permisos, carga de documentos (HU2.8), vencimientos y despacho. Se documentan cuando se implementen.
+
+## 6. Cambios que este contrato exige
 
 Todos los puntos están implementados. Se conservan, con su numeración, como registro de qué exigió el contrato.
 
@@ -260,13 +706,13 @@ Todos los puntos están implementados. Se conservan, con su numeración, como re
 9. **Hecho.** Quitar `activo` del modelo de Cliente: `estado` es la única fuente de verdad del estado del cliente. `isDeleted` y `deletedAt` no forman parte de este contrato; se definen al ajustar el modelo de datos.
 10. **Hecho (HU1.3).** Crear el índice único de contactos con SQL a mano en la migración, porque Prisma no soporta índices parciales.
 
-## 6. Criterios de este borrador
+## 7. Criterios de este borrador
 
 | Tema                       | Decisión                                                                                                                                                                                                                                                                                                                                                            |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Listar activos e inactivos | `GET /clientes` sin `estado` devuelve solo clientes `ACTIVO`. Si el front necesita ver ambos a la vez, se agrega `estado=TODOS`: es un cambio compatible que no rompe lo ya acordado.                                                                                                                                                                               |
 | Mensajes de validación     | El front se apoya en `campo` para saber qué falló y muestra el `mensaje` del servidor cuando lo define `shared` o el backend (están en español). Los mensajes por defecto de Zod, en inglés, no se muestran: el front usa un aviso propio. Traducir el resto con un `errorMap` es un ajuste posterior del backend.                                                  |
-| Baja del cliente           | `estado` es la única fuente de verdad. La API no expone ni usa `activo`, `isDeleted` ni `deletedAt`. El ajuste del modelo de datos queda en la sección 5.                                                                                                                                                                                                           |
+| Baja del cliente           | `estado` es la única fuente de verdad. La API no expone ni usa `activo`, `isDeleted` ni `deletedAt`. El ajuste del modelo de datos queda en la sección 6.                                                                                                                                                                                                           |
 | SUSPENDIDO                 | Existe en `shared` y en la base y se mantiene. Cuando se use, hay que definir en qué listados aparece un cliente suspendido.                                                                                                                                                                                                                                        |
 | PATCH sin cambios reales   | `PATCH /clientes/:id` con valores idénticos a los guardados puede actualizar `actualizadoEn`: no hay contrato de "sin cambios" para la edición general (sí lo hay para `PATCH /clientes/:id/estado`). No es bloqueante; si hace falta, comparar contra lo guardado antes de escribir.                                                                               |
 | Ediciones concurrentes     | `PATCH /clientes/:id` es _last write wins_ por campo: el front manda solo lo modificado, así dos personas que editan campos distintos no se pisan, pero si editan el mismo campo gana la última. Pendiente: control optimista con `actualizadoEn` como versión (`If-Match` o precondición en el cuerpo, `409`/`412` si cambió) y una UI para resolver el conflicto. |
