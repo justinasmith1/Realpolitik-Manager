@@ -412,8 +412,8 @@ export function ClienteForm({
         <FormSection title="Entrega de rendiciones">
           <FormField
             id={idDe('canalEntrega')}
-            label="Canal de entrega"
-            hint="Por dónde se envían habitualmente las rendiciones."
+            label="Canal principal"
+            hint="Canal por defecto para sus documentos. Cada documento de la matriz puede ir por otro canal."
             error={errors.canalEntrega}
           >
             <SelectCampo

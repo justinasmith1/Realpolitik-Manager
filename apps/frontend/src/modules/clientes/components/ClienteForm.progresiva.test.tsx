@@ -95,12 +95,12 @@ describe('ClienteForm: antes del primer envío', () => {
   it('la URL del portal y el WhatsApp con contenido inválido se validan al salir', async () => {
     const { user } = renderForm();
 
-    await elegirOpcion(user, campo('Canal de entrega'), 'PORTAL_WEB');
+    await elegirOpcion(user, campo('Canal principal'), 'PORTAL_WEB');
     await user.type(campo('URL del portal'), 'esto no es una url');
     await user.tab();
     expect(campo('URL del portal')).toBeInvalid();
 
-    await elegirOpcion(user, campo('Canal de entrega'), 'WHATSAPP');
+    await elegirOpcion(user, campo('Canal principal'), 'WHATSAPP');
     await user.type(campo('Número de WhatsApp'), 'abc');
     await user.tab();
     expect(campo('Número de WhatsApp')).toBeInvalid();

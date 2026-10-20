@@ -393,7 +393,7 @@ function validarCanalEntrega(datos: DatosCanalEntrega, ctx: z.RefinementCtx): vo
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['portalUrl'],
-          message: 'Si el canal de entrega es Portal web, ingresá la URL del portal.',
+          message: 'Si el canal principal es Portal web, ingresá la URL del portal.',
         });
       }
       break;
@@ -404,7 +404,7 @@ function validarCanalEntrega(datos: DatosCanalEntrega, ctx: z.RefinementCtx): vo
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['whatsappNumero'],
-          message: 'Si el canal de entrega es WhatsApp, ingresá un número de WhatsApp.',
+          message: 'Si el canal principal es WhatsApp, ingresá un número de WhatsApp.',
         });
       }
       break;
@@ -425,7 +425,7 @@ function validarCanalEntrega(datos: DatosCanalEntrega, ctx: z.RefinementCtx): vo
           code: z.ZodIssueCode.custom,
           path: ['emailContacto'],
           message:
-            'Si el canal de entrega es Correo, el cliente debe tener al menos un email de contacto.',
+            'Si el canal principal es Correo, el cliente debe tener al menos un email de contacto.',
         });
       }
       break;
