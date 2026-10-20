@@ -6,11 +6,35 @@ import { verificarSeedPermitido } from '../src/lib/seed-guard';
 
 const prisma = new PrismaClient();
 
+// Catálogo de tipos de documento (T2.1). Se siembra con upsert por nombre: correrlo de nuevo no
+// duplica nada, y `update: {}` respeta lo que se haya cambiado después (p. ej. un tipo
+// desactivado no se vuelve a activar). No se siembran matrices ni rendiciones.
+const TIPOS_DOCUMENTO = [
+  'Factura',
+  'Print',
+  'Constancia escrita',
+  'CAE',
+  'Orden de compra',
+  'Constancia ARCA',
+  'Libre deuda',
+  'Pago IIBB',
+  'Constancia IIBB',
+];
+
+async function sembrarTiposDocumento() {
+  for (const nombre of TIPOS_DOCUMENTO) {
+    await prisma.tipoDocumento.upsert({ where: { nombre }, update: {}, create: { nombre } });
+  }
+  console.log(`✅ Tipos de documento: ${TIPOS_DOCUMENTO.length} en el catálogo.`);
+}
+
 async function main() {
   // Primero la guarda, antes de cualquier operación sobre la base: este seed borra clientes.
   verificarSeedPermitido();
 
   console.log('🌱 Seeding database...');
+
+  await sembrarTiposDocumento();
 
   // DESTRUCTIVO: borra todos los clientes (y sus contactos, en cascada) antes de cargar los
   // de ejemplo. Solo para una base de desarrollo local.

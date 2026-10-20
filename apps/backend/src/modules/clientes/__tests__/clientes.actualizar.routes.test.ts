@@ -60,6 +60,8 @@ const filaGuardada: ClienteRow = {
   sector: 'PUBLICO',
   subtipo: 'MUNICIPAL',
   estado: 'ACTIVO',
+  matrizConfigurada: false,
+  indicacionesArmado: null,
   isDeleted: false,
   deletedAt: null,
   createdAt: AHORA,
