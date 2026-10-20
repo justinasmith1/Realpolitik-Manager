@@ -70,11 +70,14 @@ enum PeriodicidadTipo {
 //   ck_requisito_baja_logica          isDeleted ⇔ deletedAt
 //   ck_rendicion_mes                  mes 1..12 y anio 2020..2100
 //   ck_rendicion_referencia_no_vacia  referencia con algún carácter que no sea espacio
+//   ck_rendicion_baja_logica          isDeleted ⇔ deletedAt
 //   ck_item_ordinal                   1 <= ordinal <= totalOrdinal
 //   ck_item_completado_coherente      completado ⇔ completadoAt
 //   ck_item_dia_rango                 diaAproximado NULL o entre 1 y 31
 //   uq_requisito_cliente_tipo_activo  índice único PARCIAL: un solo requisito activo por
 //                                     cliente + tipo de documento (WHERE "isDeleted" = false)
+//   uq_rendicion_periodo_activa       índice único PARCIAL: una sola rendición activa por
+//                                     cliente + anio + mes + referencia (WHERE "isDeleted" = false)
 
 model Cliente {
   id            String  @id @default(uuid()) @db.Uuid
@@ -228,13 +231,17 @@ model Rendicion {
   /// Número de factura u orden. CHECK ck_rendicion_referencia_no_vacia.
   referencia  String   @db.VarChar(100)
 
+  // Baja lógica (anular una rendición mal cargada, HU2.5). CHECK ck_rendicion_baja_logica:
+  // isDeleted ⇔ deletedAt. La unicidad cliente + período + referencia vale solo entre las
+  // activas: índice parcial uq_rendicion_periodo_activa, en SQL.
+  isDeleted   Boolean   @default(false)
+  deletedAt   DateTime?
+
   // Auditoría
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   items       ItemChecklist[]
-
-  @@unique([clienteId, anio, mes, referencia])
 }
 
 // ─── Modelo ItemChecklist ─────────────────────────────────────────────────────
@@ -264,7 +271,6 @@ model ItemChecklist {
   /// Canal efectivo ya resuelto: el del requisito o, si no tenía, el del cliente.
   canalEntrega         CanalEntrega
 
-  aplica               Boolean           @default(true)
   /// Se completa solo al aplicarle un documento (HU2.8), no a mano. CHECK ck_item_completado_coherente.
   completado           Boolean           @default(false)
   completadoAt         DateTime?

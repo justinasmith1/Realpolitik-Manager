@@ -38,6 +38,8 @@ CREATE TABLE "Rendicion" (
     "anio" SMALLINT NOT NULL,
     "mes" SMALLINT NOT NULL,
     "referencia" VARCHAR(100) NOT NULL,
+    "isDeleted" BOOLEAN NOT NULL DEFAULT false,
+    "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -55,7 +57,6 @@ CREATE TABLE "ItemChecklist" (
     "totalOrdinal" SMALLINT NOT NULL,
     "diaAproximado" SMALLINT,
     "canalEntrega" "CanalEntrega" NOT NULL,
-    "aplica" BOOLEAN NOT NULL DEFAULT true,
     "completado" BOOLEAN NOT NULL DEFAULT false,
     "completadoAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -66,9 +67,6 @@ CREATE TABLE "ItemChecklist" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TipoDocumento_nombre_key" ON "TipoDocumento"("nombre");
-
--- CreateIndex
-CREATE UNIQUE INDEX "Rendicion_clienteId_anio_mes_referencia_key" ON "Rendicion"("clienteId", "anio", "mes", "referencia");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ItemChecklist_rendicionId_requisitoClienteId_ordinal_key" ON "ItemChecklist"("rendicionId", "requisitoClienteId", "ordinal");
@@ -153,6 +151,18 @@ ALTER TABLE "Rendicion" ADD CONSTRAINT "ck_rendicion_mes" CHECK (
 -- La referencia (factura u orden) no puede ser vacía ni solo espacios.
 ALTER TABLE "Rendicion" ADD CONSTRAINT "ck_rendicion_referencia_no_vacia" CHECK (
   btrim("referencia") <> ''
+);
+
+-- Unicidad cliente + período + referencia solo entre rendiciones activas: una rendición anulada
+-- (baja lógica) no impide volver a abrirla bien cargada (ver ADR-0003).
+CREATE UNIQUE INDEX "uq_rendicion_periodo_activa"
+  ON "Rendicion"("clienteId", "anio", "mes", "referencia")
+  WHERE "isDeleted" = false;
+
+-- Baja lógica: la marca y la fecha van juntas.
+ALTER TABLE "Rendicion" ADD CONSTRAINT "ck_rendicion_baja_logica" CHECK (
+  ("isDeleted" = false AND "deletedAt" IS NULL)
+  OR ("isDeleted" = true AND "deletedAt" IS NOT NULL)
 );
 
 -- Numeración del ítem dentro de su requisito: 1 de N … N de N.
