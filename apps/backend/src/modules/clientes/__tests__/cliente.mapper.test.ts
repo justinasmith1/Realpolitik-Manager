@@ -24,6 +24,8 @@ const filaPublica: ClienteRow = {
   sector: 'PUBLICO',
   subtipo: 'MUNICIPAL',
   estado: 'ACTIVO',
+  matrizConfigurada: false,
+  indicacionesArmado: null,
   isDeleted: false,
   deletedAt: null,
   createdAt: creado,
@@ -79,6 +81,8 @@ describe('toClienteDto', () => {
   it('no expone la baja lógica ni los nombres de columna de Prisma', () => {
     const dto = toClienteDto({
       ...filaPublica,
+      matrizConfigurada: false,
+      indicacionesArmado: null,
       isDeleted: true,
       deletedAt: new Date('2026-10-05T00:00:00.000Z'),
     });

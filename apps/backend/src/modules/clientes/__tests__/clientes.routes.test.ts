@@ -47,6 +47,8 @@ function filaInsertada({ data }: { data: Prisma.ClienteCreateInput }): ClienteRo
     sector: data.sector,
     subtipo: data.subtipo ?? null,
     estado: data.estado ?? 'ACTIVO',
+    matrizConfigurada: false,
+    indicacionesArmado: null,
     isDeleted: false,
     deletedAt: null,
     createdAt: AHORA,

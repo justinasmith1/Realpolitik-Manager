@@ -44,6 +44,8 @@ const base: ClienteRow = {
   sector: 'PRIVADO',
   subtipo: null,
   estado: 'ACTIVO',
+  matrizConfigurada: false,
+  indicacionesArmado: null,
   isDeleted: false,
   deletedAt: null,
   createdAt: AHORA,
