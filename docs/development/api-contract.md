@@ -525,7 +525,7 @@ Un texto libre por cliente con indicaciones para armar el legajo. Se lee y se gu
 
 Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de un cliente. Un cliente puede tener varias en el mismo mes, una por factura.
 
-> **Nota:** la base todavía usa `referencia` con unicidad por (cliente, año, mes, referencia); se alinea en T2.1b. La orden de compra se modela aparte en otra HU.
+> **Nota:** la orden de compra se modela aparte en otra HU.
 
 ```json
 {
@@ -579,7 +579,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
   - `409 CONFLICT`:
     - `motivo: "CLIENTE_NO_ACTIVO"`: el cliente es `INACTIVO` o `SUSPENDIDO`.
     - `motivo: "MATRIZ_VACIA"`: el cliente no tiene requisitos activos. Todo cliente pide al menos la factura, así que una matriz vacía significa que falta configurarla.
-    - `motivo: "RENDICION_DUPLICADA"`: ese número de factura ya está en otra rendición activa del cliente, de cualquier mes y año. `rendicionExistente` dice en qué período está. También si dos pedidos con la misma factura llegan a la vez: el índice único de la base rechaza el segundo (una vez alineada en T2.1b).
+    - `motivo: "RENDICION_DUPLICADA"`: ese número de factura ya está en otra rendición activa del cliente, de cualquier mes y año. `rendicionExistente` dice en qué período está. También si dos pedidos con la misma factura llegan a la vez: el índice único de la base rechaza el segundo.
 
 ```json
 {
