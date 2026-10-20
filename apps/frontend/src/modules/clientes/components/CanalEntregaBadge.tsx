@@ -18,7 +18,7 @@ interface CanalEntregaBadgeProps {
 }
 
 /**
- * Canal de entrega habitual del cliente. Estilo neutro a propósito: el color ya
+ * Canal principal del cliente. Estilo neutro a propósito: el color ya
  * distingue sector y subtipo en la misma fila. El ícono es decorativo; la información la
  * lleva el texto.
  */

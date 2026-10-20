@@ -104,7 +104,7 @@ const mensajesCampoVacio: Record<CampoObligatorio, string> = {
   subtipo: 'Elegí el subtipo.',
   ivaCondicion: 'Elegí la condición frente al IVA.',
   emailContacto: 'Ingresá el email de contacto.',
-  canalEntrega: 'Elegí el canal de entrega.',
+  canalEntrega: 'Elegí el canal principal.',
   portalUrl: 'Ingresá la URL del portal.',
   whatsappNumero: 'Ingresá el número de WhatsApp.',
   periodicidadDiaLimite: 'Ingresá el día límite.',
