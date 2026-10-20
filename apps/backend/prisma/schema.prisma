@@ -61,6 +61,20 @@ enum PeriodicidadTipo {
 //   ck_cliente_periodicidad_coherente sin configurar, o tipo + día 1..28 (+ mes 1..12 si BIMESTRAL)
 //   ck_cliente_baja_logica            isDeleted ⇔ deletedAt
 //   ck_contacto_baja_logica           isDeleted ⇔ deletedAt
+//
+// Requisitos y rendiciones (T2.1, ADR-0003): CHECK e índice parcial en la migración
+// `20261020033424_t2_1_requisitos_rendiciones`.
+//   ck_requisito_cantidad_positiva    cantidad >= 1
+//   ck_requisito_dias_coherentes      sin días, o exactamente tantos días como la cantidad
+//   ck_requisito_dias_rango           cada día entre 1 y 31 (y ninguno NULL)
+//   ck_requisito_baja_logica          isDeleted ⇔ deletedAt
+//   ck_rendicion_mes                  mes 1..12 y anio 2020..2100
+//   ck_rendicion_referencia_no_vacia  referencia con algún carácter que no sea espacio
+//   ck_item_ordinal                   1 <= ordinal <= totalOrdinal
+//   ck_item_completado_coherente      completado ⇔ completadoAt
+//   ck_item_dia_rango                 diaAproximado NULL o entre 1 y 31
+//   uq_requisito_cliente_tipo_activo  índice único PARCIAL: un solo requisito activo por
+//                                     cliente + tipo de documento (WHERE "isDeleted" = false)
 
 model Cliente {
   id            String  @id @default(uuid()) @db.Uuid
@@ -95,6 +109,12 @@ model Cliente {
   /// Mes (1 a 12) en que arranca el ciclo bimestral. Null para MENSUAL y POR_CAMPANIA.
   periodicidadMesInicioCiclo Int?              @db.SmallInt
 
+  // Matriz de requisitos (T2.1, ADR-0003). false = todavía no se configuró; true con la matriz
+  // vacía = el cliente se rinde solo con la factura, a propósito.
+  matrizConfigurada  Boolean @default(false)
+  /// Indicaciones de armado del legajo (HU2.4): texto libre, hasta 1000 caracteres.
+  indicacionesArmado String? @db.VarChar(1000)
+
   // Categorización (ADR-0002 §2). shared + CHECK ck_cliente_sector_subtipo.
   sector   Sector
   subtipo  SubtipoPublico? // null para clientes PRIVADO
@@ -111,7 +131,9 @@ model Cliente {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  contactos  Contacto[]
+  contactos    Contacto[]
+  requisitos   RequisitoCliente[]
+  rendiciones  Rendicion[]
 }
 
 // ─── Modelo Contacto ──────────────────────────────────────────────────────────
@@ -135,4 +157,121 @@ model Contacto {
   // Auditoría
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+// ─── Modelo TipoDocumento ─────────────────────────────────────────────────────
+
+/// Catálogo de tipos de documento que se pueden exigir en una rendición (T2.1).
+model TipoDocumento {
+  id           String   @id @default(uuid()) @db.Uuid
+
+  nombre       String   @unique @db.VarChar(100)
+  descripcion  String?  @db.VarChar(500)
+  /// Un tipo desactivado no se ofrece al armar la matriz. No se borra: lo usan requisitos e
+  /// ítems de rendiciones ya abiertas.
+  activo       Boolean  @default(true)
+
+  // Auditoría
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  requisitos   RequisitoCliente[]
+  items        ItemChecklist[]
+}
+
+// ─── Modelo RequisitoCliente (matriz) ─────────────────────────────────────────
+
+/// Un documento que el cliente exige en cada rendición (T2.1, ADR-0003). No hay requisitos
+/// condicionales: todo requisito activo entra siempre en el checklist.
+model RequisitoCliente {
+  id               String         @id @default(uuid()) @db.Uuid
+
+  clienteId        String         @db.Uuid
+  cliente          Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  tipoDocumentoId  String         @db.Uuid
+  tipoDocumento    TipoDocumento  @relation(fields: [tipoDocumentoId], references: [id], onDelete: Restrict)
+
+  /// Cuántos documentos de este tipo por período (ej. Print x5). CHECK ck_requisito_cantidad_positiva.
+  cantidad         Int            @default(1) @db.SmallInt
+  /// Día aproximado de cada ocurrencia (ej. [1, 8, 15, 22, 31]). Opcional: ninguno o exactamente
+  /// `cantidad`. CHECK ck_requisito_dias_coherentes y ck_requisito_dias_rango.
+  diasAproximados  Int[]          @default([])
+  /// Canal propio de este documento. Null = usa Cliente.canalEntrega.
+  canalEntrega     CanalEntrega?
+  nota             String?        @db.VarChar(500)
+
+  // Baja lógica. CHECK ck_requisito_baja_logica: isDeleted ⇔ deletedAt. La unicidad cliente + tipo
+  // vale solo entre los activos: índice parcial uq_requisito_cliente_tipo_activo, en SQL.
+  isDeleted        Boolean        @default(false)
+  deletedAt        DateTime?
+
+  // Auditoría
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  items            ItemChecklist[]
+}
+
+// ─── Modelo Rendicion ─────────────────────────────────────────────────────────
+
+/// Una rendición del cliente para un período y una factura u orden (T2.1). Puede haber varias
+/// por cliente y mes, con distinta referencia.
+model Rendicion {
+  id          String   @id @default(uuid()) @db.Uuid
+
+  clienteId   String   @db.Uuid
+  cliente     Cliente  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+
+  anio        Int      @db.SmallInt
+  /// Mes 1..12. CHECK ck_rendicion_mes (también acota anio a 2020..2100).
+  mes         Int      @db.SmallInt
+  /// Número de factura u orden. CHECK ck_rendicion_referencia_no_vacia.
+  referencia  String   @db.VarChar(100)
+
+  // Auditoría
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       ItemChecklist[]
+
+  @@unique([clienteId, anio, mes, referencia])
+}
+
+// ─── Modelo ItemChecklist ─────────────────────────────────────────────────────
+
+/// Un documento a presentar en una rendición. Es una FOTO del requisito tomada al abrir la
+/// rendición (ADR-0003): si la matriz cambia después, el ítem no cambia. Un requisito con
+/// cantidad 5 genera 5 ítems (ordinal 1..5, totalOrdinal 5).
+model ItemChecklist {
+  id                   String            @id @default(uuid()) @db.Uuid
+
+  rendicionId          String            @db.Uuid
+  rendicion            Rendicion         @relation(fields: [rendicionId], references: [id], onDelete: Cascade)
+  /// Solo trazabilidad: de qué requisito salió. Los datos del ítem se leen de sus propias columnas.
+  requisitoClienteId   String            @db.Uuid
+  requisitoCliente     RequisitoCliente  @relation(fields: [requisitoClienteId], references: [id], onDelete: Restrict)
+
+  // Snapshot copiado al abrir la rendición.
+  tipoDocumentoId      String            @db.Uuid
+  tipoDocumento        TipoDocumento     @relation(fields: [tipoDocumentoId], references: [id], onDelete: Restrict)
+  /// Nombre del tipo tal como era al abrir la rendición.
+  nombreTipoDocumento  String            @db.VarChar(100)
+  /// Número de este documento dentro del requisito (1 de 5, 2 de 5…). CHECK ck_item_ordinal.
+  ordinal              Int               @db.SmallInt
+  totalOrdinal         Int               @db.SmallInt
+  /// CHECK ck_item_dia_rango.
+  diaAproximado        Int?              @db.SmallInt
+  /// Canal efectivo ya resuelto: el del requisito o, si no tenía, el del cliente.
+  canalEntrega         CanalEntrega
+
+  aplica               Boolean           @default(true)
+  /// Se completa solo al aplicarle un documento (HU2.8), no a mano. CHECK ck_item_completado_coherente.
+  completado           Boolean           @default(false)
+  completadoAt         DateTime?
+
+  // Auditoría
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@unique([rendicionId, requisitoClienteId, ordinal])
 }
