@@ -112,8 +112,8 @@ model Cliente {
   /// Mes (1 a 12) en que arranca el ciclo bimestral. Null para MENSUAL y POR_CAMPANIA.
   periodicidadMesInicioCiclo Int?              @db.SmallInt
 
-  // Matriz de requisitos (T2.1, ADR-0003). false = todavía no se configuró; true con la matriz
-  // vacía = el cliente se rinde solo con la factura, a propósito.
+  // Matriz de requisitos (T2.1, ADR-0003). true = tiene al menos un requisito activo. La mantiene
+  // el backend (false al dar de baja el último); no se edita a mano. La factura es un requisito más.
   matrizConfigurada  Boolean @default(false)
   /// Indicaciones de armado del legajo (HU2.4): texto libre, hasta 1000 caracteres.
   indicacionesArmado String? @db.VarChar(1000)

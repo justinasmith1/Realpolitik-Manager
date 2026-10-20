@@ -15,10 +15,11 @@ El Sprint 2 introduce el núcleo del producto: cada cliente exige un conjunto de
 Decisiones de negocio ya cerradas con la administradora, que este modelo respeta:
 
 - No hay requisitos condicionales: todo requisito de la matriz entra siempre en el checklist.
-- Un cliente puede tener varias rendiciones en el mismo período (una por factura u orden).
+- Un cliente puede tener varias rendiciones en el mismo período (una por factura).
 - Un requisito tiene una cantidad por período (ej. Print x5) y, opcionalmente, un día aproximado por cada ocurrencia.
 - Un cliente puede mandar documentos por más de un canal, pero tiene un canal por defecto (`Cliente.canalEntrega`, HU1.4).
 - Un ítem del checklist se completa solo al aplicarle un documento (HU2.8); no hay tilde manual.
+- La factura no es implícita: es un requisito más de la matriz (tipo "Factura" del catálogo). Todo cliente pide al menos la factura (confirmado con la administradora el 20/10/2026).
 - Las indicaciones de armado del legajo (HU2.4) son un texto libre por cliente.
 
 Restricciones heredadas de ADR-0002: UUID como clave, baja lógica (`isDeleted` + `deletedAt`) y auditoría (`createdAt` / `updatedAt`).
@@ -30,9 +31,10 @@ Restricciones heredadas de ADR-0002: UUID como clave, baja lógica (`isDeleted` 
 - **`TipoDocumento`**: catálogo (`nombre` único). Un tipo no se borra: se desactiva con `activo = false` y deja de ofrecerse al armar matrices.
 - **`RequisitoCliente`** (la matriz): cliente + tipo de documento, `cantidad` por período, `diasAproximados`, `canalEntrega` opcional y `nota`. Con baja lógica.
 - **`Cliente`** suma dos campos:
-  - `matrizConfigurada` (default `false`): distingue "matriz vacía a propósito" (el cliente se rinde solo con la factura) de "todavía no se configuró".
+  - `matrizConfigurada` (default `false`): indica si el cliente ya tiene su matriz configurada, es decir, al menos un requisito activo. La mantiene el backend: pasa a `true` al haber un requisito activo y vuelve a `false` al dar de baja el último. No se edita a mano. Una matriz sin requisitos activos significa que todavía no se configuró: no existe la "matriz vacía a propósito".
   - `indicacionesArmado` (`VARCHAR(1000)`, opcional): indicaciones de armado del legajo.
-- **`Rendicion`**: cliente + `anio` + `mes` + `referencia` (número de factura u orden, obligatorio). Única por esa combinación entre las activas, así que un cliente puede tener varias en el mismo mes. Con baja lógica: una rendición abierta con un período o una referencia mal cargados se anula (`isDeleted`) en vez de borrarse, porque tiene valor fiscal (corrección en HU2.5).
+- **`Rendicion`**: cliente + `anio` + `mes` + `numeroFactura` (número de factura, obligatorio). Un número de factura está en una sola rendición **activa** del cliente, sin importar el período: la unicidad es (cliente, `numeroFactura`) entre las activas. Un cliente puede tener varias rendiciones en el mismo mes, una por factura, y la misma factura en dos clientes distintos se acepta. La orden de compra se modela aparte en otra HU. Con baja lógica: una rendición abierta con un período o un número de factura mal cargados se anula (`isDeleted`) en vez de borrarse, porque tiene valor fiscal (corrección en HU2.5).
+  - **Nota:** la base todavía usa `referencia` con unicidad por (cliente, año, mes, referencia); se alinea en T2.1b.
 - **`ItemChecklist`**: un documento a presentar en una rendición.
 
 ### 2. El checklist es una foto (snapshot)
@@ -40,6 +42,8 @@ Restricciones heredadas de ADR-0002: UUID como clave, baja lógica (`isDeleted` 
 Al abrir una rendición, cada requisito activo de la matriz se copia en ítems: uno por ocurrencia (un requisito con cantidad 5 genera 5 ítems, ordinal 1 a 5 de `totalOrdinal` 5). Después, el ítem **no se vuelve a leer de la matriz**.
 
 Motivo: inmutabilidad histórica. La matriz cambia con el tiempo (se agregan, quitan o modifican requisitos, se renombra o desactiva un tipo). Una rendición ya abierta, y sobre todo un legajo ya entregado, tiene que mostrar lo que se pidió en su momento.
+
+El snapshot no se re-lee de la matriz. Excepción explícita: la operadora puede agregar a una rendición activa los ítems de un requisito nuevo que el cliente empieza a pedir ese mes; los ítems existentes no cambian. Nunca es automático: el alta en la matriz no toca rendiciones abiertas (endpoint `POST /rendiciones/:id/requisitos/:requisitoId`, T2.3).
 
 **Qué se copia en el ítem** (columnas tipadas):
 
@@ -70,17 +74,19 @@ Detalle técnico: Prisma crea las listas (`Int[]`) **sin** `NOT NULL`, y en SQL 
 
 ### 5. Unicidad con baja lógica: índices únicos parciales
 
-Un cliente no puede tener dos requisitos **activos** del mismo tipo, pero un requisito dado de baja no debe impedir volver a agregarlo. Lo mismo con las rendiciones: una rendición anulada no debe impedir volver a abrirla con los datos bien cargados. Se resuelve con índices únicos parciales, creados a mano en la migración:
+Un cliente no puede tener dos requisitos **activos** del mismo tipo, pero un requisito dado de baja no debe impedir volver a agregarlo. Lo mismo con las rendiciones: un número de factura no puede estar en dos rendiciones activas del cliente, pero una rendición anulada no debe impedir volver a usarlo en otra bien cargada. Se resuelve con índices únicos parciales, creados a mano en la migración:
 
 ```sql
 CREATE UNIQUE INDEX "uq_requisito_cliente_tipo_activo"
   ON "RequisitoCliente"("clienteId", "tipoDocumentoId")
   WHERE "isDeleted" = false;
 
-CREATE UNIQUE INDEX "uq_rendicion_periodo_activa"
-  ON "Rendicion"("clienteId", "anio", "mes", "referencia")
+CREATE UNIQUE INDEX "uq_rendicion_factura_activa"
+  ON "Rendicion"("clienteId", "numeroFactura")
   WHERE "isDeleted" = false;
 ```
+
+> **Nota:** la base todavía usa `referencia` con unicidad por (cliente, año, mes, referencia); se alinea en T2.1b. Hoy el índice se llama `uq_rendicion_periodo_activa` y es sobre `("clienteId", "anio", "mes", "referencia")`; T2.1b lo reemplaza por el de arriba.
 
 Prisma 5 no puede declarar índices parciales en `schema.prisma`, así que no aparecen ahí (están listados en el bloque de comentarios). **Evidencia de que Prisma no los borra**: con la migración ya aplicada,
 
@@ -121,12 +127,14 @@ Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK so
 ## Alternativas consideradas
 
 - **Requisitos condicionales** (obligatorio / condicional, con una decisión por período): descartados en la validación con la administradora el 18/10/2026. Todo requisito de la matriz entra siempre en el checklist.
-- **Rendición única por cliente + mes**: no alcanza; un cliente puede tener varias facturas u órdenes en el mismo mes, cada una con su legajo. Se agrega `referencia` a la unicidad.
+- **Rendición única por cliente + mes**: no alcanza; un cliente puede tener varias facturas en el mismo mes, cada una con su legajo. La unicidad es por número de factura.
+- **Referencia libre (factura u orden)**: un único campo `referencia` que admitiera el número de factura o el de la orden de compra, con unicidad por cliente + período + referencia. Descartada el 20/10/2026 (confirmado por el dueño): la orden de compra se repite entre meses y entre facturas del mismo mes, y puede no existir, así que no identifica una rendición. La factura sí: el campo pasa a ser `numeroFactura`, único por cliente entre las activas, y la orden de compra se modela aparte en otra HU.
 - **Tabla aparte para las indicaciones de armado**: es un único texto libre por cliente, sin historial ni estructura propia; una tabla agregaba un join sin beneficio. Queda como campo de `Cliente`.
 - **Tilde manual del checklist**: descartado el 19/10/2026. Un ítem se completa solo al aplicarle un documento (HU2.8), así el progreso siempre está respaldado por un archivo.
 - **Canales como array en `Cliente`**: dice por qué canales se manda, pero no qué documento va por cuál. El override por requisito sí lo dice, y `Cliente.canalEntrega` queda como un único canal por defecto (sin cambiar HU1.4).
 - **Snapshot del requisito como campo `Json`**: más simple de escribir, pero pierde tipado, no admite CHECK ni FK, y no se puede filtrar ni consultar con normalidad (ej. "ítems pendientes por canal"). Se usan columnas tipadas.
 - **Reactivar la fila dada de baja en vez del índice parcial**: ver punto 5.
+- **Factura implícita / matriz vacía a propósito**: la idea era que la factura acompañara siempre a la rendición sin figurar en la matriz, y que `matrizConfigurada = true` con la matriz vacía marcara a un cliente que se rinde solo con la factura. Descartada el 20/10/2026: todo cliente pide al menos la factura, así que conviene tratarla como un requisito más (con su cantidad, días y canal, y como ítem del checklist). Así, una matriz sin requisitos activos solo puede significar que falta configurarla, y `matrizConfigurada` se deduce de los requisitos en vez de cargarse a mano.
 
 ## Consecuencias
 
@@ -135,5 +143,8 @@ Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK so
 - **A resolver**:
   - T2.2 tiene que implementar la generación del checklist con exactamente estas reglas de copia y resolución de canal.
   - Las consultas de rendiciones tienen que filtrar `isDeleted = false`. El endpoint o botón para anular una rendición lo define T2.3 / HU2.5.
+  - La unicidad de `numeroFactura` es por cliente, no global, porque facturan dos razones sociales, cada una con su numeración propia.
+  - Un mismo cliente puede recibir facturas de las dos razones sociales emisoras, cada una con su numeración; cuando se modele el emisor (HU2.9–2.12), la unicidad pasa a (emisor, numeroFactura).
+  - T2.1b alinea la base con este ADR: renombra `referencia` a `numeroFactura` y reemplaza `uq_rendicion_periodo_activa` por `uq_rendicion_factura_activa` (también el CHECK `ck_rendicion_referencia_no_vacia` y el bloque de comentarios de `schema.prisma`).
   - El seed actual borra todos los clientes con `deleteMany`. Con `Rendicion → Cliente` en `Restrict`, ese borrado va a fallar en cuanto la base de desarrollo tenga rendiciones. Se decidió dejarlo así (frenar es más seguro que borrar rendiciones en silencio) y revisarlo cuando existan.
   - Si en algún momento cambia la estrategia de índices de Prisma (por ejemplo, una versión que soporte índices parciales en el schema), conviene declarar `uq_requisito_cliente_tipo_activo` también ahí.
