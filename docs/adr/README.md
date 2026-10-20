@@ -32,9 +32,11 @@ Secuencial, con cuatro dígitos y nombre descriptivo: `NNNN-titulo-en-kebab-case
 
 ## Índice
 
-| ADR                                      | Título                                    | Estado   |
-| ---------------------------------------- | ----------------------------------------- | -------- |
-| [0001](0001-monorepo-pnpm-typescript.md) | Monorepo con pnpm workspaces y TypeScript | Accepted |
+| ADR                                               | Título                                        | Estado   |
+| ------------------------------------------------- | --------------------------------------------- | -------- |
+| [0001](0001-monorepo-pnpm-typescript.md)          | Monorepo con pnpm workspaces y TypeScript     | Accepted |
+| [0002](0002-modelado-datos.md)                    | Estrategia de modelado de datos para clientes | Proposed |
+| [0003](0003-modelado-requisitos-y-rendiciones.md) | Modelado de requisitos y rendiciones          | Proposed |
 
 ## Decisiones todavía abiertas
 
