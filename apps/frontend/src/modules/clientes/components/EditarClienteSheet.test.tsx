@@ -96,7 +96,7 @@ describe('EditarClienteSheet', () => {
     expect(campo('Subtipo público')).toHaveTextContent(etiquetaDeOpcion('MUNICIPAL'));
     expect(campo('Condición frente al IVA')).toHaveTextContent(etiquetaDeOpcion('EXENTO'));
     expect(campo('Email de contacto')).toHaveValue('compras@municipio.example');
-    expect(campo('Canal de entrega')).toHaveTextContent(etiquetaDeOpcion('PORTAL_WEB'));
+    expect(campo('Canal principal')).toHaveTextContent(etiquetaDeOpcion('PORTAL_WEB'));
     expect(campo('URL del portal')).toHaveValue('https://portal.ejemplo.gob.ar');
     expect(botonGuardar()).toBeInTheDocument();
   });
@@ -404,13 +404,13 @@ describe('EditarClienteSheet: errores del servidor por campo', () => {
     fetchMock.mockResolvedValue(rechazo({ campo: 'canalEntrega', mensaje: 'Required' }));
     const { user } = renderEdicion();
 
-    await elegirOpcion(user, campo('Canal de entrega'), 'CORREO');
+    await elegirOpcion(user, campo('Canal principal'), 'CORREO');
     await user.click(botonGuardar());
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
-    expect(campo('Canal de entrega')).toHaveAttribute('aria-invalid', 'true');
+    expect(campo('Canal principal')).toHaveAttribute('aria-invalid', 'true');
     // El texto por defecto de Zod, en inglés, no se muestra.
-    expect(campo('Canal de entrega')).toHaveAccessibleDescription(
+    expect(campo('Canal principal')).toHaveAccessibleDescription(
       expect.stringContaining('Revisá este dato.'),
     );
     expect(screen.queryByText('Required')).not.toBeInTheDocument();
@@ -565,7 +565,7 @@ describe('EditarClienteSheet: el PATCH lleva solo lo modificado', () => {
     it('CORREO → PORTAL_WEB envía el canal con la URL', async () => {
       const { user } = renderEdicion(privadoPorCorreo);
 
-      await elegirOpcion(user, campo('Canal de entrega'), 'PORTAL_WEB');
+      await elegirOpcion(user, campo('Canal principal'), 'PORTAL_WEB');
       await user.type(campo('URL del portal'), 'https://portal.empresa.example');
 
       expect(await guardarYLeerCuerpo(user)).toEqual({
@@ -577,7 +577,7 @@ describe('EditarClienteSheet: el PATCH lleva solo lo modificado', () => {
     it('PORTAL_WEB → WHATSAPP envía el canal con el número (en E.164)', async () => {
       const { user } = renderEdicion();
 
-      await elegirOpcion(user, campo('Canal de entrega'), 'WHATSAPP');
+      await elegirOpcion(user, campo('Canal principal'), 'WHATSAPP');
       await user.type(campo('Número de WhatsApp'), '+54 9 351 123 4567');
 
       expect(await guardarYLeerCuerpo(user)).toEqual({
@@ -589,7 +589,7 @@ describe('EditarClienteSheet: el PATCH lleva solo lo modificado', () => {
     it('cambiar a CORREO envía solo el canal (los datos de los otros canales los limpia el servidor)', async () => {
       const { user } = renderEdicion();
 
-      await elegirOpcion(user, campo('Canal de entrega'), 'CORREO');
+      await elegirOpcion(user, campo('Canal principal'), 'CORREO');
 
       expect(await guardarYLeerCuerpo(user)).toEqual({ canalEntrega: 'CORREO' });
     });

@@ -118,7 +118,7 @@ describe('NuevoClienteSheet', () => {
       'Sector',
       'Condición frente al IVA',
       'Email de contacto',
-      'Canal de entrega',
+      'Canal principal',
       'Periodicidad',
     ]) {
       expect(campo(etiqueta)).toBeInTheDocument();

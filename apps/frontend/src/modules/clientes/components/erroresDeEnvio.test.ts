@@ -37,13 +37,13 @@ describe('erroresParaElFormulario: datos inválidos del servidor', () => {
   it('muestra el texto que el servidor da para portalUrl, canal y WhatsApp', () => {
     const errores = invalidos(
       ['portalUrl', 'La URL del portal no puede incluir usuario ni contraseña.'],
-      ['canalEntrega', 'Si el canal de entrega es Portal web, ingresá la URL del portal.'],
+      ['canalEntrega', 'Si el canal principal es Portal web, ingresá la URL del portal.'],
       ['whatsappNumero', 'Para cargar el número, el canal tiene que ser WhatsApp.'],
     );
 
     expect(errores.campos).toEqual({
       portalUrl: 'La URL del portal no puede incluir usuario ni contraseña.',
-      canalEntrega: 'Si el canal de entrega es Portal web, ingresá la URL del portal.',
+      canalEntrega: 'Si el canal principal es Portal web, ingresá la URL del portal.',
       whatsappNumero: 'Para cargar el número, el canal tiene que ser WhatsApp.',
     });
   });
