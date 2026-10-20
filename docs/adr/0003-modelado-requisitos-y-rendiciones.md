@@ -32,7 +32,7 @@ Restricciones heredadas de ADR-0002: UUID como clave, baja lógica (`isDeleted` 
 - **`Cliente`** suma dos campos:
   - `matrizConfigurada` (default `false`): distingue "matriz vacía a propósito" (el cliente se rinde solo con la factura) de "todavía no se configuró".
   - `indicacionesArmado` (`VARCHAR(1000)`, opcional): indicaciones de armado del legajo.
-- **`Rendicion`**: cliente + `anio` + `mes` + `referencia` (número de factura u orden, obligatorio). Única por esa combinación, así que un cliente puede tener varias en el mismo mes.
+- **`Rendicion`**: cliente + `anio` + `mes` + `referencia` (número de factura u orden, obligatorio). Única por esa combinación entre las activas, así que un cliente puede tener varias en el mismo mes. Con baja lógica: una rendición abierta con un período o una referencia mal cargados se anula (`isDeleted`) en vez de borrarse, porque tiene valor fiscal (corrección en HU2.5).
 - **`ItemChecklist`**: un documento a presentar en una rendición.
 
 ### 2. El checklist es una foto (snapshot)
@@ -53,7 +53,7 @@ Motivo: inmutabilidad histórica. La matriz cambia con el tiempo (se agregan, qu
 
 **Qué no se copia**: la `nota` del requisito, la descripción del tipo y los datos del cliente. `requisitoClienteId` se guarda solo como trazabilidad ("de qué requisito salió"); no se usa para leer datos actuales.
 
-El ítem además tiene `aplica` (default `true`), `completado` y `completadoAt`. `completado` lo marca HU2.8 al aplicar un documento; se guarda en el ítem para poder consultar el progreso sin recorrer documentos.
+El ítem además tiene `completado` y `completadoAt`. `completado` lo marca HU2.8 al aplicar un documento; se guarda en el ítem para poder consultar el progreso sin recorrer documentos.
 
 ### 3. Canal por requisito, con el del cliente como fallback
 
@@ -68,17 +68,21 @@ El ítem además tiene `aplica` (default `true`), `completado` y `completadoAt`.
 
 Detalle técnico: Prisma crea las listas (`Int[]`) **sin** `NOT NULL`, y en SQL `x >= ALL(arr)` da `NULL` (que un CHECK acepta) si el array tiene un elemento `NULL`. Por eso los CHECK exigen `IS NOT NULL` y `array_position(arr, NULL) IS NULL` explícitamente.
 
-### 5. Unicidad del requisito con baja lógica: índice único parcial
+### 5. Unicidad con baja lógica: índices únicos parciales
 
-Un cliente no puede tener dos requisitos **activos** del mismo tipo, pero un requisito dado de baja no debe impedir volver a agregarlo. Se resuelve con un índice único parcial, creado a mano en la migración:
+Un cliente no puede tener dos requisitos **activos** del mismo tipo, pero un requisito dado de baja no debe impedir volver a agregarlo. Lo mismo con las rendiciones: una rendición anulada no debe impedir volver a abrirla con los datos bien cargados. Se resuelve con índices únicos parciales, creados a mano en la migración:
 
 ```sql
 CREATE UNIQUE INDEX "uq_requisito_cliente_tipo_activo"
   ON "RequisitoCliente"("clienteId", "tipoDocumentoId")
   WHERE "isDeleted" = false;
+
+CREATE UNIQUE INDEX "uq_rendicion_periodo_activa"
+  ON "Rendicion"("clienteId", "anio", "mes", "referencia")
+  WHERE "isDeleted" = false;
 ```
 
-Prisma 5 no puede declarar índices parciales en `schema.prisma`, así que el índice no aparece ahí (está listado en el bloque de comentarios). **Evidencia de que Prisma no lo borra**: con la migración ya aplicada,
+Prisma 5 no puede declarar índices parciales en `schema.prisma`, así que no aparecen ahí (están listados en el bloque de comentarios). **Evidencia de que Prisma no los borra**: con la migración ya aplicada,
 
 - `prisma migrate diff --from-url <base> --to-schema-datamodel prisma/schema.prisma --script` devuelve `-- This is an empty migration.`;
 - `prisma migrate dev --create-only` genera una migración vacía (sin `DROP INDEX`);
@@ -107,6 +111,7 @@ En este proyecto las bajas son lógicas: estas reglas solo actúan ante un borra
 | `ck_requisito_baja_logica`         | `isDeleted` ⇔ `deletedAt`       |
 | `ck_rendicion_mes`                 | `mes` 1..12 y `anio` 2020..2100 |
 | `ck_rendicion_referencia_no_vacia` | `btrim(referencia) <> ''`       |
+| `ck_rendicion_baja_logica`         | `isDeleted` ⇔ `deletedAt`       |
 | `ck_item_ordinal`                  | `1 <= ordinal <= totalOrdinal`  |
 | `ck_item_completado_coherente`     | `completado` ⇔ `completadoAt`   |
 | `ck_item_dia_rango`                | `diaAproximado` null o 1..31    |
@@ -129,5 +134,6 @@ Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK so
 - **Negativas**: el snapshot duplica datos (nombre del tipo, canal) en cada ítem. Los CHECK y el índice parcial viven solo en SQL: quien lea `schema.prisma` tiene que mirar el bloque de comentarios o la migración.
 - **A resolver**:
   - T2.2 tiene que implementar la generación del checklist con exactamente estas reglas de copia y resolución de canal.
+  - Las consultas de rendiciones tienen que filtrar `isDeleted = false`. El endpoint o botón para anular una rendición lo define T2.3 / HU2.5.
   - El seed actual borra todos los clientes con `deleteMany`. Con `Rendicion → Cliente` en `Restrict`, ese borrado va a fallar en cuanto la base de desarrollo tenga rendiciones. Se decidió dejarlo así (frenar es más seguro que borrar rendiciones en silencio) y revisarlo cuando existan.
   - Si en algún momento cambia la estrategia de índices de Prisma (por ejemplo, una versión que soporte índices parciales en el schema), conviene declarar `uq_requisito_cliente_tipo_activo` también ahí.
