@@ -34,7 +34,6 @@ Restricciones heredadas de ADR-0002: UUID como clave, baja lógica (`isDeleted` 
   - `matrizConfigurada` (default `false`): indica si el cliente ya tiene su matriz configurada, es decir, al menos un requisito activo. La mantiene el backend: pasa a `true` al haber un requisito activo y vuelve a `false` al dar de baja el último. No se edita a mano. Una matriz sin requisitos activos significa que todavía no se configuró: no existe la "matriz vacía a propósito".
   - `indicacionesArmado` (`VARCHAR(1000)`, opcional): indicaciones de armado del legajo.
 - **`Rendicion`**: cliente + `anio` + `mes` + `numeroFactura` (número de factura, obligatorio). Un número de factura está en una sola rendición **activa** del cliente, sin importar el período: la unicidad es (cliente, `numeroFactura`) entre las activas. Un cliente puede tener varias rendiciones en el mismo mes, una por factura, y la misma factura en dos clientes distintos se acepta. La orden de compra se modela aparte en otra HU. Con baja lógica: una rendición abierta con un período o un número de factura mal cargados se anula (`isDeleted`) en vez de borrarse, porque tiene valor fiscal (corrección en HU2.5).
-  - **Nota:** la base todavía usa `referencia` con unicidad por (cliente, año, mes, referencia); se alinea en T2.1b.
 - **`ItemChecklist`**: un documento a presentar en una rendición.
 
 ### 2. El checklist es una foto (snapshot)
@@ -86,8 +85,6 @@ CREATE UNIQUE INDEX "uq_rendicion_factura_activa"
   WHERE "isDeleted" = false;
 ```
 
-> **Nota:** la base todavía usa `referencia` con unicidad por (cliente, año, mes, referencia); se alinea en T2.1b. Hoy el índice se llama `uq_rendicion_periodo_activa` y es sobre `("clienteId", "anio", "mes", "referencia")`; T2.1b lo reemplaza por el de arriba.
-
 Prisma 5 no puede declarar índices parciales en `schema.prisma`, así que no aparecen ahí (están listados en el bloque de comentarios). **Evidencia de que Prisma no los borra**: con la migración ya aplicada,
 
 - `prisma migrate diff --from-url <base> --to-schema-datamodel prisma/schema.prisma --script` devuelve `-- This is an empty migration.`;
@@ -111,16 +108,16 @@ En este proyecto las bajas son lógicas: estas reglas solo actúan ante un borra
 
 ### 7. Otras reglas garantizadas en la base
 
-| CHECK                              | Regla                           |
-| ---------------------------------- | ------------------------------- |
-| `ck_requisito_cantidad_positiva`   | `cantidad >= 1`                 |
-| `ck_requisito_baja_logica`         | `isDeleted` ⇔ `deletedAt`       |
-| `ck_rendicion_mes`                 | `mes` 1..12 y `anio` 2020..2100 |
-| `ck_rendicion_referencia_no_vacia` | `btrim(referencia) <> ''`       |
-| `ck_rendicion_baja_logica`         | `isDeleted` ⇔ `deletedAt`       |
-| `ck_item_ordinal`                  | `1 <= ordinal <= totalOrdinal`  |
-| `ck_item_completado_coherente`     | `completado` ⇔ `completadoAt`   |
-| `ck_item_dia_rango`                | `diaAproximado` null o 1..31    |
+| CHECK                                  | Regla                           |
+| -------------------------------------- | ------------------------------- |
+| `ck_requisito_cantidad_positiva`       | `cantidad >= 1`                 |
+| `ck_requisito_baja_logica`             | `isDeleted` ⇔ `deletedAt`       |
+| `ck_rendicion_mes`                     | `mes` 1..12 y `anio` 2020..2100 |
+| `ck_rendicion_numero_factura_no_vacio` | `btrim(numeroFactura) <> ''`    |
+| `ck_rendicion_baja_logica`             | `isDeleted` ⇔ `deletedAt`       |
+| `ck_item_ordinal`                      | `1 <= ordinal <= totalOrdinal`  |
+| `ck_item_completado_coherente`         | `completado` ⇔ `completadoAt`   |
+| `ck_item_dia_rango`                    | `diaAproximado` null o 1..31    |
 
 Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK son la última línea de defensa.
 
@@ -145,6 +142,5 @@ Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK so
   - Las consultas de rendiciones tienen que filtrar `isDeleted = false`. El endpoint o botón para anular una rendición lo define T2.3 / HU2.5.
   - La unicidad de `numeroFactura` es por cliente, no global, porque facturan dos razones sociales, cada una con su numeración propia.
   - Un mismo cliente puede recibir facturas de las dos razones sociales emisoras, cada una con su numeración; cuando se modele el emisor (HU2.9–2.12), la unicidad pasa a (emisor, numeroFactura).
-  - T2.1b alinea la base con este ADR: renombra `referencia` a `numeroFactura` y reemplaza `uq_rendicion_periodo_activa` por `uq_rendicion_factura_activa` (también el CHECK `ck_rendicion_referencia_no_vacia` y el bloque de comentarios de `schema.prisma`).
   - El seed actual borra todos los clientes con `deleteMany`. Con `Rendicion → Cliente` en `Restrict`, ese borrado va a fallar en cuanto la base de desarrollo tenga rendiciones. Se decidió dejarlo así (frenar es más seguro que borrar rendiciones en silencio) y revisarlo cuando existan.
   - Si en algún momento cambia la estrategia de índices de Prisma (por ejemplo, una versión que soporte índices parciales en el schema), conviene declarar `uq_requisito_cliente_tipo_activo` también ahí.

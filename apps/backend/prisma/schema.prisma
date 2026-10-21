@@ -69,15 +69,19 @@ enum PeriodicidadTipo {
 //   ck_requisito_dias_rango           cada día entre 1 y 31 (y ninguno NULL)
 //   ck_requisito_baja_logica          isDeleted ⇔ deletedAt
 //   ck_rendicion_mes                  mes 1..12 y anio 2020..2100
-//   ck_rendicion_referencia_no_vacia  referencia con algún carácter que no sea espacio
+//   ck_rendicion_numero_factura_no_vacio numeroFactura con algún carácter que no sea espacio
 //   ck_rendicion_baja_logica          isDeleted ⇔ deletedAt
 //   ck_item_ordinal                   1 <= ordinal <= totalOrdinal
 //   ck_item_completado_coherente      completado ⇔ completadoAt
 //   ck_item_dia_rango                 diaAproximado NULL o entre 1 y 31
 //   uq_requisito_cliente_tipo_activo  índice único PARCIAL: un solo requisito activo por
 //                                     cliente + tipo de documento (WHERE "isDeleted" = false)
-//   uq_rendicion_periodo_activa       índice único PARCIAL: una sola rendición activa por
-//                                     cliente + anio + mes + referencia (WHERE "isDeleted" = false)
+//   uq_rendicion_factura_activa       índice único PARCIAL: un número de factura en una sola
+//                                     rendición activa del cliente, en cualquier período
+//                                     (WHERE "isDeleted" = false)
+// T2.1b: la migración `20261020151824_t2_1b_rendicion_numero_factura` renombra la columna
+// `referencia` a `numeroFactura` y reemplaza ck_rendicion_referencia_no_vacia y
+// uq_rendicion_periodo_activa por los de arriba.
 
 model Cliente {
   id            String  @id @default(uuid()) @db.Uuid
@@ -217,8 +221,8 @@ model RequisitoCliente {
 
 // ─── Modelo Rendicion ─────────────────────────────────────────────────────────
 
-/// Una rendición del cliente para un período y una factura u orden (T2.1). Puede haber varias
-/// por cliente y mes, con distinta referencia.
+/// Una rendición del cliente para un período y una factura (T2.1, T2.1b). Puede haber varias
+/// por cliente y mes, una por factura.
 model Rendicion {
   id          String   @id @default(uuid()) @db.Uuid
 
@@ -228,12 +232,12 @@ model Rendicion {
   anio        Int      @db.SmallInt
   /// Mes 1..12. CHECK ck_rendicion_mes (también acota anio a 2020..2100).
   mes         Int      @db.SmallInt
-  /// Número de factura u orden. CHECK ck_rendicion_referencia_no_vacia.
-  referencia  String   @db.VarChar(100)
+  /// Número de factura. CHECK ck_rendicion_numero_factura_no_vacio.
+  numeroFactura String @db.VarChar(100)
 
   // Baja lógica (anular una rendición mal cargada, HU2.5). CHECK ck_rendicion_baja_logica:
-  // isDeleted ⇔ deletedAt. La unicidad cliente + período + referencia vale solo entre las
-  // activas: índice parcial uq_rendicion_periodo_activa, en SQL.
+  // isDeleted ⇔ deletedAt. La unicidad cliente + numeroFactura (en cualquier período) vale solo
+  // entre las activas: índice parcial uq_rendicion_factura_activa, en SQL.
   isDeleted   Boolean   @default(false)
   deletedAt   DateTime?
 
