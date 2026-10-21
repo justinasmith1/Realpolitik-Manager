@@ -1,0 +1,159 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  ActualizarEstadoTipoDocumentoSchema,
+  CreateTipoDocumentoSchema,
+  TipoDocumentoSchema,
+  UpdateTipoDocumentoSchema,
+} from './tipoDocumento.schema.js';
+
+const ID = 'c1d2e3f4-a5b6-4789-8abc-def012345678';
+
+describe('CreateTipoDocumentoSchema', () => {
+  it('alta mínima: la descripción queda en null', () => {
+    expect(CreateTipoDocumentoSchema.parse({ nombre: 'Print' })).toEqual({
+      nombre: 'Print',
+      descripcion: null,
+    });
+  });
+
+  it('recorta nombre y descripción', () => {
+    expect(
+      CreateTipoDocumentoSchema.parse({ nombre: '  Print  ', descripcion: '  Captura  ' }),
+    ).toEqual({ nombre: 'Print', descripcion: 'Captura' });
+  });
+
+  it('una descripción vacía, en blanco o null es null', () => {
+    for (const descripcion of ['', '   ', null]) {
+      expect(
+        CreateTipoDocumentoSchema.parse({ nombre: 'Print', descripcion }).descripcion,
+      ).toBeNull();
+    }
+  });
+
+  it('ignora id, activo y fechas: los fija el servidor', () => {
+    expect(
+      CreateTipoDocumentoSchema.parse({ nombre: 'Print', id: ID, activo: false, creadoEn: 'x' }),
+    ).toEqual({ nombre: 'Print', descripcion: null });
+  });
+
+  it('exige el nombre', () => {
+    const r = CreateTipoDocumentoSchema.safeParse({});
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.path).toEqual(['nombre']);
+  });
+
+  it.each(['', '   '])('rechaza un nombre vacío o en blanco (%j)', (nombre) => {
+    const r = CreateTipoDocumentoSchema.safeParse({ nombre });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues[0]?.path).toEqual(['nombre']);
+      expect(r.error.issues[0]?.message).toBe('El nombre es obligatorio.');
+    }
+  });
+
+  it('acepta un nombre de 100 caracteres y rechaza uno de 101', () => {
+    expect(CreateTipoDocumentoSchema.safeParse({ nombre: 'a'.repeat(100) }).success).toBe(true);
+    const r = CreateTipoDocumentoSchema.safeParse({ nombre: 'a'.repeat(101) });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.path).toEqual(['nombre']);
+  });
+
+  it('acepta una descripción de 500 caracteres y rechaza una de 501', () => {
+    expect(
+      CreateTipoDocumentoSchema.safeParse({ nombre: 'A', descripcion: 'a'.repeat(500) }).success,
+    ).toBe(true);
+    const r = CreateTipoDocumentoSchema.safeParse({ nombre: 'A', descripcion: 'a'.repeat(501) });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.path).toEqual(['descripcion']);
+  });
+
+  it('rechaza caracteres de control, también saltos de línea', () => {
+    for (const nombre of ['Pri\u0000nt', 'Pri\nnt']) {
+      expect(CreateTipoDocumentoSchema.safeParse({ nombre }).success).toBe(false);
+    }
+    const r = CreateTipoDocumentoSchema.safeParse({ nombre: 'A', descripcion: 'a\nb' });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.path).toEqual(['descripcion']);
+  });
+});
+
+describe('UpdateTipoDocumentoSchema', () => {
+  it('sin defaults: lo ausente queda ausente', () => {
+    expect(UpdateTipoDocumentoSchema.parse({ nombre: ' Print ' })).toEqual({ nombre: 'Print' });
+  });
+
+  it('descripcion: null la borra, y vacía también', () => {
+    expect(UpdateTipoDocumentoSchema.parse({ descripcion: null })).toEqual({ descripcion: null });
+    expect(UpdateTipoDocumentoSchema.parse({ descripcion: '  ' })).toEqual({ descripcion: null });
+  });
+
+  it('rechaza un pedido vacío', () => {
+    const r = UpdateTipoDocumentoSchema.safeParse({});
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues[0]?.message).toBe('Enviá al menos un campo para modificar.');
+    }
+  });
+
+  it('ignora activo: se cambia solo con /estado', () => {
+    expect(UpdateTipoDocumentoSchema.safeParse({ activo: false }).success).toBe(false); // queda vacío
+    expect(UpdateTipoDocumentoSchema.parse({ nombre: 'A', activo: false })).toEqual({
+      nombre: 'A',
+    });
+  });
+
+  it('valida nombre y descripción como el alta', () => {
+    expect(UpdateTipoDocumentoSchema.safeParse({ nombre: '' }).success).toBe(false);
+    expect(UpdateTipoDocumentoSchema.safeParse({ descripcion: 'a'.repeat(501) }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('ActualizarEstadoTipoDocumentoSchema', () => {
+  it('acepta true y false', () => {
+    expect(ActualizarEstadoTipoDocumentoSchema.parse({ activo: false })).toEqual({ activo: false });
+    expect(ActualizarEstadoTipoDocumentoSchema.parse({ activo: true })).toEqual({ activo: true });
+  });
+
+  it.each([{}, { activo: 'true' }, { activo: 1 }, { activo: null }])(
+    'rechaza activo ausente o no booleano (%j)',
+    (cuerpo) => {
+      const r = ActualizarEstadoTipoDocumentoSchema.safeParse(cuerpo);
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.issues[0]?.path).toEqual(['activo']);
+    },
+  );
+});
+
+describe('TipoDocumentoSchema', () => {
+  const tipo = {
+    id: ID,
+    nombre: 'Constancia ARCA',
+    descripcion: null,
+    activo: true,
+    creadoEn: '2026-10-20T12:00:00.000Z',
+    actualizadoEn: '2026-10-20T12:00:00.000Z',
+  };
+
+  it('lee la entidad del contrato y convierte las fechas', () => {
+    const r = TipoDocumentoSchema.parse(tipo);
+    expect(r.creadoEn).toBeInstanceOf(Date);
+    expect(r.descripcion).toBeNull();
+  });
+
+  it('no aplica reglas de escritura al nombre: lee espacios en los bordes y caracteres de control', () => {
+    const r = TipoDocumentoSchema.parse({ ...tipo, nombre: '  Print\u0000 viejo  ' });
+    expect(r.nombre).toBe('  Print\u0000 viejo  ');
+  });
+
+  it('la clave descripcion es obligatoria (puede ser null)', () => {
+    const { descripcion: _omitida, ...sinDescripcion } = tipo;
+    expect(TipoDocumentoSchema.safeParse(sinDescripcion).success).toBe(false);
+  });
+
+  it('rechaza un id que no es uuid', () => {
+    expect(TipoDocumentoSchema.safeParse({ ...tipo, id: 'x' }).success).toBe(false);
+  });
+});
