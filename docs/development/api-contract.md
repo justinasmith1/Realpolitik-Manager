@@ -388,9 +388,9 @@ Un requisito es un documento que el cliente exige en cada rendición.
 ```
 
 - **Tipo (`tipoDocumentoId` en el pedido, `tipoDocumento` en la respuesta):** obligatorio al crear y **no editable**: para cambiar de tipo se da de baja el requisito y se crea otro. Tiene que ser un tipo activo. Un cliente no puede tener dos requisitos **activos** del mismo tipo; uno dado de baja no impide volver a agregarlo.
-- **Cantidad (`cantidad`):** entero, al menos 1, `1` por defecto. Cuántos documentos de ese tipo por rendición. La base no fija un máximo (ver "A resolver" del ADR-0003).
-- **Días aproximados (`diasAproximados`):** lista de enteros de 1 a 31, `[]` por defecto. Vacía, o con **exactamente** `cantidad` días. Se permiten días repetidos y desordenados (`[15, 1, 15]`).
-- **Canal (`canalEntrega`):** `CORREO`, `PORTAL_WEB`, `WHATSAPP` o `null`. `null` (por defecto) significa "usa el canal principal del cliente". La respuesta devuelve el valor guardado, no el canal resuelto.
+- **Cantidad (`cantidad`):** entero, al menos 1, `1` por defecto. Cuántos documentos de ese tipo por rendición. Máximo **100** (`CANTIDAD_MAX`): un tope **provisorio**, pendiente de confirmar con el negocio. Lo valida `@realpolitik/shared`, no la base, que no fija un máximo. Existe para que abrir una rendición no cree miles de ítems.
+- **Días aproximados (`diasAproximados`):** lista de enteros de 1 a 31, `[]` por defecto. Vacía, o con **exactamente** `cantidad` días. Se permiten días repetidos y desordenados, pero se guardan **ordenados de menor a mayor** (`[15, 1, 15]` se guarda como `[1, 15, 15]`), para que el ítem N de la rendición tome siempre el día N.
+- **Canal (`canalEntrega`):** `CORREO`, `PORTAL_WEB`, `WHATSAPP` o `null`. `null` (por defecto) significa "usa el canal principal del cliente". La respuesta devuelve el valor guardado, no el canal resuelto. **Pendiente de backend:** un requisito con canal `PORTAL_WEB` o `WHATSAPP` cuando el cliente no tiene `portalUrl` o `whatsappNumero` no se valida en `@realpolitik/shared` (ver 4.8).
 - **Nota (`nota`):** opcional, hasta 500 caracteres, `null` si no hay.
 - **Cambios y rendiciones abiertas:** dar de alta, modificar o dar de baja un requisito no altera las rendiciones ya abiertas (snapshot). Solo afecta a las que se abran después.
 
@@ -418,7 +418,7 @@ Solo `tipoDocumentoId` es obligatorio. No se envían `clienteId`, fechas ni baja
 - **Qué hace:** crea el requisito. Si es el primer requisito activo del cliente, `matrizConfigurada` pasa a `true`.
 - **Respuesta 201:** el requisito creado.
 - **Errores:**
-  - `400 VALIDATION_ERROR`: falta `tipoDocumentoId` o no es un uuid; el tipo de documento está inactivo (`campo: "tipoDocumentoId"`); `cantidad` no es un entero o es menor que 1; `diasAproximados` con un día fuera de 1 a 31, con un valor no entero o con una cantidad de días distinta de 0 y de `cantidad`; `canalEntrega` desconocido; `nota` de más de 500 caracteres o con caracteres de control.
+  - `400 VALIDATION_ERROR`: falta `tipoDocumentoId` o no es un uuid; el tipo de documento está inactivo (`campo: "tipoDocumentoId"`); `cantidad` no es un entero, es menor que 1 o supera 100; `diasAproximados` con un día fuera de 1 a 31, con un valor no entero o con una cantidad de días distinta de 0 y de `cantidad`; `canalEntrega` desconocido; `nota` de más de 500 caracteres o con caracteres de control.
   - `404 NOT_FOUND`: el cliente no existe o está borrado; el tipo de documento no existe.
   - `409 CONFLICT`: `motivo: "CLIENTE_NO_ACTIVO"` si el cliente es `INACTIVO` o `SUSPENDIDO`; `motivo: "REQUISITO_DUPLICADO"` si el cliente ya tiene un requisito activo de ese tipo:
 
@@ -475,9 +475,9 @@ Agrega **un mismo** requisito a **varios** clientes a la vez. Reemplaza a "copia
 | Campo                        | Obligatorio | Descripción                                                                 |
 | ---------------------------- | ----------- | --------------------------------------------------------------------------- |
 | `tipoDocumentoId`            | Sí          | Tipo de documento activo                                                    |
-| `clientes`                   | Sí          | Lista no vacía. Un mismo `clienteId` no puede repetirse                     |
+| `clientes`                   | Sí          | Lista no vacía. Un mismo `clienteId` no puede repetirse. Sin tope de largo  |
 | `clientes[].clienteId`       | Sí          | uuid del cliente                                                            |
-| `clientes[].cantidad`        | No          | Entero, al menos 1. `1` por defecto                                         |
+| `clientes[].cantidad`        | No          | Entero de 1 a 100. `1` por defecto                                          |
 | `clientes[].diasAproximados` | No          | Vacía o exactamente `cantidad` días, cada uno de 1 a 31. `[]` por defecto   |
 | `canalEntrega`               | No          | Override de canal. Si se envía, se aplica a todos los requisitos creados    |
 | `nota`                       | No          | Hasta 500 caracteres. Si se envía, se aplica a todos los requisitos creados |
@@ -559,7 +559,8 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
 
 - **Año (`anio`):** entero de 2020 a 2100.
 - **Mes (`mes`):** entero de 1 a 12.
-- **Número de factura (`numeroFactura`):** obligatorio, hasta 100 caracteres, recortado en los bordes; no puede quedar vacío.
+- **Período:** cualquier mes pasado es válido (desde enero de 2020) y, como máximo, el **mes siguiente al actual**. "El mes actual" se mide en horario de Buenos Aires (`America/Argentina/Buenos_Aires`), no en UTC, también en el front, para coincidir con el backend. El error se informa en el campo `mes`.
+- **Número de factura (`numeroFactura`):** obligatorio, hasta 100 caracteres, recortado en los bordes y **en mayúsculas** (`fc-0001` se guarda como `FC-0001`); no puede quedar vacío. El largo se mide sobre el valor ya normalizado. Se normaliza porque la unicidad de la base compara el texto exacto.
 - **Unicidad:** un número de factura está en una sola rendición **activa** del cliente, sin importar el mes ni el año. La misma factura en dos clientes distintos se acepta. Una rendición anulada no impide volver a usar su número de factura.
 - **Estado (`estado`, `anuladaEn`):** `ACTIVA` o `ANULADA`, derivado de la baja lógica; `anuladaEn` es la fecha de anulación (`deletedAt`) o `null`. Los listados y el detalle solo devuelven `ACTIVA`.
 - **Ítems (`items`):** solo en el detalle y en la respuesta de alta. Cada ítem es un documento a presentar, ordenados por `nombreTipoDocumento` y luego por `ordinal`. `completadoEn` es la columna `completadoAt`, con el mismo criterio de nombres que `creadoEn`. El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
@@ -574,7 +575,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
   4. No copia la nota del requisito, la descripción del tipo ni datos del cliente.
 - **Respuesta 201:** la rendición con su checklist (`items`).
 - **Errores:**
-  - `400 VALIDATION_ERROR`: falta `anio`, `mes` o `numeroFactura`; `anio` fuera de 2020 a 2100 o no entero; `mes` fuera de 1 a 12 o no entero; `numeroFactura` vacío, de solo espacios, de más de 100 caracteres o con caracteres de control; id que no es uuid.
+  - `400 VALIDATION_ERROR`: falta `anio`, `mes` o `numeroFactura`; `anio` fuera de 2020 a 2100 o no entero; `mes` fuera de 1 a 12 o no entero; período posterior al mes siguiente al actual (el error cae en `mes`); `numeroFactura` vacío, de solo espacios, de más de 100 caracteres o con caracteres de control; id que no es uuid.
   - `404 NOT_FOUND`: el cliente no existe o está borrado.
   - `409 CONFLICT`:
     - `motivo: "CLIENTE_NO_ACTIVO"`: el cliente es `INACTIVO` o `SUSPENDIDO`.
@@ -668,19 +669,27 @@ Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo c
 
 ### 4.8 Preguntas abiertas
 
-No quedan preguntas abiertas. Todas se cerraron el 20/10/2026 y están aplicadas en esta sección.
+Las preguntas de negocio se cerraron el 20/10/2026 y están aplicadas en esta sección. Quedan estos pendientes, que no bloquean la implementación:
+
+| Tema                        | Qué falta                                                                                                                                                                                                                | A cargo |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| Tope de `cantidad`          | El máximo de 100 por requisito (`CANTIDAD_MAX`) es **provisorio**: hay que confirmarlo con el negocio.                                                                                                                   | Negocio |
+| Tope de clientes por pedido | `POST /requisitos/masivo` no limita cuántos clientes lleva una lista: el negocio no lo definió.                                                                                                                          | Negocio |
+| Canal propio del requisito  | Un requisito con canal `PORTAL_WEB` o `WHATSAPP`, cuando el cliente no tiene `portalUrl` o `whatsappNumero`, no se valida: `@realpolitik/shared` no puede consultar al cliente. Hay que decidir y validar en el backend. | Backend |
 
 ### 4.9 Schemas a crear en `@realpolitik/shared`
 
-Pendientes; se crean al implementar cada endpoint.
+Todos están implementados en `@realpolitik/shared` (T2.2), salvo el punto 7, que queda como tarea aparte.
 
-1. `TipoDocumentoSchema`, `CreateTipoDocumentoSchema`, `UpdateTipoDocumentoSchema`, `ActualizarEstadoTipoDocumentoSchema` y `ListarTiposDocumentoQuerySchema` (`incluirInactivos`).
-2. `RequisitoClienteSchema`, `CreateRequisitoClienteSchema` y `UpdateRequisitoClienteSchema` (sin `tipoDocumentoId`, con la regla de días sobre el estado resultante).
-3. `CargaMasivaRequisitoSchema` (pedido) y `ResultadoCargaMasivaSchema` (`creados`, `omitidos`).
-4. `IndicacionesArmadoSchema`, que admite saltos de línea.
-5. `RendicionSchema`, `RendicionDetalleSchema` (con `items`), `RendicionResumenSchema` (con `resumen`), `ItemChecklistSchema`, `CreateRendicionSchema` (`anio`, `mes`, `numeroFactura`), `ListarRendicionesQuerySchema` (`anio`, `mes`) y `ActualizarEstadoRendicionSchema` (solo `ANULADA`). Todos usan `numeroFactura`, no `referencia`.
-6. Para `POST /rendiciones/:id/requisitos/:requisitoId` no hace falta schema de pedido (no lleva cuerpo): valida los dos uuid de la ruta y responde con `RendicionDetalleSchema`.
-7. En `ClienteSchema`, el campo `matrizConfigurada`; en `ListarClientesQuerySchema`, el filtro `matrizConfigurada`.
+1. **Hecho.** `TipoDocumentoSchema`, `CreateTipoDocumentoSchema`, `UpdateTipoDocumentoSchema`, `ActualizarEstadoTipoDocumentoSchema` y `ListarTiposDocumentoQuerySchema` (`incluirInactivos`).
+2. **Hecho.** `RequisitoClienteSchema`, `CreateRequisitoClienteSchema` y `UpdateRequisitoClienteSchema` (sin `tipoDocumentoId`, con la regla de días sobre el estado resultante).
+3. **Hecho.** `CargaMasivaRequisitoSchema` (pedido) y `ResultadoCargaMasivaSchema` (`creados`, `omitidos`).
+4. **Hecho.** `IndicacionesArmadoSchema`, que admite saltos de línea.
+5. **Hecho.** `RendicionSchema`, `RendicionDetalleSchema` (con `items`), `RendicionResumenSchema` (con `resumen`), `ItemChecklistSchema`, `CreateRendicionSchema` (`anio`, `mes`, `numeroFactura`), `ListarRendicionesQuerySchema` (`anio`, `mes`) y `ActualizarEstadoRendicionSchema` (solo `ANULADA`). Todos usan `numeroFactura`, no `referencia`.
+6. **Hecho.** Para `POST /rendiciones/:id/requisitos/:requisitoId` no hace falta schema de pedido (no lleva cuerpo): valida los dos uuid de la ruta y responde con `RendicionDetalleSchema`.
+7. **Pendiente (tarea aparte, con el mapper del backend y los fixtures).** En `ClienteSchema`, el campo `matrizConfigurada`; en `ListarClientesQuerySchema`, el filtro `matrizConfigurada`.
+
+Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 
 ## 5. Fuera del alcance de este documento
 
