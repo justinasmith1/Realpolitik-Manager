@@ -65,16 +65,19 @@ describe('IndicacionesArmadoSchema', () => {
     }
   });
 
-  it.each(['a\tb', 'a\u0000b', 'a\u001Bb', 'a\u007Fb', 'a\u0085b'])(
-    'el resto de los caracteres de control sigue rechazado (%j)',
-    (texto) => {
-      const r = IndicacionesArmadoSchema.safeParse({ indicacionesArmado: texto });
-      expect(r.success).toBe(false);
-      if (!r.success) {
-        expect(r.error.issues[0]?.message).toBe(
-          'Las indicaciones de armado no pueden contener caracteres de control, salvo saltos de línea.',
-        );
-      }
-    },
-  );
+  it.each([
+    ['una tabulación', 'a\tb'],
+    ['un NUL', 'a\u0000b'],
+    ['un ESC', 'a\u001Bb'],
+    ['un DEL', 'a\u007Fb'],
+    ['un carácter C1 (NEL)', 'a\u0085b'],
+  ])('el resto de los caracteres de control sigue rechazado: %s', (_descripcion, texto) => {
+    const r = IndicacionesArmadoSchema.safeParse({ indicacionesArmado: texto });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues[0]?.message).toBe(
+        'Las indicaciones de armado no pueden contener caracteres de control, salvo saltos de línea.',
+      );
+    }
+  });
 });

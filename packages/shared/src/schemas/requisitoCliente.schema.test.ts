@@ -79,6 +79,20 @@ describe('CreateRequisitoClienteSchema', () => {
       expect(e[0]?.path).toEqual(['cantidad']);
     });
 
+    it.each([0, 1.5])(
+      'cantidad %j con días cargados: un solo error, en cantidad y ninguno en los días',
+      (cantidad) => {
+        const e = errores(
+          CreateRequisitoClienteSchema.safeParse({
+            tipoDocumentoId: TIPO_ID,
+            cantidad,
+            diasAproximados: [1, 2],
+          }),
+        );
+        expect(e.map((x) => x.path)).toEqual([['cantidad']]);
+      },
+    );
+
     it('el mensaje del tope nombra el máximo', () => {
       const e = errores(
         CreateRequisitoClienteSchema.safeParse({
@@ -315,6 +329,16 @@ describe('UpdateRequisitoClienteSchema', () => {
       },
     ]);
   });
+
+  it.each([0, 1.5])(
+    'cantidad %j con días cargados: un solo error, en cantidad y ninguno en los días',
+    (cantidad) => {
+      const e = errores(
+        UpdateRequisitoClienteSchema.safeParse({ cantidad, diasAproximados: [1, 2] }),
+      );
+      expect(e.map((x) => x.path)).toEqual([['cantidad']]);
+    },
+  );
 
   it('cantidad y lista vacía juntos: es válido', () => {
     expect(UpdateRequisitoClienteSchema.parse({ cantidad: 4, diasAproximados: [] })).toEqual({

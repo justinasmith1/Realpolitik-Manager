@@ -95,6 +95,22 @@ describe('CargaMasivaRequisitoSchema', () => {
     expect(e[0]?.path).toEqual(['clientes', 1, 'cantidad']);
   });
 
+  it.each([0, 1.5])(
+    'cantidad %j con días cargados: un solo error, en clientes.N.cantidad y ninguno en los días',
+    (cantidad) => {
+      const e = errores(
+        CargaMasivaRequisitoSchema.safeParse({
+          tipoDocumentoId: TIPO_ID,
+          clientes: [
+            { clienteId: CLIENTE_A },
+            { clienteId: CLIENTE_B, cantidad, diasAproximados: [1, 2] },
+          ],
+        }),
+      );
+      expect(e.map((x) => x.path)).toEqual([['clientes', 1, 'cantidad']]);
+    },
+  );
+
   it('días que no coinciden con la cantidad: el error señala al cliente', () => {
     const e = errores(
       CargaMasivaRequisitoSchema.safeParse({

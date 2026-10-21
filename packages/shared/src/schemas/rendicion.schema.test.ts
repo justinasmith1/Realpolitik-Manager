@@ -56,14 +56,16 @@ describe('NumeroFacturaSchema', () => {
     expect(NumeroFacturaSchema.safeParse(` ${'a'.repeat(100)} `).success).toBe(true);
   });
 
-  it.each(['A\u0000B', 'A\nB', 'A\tB', 'A\u007FB'])(
-    'rechaza caracteres de control (%j)',
-    (valor) => {
-      expect(errores(NumeroFacturaSchema.safeParse(valor))[0]?.message).toBe(
-        'El número de factura no puede contener caracteres de control.',
-      );
-    },
-  );
+  it.each([
+    ['un NUL', 'A\u0000B'],
+    ['un salto de línea', 'A\nB'],
+    ['una tabulación', 'A\tB'],
+    ['un DEL', 'A\u007FB'],
+  ])('rechaza caracteres de control: %s', (_descripcion, valor) => {
+    expect(errores(NumeroFacturaSchema.safeParse(valor))[0]?.message).toBe(
+      'El número de factura no puede contener caracteres de control.',
+    );
+  });
 
   it.each([undefined, null, 123, true])('rechaza lo que no es texto (%j)', (valor) => {
     expect(NumeroFacturaSchema.safeParse(valor).success).toBe(false);

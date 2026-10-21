@@ -64,9 +64,14 @@ export interface DatosDias {
  * Los días tienen que estar vacíos o ser exactamente `cantidad`. Solo se valida si el pedido trae
  * ambos: en un PATCH que cambia uno solo, la otra mitad está guardada y la valida el backend
  * sobre el estado resultante con `problemaDeDias`.
+ *
+ * Tampoco se evalúa si la cantidad ya es inválida (`CantidadSchema`): comparar los días contra una
+ * cantidad que se va a rechazar sumaría un segundo error en `diasAproximados`, y el error útil es
+ * el de `cantidad`.
  */
 export function validarDiasCoherentes(datos: DatosDias, ctx: z.RefinementCtx): void {
   if (datos.cantidad === undefined || datos.diasAproximados === undefined) return;
+  if (!CantidadSchema.safeParse(datos.cantidad).success) return;
   const problema = problemaDeDias(datos.cantidad, datos.diasAproximados);
   if (problema !== null) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['diasAproximados'], message: problema });
