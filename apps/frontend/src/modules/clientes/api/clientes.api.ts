@@ -13,7 +13,22 @@ import {
   type UpdateClienteSchema,
 } from '@realpolitik/shared';
 
+import {
+  esObjeto,
+  leerCuerpoDeError,
+  leerDetallesInvalidos,
+  type DetalleInvalido,
+} from '@/lib/errores-api';
 import { ApiClientError, http } from '@/lib/http';
+
+// Se movieron a `lib/errores-api` porque no son propias de clientes. Se siguen exportando desde
+// acá para no romper los imports existentes.
+export {
+  causaDeError,
+  diagnosticoDeError,
+  type CausaDeFalloDeCarga,
+  type DetalleInvalido,
+} from '@/lib/errores-api';
 
 /**
  * Datos que el front envía para registrar un cliente: el tipo de ENTRADA del schema
@@ -54,40 +69,6 @@ export async function listarClientes(
   const ruta = query === '' ? '/clientes' : `/clientes?${query}`;
   const response = await http(ruta, signal ? { signal } : {});
   return ClienteSchema.array().parse(await response.json());
-}
-
-/**
- * Código técnico, sin datos personales, para mostrar a soporte cuando falla la carga.
- */
-export function diagnosticoDeError(error: unknown): string {
-  if (!(error instanceof ApiClientError)) {
-    return 'ERROR_INESPERADO';
-  }
-  switch (error.kind) {
-    case 'network':
-      return 'NETWORK_ERROR';
-    case 'configuration':
-      return 'CONFIG_ERROR';
-    case 'http':
-      return `HTTP_${error.status ?? 'ERROR'}`;
-  }
-}
-
-/** Por qué falló la carga del listado, para decirlo con precisión en la interfaz. */
-export type CausaDeFalloDeCarga = 'conexion' | 'servidor' | 'configuracion' | 'inesperado';
-
-export function causaDeError(error: unknown): CausaDeFalloDeCarga {
-  if (!(error instanceof ApiClientError)) {
-    return 'inesperado';
-  }
-  switch (error.kind) {
-    case 'network':
-      return 'conexion';
-    case 'configuration':
-      return 'configuracion';
-    case 'http':
-      return (error.status ?? 0) >= 500 ? 'servidor' : 'inesperado';
-  }
 }
 
 /**
@@ -152,12 +133,6 @@ export function interpretarFalloCambioEstado(error: unknown): FalloCambioEstado 
     : { tipo: 'inesperado' };
 }
 
-/** Un dato que el servidor rechazó: el campo (notación de puntos) y su mensaje, si lo informó. */
-export interface DetalleInvalido {
-  campo: string;
-  mensaje: string | null;
-}
-
 export interface ClienteExistente {
   id: string;
   razonSocial: string;
@@ -170,17 +145,6 @@ export type FalloAltaCliente =
   | { tipo: 'datos-invalidos'; detalles: DetalleInvalido[] }
   | { tipo: 'inesperado' };
 
-const esObjeto = (valor: unknown): valor is Record<string, unknown> =>
-  typeof valor === 'object' && valor !== null && !Array.isArray(valor);
-
-/** `{ error: { code, details } }` del contrato, o `null` si el cuerpo no tiene esa forma. */
-function leerCuerpoDeError(payload: unknown): { code: unknown; details: unknown } | null {
-  if (!esObjeto(payload) || !esObjeto(payload.error)) {
-    return null;
-  }
-  return { code: payload.error.code, details: payload.error.details };
-}
-
 function leerClienteExistente(valor: unknown): ClienteExistente | null {
   if (!esObjeto(valor) || typeof valor.id !== 'string' || typeof valor.razonSocial !== 'string') {
     return null;
@@ -189,22 +153,6 @@ function leerClienteExistente(valor: unknown): ClienteExistente | null {
   return estado.success
     ? { id: valor.id, razonSocial: valor.razonSocial, estado: estado.data }
     : null;
-}
-
-function leerDetallesInvalidos(details: unknown): DetalleInvalido[] {
-  if (!Array.isArray(details)) {
-    return [];
-  }
-  return details.flatMap((detalle) =>
-    esObjeto(detalle) && typeof detalle.campo === 'string'
-      ? [
-          {
-            campo: detalle.campo,
-            mensaje: typeof detalle.mensaje === 'string' ? detalle.mensaje : null,
-          },
-        ]
-      : [],
-  );
 }
 
 /**

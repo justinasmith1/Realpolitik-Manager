@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ColumnPicker } from '@/components/data-table/ColumnPicker';
 import { useColumnPreferences } from '@/components/data-table/useColumnPreferences';
+import { ClientesNav } from '@/components/layout/ClientesNav';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useIsCompactLayout } from '@/hooks/use-media-query';
@@ -224,6 +225,8 @@ export function ClientesPage() {
           Nuevo cliente
         </Button>
       </div>
+
+      <ClientesNav />
 
       {aviso !== null && (
         <Alert

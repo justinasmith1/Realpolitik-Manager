@@ -14,5 +14,12 @@ module.exports = {
   ],
   settings: {
     react: { version: 'detect' },
+    // Base UI pinta Checkbox como un control con rol checkbox y un input oculto. Sin este
+    // mapa, jsx-a11y no ve la etiqueta hermana (`htmlFor`) como asociada a ese control.
+    'jsx-a11y': {
+      components: {
+        Checkbox: 'input',
+      },
+    },
   },
 };

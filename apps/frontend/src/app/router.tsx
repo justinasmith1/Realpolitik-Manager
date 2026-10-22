@@ -4,6 +4,7 @@ import { NotFoundPage } from '@/app/NotFoundPage';
 import type { AppRouteHandle } from '@/components/layout/AppHeader';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
+import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
 
 export const routes: RouteObject[] = [
   {
@@ -15,6 +16,13 @@ export const routes: RouteObject[] = [
         path: 'clientes',
         element: <ClientesPage />,
         handle: { title: 'Clientes' } satisfies AppRouteHandle,
+      },
+      // Hermana de `clientes`, no hija: las dos páginas renderizan `ClientesNav` y el Sidebar
+      // marca Clientes en ambas (su enlace no exige coincidencia exacta).
+      {
+        path: 'clientes/tipos-documento',
+        element: <TiposDocumentoPage />,
+        handle: { title: 'Tipos de documento' } satisfies AppRouteHandle,
       },
       { path: '*', element: <NotFoundPage /> },
     ],
