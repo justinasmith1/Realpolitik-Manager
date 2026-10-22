@@ -29,6 +29,11 @@ function mockMobileViewport() {
   }));
 }
 
+// La página de Clientes tiene además su navegación secundaria, con otro enlace "Clientes": las
+// consultas del Sidebar se hacen dentro de su `<nav>`.
+const enlaceDelSidebar = (nombre: string) =>
+  within(screen.getByRole('navigation', { name: 'Principal' })).getByRole('link', { name: nombre });
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -93,7 +98,7 @@ describe('AppLayout', () => {
     expect(
       screen.queryByRole('button', { name: 'Contraer barra lateral' }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Clientes' })).toBeInTheDocument();
+    expect(enlaceDelSidebar('Clientes')).toBeInTheDocument();
     expect(screen.getByText('Realpolitik Manager')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Expandir barra lateral' }));
@@ -108,7 +113,7 @@ describe('AppLayout', () => {
     const contraer = screen.getByRole('button', { name: 'Contraer barra lateral' });
     expect(contraer).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole('link', { name: 'Clientes' })).toHaveFocus();
+    expect(enlaceDelSidebar('Clientes')).toHaveFocus();
 
     await user.tab({ shift: true });
     await user.keyboard('{Enter}');

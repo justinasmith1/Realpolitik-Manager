@@ -6,7 +6,7 @@ Proposed
 
 ## Fecha
 
-2026-10-20
+2026-10-20 (actualizada el 2026-10-21 con la unicidad del nombre del tipo de documento, HU2.1: ver punto 8)
 
 ## Contexto
 
@@ -28,7 +28,7 @@ Restricciones heredadas de ADR-0002: UUID como clave, baja lógica (`isDeleted` 
 
 ### 1. Modelos
 
-- **`TipoDocumento`**: catálogo (`nombre` único). Un tipo no se borra: se desactiva con `activo = false` y deja de ofrecerse al armar matrices.
+- **`TipoDocumento`**: catálogo. El nombre es único sin distinguir mayúsculas, acentos ni espacios repetidos, mediante la clave persistida `nombreNormalizado` (punto 8). Un tipo no se borra: se desactiva con `activo = false` y deja de ofrecerse al armar matrices.
 - **`RequisitoCliente`** (la matriz): cliente + tipo de documento, `cantidad` por período, `diasAproximados`, `canalEntrega` opcional y `nota`. Con baja lógica.
 - **`Cliente`** suma dos campos:
   - `matrizConfigurada` (default `false`): indica si el cliente ya tiene su matriz configurada, es decir, al menos un requisito activo. La mantiene el backend: pasa a `true` al haber un requisito activo y vuelve a `false` al dar de baja el último. No se edita a mano. Una matriz sin requisitos activos significa que todavía no se configuró: no existe la "matriz vacía a propósito".
@@ -121,6 +121,37 @@ En este proyecto las bajas son lógicas: estas reglas solo actúan ante un borra
 
 Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK son la última línea de defensa.
 
+### 8. Nombre del tipo de documento: clave normalizada persistida (HU2.1)
+
+**Regla de negocio.** Dos tipos de documento son el mismo si sus nombres coinciden sin distinguir mayúsculas, acentos ni espacios repetidos: `Constancia ARCA`, `constancia  arca` y `Constancía ARCA` son un único tipo. La `ñ` es otra letra: `Año` y `Ano` son tipos distintos.
+
+**Decisión.** `TipoDocumento` tiene una columna técnica `nombreNormalizado` (`VARCHAR(100) NOT NULL`) con un índice único (`TipoDocumento_nombreNormalizado_key`, declarado con `@unique` en `schema.prisma`). `nombre` guarda el texto tal como lo escribió la administradora y **ya no es único por sí solo**.
+
+- La clave la calcula `normalizarNombreTipoDocumento`, de `@realpolitik/shared`, que es la **única** implementación de la regla. Toda escritura del nombre (alta, edición, seed) calcula la clave con esa función y guarda las dos columnas juntas.
+- Normalización: recorta los bordes y colapsa los espacios internos (`\s`, incluido el espacio duro) en uno solo; descompone en NFD; pasa a minúsculas; elimina las marcas combinantes salvo la tilde que sigue a una `n`; recompone en NFC. La `ñ` da la misma clave escrita como un carácter (U+00F1) o como `n` + U+0303. Las letras que Unicode no descompone (`ø`, `ł`, `ß`) quedan como están. Es idempotente y el resultado nunca es más largo que la entrada.
+- `nombreNormalizado` **no forma parte de la API**: es un detalle de persistencia.
+- Un duplicado lo rechaza la base con `P2002` y `target = ["nombreNormalizado"]`. El backend (`modules/tipos-documento`) lo responde como `409 CONFLICT` con `motivo: "TIPO_DOCUMENTO_DUPLICADO"` y el tipo que ya tiene la clave (contrato de API, 4.1).
+
+**Motivos.**
+
+- La base garantiza la regla también ante dos altas simultáneas. Un "buscar y después crear" en la aplicación tiene una carrera, y no protege de un script ni de Prisma Studio.
+- La regla vive en un solo lugar. El backend no reimplementa la normalización, y el frontend puede usar la misma función para avisar antes de enviar.
+- No requiere extensiones de PostgreSQL ni collations especiales (ver Alternativas).
+- Como es una columna común con `@unique`, `schema.prisma` refleja la regla y `prisma migrate diff` la conoce. No queda solo en SQL, como los índices parciales del punto 5.
+
+**Migración** (`20261021120000_hu2_1_tipo_documento_nombre_normalizado`, escrita a mano):
+
+1. Va entera en una transacción explícita (`BEGIN` … `COMMIT`). Si algo falla, la tabla queda como estaba.
+2. Dos guardas antes de cualquier cambio:
+   - aborta si algún nombre no es ASCII imprimible o está vacío;
+   - aborta si dos nombres dan la misma clave, y los nombra. No adivina cuál conservar ni los fusiona: requisitos e ítems pueden apuntar a cualquiera de los dos.
+3. Agrega la columna y la completa con `lower(regexp_replace(btrim(nombre), ' {2,}', ' ', 'g') COLLATE "C")`. Para texto ASCII imprimible (lo único que pudo cargar el seed de T2.1) eso es exactamente la regla de shared. Después la marca `NOT NULL`.
+4. Reemplaza el índice único de `nombre` por el de `nombreNormalizado`.
+
+No borra filas ni cambia ids: las FK de requisitos e ítems no se tocan.
+
+**Renombre del catálogo.** El seed de T2.1 cargaba "Orden de compra"; el nombre validado es "OC", con "Orden de compra" como descripción. El seed renombra la **misma fila** (mismo id), así que requisitos e ítems siguen apuntando a ella. Si en la base están los dos nombres, el seed falla con un error claro y no los fusiona. Los ítems de rendiciones ya abiertas conservan su `nombreTipoDocumento` anterior: es el snapshot del punto 2.
+
 ## Alternativas consideradas
 
 - **Requisitos condicionales** (obligatorio / condicional, con una decisión por período): descartados en la validación con la administradora el 18/10/2026. Todo requisito de la matriz entra siempre en el checklist.
@@ -131,12 +162,22 @@ Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK so
 - **Canales como array en `Cliente`**: dice por qué canales se manda, pero no qué documento va por cuál. El override por requisito sí lo dice, y `Cliente.canalEntrega` queda como un único canal por defecto (sin cambiar HU1.4).
 - **Snapshot del requisito como campo `Json`**: más simple de escribir, pero pierde tipado, no admite CHECK ni FK, y no se puede filtrar ni consultar con normalidad (ej. "ítems pendientes por canal"). Se usan columnas tipadas.
 - **Reactivar la fila dada de baja en vez del índice parcial**: ver punto 5.
+- **Unicidad del nombre del tipo de documento** (punto 8):
+  - **Índice único sobre una expresión** (`lower(unaccent(nombre))`): necesita la extensión `unaccent`, que no es `IMMUTABLE` (hay que envolverla para usarla en un índice) y además le quita la tilde a la `ñ`. La regla quedaría duplicada en SQL y en TypeScript, y Prisma 5 no puede declarar el índice.
+  - **Collation ICU no determinista** (insensible a mayúsculas y acentos): depende de la versión de ICU del servidor, también confunde `ñ` con `n`, no admite `LIKE` y Prisma no la declara.
+  - **`citext`**: solo ignora mayúsculas, no acentos, y es otra extensión.
+  - **Validar solo en la aplicación**: carrera entre altas simultáneas y nada protege lo que no pasa por la API.
+  - **Guardar el nombre ya normalizado en `nombre`**: se pierde cómo lo escribió la administradora ("Constancia ARCA" se mostraría "constancia arca").
 - **Factura implícita / matriz vacía a propósito**: la idea era que la factura acompañara siempre a la rendición sin figurar en la matriz, y que `matrizConfigurada = true` con la matriz vacía marcara a un cliente que se rinde solo con la factura. Descartada el 20/10/2026: todo cliente pide al menos la factura, así que conviene tratarla como un requisito más (con su cantidad, días y canal, y como ítem del checklist). Así, una matriz sin requisitos activos solo puede significar que falta configurarla, y `matrizConfigurada` se deduce de los requisitos en vez de cargarse a mano.
 
 ## Consecuencias
 
 - **Positivas**: los legajos históricos no cambian cuando cambia la matriz; la base rechaza datos incoherentes aunque no pasen por la API; el canal efectivo de cada documento queda explícito en el ítem; el modelo admite varias rendiciones por mes sin casos especiales.
 - **Negativas**: el snapshot duplica datos (nombre del tipo, canal) en cada ítem. Los CHECK y el índice parcial viven solo en SQL: quien lea `schema.prisma` tiene que mirar el bloque de comentarios o la migración.
+- **Del punto 8 (HU2.1)**:
+  - `nombreNormalizado` es un dato derivado que se guarda. Si alguien escribe `nombre` sin recalcular la clave (SQL manual, Prisma Studio), la base no lo detecta. El test de integración "coherencia de la clave en toda la tabla" lo controla en la base de test.
+  - Cambiar la regla de normalización obliga a una migración de datos que recalcule todas las claves y vuelva a buscar colisiones.
+  - La migración de HU2.1 solo sabe completar nombres ASCII. Ante otro dato, aborta y hay que corregirlo a mano.
 - **A resolver**:
   - T2.2 tiene que implementar la generación del checklist con exactamente estas reglas de copia y resolución de canal.
   - Las consultas de rendiciones tienen que filtrar `isDeleted = false`. El endpoint o botón para anular una rendición lo define T2.3 / HU2.5.
@@ -144,3 +185,4 @@ Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK so
   - Un mismo cliente puede recibir facturas de las dos razones sociales emisoras, cada una con su numeración; cuando se modele el emisor (HU2.9–2.12), la unicidad pasa a (emisor, numeroFactura).
   - El seed actual borra todos los clientes con `deleteMany`. Con `Rendicion → Cliente` en `Restrict`, ese borrado va a fallar en cuanto la base de desarrollo tenga rendiciones. Se decidió dejarlo así (frenar es más seguro que borrar rendiciones en silencio) y revisarlo cuando existan.
   - Si en algún momento cambia la estrategia de índices de Prisma (por ejemplo, una versión que soporte índices parciales en el schema), conviene declarar `uq_requisito_cliente_tipo_activo` también ahí.
+  - Hecho (HU2.1): los endpoints de tipos de documento calculan `nombreNormalizado` en cada alta y edición, traducen el `P2002` sobre `nombreNormalizado` en un conflicto, y el contrato de API (4.1) quedó actualizado.

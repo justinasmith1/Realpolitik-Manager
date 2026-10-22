@@ -3,38 +3,45 @@
 import { PrismaClient, Sector, SubtipoPublico, IvaCondicion, ClienteEstado } from '@prisma/client';
 
 import { verificarSeedPermitido } from '../src/lib/seed-guard';
+import { CATALOGO_TIPOS_DOCUMENTO, sembrarTiposDocumento } from '../src/lib/seed-tipos-documento';
 
 const prisma = new PrismaClient();
 
-// Catálogo de tipos de documento (T2.1). Se siembra con upsert por nombre: correrlo de nuevo no
-// duplica nada, y `update: {}` respeta lo que se haya cambiado después (p. ej. un tipo
-// desactivado no se vuelve a activar). No se siembran matrices ni rendiciones.
-const TIPOS_DOCUMENTO = [
-  'Factura',
-  'Print',
-  'Constancia escrita',
-  'CAE',
-  'Orden de compra',
-  'Constancia ARCA',
-  'Libre deuda',
-  'Pago IIBB',
-  'Constancia IIBB',
-];
-
-async function sembrarTiposDocumento() {
-  for (const nombre of TIPOS_DOCUMENTO) {
-    await prisma.tipoDocumento.upsert({ where: { nombre }, update: {}, create: { nombre } });
+// Catálogo de tipos de documento (HU2.1, ver src/lib/seed-tipos-documento.ts). Upsert por la clave
+// normalizada: correrlo de nuevo no duplica nada y respeta lo que se haya cambiado después (p. ej.
+// un tipo desactivado no se vuelve a activar). No se siembran matrices ni rendiciones.
+async function sembrarCatalogo() {
+  const renombrados = await sembrarTiposDocumento(prisma);
+  for (const { anterior, nuevo } of renombrados) {
+    console.log(`🔁 Tipo de documento renombrado: "${anterior}" → "${nuevo}" (mismo id).`);
   }
-  console.log(`✅ Tipos de documento: ${TIPOS_DOCUMENTO.length} en el catálogo.`);
+  console.log(`✅ Tipos de documento: ${CATALOGO_TIPOS_DOCUMENTO.length} en el catálogo.`);
+}
+
+/**
+ * Host, puerto y nombre de la base, sin usuario ni contraseña. Sirve para ver el destino antes
+ * de borrar clientes. Si la URL no se puede leer, no inventa un destino.
+ */
+function describirDestino(databaseUrl: string | undefined): string {
+  if (databaseUrl === undefined || databaseUrl === '') return 'sin DATABASE_URL';
+  try {
+    const url = new URL(databaseUrl);
+    const puerto = url.port === '' ? '5432' : url.port;
+    const base = decodeURIComponent(url.pathname.replace(/^\//, ''));
+    return `${url.hostname}:${puerto}/${base}`;
+  } catch {
+    return 'DATABASE_URL ilegible';
+  }
 }
 
 async function main() {
   // Primero la guarda, antes de cualquier operación sobre la base: este seed borra clientes.
   verificarSeedPermitido();
 
+  console.log(`Base destino: ${describirDestino(process.env.DATABASE_URL)}.`);
   console.log('🌱 Seeding database...');
 
-  await sembrarTiposDocumento();
+  await sembrarCatalogo();
 
   // DESTRUCTIVO: borra todos los clientes (y sus contactos, en cascada) antes de cargar los
   // de ejemplo. Solo para una base de desarrollo local.

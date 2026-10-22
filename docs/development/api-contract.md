@@ -6,7 +6,7 @@
 > respuestas y errores. Si el código contradice a este documento, se corrige el que corresponda
 > en un PR y queda registrado el motivo.
 > La sección 6 lista los cambios que este contrato exigió en `@realpolitik/shared` y en la base de datos; todos están hechos.
-> La sección 4 (requisitos y rendiciones, T2.3) es un borrador para revisión: todavía no está implementada.
+> La sección 4 (requisitos y rendiciones, T2.3) es un borrador para revisión: todavía no está implementada, salvo los endpoints de tipos de documento (4.1, HU2.1).
 
 ## 1. Convenciones generales
 
@@ -38,13 +38,13 @@ Todos los errores responden con la misma forma:
 }
 ```
 
-| `code`              | Estado HTTP | Cuándo                                                                                                               | `details`                                                                                                                                                                                         |
-| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VALIDATION_ERROR`  | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado                       | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`                                                                 |
-| `NOT_FOUND`         | 404         | El recurso pedido (cliente, contacto, tipo de documento, requisito, rendición o ítem) no existe, o la ruta no existe | No lleva                                                                                                                                                                                          |
-| `CONFLICT`          | 409         | El pedido choca con datos existentes                                                                                 | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO` o `contactoExistente` para `EMAIL_DUPLICADO`. Los motivos de requisitos y rendiciones están en la sección 4 |
-| `PAYLOAD_TOO_LARGE` | 413         | El cuerpo de la solicitud supera los 100 KB                                                                          | No lleva                                                                                                                                                                                          |
-| `INTERNAL_ERROR`    | 500         | Error inesperado                                                                                                     | No lleva. Nunca expone detalles internos                                                                                                                                                          |
+| `code`              | Estado HTTP | Cuándo                                                                                                               | `details`                                                                                                                                                                                                                                                                 |
+| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VALIDATION_ERROR`  | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado                       | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`                                                                                                                                         |
+| `NOT_FOUND`         | 404         | El recurso pedido (cliente, contacto, tipo de documento, requisito, rendición o ítem) no existe, o la ruta no existe | No lleva                                                                                                                                                                                                                                                                  |
+| `CONFLICT`          | 409         | El pedido choca con datos existentes                                                                                 | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO`, `contactoExistente` para `EMAIL_DUPLICADO` o `tipoDocumentoExistente` para `TIPO_DOCUMENTO_DUPLICADO` (sección 4.1). Los motivos de requisitos y rendiciones están en la sección 4 |
+| `PAYLOAD_TOO_LARGE` | 413         | El cuerpo de la solicitud supera los 100 KB                                                                          | No lleva                                                                                                                                                                                                                                                                  |
+| `INTERNAL_ERROR`    | 500         | Error inesperado                                                                                                     | No lleva. Nunca expone detalles internos                                                                                                                                                                                                                                  |
 
 > Los textos de `mensaje` pueden estar en inglés cuando no los define `@realpolitik/shared`
 > (por ejemplo, `Required`). El front debe apoyarse en `campo` y mostrar sus propios textos.
@@ -239,7 +239,7 @@ Guarda de una vez todos los contactos del cliente, como los muestra el editor. L
 
 ## 4. Requisitos y rendiciones (Sprint 2, T2.3)
 
-> **Estado:** borrador para revisión. Ningún endpoint de esta sección está implementado. El modelo
+> **Estado:** borrador para revisión. Solo están implementados los endpoints de tipos de documento (4.1, HU2.1). El modelo
 > de datos es el de T2.1 (`schema.prisma` y [ADR-0003](../adr/0003-modelado-requisitos-y-rendiciones.md)).
 > Las decisiones de negocio se cerraron con la administradora el 20/10/2026. Lo que surja sin
 > definir va a la sección 4.8, "Preguntas abiertas". Los schemas de `@realpolitik/shared` que hacen
@@ -317,7 +317,7 @@ El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint 
 }
 ```
 
-- **Nombre (`nombre`):** obligatorio, hasta 100 caracteres. Único **sin distinguir mayúsculas ni acentos**: `Constancia ARCA`, `constancia arca` y `Constancía ARCA` son el mismo nombre. Hoy la base solo garantiza la unicidad exacta (`nombre @unique`); implementar la comparación sin mayúsculas ni acentos corresponde a HU2.1.
+- **Nombre (`nombre`):** obligatorio, hasta 100 caracteres. Se guarda y se devuelve tal como llegó (con los bordes recortados). Único **sin distinguir mayúsculas, acentos ni espacios repetidos**: `Constancia ARCA`, `constancia  arca` y `Constancía ARCA` son el mismo nombre. La `ñ` es otra letra: `Año` y `Ano` son nombres distintos. Lo garantiza la base con un índice único sobre una clave normalizada (`nombreNormalizado`, calculada con `normalizarNombreTipoDocumento` de `@realpolitik/shared`), también ante dos altas simultáneas. Esa clave es interna: no se envía ni se devuelve (ver [ADR-0003](../adr/0003-modelado-requisitos-y-rendiciones.md), punto 8).
 - **Descripción (`descripcion`):** opcional, hasta 500 caracteres. Sin descripción se devuelve `null`; la clave siempre está.
 - **Activo (`activo`):** un tipo no se borra. Un tipo inactivo no se puede usar en requisitos nuevos. Los requisitos que ya lo usan **no cambian**: siguen en la matriz y siguen entrando en el checklist de las rendiciones nuevas. Para que un cliente deje de pedirlo, se da de baja ese requisito.
 
@@ -327,7 +327,7 @@ El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint 
 | ------------------ | ----------- | ----------------------------------------------------------------------------------- |
 | `incluirInactivos` | No          | `true` devuelve activos e inactivos. Sin el parámetro (o con `false`), solo activos |
 
-- **Respuesta 200:** lista de tipos ordenada alfabéticamente por `nombre`. Lista vacía si no hay resultados.
+- **Respuesta 200:** lista de tipos ordenada alfabéticamente por la clave normalizada del nombre (sin mayúsculas ni acentos), así `beta` queda entre `Ácido` y `Gama`. Dónde caen exactamente la `ñ` y los espacios lo decide la collation de la base. Lista vacía si no hay resultados.
 - **Errores:** `400 VALIDATION_ERROR` si `incluirInactivos` no es `true` ni `false`.
 
 #### `POST /tipos-documento`
@@ -336,7 +336,7 @@ El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint 
 - **Respuesta 201:** el tipo creado.
 - **Errores:**
   - `400 VALIDATION_ERROR`: falta el nombre, o el nombre o la descripción superan su largo o tienen caracteres de control.
-  - `409 CONFLICT`: `motivo: "TIPO_DOCUMENTO_DUPLICADO"` si ya existe un tipo con ese nombre (sin distinguir mayúsculas ni acentos), activo o inactivo:
+  - `409 CONFLICT`: `motivo: "TIPO_DOCUMENTO_DUPLICADO"` si ya existe un tipo con ese nombre (sin distinguir mayúsculas, acentos ni espacios repetidos), activo o inactivo. `tipoDocumentoExistente` trae `id`, `nombre` y `activo` del tipo que ya tiene el nombre. Con dos altas simultáneas del mismo nombre se crea una sola; la otra recibe este `409`:
 
 ```json
 {
@@ -353,7 +353,7 @@ El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint 
 
 #### `PATCH /tipos-documento/:id`
 
-- **Pedido:** `nombre` y/o `descripcion`, al menos uno (`{}` es `400`). `"descripcion": null` la borra. `activo` se cambia solo con `/estado`; si llega acá, se ignora.
+- **Pedido:** `nombre` y/o `descripcion`, al menos uno (`{}` es `400`). Lo que no se envía no cambia. `"descripcion": null` la borra. `activo` se cambia solo con `/estado`; si llega acá, se ignora. Un tipo inactivo también se puede editar y sigue inactivo.
 - **Qué hace con lo ya abierto:** renombrar no cambia los ítems de rendiciones ya abiertas, que guardan el nombre de ese momento (`nombreTipoDocumento`). Los requisitos de las matrices sí muestran el nombre nuevo, porque leen el tipo.
 - **Respuesta 200:** el tipo actualizado.
 - **Errores:** `400 VALIDATION_ERROR` (pedido vacío, largos, caracteres de control, id que no es uuid), `404 NOT_FOUND` (el tipo no existe), `409 CONFLICT` (`TIPO_DOCUMENTO_DUPLICADO`: el nombre nuevo pertenece **a otro** tipo; el propio no cuenta, aunque cambie solo en mayúsculas o acentos).

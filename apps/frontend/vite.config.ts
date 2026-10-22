@@ -20,5 +20,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    // jsdom por archivo, en forks. Con todos los núcleos de una máquina de desarrollo los
+    // workers a veces no llegan a arrancar y la suite completa falla aunque cada archivo pase
+    // solo. El tope es el mismo en local y en CI: no se suben los timeouts para tapar eso.
+    maxWorkers: 2,
   },
 });

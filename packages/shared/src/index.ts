@@ -128,6 +128,7 @@ export type { ListarRendicionesQuery } from './schemas/listarRendicionesQuery.sc
 // ─── Utilidades ───────────────────────────────────────────────────────────────
 export { validateCuit } from './utils/validateCuit.js';
 export { cambiarSector } from './utils/cambiarSector.js';
+export { normalizarNombreTipoDocumento } from './utils/nombreTipoDocumento.js';
 export type { Clasificacion } from './utils/cambiarSector.js';
 export {
   DIA_MIN,

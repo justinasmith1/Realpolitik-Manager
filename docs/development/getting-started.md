@@ -126,7 +126,7 @@ El servidor escucha en `http://localhost:3000` (variable `PORT`). Las rutas no l
 ### Variables de entorno
 
 1. Copiá `apps/backend/.env.example` como `apps/backend/.env` (Git lo ignora).
-2. Ajustá los valores. El script `dev` lo carga con `--env-file=.env`.
+2. Ajustá los valores. El script `dev` y `db:seed` cargan `apps/backend/.env` con `--env-file=.env`. Si `DATABASE_URL` ya está en el entorno, esa gana y el archivo no la pisa.
 
 | Variable       | Obligatoria | Descripción                                                                                                           |
 | -------------- | ----------- | --------------------------------------------------------------------------------------------------------------------- |
