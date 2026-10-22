@@ -82,6 +82,8 @@ enum PeriodicidadTipo {
 // T2.1b: la migración `20261020151824_t2_1b_rendicion_numero_factura` renombra la columna
 // `referencia` a `numeroFactura` y reemplaza ck_rendicion_referencia_no_vacia y
 // uq_rendicion_periodo_activa por los de arriba.
+// HU2.1: la migración `20261021120000_hu2_1_tipo_documento_nombre_normalizado` agrega
+// `TipoDocumento.nombreNormalizado` (único) y quita la unicidad exacta de `nombre`.
 
 model Cliente {
   id            String  @id @default(uuid()) @db.Uuid
@@ -172,7 +174,12 @@ model Contacto {
 model TipoDocumento {
   id           String   @id @default(uuid()) @db.Uuid
 
-  nombre       String   @unique @db.VarChar(100)
+  /// Nombre tal como se muestra. No es único por sí solo: la unicidad la da `nombreNormalizado`.
+  nombre       String   @db.VarChar(100)
+  /// Clave técnica de unicidad (HU2.1, ADR-0003): el nombre sin mayúsculas ni acentos, calculado
+  /// con `normalizarNombreTipoDocumento` de `@realpolitik/shared` en cada escritura. Dos tipos
+  /// no pueden tener la misma clave. No forma parte de la API.
+  nombreNormalizado String @unique @db.VarChar(100)
   descripcion  String?  @db.VarChar(500)
   /// Un tipo desactivado no se ofrece al armar la matriz. No se borra: lo usan requisitos e
   /// ítems de rendiciones ya abiertas.
