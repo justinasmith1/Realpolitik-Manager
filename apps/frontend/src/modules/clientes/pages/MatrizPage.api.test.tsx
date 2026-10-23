@@ -1,8 +1,9 @@
 // Matriz de punta a punta: la página (jsdom) → HTTP → backend real → PostgreSQL.
 // No mockea fetch ni escribe en realpolitik_db.
 //
-// Sin TEST_API_URL se salta. Con la variable, la base tiene que ser exactamente
-// 127.0.0.1:5433/realpolitik_test y el backend de prueba no puede estar en el puerto 3000.
+// Sin TEST_API_URL se salta. Con la variable, TEST_DATABASE_URL debe ser realpolitik_test en
+// un entorno autorizado (127.0.0.1:5433 en local o localhost:5432 en GitHub Actions) y la API
+// de prueba no puede estar en el puerto 3000.
 //
 //   TEST_API_URL=http://127.0.0.1:3999 \
 //   TEST_DATABASE_URL="postgresql://…@127.0.0.1:5433/realpolitik_test?schema=public" \
@@ -28,6 +29,8 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { crearQueryClient } from '@/app/providers';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
 import { elegirOpcion } from '@/test/select';
+
+import { exigirBaseDeEstaSuite } from '../../../../../backend/src/modules/clientes/__tests__/requisitosIntegrationEntorno';
 
 vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
 
@@ -73,20 +76,7 @@ function exigirDestino(): void {
   if (!base) {
     throw new Error('Con TEST_API_URL hace falta TEST_DATABASE_URL de realpolitik_test.');
   }
-  const destino = new URL(base);
-  const nombre = decodeURIComponent(destino.pathname.replace(/^\//, ''));
-  if (nombre === 'realpolitik_db' || destino.port === '5432') {
-    throw new Error(`TEST_DATABASE_URL apunta a ${destino.host}/${nombre}: no se escribe.`);
-  }
-  if (
-    destino.hostname !== '127.0.0.1' ||
-    destino.port !== '5433' ||
-    nombre !== 'realpolitik_test'
-  ) {
-    throw new Error(
-      `Esta prueba solo escribe en 127.0.0.1:5433/realpolitik_test (recibió ${destino.hostname}:${destino.port}/${nombre}).`,
-    );
-  }
+  exigirBaseDeEstaSuite(base);
   if (API === undefined) return;
   const api = new URL(API);
   if (api.port === '3000') {

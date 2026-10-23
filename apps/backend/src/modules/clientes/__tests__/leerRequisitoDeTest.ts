@@ -6,30 +6,21 @@
 //   TEST_DATABASE_URL=… node --import tsx leerRequisitoDeTest.ts <requisitoId>
 //
 // `--comprobar` imprime la base y la versión y verifica que las columnas de esta HU existan.
-// Se niega a operar fuera de 127.0.0.1:5433/realpolitik_test.
+// Misma política de entorno que la suite de integración de requisitos (local o GitHub Actions).
 
 import { PrismaClient } from '@prisma/client';
 
 import { urlDeBaseDescartable } from './baseDescartable';
+import { exigirBaseDeEstaSuite } from './requisitosIntegrationEntorno';
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function exigirBaseDeRequisitos(conexion: string): void {
-  const destino = new URL(conexion);
-  const base = decodeURIComponent(destino.pathname.replace(/^\//, ''));
-  if (destino.hostname !== '127.0.0.1' || destino.port !== '5433' || base !== 'realpolitik_test') {
-    throw new Error(
-      `Solo se lee 127.0.0.1:5433/realpolitik_test (recibió ${destino.hostname}:${destino.port || 'sin puerto'}/${base}).`,
-    );
-  }
-}
 
 async function main(): Promise<void> {
   const url = urlDeBaseDescartable();
   if (url === undefined) {
     throw new Error('Falta TEST_DATABASE_URL: no se lee nada.');
   }
-  exigirBaseDeRequisitos(url);
+  exigirBaseDeEstaSuite(url);
 
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
