@@ -77,6 +77,12 @@ export {
   RequisitoClienteSchema,
   CreateRequisitoClienteSchema,
   UpdateRequisitoClienteSchema,
+  // Los usa el formulario de la matriz para no reescribir las reglas de un campo.
+  CantidadSchema,
+  DiasAproximadosSchema,
+  NotaSchema,
+  CanalPropioSchema,
+  TipoDocumentoIdSchema,
 } from './schemas/requisitoCliente.schema.js';
 export type {
   RequisitoCliente,

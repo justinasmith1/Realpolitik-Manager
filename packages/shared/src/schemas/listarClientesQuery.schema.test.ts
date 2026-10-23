@@ -107,4 +107,49 @@ describe('ListarClientesQuerySchema', () => {
       expect(ListarClientesQuerySchema.safeParse({ q: ['a', 'b'] }).success).toBe(false);
     });
   });
+
+  describe('matrizConfigurada', () => {
+    it('convierte el texto true al booleano true', () => {
+      expect(ListarClientesQuerySchema.parse({ matrizConfigurada: 'true' })).toEqual({
+        estado: 'ACTIVO',
+        matrizConfigurada: true,
+      });
+    });
+
+    it('convierte el texto false al booleano false', () => {
+      expect(ListarClientesQuerySchema.parse({ matrizConfigurada: 'false' })).toEqual({
+        estado: 'ACTIVO',
+        matrizConfigurada: false,
+      });
+    });
+
+    it('sin el parámetro no filtra por matriz', () => {
+      expect(ListarClientesQuerySchema.parse({})).toEqual({ estado: 'ACTIVO' });
+      expect(ListarClientesQuerySchema.parse({})).not.toHaveProperty('matrizConfigurada');
+    });
+
+    it.each(['otro', 'TRUE', 'FALSE', '1', '0', ''])('rechaza %j', (matrizConfigurada) => {
+      const resultado = ListarClientesQuerySchema.safeParse({ matrizConfigurada });
+      expect(resultado.success).toBe(false);
+      expect(resultado.error?.issues[0]?.path).toEqual(['matrizConfigurada']);
+    });
+
+    it('se combina con estado, sector, subtipo y búsqueda', () => {
+      expect(
+        ListarClientesQuerySchema.parse({
+          q: ' muni ',
+          estado: 'INACTIVO',
+          sector: 'PUBLICO',
+          subtipo: 'MUNICIPAL',
+          matrizConfigurada: 'false',
+        }),
+      ).toEqual({
+        q: 'muni',
+        estado: 'INACTIVO',
+        sector: 'PUBLICO',
+        subtipo: 'MUNICIPAL',
+        matrizConfigurada: false,
+      });
+    });
+  });
 });
