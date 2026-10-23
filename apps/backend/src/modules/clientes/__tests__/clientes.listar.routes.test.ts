@@ -242,4 +242,55 @@ describe('GET /clientes', () => {
 
     expect(res.body).toMatchObject({ error: { details: [{ campo: 'subtipo' }] } });
   });
+
+  it('sin matrizConfigurada no filtra por ese campo', async () => {
+    await request(app).get('/clientes');
+
+    expect(whereEnviado()).toEqual({ isDeleted: false, estado: 'ACTIVO' });
+    expect(whereEnviado()).not.toHaveProperty('matrizConfigurada');
+  });
+
+  it.each([
+    ['true', true],
+    ['false', false],
+  ] as const)('filtra matrizConfigurada=%s', async (texto, valor) => {
+    await request(app).get(`/clientes?matrizConfigurada=${texto}`);
+
+    expect(whereEnviado()).toEqual({
+      isDeleted: false,
+      estado: 'ACTIVO',
+      matrizConfigurada: valor,
+    });
+  });
+
+  it('combina estado INACTIVO con matriz configurada y sigue excluyendo las bajas', async () => {
+    await request(app).get('/clientes?estado=INACTIVO&matrizConfigurada=true');
+
+    expect(whereEnviado()).toEqual({
+      isDeleted: false,
+      estado: 'INACTIVO',
+      matrizConfigurada: true,
+    });
+  });
+
+  it('combina sector PUBLICO con matriz no configurada', async () => {
+    await request(app).get('/clientes?sector=PUBLICO&matrizConfigurada=false');
+
+    expect(whereEnviado()).toEqual({
+      isDeleted: false,
+      estado: 'ACTIVO',
+      sector: 'PUBLICO',
+      matrizConfigurada: false,
+    });
+  });
+
+  it('responde 400 si matrizConfigurada no es true ni false, sin llegar a la base', async () => {
+    const res = await request(app).get('/clientes?matrizConfigurada=otro');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: { code: 'VALIDATION_ERROR', details: [{ campo: 'matrizConfigurada' }] },
+    });
+    expect(prismaMock.cliente.findMany).not.toHaveBeenCalled();
+  });
 });

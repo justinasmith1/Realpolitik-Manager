@@ -4,8 +4,9 @@ import { ClienteSchema, type Cliente } from '@realpolitik/shared';
 /**
  * Convierte una fila de Prisma en el Cliente del contrato de la API.
  *
- * Los campos se copian uno por uno para que nada interno (`isDeleted`, `deletedAt`) salga
- * por accidente. Los `null` de la base se omiten porque el contrato los modela como campos
+ * Los campos se copian uno por uno para que nada interno (`isDeleted`, `deletedAt`,
+ * `indicacionesArmado`) salga por accidente. `matrizConfigurada` se copia de la fila: no se
+ * vuelve a calcular. Los `null` de la base se omiten porque el contrato los modela como campos
  * opcionales. Eso incluye `subtipo`: si la base tiene una combinación imposible (un privado
  * con subtipo o un público sin él) no se corrige acá, la detecta `ClienteSchema.parse` y
  * termina en un 500 en lugar de devolver un dato que contradice el contrato. Lo mismo vale
@@ -28,6 +29,7 @@ export function toClienteDto(row: ClienteRow): Cliente {
     sector: row.sector,
     ...(row.subtipo === null ? {} : { subtipo: row.subtipo }),
     estado: row.estado,
+    matrizConfigurada: row.matrizConfigurada,
     creadoEn: row.createdAt,
     actualizadoEn: row.updatedAt,
   });

@@ -169,6 +169,22 @@ describe('PATCH /clientes/:id', () => {
       expect(prismaMock.cliente.findUnique).not.toHaveBeenCalled();
     });
 
+    it('conserva matrizConfigurada y no la escribe aunque el pedido la envíe', async () => {
+      prismaMock.cliente.update.mockImplementation(({ data }) =>
+        Promise.resolve(filaActualizada(data, { ...filaGuardada, matrizConfigurada: true })),
+      );
+
+      const res = await patchCliente(ID, {
+        denominacion: 'Muni Nuevo',
+        matrizConfigurada: true,
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ denominacion: 'Muni Nuevo', matrizConfigurada: true });
+      expect(dataEnviada()).toEqual({ denominacion: 'Muni Nuevo' });
+      expect(dataEnviada()).not.toHaveProperty('matrizConfigurada');
+    });
+
     it('ignora el estado y los campos del servidor, y no los envía a la base', async () => {
       const res = await patchCliente(ID, {
         razonSocial: 'Municipio Renombrado',

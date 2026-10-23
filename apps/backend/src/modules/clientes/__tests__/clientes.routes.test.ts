@@ -123,6 +123,7 @@ describe('POST /clientes', () => {
         canalEntrega: 'CORREO',
         periodicidad: null,
         estado: 'ACTIVO',
+        matrizConfigurada: false,
         creadoEn: AHORA.toISOString(),
         actualizadoEn: AHORA.toISOString(),
       });
@@ -160,6 +161,16 @@ describe('POST /clientes', () => {
       expect(prismaMock.cliente.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ sector: 'PRIVADO', subtipo: null }) as unknown,
       });
+    });
+
+    it('nace con matrizConfigurada false y descarta el valor que mande el pedido', async () => {
+      const res = await postClientes({ ...altaPrivada, matrizConfigurada: true });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ matrizConfigurada: false });
+      expect(prismaMock.cliente.create.mock.calls[0]?.[0].data).not.toHaveProperty(
+        'matrizConfigurada',
+      );
     });
 
     it('ignora el estado que envía el pedido: el cliente nace ACTIVO', async () => {

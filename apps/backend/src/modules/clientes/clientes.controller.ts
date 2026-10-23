@@ -15,6 +15,7 @@ import {
   cambiarEstadoCliente,
   crearCliente,
   listarClientes,
+  obtenerCliente,
 } from './clientes.service';
 
 type CrearClienteLocals = ValidatedLocals<{ body: typeof CreateClienteSchema }>;
@@ -27,6 +28,7 @@ type CambiarEstadoClienteLocals = ValidatedLocals<{
   body: typeof ActualizarEstadoClienteSchema;
 }>;
 type ListarClientesLocals = ValidatedLocals<{ query: typeof ListarClientesQuerySchema }>;
+type ObtenerClienteLocals = ValidatedLocals<{ params: typeof ClienteIdParamsSchema }>;
 
 export async function crearClienteController(
   _req: Request,
@@ -60,4 +62,12 @@ export async function listarClientesController(
 ): Promise<void> {
   const clientes = await listarClientes(res.locals.validated.query);
   res.status(200).json(clientes);
+}
+
+export async function obtenerClienteController(
+  _req: Request,
+  res: Response<Cliente, ObtenerClienteLocals>,
+): Promise<void> {
+  const cliente = await obtenerCliente(res.locals.validated.params.id);
+  res.status(200).json(cliente);
 }

@@ -199,8 +199,25 @@ export async function cambiarEstadoCliente(
 }
 
 /**
- * Lista los clientes (HU1.2). Excluye los dados de baja (`isDeleted`) y ordena por razón
- * social. Sin paginación, según el contrato.
+ * Devuelve un cliente (HU2.2) con el mismo DTO que el listado.
+ *
+ * Un cliente con baja lógica no existe. `ACTIVO`, `INACTIVO` y `SUSPENDIDO` se leen igual:
+ * el estado comercial no bloquea la consulta.
+ */
+export async function obtenerCliente(id: string): Promise<Cliente> {
+  const fila = await prisma.cliente.findFirst({
+    where: { id, isDeleted: false },
+  });
+  if (fila === null) {
+    throw notFound('Cliente no encontrado');
+  }
+  return toClienteDto(fila);
+}
+
+/**
+ * Lista los clientes (HU1.2, HU2.2). Excluye los dados de baja (`isDeleted`) y ordena por razón
+ * social. Sin paginación, según el contrato. `matrizConfigurada` solo filtra cuando el pedido
+ * lo trae: `false` es un filtro, no "sin filtro".
  */
 export async function listarClientes(filtros: ListarClientesQuery): Promise<Cliente[]> {
   const where: Prisma.ClienteWhereInput = {
@@ -208,6 +225,9 @@ export async function listarClientes(filtros: ListarClientesQuery): Promise<Clie
     estado: filtros.estado,
     ...(filtros.sector !== undefined && { sector: filtros.sector }),
     ...(filtros.subtipo !== undefined && { subtipo: filtros.subtipo }),
+    ...(filtros.matrizConfigurada !== undefined && {
+      matrizConfigurada: filtros.matrizConfigurada,
+    }),
     ...(filtros.q !== undefined && { OR: condicionesDeBusqueda(filtros.q) }),
   };
 

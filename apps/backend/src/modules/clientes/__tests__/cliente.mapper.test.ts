@@ -64,6 +64,7 @@ describe('toClienteDto', () => {
       sector: 'PUBLICO',
       subtipo: 'MUNICIPAL',
       estado: 'ACTIVO',
+      matrizConfigurada: false,
       creadoEn: creado,
       actualizadoEn: actualizado,
     });
@@ -87,9 +88,22 @@ describe('toClienteDto', () => {
       deletedAt: new Date('2026-10-05T00:00:00.000Z'),
     });
 
-    for (const campo of ['isDeleted', 'deletedAt', 'createdAt', 'updatedAt']) {
+    for (const campo of [
+      'isDeleted',
+      'deletedAt',
+      'createdAt',
+      'updatedAt',
+      'indicacionesArmado',
+    ]) {
       expect(dto).not.toHaveProperty(campo);
     }
+  });
+
+  it('copia matrizConfigurada de la fila, en true o en false', () => {
+    expect(toClienteDto({ ...filaPublica, matrizConfigurada: true }).matrizConfigurada).toBe(true);
+    expect(toClienteDto({ ...filaPrivada, matrizConfigurada: false }).matrizConfigurada).toBe(
+      false,
+    );
   });
 
   // La base no tiene un CHECK para esta regla: si se rompe, el mapper no la disimula.
