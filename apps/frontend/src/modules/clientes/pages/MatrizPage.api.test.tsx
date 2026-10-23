@@ -199,7 +199,12 @@ describe.skipIf(API === undefined)('MatrizPage contra la API real', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Agregar requisito' }, ESPERA));
     const alta = await panel('Agregar requisito');
-    await elegirOpcion(user, within(alta).getByLabelText('Tipo de documento'), tipo.nombre);
+    const selector = await within(alta).findByRole(
+      'combobox',
+      { name: 'Tipo de documento' },
+      ESPERA,
+    );
+    await elegirOpcion(user, selector, tipo.nombre);
     const cantidad = within(alta).getByLabelText('Cantidad requerida');
     await user.clear(cantidad);
     await user.type(cantidad, '2');
@@ -266,7 +271,12 @@ describe.skipIf(API === undefined)('MatrizPage contra la API real', () => {
     const user = renderMatriz(cliente.id);
     await user.click(await screen.findByRole('button', { name: 'Agregar requisito' }, ESPERA));
     const alta = await panel('Agregar requisito');
-    await elegirOpcion(user, within(alta).getByLabelText('Tipo de documento'), tipo.nombre);
+    const selector = await within(alta).findByRole(
+      'combobox',
+      { name: 'Tipo de documento' },
+      ESPERA,
+    );
+    await elegirOpcion(user, selector, tipo.nombre);
 
     await api(`/clientes/${cliente.id}/requisitos`, {
       method: 'POST',
