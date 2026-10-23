@@ -31,6 +31,7 @@ const base = {
   emailContacto: 'admin@empresa.example',
   emailsAdicionales: [],
   canalEntrega: 'CORREO',
+  matrizConfigurada: false,
   creadoEn: '2026-10-08T12:00:00.000Z',
   actualizadoEn: '2026-10-08T12:00:00.000Z',
 };
@@ -137,6 +138,7 @@ describe('ClientesTabla en pantallas angostas', () => {
     expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
       'Editar',
       'Contactos',
+      'Matriz de requisitos',
       'Desactivar',
     ]);
     await user.click(screen.getByRole('menuitem', { name: 'Editar' }));

@@ -47,6 +47,7 @@ const clienteJson = {
   portalUrl: 'https://portal.ejemplo.gob.ar',
   periodicidad: null,
   estado: 'ACTIVO',
+  matrizConfigurada: false,
   creadoEn: '2026-10-08T12:00:00.000Z',
   actualizadoEn: '2026-10-08T12:00:00.000Z',
 };

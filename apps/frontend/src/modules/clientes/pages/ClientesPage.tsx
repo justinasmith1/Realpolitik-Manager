@@ -1,6 +1,7 @@
 import type { Cliente } from '@realpolitik/shared';
 import { PlusIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 
 import { ColumnPicker } from '@/components/data-table/ColumnPicker';
 import { useColumnPreferences } from '@/components/data-table/useColumnPreferences';
@@ -43,6 +44,7 @@ import {
 } from '@/modules/clientes/hooks/useCambiarEstadoCliente';
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
 import { useFiltrosClientes } from '@/modules/clientes/hooks/useFiltrosClientes';
+import { stateDeListado } from '@/modules/clientes/matriz.navegacion';
 
 /**
  * Resultado de la última acción, sobre el listado. Uno solo a la vez: se retira solo, al tocar su
@@ -104,6 +106,8 @@ export function ClientesPage() {
     return () => clearTimeout(temporizador);
   }, [idDelAviso, avisoCerrando, cerrarAviso]);
 
+  const location = useLocation();
+  const navigate = useNavigate();
   const { filtros, hayFiltros, estado, textoBusqueda, ...acciones } = useFiltrosClientes();
   const consulta = useClientes(filtros);
   const cambioDeEstado = useCambiarEstadoCliente();
@@ -180,6 +184,10 @@ export function ClientesPage() {
   const abrirContactos = (cliente: Cliente) => {
     setAviso(null);
     setClienteAAdministrar(cliente);
+  };
+
+  const verMatriz = (cliente: Cliente) => {
+    void navigate(`/clientes/${cliente.id}/matriz`, { state: stateDeListado(location.search) });
   };
 
   const alGuardarContactos = (cliente: Cliente) => {
@@ -296,6 +304,7 @@ export function ClientesPage() {
               onLimpiarFiltros={acciones.limpiar}
               onAdministrarContactos={abrirContactos}
               onEditar={abrirEdicion}
+              onVerMatriz={verMatriz}
               onDesactivar={(cliente) => setCambioAConfirmar({ cliente, accion: 'desactivar' })}
               onReactivar={(cliente) => setCambioAConfirmar({ cliente, accion: 'reactivar' })}
               idsCambiandoEstado={idsCambiandoEstado}

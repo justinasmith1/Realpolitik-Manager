@@ -1,5 +1,12 @@
 import type { Cliente } from '@realpolitik/shared';
-import { EllipsisIcon, PencilIcon, PowerIcon, RotateCcwIcon, UsersIcon } from 'lucide-react';
+import {
+  ClipboardListIcon,
+  EllipsisIcon,
+  PencilIcon,
+  PowerIcon,
+  RotateCcwIcon,
+  UsersIcon,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +21,8 @@ interface ClienteAccionesMenuProps {
   cliente: Cliente;
   onEditar?: ((cliente: Cliente) => void) | undefined;
   onAdministrarContactos?: ((cliente: Cliente) => void) | undefined;
+  /** Abre la matriz de requisitos. También en inactivos: se puede consultar. */
+  onVerMatriz?: ((cliente: Cliente) => void) | undefined;
   /** Pide desactivar un cliente activo (la confirmación la resuelve quien la usa). */
   onDesactivar?: ((cliente: Cliente) => void) | undefined;
   onReactivar?: ((cliente: Cliente) => void) | undefined;
@@ -22,8 +31,8 @@ interface ClienteAccionesMenuProps {
 }
 
 /**
- * Menú de acciones de una fila: un solo botón "⋯" que despliega Editar, Contactos y, según el
- * estado, Desactivar (destructivo, en rojo) o Reactivar (en verde).
+ * Menú de acciones de una fila: un solo botón "⋯" que despliega Editar, Contactos, Matriz de
+ * requisitos y, según el estado, Desactivar (destructivo, en rojo) o Reactivar (en verde).
  *
  * El menú solo avisa qué acción se eligió: los paneles y el diálogo de confirmación los abre
  * quien lo usa, fuera del menú. Si vivieran adentro, se desmontarían al cerrarse el menú.
@@ -32,6 +41,7 @@ export function ClienteAccionesMenu({
   cliente,
   onEditar,
   onAdministrarContactos,
+  onVerMatriz,
   onDesactivar,
   onReactivar,
   cambiandoEstado = false,
@@ -53,6 +63,10 @@ export function ClienteAccionesMenu({
         <DropdownMenuItem onClick={() => onAdministrarContactos?.(cliente)}>
           <UsersIcon aria-hidden="true" />
           Contactos
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onVerMatriz?.(cliente)}>
+          <ClipboardListIcon aria-hidden="true" />
+          Matriz de requisitos
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {cliente.estado === 'INACTIVO' ? (

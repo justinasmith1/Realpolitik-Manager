@@ -16,6 +16,7 @@ const base = {
   emailsAdicionales: [],
   canalEntrega: 'CORREO',
   estado: 'ACTIVO',
+  matrizConfigurada: false,
   creadoEn: '2026-10-08T12:00:00.000Z',
   actualizadoEn: '2026-10-08T12:00:00.000Z',
 };
@@ -158,7 +159,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     expect(filaDe('Activa').queryByText('Inactivo')).not.toBeInTheDocument();
     const menu = await abrirMenu('Activa S.A.');
 
-    expect(opciones()).toEqual(['Editar', 'Contactos', 'Desactivar']);
+    expect(opciones()).toEqual(['Editar', 'Contactos', 'Matriz de requisitos', 'Desactivar']);
     expect(menu.queryByRole('menuitem', { name: 'Reactivar' })).not.toBeInTheDocument();
   });
 
@@ -174,7 +175,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     expect(filaDe('Inactiva').getByText('Inactivo')).toBeInTheDocument();
     const menu = await abrirMenu('Inactiva S.A.');
 
-    expect(opciones()).toEqual(['Editar', 'Contactos', 'Reactivar']);
+    expect(opciones()).toEqual(['Editar', 'Contactos', 'Matriz de requisitos', 'Reactivar']);
     expect(menu.queryByRole('menuitem', { name: 'Desactivar' })).not.toBeInTheDocument();
   });
 
@@ -211,6 +212,8 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   it.each([
     ['Editar', 'onEditar', 'Activa S.A.', activo],
     ['Contactos', 'onAdministrarContactos', 'Activa S.A.', activo],
+    ['Matriz de requisitos', 'onVerMatriz', 'Activa S.A.', activo],
+    ['Matriz de requisitos', 'onVerMatriz', 'Inactiva S.A.', inactivo],
     ['Desactivar', 'onDesactivar', 'Activa S.A.', activo],
     ['Reactivar', 'onReactivar', 'Inactiva S.A.', inactivo],
   ] as const)(
@@ -219,6 +222,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
       const acciones = {
         onEditar: vi.fn(),
         onAdministrarContactos: vi.fn(),
+        onVerMatriz: vi.fn(),
         onDesactivar: vi.fn(),
         onReactivar: vi.fn(),
       };
@@ -257,7 +261,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     expect(botonDelMenu('Activa S.A.')).toHaveFocus();
     await userEvent.keyboard('{Enter}');
     const menu = within(await screen.findByRole('menu'));
-    expect(menu.getAllByRole('menuitem')).toHaveLength(3);
+    expect(menu.getAllByRole('menuitem')).toHaveLength(4);
     // Al abrir con el teclado queda enfocada la primera opción.
     expect(menu.getByRole('menuitem', { name: 'Editar' })).toHaveFocus();
 

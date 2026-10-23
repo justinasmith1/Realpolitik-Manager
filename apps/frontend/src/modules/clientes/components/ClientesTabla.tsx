@@ -91,12 +91,14 @@ export function ClientesTabla({
   onLimpiarFiltros,
   onAdministrarContactos,
   onEditar,
+  onVerMatriz,
   onDesactivar,
   onReactivar,
   idsCambiandoEstado = [],
 }: ClientesTablaProps & {
   onAdministrarContactos?: (cliente: Cliente) => void;
   onEditar?: (cliente: Cliente) => void;
+  onVerMatriz?: (cliente: Cliente) => void;
   /** Pide desactivar un cliente activo (la confirmación la resuelve quien la usa). */
   onDesactivar?: (cliente: Cliente) => void;
   onReactivar?: (cliente: Cliente) => void;
@@ -122,6 +124,7 @@ export function ClientesTabla({
   const accionesDe = (cliente: Cliente) => ({
     onEditar,
     onAdministrarContactos,
+    onVerMatriz,
     onDesactivar,
     onReactivar,
     cambiandoEstado: idsCambiandoEstado.includes(cliente.id),

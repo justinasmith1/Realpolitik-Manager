@@ -4,6 +4,7 @@ import { NotFoundPage } from '@/app/NotFoundPage';
 import type { AppRouteHandle } from '@/components/layout/AppHeader';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
+import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
 import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
 
 export const routes: RouteObject[] = [
@@ -23,6 +24,12 @@ export const routes: RouteObject[] = [
         path: 'clientes/tipos-documento',
         element: <TiposDocumentoPage />,
         handle: { title: 'Tipos de documento' } satisfies AppRouteHandle,
+      },
+      // Detalle de un cliente, no una sección del catálogo: ClientesNav no gana un ítem.
+      {
+        path: 'clientes/:id/matriz',
+        element: <MatrizPage />,
+        handle: { title: 'Matriz' } satisfies AppRouteHandle,
       },
       { path: '*', element: <NotFoundPage /> },
     ],
