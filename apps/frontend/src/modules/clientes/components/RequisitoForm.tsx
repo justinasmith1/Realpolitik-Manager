@@ -1,6 +1,6 @@
 import { CANTIDAD_MAX, type CanalEntregaType, type TipoDocumento } from '@realpolitik/shared';
 import { CircleAlertIcon } from 'lucide-react';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch, type Control, type FieldError } from 'react-hook-form';
 import { Link } from 'react-router';
 
@@ -175,6 +175,9 @@ export function RequisitoForm({
   const cantidadValida = indicarDias(cantidad) !== null;
   const sobran = cantidadValida && dias.length > (indicarDias(cantidad)?.length ?? 0);
 
+  const formularioRef = useRef<HTMLFormElement>(null);
+  const focoInicialAplicado = useRef(false);
+
   useEffect(() => {
     onDirtyChange(
       !valoresEquivalentes({ tipoDocumentoId, cantidad, dias, canal, nota }, valoresIniciales),
@@ -182,9 +185,20 @@ export function RequisitoForm({
   }, [tipoDocumentoId, cantidad, dias, canal, nota, valoresIniciales, onDirtyChange]);
 
   useEffect(() => {
+    if (focoInicialAplicado.current) return;
     if (modo === 'alta' && estadoTipos !== 'listo') return;
     const campo = modo === 'alta' ? 'tipo' : 'cantidad';
     const frame = requestAnimationFrame(() => {
+      if (focoInicialAplicado.current) return;
+      focoInicialAplicado.current = true;
+      const formulario = formularioRef.current;
+      const activo = document.activeElement;
+      const yaEscribe =
+        formulario !== null &&
+        activo instanceof HTMLElement &&
+        formulario.contains(activo) &&
+        activo.matches('input, textarea, select');
+      if (yaEscribe) return;
       enfocarYMostrar(document.getElementById(`${id}-${campo}`));
     });
     return () => cancelAnimationFrame(frame);
@@ -306,6 +320,7 @@ export function RequisitoForm({
 
   return (
     <form
+      ref={formularioRef}
       noValidate
       onSubmit={(evento) => void enviar(evento)}
       className="flex min-h-0 flex-1 flex-col"

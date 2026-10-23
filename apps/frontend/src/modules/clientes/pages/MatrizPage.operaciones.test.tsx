@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
@@ -72,6 +72,8 @@ interface Escena {
   requisitos: ReturnType<typeof requisito>[];
   tipos: ReturnType<typeof tipo>[];
   tiposMal: boolean;
+  /** Si está definida, `/tipos-documento` no responde hasta que esa promesa se resuelva. */
+  tiposPendiente: Promise<Response> | null;
   post: ((cuerpo: Record<string, unknown>) => Response | Promise<Response>) | null;
   patch: ((cuerpo: Record<string, unknown>) => Response | Promise<Response>) | null;
   borrar: (() => Response | Promise<Response>) | null;
@@ -114,6 +116,7 @@ function preparar(parcial: Partial<Escena> = {}) {
       tipo(TIPO_ACTA, 'Acta', false),
     ],
     tiposMal: false,
+    tiposPendiente: null,
     post: null,
     patch: null,
     borrar: null,
@@ -123,6 +126,7 @@ function preparar(parcial: Partial<Escena> = {}) {
     const path = new URL(urlDe(entrada)).pathname;
     const metodo = init?.method ?? 'GET';
     if (path === '/tipos-documento') {
+      if (escena.tiposPendiente !== null) return escena.tiposPendiente;
       return Promise.resolve(
         escena.tiposMal ? json({ error: { code: 'INTERNAL_ERROR' } }, 500) : json(escena.tipos),
       );
@@ -374,6 +378,43 @@ describe('alta', () => {
       ),
     );
     expect(await screen.findByText('Se agregó Factura a la matriz.')).toBeInTheDocument();
+  });
+
+  it('conserva el foco de la nota si el catálogo termina de cargar mientras se escribe', async () => {
+    let liberarTipos: (respuesta: Response) => void = () => undefined;
+    const tiposPendiente = new Promise<Response>((resolve) => {
+      liberarTipos = resolve;
+    });
+    preparar({ requisitos: [], tiposPendiente });
+    const { user } = renderMatriz();
+    await user.click(await screen.findByRole('button', { name: 'Agregar requisito' }));
+    const alta = await panel('Agregar requisito');
+    const nota = within(alta).getByLabelText('Nota');
+
+    nota.focus();
+    await user.keyboard('bo');
+    expect(nota).toHaveValue('bo');
+
+    liberarTipos(json(escena.tipos));
+    expect(await within(alta).findByLabelText('Tipo de documento')).toBeInTheDocument();
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+
+    expect(nota).toHaveFocus();
+    await user.keyboard('rrador');
+    expect(nota).toHaveValue('borrador');
+
+    await user.click(within(alta).getByRole('button', { name: 'Cancelar' }));
+    await user.click(
+      within(await screen.findByRole('alertdialog', { name: /Descartar los cambios/ })).getByRole(
+        'button',
+        { name: 'Continuar editando' },
+      ),
+    );
+    expect(within(alta).getByLabelText('Nota')).toHaveValue('borrador');
   });
 
   it('pide confirmación para descartar y se puede seguir editando', async () => {
