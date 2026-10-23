@@ -5,7 +5,8 @@
 // cuando dos escrituras del mismo cliente se confirman a la vez.
 //
 // Sin `TEST_DATABASE_URL` se saltan. Esta suite, además, se niega a escribir si esa URL no es
-// exactamente `127.0.0.1:5433/realpolitik_test`: no alcanza con que el nombre termine en `_test`.
+// `127.0.0.1:5433/realpolitik_test` en local o `localhost:5432/realpolitik_test` en GitHub Actions.
+// No alcanza con que el nombre termine en `_test`.
 //
 //   TEST_DATABASE_URL="postgresql://usuario:clave@127.0.0.1:5433/realpolitik_test?schema=public" \
 //     pnpm --filter @realpolitik/backend exec vitest run requisitos.integration
@@ -21,6 +22,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { urlDeBaseDescartable } from './baseDescartable';
+import { exigirBaseDeEstaSuite } from './requisitosIntegrationEntorno';
 
 const url = urlDeBaseDescartable();
 
@@ -28,6 +30,7 @@ const url = urlDeBaseDescartable();
 const INDICE_REQUISITO_ACTIVO = 'uq_requisito_cliente_tipo_activo';
 
 let prisma: PrismaClient;
+let prismaInicializado = false;
 let app: Express;
 const clientesCreados: string[] = [];
 
@@ -36,20 +39,6 @@ const MARCA = `TESTRQ${Date.now().toString(36)}${randomBytes(3).toString('hex')}
 const MARCA_NORMALIZADA = normalizar(MARCA);
 
 const n = (texto: string) => `${MARCA} ${texto}`;
-
-/**
- * Esta corrida escribe únicamente en la base de integración del proyecto. `*_audit` u otro
- * puerto, aunque la guarda genérica los acepte, no sirven para este bloque.
- */
-function exigirBaseDeEstaSuite(conexion: string): void {
-  const destino = new URL(conexion);
-  const base = decodeURIComponent(destino.pathname.replace(/^\//, ''));
-  if (destino.hostname !== '127.0.0.1' || destino.port !== '5433' || base !== 'realpolitik_test') {
-    throw new Error(
-      `La suite de requisitos solo escribe en 127.0.0.1:5433/realpolitik_test (recibió ${destino.hostname}:${destino.port}/${base}).`,
-    );
-  }
-}
 
 beforeAll(async () => {
   if (url === undefined) return;
@@ -70,10 +59,11 @@ beforeAll(async () => {
   }
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
+  prismaInicializado = true;
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
+  if (url === undefined || !prismaInicializado) return;
   try {
     // El ítem referencia al requisito y la rendición referencia al cliente: primero la rendición
     // (sus ítems caen en cascada), después el requisito, el cliente y al final el tipo.
