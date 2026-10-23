@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { exigirBaseDeEstaSuite } from './requisitosIntegrationEntorno';
 
@@ -7,6 +7,10 @@ const LOCAL =
 const CI = 'postgresql://postgres:postgres@localhost:5432/realpolitik_test?schema=public';
 
 describe('exigirBaseDeEstaSuite', () => {
+  beforeEach(() => {
+    vi.stubEnv('GITHUB_ACTIONS', 'false');
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
   });
