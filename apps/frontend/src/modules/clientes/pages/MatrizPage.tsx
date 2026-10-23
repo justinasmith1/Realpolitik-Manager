@@ -11,6 +11,7 @@ import { enfocarYMostrar } from '@/lib/focus';
 import { ApiClientError } from '@/lib/http';
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
 import { interpretarFalloRequisito } from '@/modules/clientes/api/requisitos.api';
+import { mensajeFalloBaja } from '@/modules/clientes/components/erroresDeRequisito';
 import { MatrizEncabezado } from '@/modules/clientes/components/MatrizEncabezado';
 import {
   MatrizCargando,
@@ -20,7 +21,6 @@ import {
   MatrizVacia,
 } from '@/modules/clientes/components/MatrizEstados';
 import { MatrizListado } from '@/modules/clientes/components/MatrizListado';
-import { mensajeFalloBaja } from '@/modules/clientes/components/erroresDeRequisito';
 import {
   QuitarRequisitoDialog,
   type ResultadoBaja,

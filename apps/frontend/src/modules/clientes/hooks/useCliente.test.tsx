@@ -14,6 +14,12 @@ import { useClientes } from '@/modules/clientes/hooks/useClientes';
 
 const fetchMock = vi.fn<typeof fetch>();
 
+function urlDe(entrada: Parameters<typeof fetch>[0]): string {
+  if (typeof entrada === 'string') return entrada;
+  if (entrada instanceof URL) return entrada.href;
+  return entrada.url;
+}
+
 const BASE = 'https://api.example';
 const CLIENTE_ID = 'a1b2c3d4-e5f6-4789-abcd-ef0123456789';
 const OTRO_ID = 'b2c3d4e5-f6a7-4890-bcde-f01234567890';
@@ -99,7 +105,7 @@ describe('useCliente', () => {
 
   it('dos clientes quedan en consultas distintas', async () => {
     fetchMock.mockImplementation((url) =>
-      Promise.resolve(jsonResponse(cliente(String(url).endsWith(OTRO_ID) ? OTRO_ID : CLIENTE_ID))),
+      Promise.resolve(jsonResponse(cliente(urlDe(url).endsWith(OTRO_ID) ? OTRO_ID : CLIENTE_ID))),
     );
     const { wrapper, queryClient } = preparar();
 
@@ -149,7 +155,7 @@ describe('useClientes y matrizConfigurada', () => {
       Promise.resolve(
         jsonResponse([
           cliente(CLIENTE_ID, {
-            matrizConfigurada: String(url).includes('matrizConfigurada=true'),
+            matrizConfigurada: urlDe(url).includes('matrizConfigurada=true'),
           }),
         ]),
       ),

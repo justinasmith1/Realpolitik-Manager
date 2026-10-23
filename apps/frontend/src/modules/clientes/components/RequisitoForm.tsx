@@ -159,7 +159,8 @@ export function RequisitoForm({
     formulario;
   const { errors, isSubmitting, submitCount } = formulario.formState;
   const cantidad = useWatch({ control, name: 'cantidad' });
-  const dias = useWatch({ control, name: 'dias' }) ?? [];
+  const diasObservados = useWatch({ control, name: 'dias' });
+  const dias = useMemo(() => diasObservados ?? [], [diasObservados]);
   const tipoDocumentoId = useWatch({ control, name: 'tipoDocumentoId' });
   const canal = useWatch({ control, name: 'canal' });
   const nota = useWatch({ control, name: 'nota' });

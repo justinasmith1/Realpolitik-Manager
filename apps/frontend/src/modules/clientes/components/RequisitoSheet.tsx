@@ -1,6 +1,6 @@
 import type { Cliente, RequisitoCliente } from '@realpolitik/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
+import { useCallback, useMemo, useState, type RefObject } from 'react';
 
 import {
   AlertDialog,
@@ -94,12 +94,13 @@ export function RequisitoSheet({
   const tipos = useTiposDocumento({}, { enabled: modo !== null && modo.tipo === 'alta' });
   const ocupado = crear.isPending || editar.isPending || exito.activo;
   const claveActual = claveBorrador;
-
-  useEffect(() => {
+  const [claveReiniciada, setClaveReiniciada] = useState(claveActual);
+  if (claveActual !== claveReiniciada) {
+    setClaveReiniciada(claveActual);
     setBloqueado(false);
     setMensajeEstado(null);
     setSucio(false);
-  }, [claveActual]);
+  }
 
   function pedirCierre() {
     if (ocupado) return;

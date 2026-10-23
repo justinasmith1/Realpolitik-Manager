@@ -92,6 +92,14 @@ function cuerpoDe(init?: RequestInit): Record<string, unknown> {
   return typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {};
 }
 
+function jsonDePedido(body: RequestInit['body']): unknown {
+  if (typeof body !== 'string') {
+    throw new Error('Se esperaba un body JSON en formato string');
+  }
+
+  return JSON.parse(body) as unknown;
+}
+
 function pedidos(metodo: string) {
   return fetchMock.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === metodo);
 }
@@ -270,7 +278,7 @@ describe('alta', () => {
 
     expect(await screen.findByText('Se agregó Factura a la matriz.')).toBeInTheDocument();
     const post = pedidos('POST').at(-1);
-    expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+    expect(jsonDePedido(post?.[1]?.body)).toEqual({
       tipoDocumentoId: TIPO_FACTURA,
       cantidad: 1,
       diasAproximados: [5],
@@ -441,7 +449,7 @@ describe('edición', () => {
     await user.click(within(edicion).getByRole('button', { name: 'Guardar cambios' }));
 
     expect(await screen.findByText('Se guardaron los cambios de Acta.')).toBeInTheDocument();
-    expect(JSON.parse(String(pedidos('PATCH').at(-1)?.[1]?.body))).toEqual({ nota: null });
+    expect(jsonDePedido(pedidos('PATCH').at(-1)?.[1]?.body)).toEqual({ nota: null });
   });
 
   it('no manda un PATCH si solo se reordenan los días', async () => {
@@ -485,7 +493,7 @@ describe('edición', () => {
       'Usar canal principal del cliente (Correo)',
     );
     await user.click(within(edicion).getByRole('button', { name: 'Guardar cambios' }));
-    expect(JSON.parse(String(pedidos('PATCH').at(-1)?.[1]?.body))).toEqual({
+    expect(jsonDePedido(pedidos('PATCH').at(-1)?.[1]?.body)).toEqual({
       cantidad: 1,
       diasAproximados: [15],
     });
@@ -503,7 +511,7 @@ describe('edición', () => {
       'Usar canal principal del cliente (Correo)',
     );
     await user.click(within(edicion).getByRole('button', { name: 'Guardar cambios' }));
-    expect(JSON.parse(String(pedidos('PATCH').at(-1)?.[1]?.body))).toEqual({ canalEntrega: null });
+    expect(jsonDePedido(pedidos('PATCH').at(-1)?.[1]?.body)).toEqual({ canalEntrega: null });
   });
 
   it('un error del servidor deja el panel abierto', async () => {

@@ -17,6 +17,20 @@ import { useTiposDocumento } from '@/modules/tipos-documento/hooks/useTiposDocum
 
 const fetchMock = vi.fn<typeof fetch>();
 
+function urlDe(entrada: Parameters<typeof fetch>[0]): string {
+  if (typeof entrada === 'string') return entrada;
+  if (entrada instanceof URL) return entrada.href;
+  return entrada.url;
+}
+
+function jsonDePedido(body: RequestInit['body']): unknown {
+  if (typeof body !== 'string') {
+    throw new Error('Se esperaba un body JSON en formato string');
+  }
+
+  return JSON.parse(body) as unknown;
+}
+
 const BASE = 'https://api.example';
 const CLIENTE_ID = 'a1b2c3d4-e5f6-4789-abcd-ef0123456789';
 const OTRO_ID = 'b2c3d4e5-f6a7-4890-bcde-f01234567890';
@@ -169,7 +183,7 @@ describe('useRequisitos', () => {
 
   it('dos clientes no comparten la matriz', async () => {
     fetchMock.mockImplementation((url) =>
-      Promise.resolve(jsonResponse(String(url).includes(OTRO_ID) ? [] : [requisito()])),
+      Promise.resolve(jsonResponse(urlDe(url).includes(OTRO_ID) ? [] : [requisito()])),
     );
     const { wrapper, queryClient } = preparar();
 
@@ -243,7 +257,7 @@ describe('mutaciones de requisitos', () => {
   }
 
   it('al crear, refresca la matriz, el detalle y los listados, y no toca lo demás', async () => {
-    fetchMock.mockImplementation((url, init) => responderLecturas(String(url), init));
+    fetchMock.mockImplementation((url, init) => responderLecturas(urlDe(url), init));
     const { wrapper, queryClient, invalidaciones } = preparar();
     queryClient.setQueryData(requisitosQueryKey(OTRO_ID), []);
     queryClient.setQueryData(listaTiposDocumentoQueryKey(), [tipo]);
@@ -286,7 +300,7 @@ describe('mutaciones de requisitos', () => {
   });
 
   it('al editar, invalida solo las consultas de ese cliente', async () => {
-    fetchMock.mockImplementation((url, init) => responderLecturas(String(url), init));
+    fetchMock.mockImplementation((url, init) => responderLecturas(urlDe(url), init));
     const { wrapper, queryClient, invalidaciones } = preparar();
     queryClient.setQueryData(requisitosQueryKey(OTRO_ID), []);
     queryClient.setQueryData(listaTiposDocumentoQueryKey(), []);
@@ -301,7 +315,7 @@ describe('mutaciones de requisitos', () => {
     );
 
     const pedido = pedidosA(`/clientes/${CLIENTE_ID}/requisitos/${REQUISITO_ID}`, 'PATCH')[0];
-    expect(JSON.parse(String(pedido?.[1]?.body))).toStrictEqual({ nota: null });
+    expect(jsonDePedido(pedido?.[1]?.body)).toStrictEqual({ nota: null });
     expect(invalidaciones.mock.calls.map(([filtro]) => filtro)).toEqual(
       invalidacionesDe(CLIENTE_ID),
     );
@@ -310,7 +324,7 @@ describe('mutaciones de requisitos', () => {
   });
 
   it('al dar de baja, el 204 invalida las mismas consultas y no interpreta un borrado físico', async () => {
-    fetchMock.mockImplementation((url, init) => responderLecturas(String(url), init));
+    fetchMock.mockImplementation((url, init) => responderLecturas(urlDe(url), init));
     const { wrapper, queryClient, invalidaciones } = preparar();
     queryClient.setQueryData(requisitosQueryKey(OTRO_ID), []);
 
@@ -333,7 +347,7 @@ describe('mutaciones de requisitos', () => {
 
   it('dos altas de clientes distintos invalidan cada matriz por su cuenta', async () => {
     fetchMock.mockImplementation((url, init) => {
-      const id = String(url).includes(OTRO_ID) ? OTRO_ID : CLIENTE_ID;
+      const id = urlDe(url).includes(OTRO_ID) ? OTRO_ID : CLIENTE_ID;
       if (init?.method === 'POST') {
         return Promise.resolve(jsonResponse(requisito({ clienteId: id }), 201));
       }
