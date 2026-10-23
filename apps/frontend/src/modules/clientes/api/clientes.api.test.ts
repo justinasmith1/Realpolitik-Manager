@@ -3,11 +3,16 @@ import {
   actualizarCliente,
   cambiarEstadoCliente,
   causaDeError,
+  clienteDetalleQueryKey,
+  clientesListaQueryKey,
   crearCliente,
   diagnosticoDeError,
-  listarClientes,
+  esIdDeRuta,
   interpretarFalloAlta,
   interpretarFalloCambioEstado,
+  listaClientesQueryKey,
+  listarClientes,
+  obtenerCliente,
   type NuevoCliente,
 } from '@/modules/clientes/api/clientes.api';
 
@@ -34,6 +39,7 @@ const clienteCreado = {
   emailsAdicionales: [],
   periodicidad: null,
   estado: 'ACTIVO',
+  matrizConfigurada: false,
   creadoEn: '2026-10-08T12:00:00.000Z',
   actualizadoEn: '2026-10-08T12:00:00.000Z',
 };
@@ -374,6 +380,163 @@ describe('listarClientes', () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: { code: 'INTERNAL_ERROR' } }, 500));
 
     await expect(listarClientes()).rejects.toBeInstanceOf(ApiClientError);
+  });
+
+  it('con matrizConfigurada: true envía matrizConfigurada=true', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([], 200));
+
+    await listarClientes({ matrizConfigurada: true });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://api.example/clientes?matrizConfigurada=true',
+    );
+  });
+
+  it('con matrizConfigurada: false envía el filtro (no lo descarta por ser falsy)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([], 200));
+
+    await listarClientes({ matrizConfigurada: false });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://api.example/clientes?matrizConfigurada=false',
+    );
+  });
+
+  it('sin matrizConfigurada, o con undefined, no manda el parámetro', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse([], 200)));
+
+    await listarClientes({});
+    await listarClientes({ matrizConfigurada: undefined, q: 'muni' });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example/clientes');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://api.example/clientes?q=muni');
+  });
+
+  it('combina matrizConfigurada con los filtros que ya existían', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([], 200));
+
+    await listarClientes({
+      q: 'muni',
+      estado: 'INACTIVO',
+      sector: 'PUBLICO',
+      subtipo: 'MUNICIPAL',
+      matrizConfigurada: false,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://api.example/clientes?q=muni&estado=INACTIVO&sector=PUBLICO&subtipo=MUNICIPAL&matrizConfigurada=false',
+    );
+  });
+
+  it('pasa el AbortSignal a la request', async () => {
+    fetchMock.mockResolvedValue(jsonResponse([], 200));
+    const controller = new AbortController();
+
+    await listarClientes({ matrizConfigurada: true }, controller.signal);
+
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+  });
+});
+
+describe('obtenerCliente', () => {
+  it('hace GET /clientes/:id y devuelve el cliente validado', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...clienteCreado, matrizConfigurada: true }, 200));
+
+    const cliente = await obtenerCliente(clienteCreado.id);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`https://api.example/clientes/${clienteCreado.id}`);
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();
+    expect(cliente).toMatchObject({
+      id: clienteCreado.id,
+      razonSocial: 'Empresa de Ejemplo S.A.',
+      matrizConfigurada: true,
+    });
+    expect(cliente.creadoEn).toEqual(new Date('2026-10-08T12:00:00.000Z'));
+  });
+
+  it('codifica el id dentro de la URL', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(clienteCreado, 200));
+
+    await obtenerCliente('a/b?c');
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example/clientes/a%2Fb%3Fc');
+  });
+
+  it('pasa el AbortSignal a la request', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(clienteCreado, 200));
+    const controller = new AbortController();
+
+    await obtenerCliente(clienteCreado.id, controller.signal);
+
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+  });
+
+  it('una request cancelada rechaza con el AbortError, sin envolverlo', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    fetchMock.mockRejectedValue(new DOMException('Aborted', 'AbortError'));
+
+    const error = await obtenerCliente(clienteCreado.id, controller.signal).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).not.toBeInstanceOf(ApiClientError);
+    expect((error as DOMException).name).toBe('AbortError');
+  });
+
+  it('un 404 llega como el ApiClientError de http()', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: { code: 'NOT_FOUND', message: 'x' } }, 404));
+
+    const error = await obtenerCliente(clienteCreado.id).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiClientError);
+    expect(error).toMatchObject({ kind: 'http', status: 404 });
+  });
+
+  it('rechaza una respuesta que no cumple el contrato', async () => {
+    const { matrizConfigurada: _omitida, ...sinMatriz } = clienteCreado;
+    fetchMock.mockResolvedValue(jsonResponse(sinMatriz, 200));
+
+    const error = await obtenerCliente(clienteCreado.id).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(ApiClientError);
+  });
+});
+
+describe('keys de caché de clientes', () => {
+  it('el listado cuelga de clientes → lista → filtros', () => {
+    expect(clientesListaQueryKey).toEqual(['clientes', 'lista']);
+    expect(listaClientesQueryKey({ q: 'muni' })).toEqual(['clientes', 'lista', { q: 'muni' }]);
+  });
+
+  it('true, false y ausente son tres listados distintos', () => {
+    expect(listaClientesQueryKey({ matrizConfigurada: true })).toEqual([
+      'clientes',
+      'lista',
+      { matrizConfigurada: true },
+    ]);
+    expect(listaClientesQueryKey({ matrizConfigurada: false })).toEqual([
+      'clientes',
+      'lista',
+      { matrizConfigurada: false },
+    ]);
+    expect(listaClientesQueryKey({})).toEqual(['clientes', 'lista', {}]);
+  });
+
+  it('el detalle nombra al cliente y no choca con el listado', () => {
+    expect(clienteDetalleQueryKey(clienteCreado.id)).toEqual([
+      'clientes',
+      'detalle',
+      clienteCreado.id,
+    ]);
+  });
+
+  it('reconoce un UUID de ruta y rechaza uno vacío o mal formado', () => {
+    expect(esIdDeRuta(clienteCreado.id)).toBe(true);
+    expect(esIdDeRuta('')).toBe(false);
+    expect(esIdDeRuta(undefined)).toBe(false);
+    expect(esIdDeRuta('no-es-uuid')).toBe(false);
   });
 });
 

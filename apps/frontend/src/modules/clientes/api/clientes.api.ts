@@ -42,6 +42,16 @@ export type CambiosCliente = (typeof UpdateClienteSchema)['_input'];
 /** Prefijo de todas las queries de clientes. Un alta lo invalida: el listado se vuelve a pedir. */
 export const clientesQueryKey = ['clientes'] as const;
 
+/**
+ * UUID de una ruta (`/clientes/:id`, un requisito, un tipo). Vacío o mal formado no es un id:
+ * la API lo rechazaría con 400 y no vale la pena consultarlo.
+ */
+const UUID_DE_RUTA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function esIdDeRuta(id: string | null | undefined): id is string {
+  return typeof id === 'string' && UUID_DE_RUTA.test(id);
+}
+
 /** Filtros del listado. Lo que está ausente no filtra. */
 export interface FiltrosClientes {
   q?: string | undefined;
@@ -49,11 +59,34 @@ export interface FiltrosClientes {
   estado?: ClienteEstadoType | undefined;
   sector?: ClienteSectorType | undefined;
   subtipo?: ClienteSubtipoPublicoType | undefined;
+  /**
+   * Sin la propiedad, no se filtra por matriz. `false` sí se envía: un chequeo truthy lo
+   * descartaría y la API devolvería clientes con y sin matriz.
+   */
+  matrizConfigurada?: boolean | undefined;
 }
+
+/**
+ * Prefijo de los listados: `['clientes', 'lista', filtros]`.
+ * Invalidarlo refresca todas las variantes de filtro. No alcanza al detalle
+ * (`['clientes', 'detalle', id]`) ni a las matrices (`['clientes', id, 'requisitos']`).
+ */
+export const clientesListaQueryKey = [...clientesQueryKey, 'lista'] as const;
+
+/** Un listado concreto. El objeto de filtros distingue `matrizConfigurada` true, false y ausente. */
+export const listaClientesQueryKey = (filtros: FiltrosClientes) =>
+  [...clientesListaQueryKey, filtros] as const;
+
+/** Detalle de un cliente: `['clientes', 'detalle', clienteId]`. */
+export const clienteDetalleQueryKey = (clienteId: string) =>
+  [...clientesQueryKey, 'detalle', clienteId] as const;
 
 /**
  * `GET /clientes`. Devuelve los clientes que cumplen los filtros (activos, salvo que se pida otro estado), ordenados por
  * razón social (lo resuelve el backend), validados con el schema compartido.
+ *
+ * `matrizConfigurada` solo entra en la query si es un booleano: `undefined` no filtra, y `false`
+ * se envía como `matrizConfigurada=false`.
  */
 export async function listarClientes(
   filtros: FiltrosClientes = {},
@@ -63,12 +96,23 @@ export async function listarClientes(
   for (const [clave, valor] of Object.entries(filtros)) {
     if (typeof valor === 'string' && valor !== '') {
       params.set(clave, valor);
+    } else if (typeof valor === 'boolean') {
+      params.set(clave, String(valor));
     }
   }
   const query = params.toString();
   const ruta = query === '' ? '/clientes' : `/clientes?${query}`;
   const response = await http(ruta, signal ? { signal } : {});
   return ClienteSchema.array().parse(await response.json());
+}
+
+/**
+ * `GET /clientes/:id`. Devuelve ese cliente, en cualquier estado comercial, validado con el
+ * schema compartido. Un 404 llega como `ApiClientError` de `http()`, sin envolverlo de nuevo.
+ */
+export async function obtenerCliente(id: string, signal?: AbortSignal): Promise<Cliente> {
+  const response = await http(`/clientes/${encodeURIComponent(id)}`, signal ? { signal } : {});
+  return ClienteSchema.parse(await response.json());
 }
 
 /**
