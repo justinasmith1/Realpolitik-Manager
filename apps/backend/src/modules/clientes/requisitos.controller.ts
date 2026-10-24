@@ -1,6 +1,8 @@
 import type {
+  CargaMasivaRequisitoSchema,
   CreateRequisitoClienteSchema,
   RequisitoCliente,
+  ResultadoCargaMasiva,
   UpdateRequisitoClienteSchema,
 } from '@realpolitik/shared';
 import type { Request, Response } from 'express';
@@ -10,10 +12,13 @@ import type { ValidatedLocals } from '../../middleware/validate';
 import type { ClienteIdParamsSchema, RequisitoParamsSchema } from './clientes.routes';
 import {
   actualizarRequisito,
+  cargarRequisitosMasivo,
   crearRequisito,
   eliminarRequisito,
   listarRequisitos,
 } from './requisitos.service';
+
+type CargaMasivaLocals = ValidatedLocals<{ body: typeof CargaMasivaRequisitoSchema }>;
 
 type ListarRequisitosLocals = ValidatedLocals<{ params: typeof ClienteIdParamsSchema }>;
 type CrearRequisitoLocals = ValidatedLocals<{
@@ -59,4 +64,12 @@ export async function eliminarRequisitoController(
   const { params } = res.locals.validated;
   await eliminarRequisito(params.id, params.requisitoId);
   res.status(204).end();
+}
+
+export async function cargarRequisitosMasivoController(
+  _req: Request,
+  res: Response<ResultadoCargaMasiva, CargaMasivaLocals>,
+): Promise<void> {
+  const resultado = await cargarRequisitosMasivo(res.locals.validated.body);
+  res.status(200).json(resultado);
 }

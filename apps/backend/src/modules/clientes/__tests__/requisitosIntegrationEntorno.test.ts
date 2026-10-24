@@ -9,6 +9,7 @@ const CI = 'postgresql://postgres:postgres@localhost:5432/realpolitik_test?schem
 describe('exigirBaseDeEstaSuite', () => {
   beforeEach(() => {
     vi.stubEnv('GITHUB_ACTIONS', 'false');
+    vi.stubEnv('ALLOW_COMPOSE_TEST_DB', '');
   });
 
   afterEach(() => {
@@ -49,6 +50,35 @@ describe('exigirBaseDeEstaSuite', () => {
     expect(() =>
       exigirBaseDeEstaSuite(
         'postgresql://realpolitik:realpolitik_dev@127.0.0.1:5432/realpolitik_test?schema=public',
+      ),
+    ).toThrow(/entorno autorizado/);
+  });
+
+  const COMPOSE = 'postgresql://realpolitik:realpolitik_dev@db:5432/realpolitik_test?schema=public';
+
+  it('acepta db:5432/realpolitik_test solo con ALLOW_COMPOSE_TEST_DB=true', () => {
+    vi.stubEnv('ALLOW_COMPOSE_TEST_DB', 'true');
+    expect(() => exigirBaseDeEstaSuite(COMPOSE)).not.toThrow();
+  });
+
+  it('rechaza db:5432 sin ALLOW_COMPOSE_TEST_DB', () => {
+    expect(() => exigirBaseDeEstaSuite(COMPOSE)).toThrow(/entorno autorizado/);
+  });
+
+  it('con ALLOW_COMPOSE_TEST_DB sigue rechazando la base de desarrollo en db', () => {
+    vi.stubEnv('ALLOW_COMPOSE_TEST_DB', 'true');
+    expect(() =>
+      exigirBaseDeEstaSuite(
+        'postgresql://realpolitik:realpolitik_dev@db:5432/realpolitik_db?schema=public',
+      ),
+    ).toThrow(/entorno autorizado/);
+  });
+
+  it('con ALLOW_COMPOSE_TEST_DB no habilita otros hosts', () => {
+    vi.stubEnv('ALLOW_COMPOSE_TEST_DB', 'true');
+    expect(() =>
+      exigirBaseDeEstaSuite(
+        'postgresql://realpolitik:realpolitik_dev@otro-host:5432/realpolitik_test?schema=public',
       ),
     ).toThrow(/entorno autorizado/);
   });

@@ -72,10 +72,10 @@ export type CargaMasivaRequisitoDto = z.infer<typeof CargaMasivaRequisitoSchema>
  * Por qué un cliente se omitió de la carga masiva. Única fuente: la usan la respuesta del
  * backend y el front para mostrar el resultado.
  *
- * - REQUISITO_EXISTENTE → el cliente ya tiene un requisito activo de ese tipo
+ * - REQUISITO_DUPLICADO → el cliente ya tiene un requisito activo de ese tipo
  * - CLIENTE_NO_ACTIVO   → el cliente está `INACTIVO` o `SUSPENDIDO`
  */
-export const MOTIVOS_OMISION_CARGA_MASIVA = ['REQUISITO_EXISTENTE', 'CLIENTE_NO_ACTIVO'] as const;
+export const MOTIVOS_OMISION_CARGA_MASIVA = ['REQUISITO_DUPLICADO', 'CLIENTE_NO_ACTIVO'] as const;
 
 export const MotivoOmisionCargaMasivaSchema = z.enum(MOTIVOS_OMISION_CARGA_MASIVA);
 

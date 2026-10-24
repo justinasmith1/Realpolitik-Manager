@@ -1,8 +1,10 @@
 import { Prisma } from '@prisma/client';
 import {
   problemaDeDias,
+  type CargaMasivaRequisitoDto,
   type CreateRequisitoClienteDto,
   type RequisitoCliente,
+  type ResultadoCargaMasiva,
   type UpdateRequisitoClienteDto,
 } from '@realpolitik/shared';
 
@@ -401,6 +403,109 @@ export async function eliminarRequisito(clienteId: string, requisitoId: string):
     }
     throw error;
   }
+}
+
+/**
+ * Carga masiva: un mismo tipo de documento para varios clientes, todo en
+ * una transacción. Un cliente omitido no hace fallar el pedido.
+ *
+ * - Un cliente inexistente o borrado es 404 y no se crea nada.
+ * - Un cliente que no está ACTIVO se omite con `CLIENTE_NO_ACTIVO`.
+ * - Uno que ya tiene un requisito activo de ese tipo se omite con `REQUISITO_DUPLICADO`.
+ * - A los demás se les inserta el requisito y, en la misma transacción, `matrizConfigurada`
+ *   pasa a `true`. Solo se actualizan los que lo tenían en `false`: un `updateMany` mueve
+ *   `updatedAt` aunque el valor no cambie.
+ *
+ * Ante una carrera con el índice parcial (P2002) se reintenta: el duplicado pasa a verse en la
+ * lectura previa y ese cliente se omite.
+ */
+export async function cargarRequisitosMasivo(
+  input: CargaMasivaRequisitoDto,
+): Promise<ResultadoCargaMasiva> {
+  for (let intento = 1; ; intento += 1) {
+    try {
+      return await enTransaccionSerializable((tx) => insertarMasivo(tx, input));
+    } catch (error) {
+      const check = violacionDeCheckDeEntrada(error);
+      if (check !== null) {
+        throw validationError([check]);
+      }
+      const ajeno = requisitoAjeno(error);
+      if (ajeno !== null) {
+        throw notFound(ajeno);
+      }
+      if (!esRequisitoDuplicado(error) || intento >= INTENTOS) {
+        throw error;
+      }
+    }
+  }
+}
+
+async function insertarMasivo(
+  tx: Prisma.TransactionClient,
+  input: CargaMasivaRequisitoDto,
+): Promise<ResultadoCargaMasiva> {
+  await exigirTipoActivo(tx, input.tipoDocumentoId);
+
+  const ids = input.clientes.map((c: CargaMasivaRequisitoDto['clientes'][number]) => c.clienteId);
+  const clientes = await tx.cliente.findMany({
+    where: { id: { in: ids }, isDeleted: false },
+    select: { id: true, estado: true, matrizConfigurada: true },
+  });
+  const porId = new Map(clientes.map((c) => [c.id.toLowerCase(), c]));
+  if (ids.some((id: string) => !porId.has(id.toLowerCase()))) {
+    throw notFound('Cliente no encontrado');
+  }
+
+  const activos = clientes.filter((c) => c.estado === 'ACTIVO');
+  const conRequisito = await tx.requisitoCliente.findMany({
+    where: {
+      tipoDocumentoId: input.tipoDocumentoId,
+      clienteId: { in: activos.map((c) => c.id) },
+      isDeleted: false,
+    },
+    select: { clienteId: true },
+  });
+  const duplicados = new Set(conRequisito.map((r) => r.clienteId));
+
+  const omitidos: ResultadoCargaMasiva['omitidos'] = [];
+  const aCrear: { clienteId: string; cantidad: number; diasAproximados: number[] }[] = [];
+  for (const pedido of input.clientes) {
+    const cliente = porId.get(pedido.clienteId.toLowerCase());
+    if (cliente === undefined) continue;
+    if (cliente.estado !== 'ACTIVO') {
+      omitidos.push({ clienteId: cliente.id, motivo: 'CLIENTE_NO_ACTIVO' });
+    } else if (duplicados.has(cliente.id)) {
+      omitidos.push({ clienteId: cliente.id, motivo: 'REQUISITO_DUPLICADO' });
+    } else {
+      aCrear.push({
+        clienteId: cliente.id,
+        cantidad: pedido.cantidad,
+        diasAproximados: pedido.diasAproximados,
+      });
+    }
+  }
+
+  if (aCrear.length > 0) {
+    await tx.requisitoCliente.createMany({
+      data: aCrear.map((fila) => ({
+        ...fila,
+        tipoDocumentoId: input.tipoDocumentoId,
+        canalEntrega: input.canalEntrega,
+        nota: input.nota,
+      })),
+    });
+    await tx.cliente.updateMany({
+      where: {
+        id: { in: aCrear.map((fila) => fila.clienteId) },
+        isDeleted: false,
+        matrizConfigurada: false,
+      },
+      data: { matrizConfigurada: true },
+    });
+  }
+
+  return { creados: aCrear.map((fila) => fila.clienteId), omitidos };
 }
 
 /**

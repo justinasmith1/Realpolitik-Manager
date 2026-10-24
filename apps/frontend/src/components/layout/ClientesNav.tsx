@@ -13,6 +13,7 @@ interface DestinoClientes {
 // páginas de dos módulos (clientes y tipos de documento) y ninguno debe depender del otro.
 const destinos: DestinoClientes[] = [
   { to: '/clientes', label: 'Clientes', end: true },
+  { to: '/clientes/matrices', label: 'Matrices', end: false },
   { to: '/clientes/tipos-documento', label: 'Tipos de documento', end: false },
 ];
 

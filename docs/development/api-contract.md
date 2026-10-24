@@ -503,7 +503,7 @@ Agrega **un mismo** requisito a **varios** clientes a la vez. Reemplaza a "copia
 | `nota`                       | No          | Hasta 500 caracteres. Si se envía, se aplica a todos los requisitos creados |
 
 - **Qué hace:** crea el requisito en cada cliente indicado, con las mismas reglas que `POST /clientes/:id/requisitos`. En una sola transacción.
-  - A un cliente que ya tiene un requisito **activo** de ese tipo no se le duplica ni se le modifica: se omite con `motivo: "REQUISITO_EXISTENTE"`.
+  - A un cliente que ya tiene un requisito **activo** de ese tipo no se le duplica ni se le modifica: se omite con `motivo: "REQUISITO_DUPLICADO"`.
   - Un cliente que no está `ACTIVO` (`INACTIVO` o `SUSPENDIDO`) se omite con `motivo: "CLIENTE_NO_ACTIVO"`. No hace fallar el pedido.
   - En cada cliente al que se le crea el requisito, `matrizConfigurada` pasa a `true` si no lo estaba.
 - **Respuesta 200:** qué clientes recibieron el requisito y cuáles se omitieron. Puede no crearse ninguno (todos omitidos): sigue siendo 200.
@@ -512,7 +512,7 @@ Agrega **un mismo** requisito a **varios** clientes a la vez. Reemplaza a "copia
 {
   "creados": ["a1b2c3d4-e5f6-4789-abcd-ef0123456789"],
   "omitidos": [
-    { "clienteId": "b2c3d4e5-f6a7-4890-bcde-f01234567890", "motivo": "REQUISITO_EXISTENTE" }
+    { "clienteId": "b2c3d4e5-f6a7-4890-bcde-f01234567890", "motivo": "REQUISITO_DUPLICADO" }
   ]
 }
 ```

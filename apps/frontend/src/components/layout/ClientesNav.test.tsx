@@ -61,9 +61,15 @@ describe('ClientesNav', () => {
     renderRoute('/clientes');
 
     const links = within(navSecundaria()).getAllByRole('link');
-    expect(links.map((link) => link.textContent)).toEqual(['Clientes', 'Tipos de documento']);
+    expect(links.map((link) => link.textContent)).toEqual([
+      'Clientes',
+      'Matrices',
+      'Tipos de documento',
+    ]);
     expect(enlaceSecundario('Clientes')).toHaveAttribute('href', '/clientes');
     expect(enlaceSecundario('Clientes')).toHaveAttribute('aria-current', 'page');
+    expect(enlaceSecundario('Matrices')).toHaveAttribute('href', '/clientes/matrices');
+    expect(enlaceSecundario('Matrices')).not.toHaveAttribute('aria-current');
     expect(enlaceSecundario('Tipos de documento')).toHaveAttribute(
       'href',
       '/clientes/tipos-documento',
@@ -158,7 +164,7 @@ describe('Ruta /clientes/tipos-documento en el shell', () => {
     expect(within(screen.getByRole('banner')).getByText('Clientes')).toBeInTheDocument();
   });
 
-  it.each(['/clientes/matrices', '/clientes/tipos-documento/extra'])(
+  it.each(['/clientes/otra-ruta-invalida', '/clientes/tipos-documento/extra'])(
     '%s no existe: muestra la página no encontrada',
     (path) => {
       renderRoute(path);

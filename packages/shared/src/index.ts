@@ -104,9 +104,13 @@ export type {
 
 export {
   IndicacionesArmadoSchema,
+  IndicacionesArmadoLecturaSchema,
   INDICACIONES_ARMADO_MAX,
 } from './schemas/indicacionesArmado.schema.js';
-export type { IndicacionesArmadoDto } from './schemas/indicacionesArmado.schema.js';
+export type {
+  IndicacionesArmadoDto,
+  IndicacionesArmadoLecturaDto,
+} from './schemas/indicacionesArmado.schema.js';
 
 export {
   NumeroFacturaSchema,

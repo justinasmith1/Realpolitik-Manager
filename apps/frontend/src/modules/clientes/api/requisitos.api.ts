@@ -6,9 +6,12 @@
 import {
   ClienteEstado,
   RequisitoClienteSchema,
+  ResultadoCargaMasivaSchema,
+  type CargaMasivaRequisitoDto,
   type ClienteEstadoType,
   type CreateRequisitoClienteSchema,
   type RequisitoCliente,
+  type ResultadoCargaMasiva,
   type UpdateRequisitoClienteSchema,
 } from '@realpolitik/shared';
 
@@ -50,6 +53,9 @@ function rutaDeRequisitos(clienteId: string): string {
 function rutaDeRequisito(clienteId: string, requisitoId: string): string {
   return `${rutaDeRequisitos(clienteId)}/${encodeURIComponent(requisitoId)}`;
 }
+
+const RUTA_CARGA_MASIVA = '/requisitos/masivo';
+const RUTA_CARGA_MASIVA_FALLBACK = '/clientes/requisitos/masivo';
 
 /**
  * Solo los campos del alta. `clienteId` vive en la ruta: aunque llegue en el objeto, no se manda
@@ -105,6 +111,23 @@ export async function crearRequisito(
 ): Promise<RequisitoCliente> {
   const response = await http(rutaDeRequisitos(clienteId), pedidoJson('POST', cuerpoDeAlta(datos)));
   return RequisitoClienteSchema.parse(await response.json());
+}
+
+/** `POST /requisitos/masivo`. Asigna un requisito a múltiples clientes. */
+export async function cargarRequisitosMasivo(
+  datos: CargaMasivaRequisitoDto,
+): Promise<ResultadoCargaMasiva> {
+  let response: Response;
+  try {
+    response = await http(RUTA_CARGA_MASIVA, pedidoJson('POST', datos));
+  } catch (error) {
+    if (error instanceof ApiClientError && error.kind === 'http' && error.status === 404) {
+      response = await http(RUTA_CARGA_MASIVA_FALLBACK, pedidoJson('POST', datos));
+    } else {
+      throw error;
+    }
+  }
+  return ResultadoCargaMasivaSchema.parse(await response.json());
 }
 
 /** `PATCH /clientes/:id/requisitos/:requisitoId`. Manda solo lo presente en `datos`. */

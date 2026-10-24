@@ -185,14 +185,14 @@ describe('CargaMasivaRequisitoSchema', () => {
 
 describe('ResultadoCargaMasivaSchema', () => {
   it('los motivos de omisión tienen una sola fuente', () => {
-    expect(MOTIVOS_OMISION_CARGA_MASIVA).toEqual(['REQUISITO_EXISTENTE', 'CLIENTE_NO_ACTIVO']);
+    expect(MOTIVOS_OMISION_CARGA_MASIVA).toEqual(['REQUISITO_DUPLICADO', 'CLIENTE_NO_ACTIVO']);
     expect(MotivoOmisionCargaMasivaSchema.options).toEqual(MOTIVOS_OMISION_CARGA_MASIVA);
   });
 
   it('lee la respuesta del contrato', () => {
     const respuesta = {
       creados: [CLIENTE_A],
-      omitidos: [{ clienteId: CLIENTE_B, motivo: 'REQUISITO_EXISTENTE' }],
+      omitidos: [{ clienteId: CLIENTE_B, motivo: 'REQUISITO_DUPLICADO' }],
     };
     expect(ResultadoCargaMasivaSchema.parse(respuesta)).toEqual(respuesta);
   });
