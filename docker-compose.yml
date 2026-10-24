@@ -5,8 +5,9 @@
 # `node_modules` viven en volúmenes con nombre. Así los symlinks de pnpm se crean dentro de Linux
 # y nunca se mezclan con los `node_modules` del host (que en Windows no sirven dentro del contenedor).
 
-x-node-dev: &node-dev
+x-node-dev:
   # La imagen se construye una sola vez, en `deps` (único servicio con `build:`); el resto la reutiliza.
+  &node-dev
   image: realpolitik-dev
   working_dir: /app
   # Usuario `node` (uid 1000): nada corre como root. En Linux con otro UID, definí UID/GID en .env.
@@ -35,7 +36,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -51,9 +52,7 @@ services:
       - backend_node_modules:/app/apps/backend/node_modules
       - frontend_node_modules:/app/apps/frontend/node_modules
     command: >
-      chown -R ${UID:-1000}:${GID:-1000} /pnpm-store /app/node_modules
-      /app/packages/shared/node_modules /app/apps/backend/node_modules
-      /app/apps/frontend/node_modules
+      chown -R ${UID:-1000}:${GID:-1000} /pnpm-store /app/node_modules /app/packages/shared/node_modules /app/apps/backend/node_modules /app/apps/frontend/node_modules
 
   # Instala dependencias y prepara `shared` y el cliente Prisma UNA vez (evita que backend y
   # frontend corran `pnpm install` en paralelo sobre los mismos volúmenes).
@@ -66,8 +65,7 @@ services:
       perms:
         condition: service_completed_successfully
     command: >
-      sh -c "pnpm install --frozen-lockfile &&
-      pnpm --filter @realpolitik/backend build:deps"
+      sh -c "pnpm install --frozen-lockfile && pnpm --filter @realpolitik/backend build:deps"
 
   backend:
     <<: *node-dev
@@ -84,12 +82,15 @@ services:
       # Dentro de la red de compose el host de la base es `db`, no `localhost`.
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
       CORS_ORIGINS: http://localhost:5173
+      # Base descartable para `pnpm test:integration` (nunca la de desarrollo). Se crea y migra a mano:
+      # ver docs/development/database.md.
+      TEST_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/realpolitik_test?schema=public
+      ALLOW_COMPOSE_TEST_DB: "true"
     ports:
       - "127.0.0.1:3000:3000"
     # `migrate deploy` aplica las migraciones sin prompts. El seed NO corre acá (ver nota abajo).
     command: >
-      sh -c "pnpm exec prisma migrate deploy --schema=prisma/schema.prisma &&
-      pnpm exec tsx watch src/server.ts"
+      sh -c "pnpm exec prisma migrate deploy --schema=prisma/schema.prisma && pnpm exec tsx watch src/server.ts"
 
   frontend:
     <<: *node-dev
