@@ -179,9 +179,10 @@ describe('POST /requisitos/masivo: carga', () => {
       data: { clienteId: string }[];
     };
     expect(data.map((fila) => fila.clienteId)).toEqual([A]);
-    expect(transaccion.cliente.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ id: { in: [A] } }) }),
-    );
+    expect(transaccion.cliente.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [A] } },
+      data: { matrizConfigurada: true },
+    });
   });
 
   it('omite a un cliente que ya tiene el tipo activo con REQUISITO_DUPLICADO', async () => {

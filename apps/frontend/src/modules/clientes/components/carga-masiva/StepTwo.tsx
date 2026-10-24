@@ -41,7 +41,8 @@ export function StepTwo() {
 
   const { watch, setValue } = useFormContext<CargaMasivaFormValues>();
   const tipoDocumentoId = watch('tipoDocumentoId');
-  const clientesForm = watch('clientes') ?? {};
+  const rawClientes = watch('clientes');
+  const clientesForm = useMemo(() => rawClientes ?? {}, [rawClientes]);
 
   const tipoSeleccionado = useMemo(() => {
     return tipos?.find((t) => t.id === tipoDocumentoId);

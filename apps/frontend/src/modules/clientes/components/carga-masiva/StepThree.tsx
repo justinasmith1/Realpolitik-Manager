@@ -10,7 +10,8 @@ import type { CargaMasivaFormValues } from './cargaMasiva.types';
 export function StepThree() {
   const { watch } = useFormContext<CargaMasivaFormValues>();
   const tipoDocumentoId = watch('tipoDocumentoId');
-  const clientesForm = watch('clientes') ?? {};
+  const rawClientes = watch('clientes');
+  const clientesForm = useMemo(() => rawClientes ?? {}, [rawClientes]);
 
   const { data: tipos } = useTiposDocumento({ incluirInactivos: false });
   const { data: clientes } = useClientes({ estado: 'ACTIVO' });

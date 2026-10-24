@@ -1,5 +1,5 @@
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 
 import { Alert } from '@/components/ui/alert';
@@ -248,7 +248,9 @@ export function CargaMasivaWizard({ open, onOpenChange, onSuccess }: CargaMasiva
               type="button"
               variant="brand"
               loading={mutacion.isPending}
-              onClick={handleSubmitFinal}
+              onClick={() => {
+                void handleSubmitFinal();
+              }}
             >
               <CheckIcon className="size-4 mr-1" />
               Confirmar y aplicar

@@ -1,4 +1,4 @@
-import { ArrowRightIcon, PlusIcon, SearchIcon } from 'lucide-react';
+import { ArrowRightIcon, SearchIcon } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -310,7 +310,9 @@ export function MatricesPage() {
                 return (
                   <tr
                     key={cliente.id}
-                    onClick={() => navigate(`/clientes/${cliente.id}/matriz`)}
+                    onClick={() => {
+                      void navigate(`/clientes/${cliente.id}/matriz`);
+                    }}
                     className="group cursor-pointer hover:bg-muted/40 transition-colors"
                   >
                     <td className="py-3.5 px-4">
