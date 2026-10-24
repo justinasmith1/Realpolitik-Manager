@@ -26,3 +26,14 @@ export const IndicacionesArmadoSchema = z.object({
 });
 
 export type IndicacionesArmadoDto = z.infer<typeof IndicacionesArmadoSchema>;
+
+/**
+ * Respuesta de `GET /clientes/:id/indicaciones-armado`. A diferencia del de escritura, **no
+ * rechaza caracteres de control**: lo que ya está en la base se devuelve tal cual, así un
+ * tabulador guardado antes no hace fallar la lectura.
+ */
+export const IndicacionesArmadoLecturaSchema = z.object({
+  indicacionesArmado: z.string().max(INDICACIONES_ARMADO_MAX).nullable(),
+});
+
+export type IndicacionesArmadoLecturaDto = z.infer<typeof IndicacionesArmadoLecturaSchema>;

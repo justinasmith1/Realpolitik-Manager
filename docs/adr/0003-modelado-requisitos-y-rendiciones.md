@@ -2,7 +2,7 @@
 
 ## Estado
 
-Proposed
+Accepted
 
 ## Fecha
 
@@ -151,6 +151,15 @@ Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK so
 No borra filas ni cambia ids: las FK de requisitos e ítems no se tocan.
 
 **Renombre del catálogo.** El seed de T2.1 cargaba "Orden de compra"; el nombre validado es "OC", con "Orden de compra" como descripción. El seed renombra la **misma fila** (mismo id), así que requisitos e ítems siguen apuntando a ella. Si en la base están los dos nombres, el seed falla con un error claro y no los fusiona. Los ítems de rendiciones ya abiertas conservan su `nombreTipoDocumento` anterior: es el snapshot del punto 2.
+
+### Reglas de negocio adicionales (T2.2)
+
+Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo anterior:
+
+- **`CANTIDAD_MAX` provisoria de 100**: tope de la `cantidad` por período de un requisito. Es un valor provisorio, a confirmar con la administradora.
+- **Período máximo**: se acepta hasta el mes siguiente al actual; un período posterior se rechaza.
+- **`numeroFactura` en mayúsculas**: se normaliza a mayúsculas antes de guardarlo.
+- **`diasAproximados` ordenado**: el array se ordena automáticamente (de menor a mayor) al guardar.
 
 ## Alternativas consideradas
 
