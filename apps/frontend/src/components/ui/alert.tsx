@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from 'cn';
-import { CircleAlertIcon, CircleCheckIcon, XIcon } from 'lucide-react';
+import { CircleAlertIcon, CircleCheckIcon, TriangleAlertIcon, XIcon } from 'lucide-react';
 import type * as React from 'react';
 
 const alertVariants = cva(
@@ -10,6 +10,7 @@ const alertVariants = cva(
       variant: {
         destructive: 'border-destructive-border bg-destructive-soft text-destructive',
         success: 'border-success-border bg-success-soft text-success',
+        warning: 'border-warning bg-warning-soft text-foreground',
       },
     },
     defaultVariants: { variant: 'destructive' },
@@ -19,6 +20,7 @@ const alertVariants = cva(
 const iconoDeVariante = {
   destructive: CircleAlertIcon,
   success: CircleCheckIcon,
+  warning: TriangleAlertIcon,
 } as const;
 
 /**

@@ -12,7 +12,7 @@ export const DURACION_AVISO_MS = 8000;
  */
 export interface AvisoDePagina {
   id: number;
-  variante: 'success' | 'destructive';
+  variante: 'success' | 'destructive' | 'warning';
   texto: string;
   cerrando: boolean;
 }
