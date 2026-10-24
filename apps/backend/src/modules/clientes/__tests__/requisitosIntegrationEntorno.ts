@@ -15,7 +15,6 @@ export function exigirBaseDeEstaSuite(conexion: string): void {
     destino.hostname === 'localhost' &&
     destino.port === '5432';
 
-
   const entornoCompose =
     process.env.ALLOW_COMPOSE_TEST_DB === 'true' &&
     destino.hostname === 'db' &&

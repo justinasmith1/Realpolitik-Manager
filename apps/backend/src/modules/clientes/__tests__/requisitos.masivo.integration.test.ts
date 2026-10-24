@@ -89,7 +89,9 @@ async function crearCliente(estado: 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO' = 'ACTI
 }
 
 async function crearTipo(nombre: string): Promise<string> {
-  const res = await request(app).post('/tipos-documento').send({ nombre: `${MARCA} ${nombre}` });
+  const res = await request(app)
+    .post('/tipos-documento')
+    .send({ nombre: `${MARCA} ${nombre}` });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
   return (res.body as { id: string }).id;
 }
@@ -144,7 +146,10 @@ suite('POST /requisitos/masivo (PostgreSQL real)', () => {
     const previo = await prisma.requisitoCliente.create({
       data: { clienteId: conRequisito.id, tipoDocumentoId: tipo, cantidad: 4, diasAproximados: [] },
     });
-    await prisma.cliente.update({ where: { id: conRequisito.id }, data: { matrizConfigurada: true } });
+    await prisma.cliente.update({
+      where: { id: conRequisito.id },
+      data: { matrizConfigurada: true },
+    });
 
     const res = await masivo({
       tipoDocumentoId: tipo,

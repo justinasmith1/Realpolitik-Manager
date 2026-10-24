@@ -447,13 +447,13 @@ async function insertarMasivo(
 ): Promise<ResultadoCargaMasiva> {
   await exigirTipoActivo(tx, input.tipoDocumentoId);
 
-  const ids = input.clientes.map((c) => c.clienteId);
+  const ids = input.clientes.map((c: CargaMasivaRequisitoDto['clientes'][number]) => c.clienteId);
   const clientes = await tx.cliente.findMany({
     where: { id: { in: ids }, isDeleted: false },
     select: { id: true, estado: true, matrizConfigurada: true },
   });
   const porId = new Map(clientes.map((c) => [c.id.toLowerCase(), c]));
-  if (ids.some((id) => !porId.has(id.toLowerCase()))) {
+  if (ids.some((id: string) => !porId.has(id.toLowerCase()))) {
     throw notFound('Cliente no encontrado');
   }
 
