@@ -180,7 +180,7 @@ describe('POST /requisitos/masivo: carga', () => {
     };
     expect(data.map((fila) => fila.clienteId)).toEqual([A]);
     expect(transaccion.cliente.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: [A] } },
+      where: { id: { in: [A] }, isDeleted: false, matrizConfigurada: false },
       data: { matrizConfigurada: true },
     });
   });
