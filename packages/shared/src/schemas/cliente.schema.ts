@@ -313,6 +313,15 @@ const ClienteCamposBase = z.object({
   /** Estado actual del cliente en el sistema */
   estado: ClienteEstado.default('ACTIVO'),
 
+  /**
+   * La fija el servidor: `true` cuando el cliente tiene al menos un requisito activo.
+   * En el alta nace en `false`. No es un campo del pedido de creación ni de edición.
+   */
+  matrizConfigurada: z.boolean({
+    required_error: 'Falta indicar si la matriz está configurada.',
+    invalid_type_error: 'La matriz configurada debe ser verdadero o falso.',
+  }),
+
   /** Fecha de alta del cliente */
   creadoEn: z.coerce.date(),
 
@@ -528,10 +537,13 @@ export type ClientePrivado = z.infer<typeof ClientePrivadoSchema>;
 /**
  * Campos que fija el servidor al crear un cliente y que el pedido no puede controlar.
  * `estado` incluido: un cliente nuevo siempre nace ACTIVO (lo asigna el backend).
+ * `matrizConfigurada` incluido: nace en `false` (default de la base) y solo cambia
+ * cuando el backend mantiene la matriz de requisitos.
  */
 const CAMPOS_DEL_SERVIDOR_EN_ALTA = {
   id: true,
   estado: true,
+  matrizConfigurada: true,
   creadoEn: true,
   actualizadoEn: true,
 } as const;
@@ -578,9 +590,10 @@ const CAMPOS_EDITABLES = {
 /**
  * DTO para la actualización parcial de un cliente (`PATCH /clientes/:id`).
  *
- * Cualquier subconjunto de los campos editables, con al menos uno. `id`, `estado`, `creadoEn`
- * y `actualizadoEn` no se editan por acá: si llegan, Zod los descarta como cualquier clave
- * desconocida y no es un error (el estado tiene su propio endpoint).
+ * Cualquier subconjunto de los campos editables, con al menos uno. `id`, `estado`,
+ * `matrizConfigurada`, `creadoEn` y `actualizadoEn` no se editan por acá: si llegan, Zod los
+ * descarta como cualquier clave desconocida y no es un error (el estado tiene su propio
+ * endpoint; la matriz la mantiene el backend).
  *
  * `.partial()` va sobre los campos de la base, que traen `default` (`canalEntrega`,
  * `emailsAdicionales`): un campo ausente queda ausente y no pisa lo guardado. Por eso no

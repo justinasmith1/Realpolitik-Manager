@@ -273,6 +273,7 @@ describe('emails: trim, minúsculas y repetidos', () => {
       creadoEn: new Date(),
       actualizadoEn: new Date(),
       emailsAdicionales: [altaBase.emailContacto, altaBase.emailContacto],
+      matrizConfigurada: false,
     });
     expect(guardado.success).toBe(true);
   });

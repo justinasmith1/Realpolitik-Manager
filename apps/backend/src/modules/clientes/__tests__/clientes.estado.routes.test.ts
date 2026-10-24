@@ -125,6 +125,16 @@ describe('PATCH /clientes/:id/estado', () => {
       expect(prismaMock.cliente.findFirst).not.toHaveBeenCalled();
     });
 
+    it('conserva matrizConfigurada al cambiar el estado y no la escribe', async () => {
+      simularBase({ ...filaActiva, matrizConfigurada: true });
+
+      const res = await patchEstado(ID, { estado: 'INACTIVO' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ estado: 'INACTIVO', matrizConfigurada: true });
+      expect(prismaMock.cliente.update.mock.calls[0]?.[0].data).toEqual({ estado: 'INACTIVO' });
+    });
+
     it('no usa la baja lógica: no envía isDeleted ni deletedAt en los datos', async () => {
       await patchEstado(ID, { estado: 'INACTIVO' });
 

@@ -1,11 +1,13 @@
 import {
   ActualizarEstadoClienteSchema,
   CreateClienteSchema,
-  ListarClientesQuerySchema,
   CreateContactoSchema,
+  CreateRequisitoClienteSchema,
+  ListarClientesQuerySchema,
   ReemplazarContactosSchema,
   UpdateClienteSchema,
   UpdateContactoSchema,
+  UpdateRequisitoClienteSchema,
 } from '@realpolitik/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -17,6 +19,7 @@ import {
   cambiarEstadoClienteController,
   crearClienteController,
   listarClientesController,
+  obtenerClienteController,
 } from './clientes.controller';
 import {
   actualizarContactoController,
@@ -25,6 +28,12 @@ import {
   listarContactosController,
   reemplazarContactosController,
 } from './contactos.controller';
+import {
+  actualizarRequisitoController,
+  crearRequisitoController,
+  eliminarRequisitoController,
+  listarRequisitosController,
+} from './requisitos.controller';
 
 export const ClienteIdParamsSchema = z.object({
   id: z.string().uuid({ message: 'El ID debe ser un UUID válido.' }),
@@ -35,10 +44,16 @@ export const ContactoParamsSchema = ClienteIdParamsSchema.extend({
   contactoId: z.string().uuid({ message: 'El ID del contacto debe ser un UUID válido.' }),
 });
 
+/** Params de las rutas que apuntan a un requisito concreto de un cliente. */
+export const RequisitoParamsSchema = ClienteIdParamsSchema.extend({
+  requisitoId: z.string().uuid({ message: 'El ID del requisito debe ser un UUID válido.' }),
+});
+
 export const clientesRouter = Router();
 
 clientesRouter.get('/', validate({ query: ListarClientesQuerySchema }), listarClientesController);
 clientesRouter.post('/', validate({ body: CreateClienteSchema }), crearClienteController);
+clientesRouter.get('/:id', validate({ params: ClienteIdParamsSchema }), obtenerClienteController);
 
 clientesRouter.patch(
   '/:id',
@@ -78,4 +93,26 @@ clientesRouter.delete(
   '/:id/contactos/:contactoId',
   validate({ params: ContactoParamsSchema }),
   eliminarContactoController,
+);
+
+// Matriz de requisitos (HU2.2). El DELETE es baja lógica. Un id mal formado es un 400, no un 500.
+clientesRouter.get(
+  '/:id/requisitos',
+  validate({ params: ClienteIdParamsSchema }),
+  listarRequisitosController,
+);
+clientesRouter.post(
+  '/:id/requisitos',
+  validate({ params: ClienteIdParamsSchema, body: CreateRequisitoClienteSchema }),
+  crearRequisitoController,
+);
+clientesRouter.patch(
+  '/:id/requisitos/:requisitoId',
+  validate({ params: RequisitoParamsSchema, body: UpdateRequisitoClienteSchema }),
+  actualizarRequisitoController,
+);
+clientesRouter.delete(
+  '/:id/requisitos/:requisitoId',
+  validate({ params: RequisitoParamsSchema }),
+  eliminarRequisitoController,
 );

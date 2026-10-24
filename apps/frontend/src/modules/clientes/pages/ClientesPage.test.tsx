@@ -33,6 +33,7 @@ const comunes = {
   canalEntrega: 'CORREO',
   periodicidad: null,
   estado: 'ACTIVO',
+  matrizConfigurada: false,
   ...fechas,
 };
 
@@ -96,6 +97,7 @@ const respuesta201 = () =>
       emailsAdicionales: [],
       periodicidad: null,
       estado: 'ACTIVO',
+      matrizConfigurada: false,
       ...fechas,
     },
     201,
@@ -969,6 +971,7 @@ describe('ClientesPage: desactivar y reactivar', () => {
       expect(menu.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
         'Editar',
         'Contactos',
+        'Matriz de requisitos',
         'Desactivar',
       ]);
       expect(menu.getByRole('menuitem', { name: 'Desactivar' })).toHaveAttribute(
@@ -995,6 +998,7 @@ describe('ClientesPage: desactivar y reactivar', () => {
       expect(menu.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
         'Editar',
         'Contactos',
+        'Matriz de requisitos',
         'Reactivar',
       ]);
       expect(menu.getByRole('menuitem', { name: 'Reactivar' })).toHaveAttribute(

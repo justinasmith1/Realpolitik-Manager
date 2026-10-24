@@ -92,7 +92,7 @@ async function crearCliente(): Promise<Cliente> {
   return ClienteSchema.parse(creado);
 }
 
-/** El cliente tal como está guardado ahora (la API no tiene GET por id: se busca por CUIT). */
+/** El cliente tal como está guardado ahora (se busca por CUIT en el listado). */
 async function guardado(cliente: Cliente): Promise<Cliente> {
   const lista = ClienteSchema.array().parse(
     await api(`/clientes?q=${encodeURIComponent(cliente.cuit)}`),

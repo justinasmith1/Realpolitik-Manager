@@ -16,8 +16,12 @@ export const MAX_BUSQUEDA_CLIENTES = 150;
  * - `q`: texto libre de hasta `MAX_BUSQUEDA_CLIENTES` (150) caracteres y sin caracteres de control; sin espacios en los
  *   bordes. Un `q` vacío equivale a no enviarlo. Se busca tal cual: `%`, `_` y `\` no son comodines.
  * - `estado`: `ACTIVO` si no se envía.
- * - `subtipo`: solo existe para el sector público. Con `sector=PRIVADO`, o con un subtipo que
- *   no pertenece al sector, el pedido es inválido y el error apunta al campo `subtipo`.
+ * - `sector` y `subtipo`: `subtipo` solo existe para el sector público. Con `sector=PRIVADO`, o
+ *   con un subtipo que no pertenece al sector, el pedido es inválido y el error apunta al campo
+ *   `subtipo`.
+ * - `matrizConfigurada`: opcional. En la query string llega como el texto `true` o `false`, y
+ *   se convierte a booleano. No se usa coerción booleana genérica: el texto `"false"` tiene que
+ *   seguir siendo falso. Sin el parámetro, no se filtra por matriz.
  */
 export const ListarClientesQuerySchema = z
   .object({
@@ -35,6 +39,14 @@ export const ListarClientesQuerySchema = z
     estado: ClienteEstado.default('ACTIVO'),
     sector: ClienteSector.optional(),
     subtipo: ClienteSubtipoPublico.optional(),
+    matrizConfigurada: z
+      .enum(['true', 'false'], {
+        errorMap: () => ({
+          message: 'El filtro de matriz configurada debe ser true o false.',
+        }),
+      })
+      .transform((valor) => valor === 'true')
+      .optional(),
   })
   .superRefine((query, ctx) => {
     if (query.subtipo !== undefined && query.sector === 'PRIVADO') {

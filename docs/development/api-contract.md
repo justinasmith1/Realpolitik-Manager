@@ -6,7 +6,7 @@
 > respuestas y errores. Si el código contradice a este documento, se corrige el que corresponda
 > en un PR y queda registrado el motivo.
 > La sección 6 lista los cambios que este contrato exigió en `@realpolitik/shared` y en la base de datos; todos están hechos.
-> La sección 4 (requisitos y rendiciones, T2.3) es un borrador para revisión: todavía no está implementada, salvo los endpoints de tipos de documento (4.1, HU2.1).
+> La sección 4 (requisitos y rendiciones, T2.3) es un borrador para revisión. Ya están implementados el catálogo de tipos de documento (4.1, HU2.1), el CRUD de requisitos de la matriz (4.2, HU2.2), `GET /clientes/:id` y el campo y filtro `matrizConfigurada` (4.7). Siguen pendientes la carga masiva (4.3), las indicaciones de armado (4.4), las rendiciones (4.5 y 4.6) y el resto de las historias de esta sección.
 
 ## 1. Convenciones generales
 
@@ -69,6 +69,7 @@ Todos los errores responden con la misma forma:
   "whatsappNumero": null,
   "periodicidad": { "tipo": "MENSUAL", "diaLimite": 10, "mesInicioCiclo": null },
   "estado": "ACTIVO",
+  "matrizConfigurada": false,
   "creadoEn": "2026-10-02T15:30:00.000Z",
   "actualizadoEn": "2026-10-02T15:30:00.000Z"
 }
@@ -96,6 +97,7 @@ Reglas de los datos:
 - **Periodicidad (`periodicidad`):** `tipo` es `MENSUAL`, `BIMESTRAL` o `POR_CAMPANIA`. `diaLimite` es un entero de 1 a 28. `mesInicioCiclo` es un entero de 1 a 12, obligatorio si el tipo es `BIMESTRAL`, y debe ser `null` en los demás.
   - Un cliente sin periodicidad configurada la devuelve como `"periodicidad": null`. La clave siempre está presente en la respuesta.
 - **Estado:** `ACTIVO`, `INACTIVO` o `SUSPENDIDO`. En este sprint ningún endpoint asigna `SUSPENDIDO`; queda reservado (por ejemplo, para clientes que pausan la publicidad en verano).
+- **Matriz configurada (`matrizConfigurada`):** booleano de solo lectura. `true` si el cliente tiene al menos un requisito activo; `false` si la matriz todavía no se configuró. Lo mantiene el backend. No se envía en el alta ni en la edición: si llega, se ignora. El alta responde `false`.
 - El resto de los campos (`ivaCondicion`, `telefono`, `emailsAdicionales`) se validan según el schema.
 
 ### Resumen
@@ -104,15 +106,16 @@ Reglas de los datos:
 | -------- | ---------------------------- | ------------------------------- | ------------------------------- | ------------------------ |
 | HU1.1    | `POST /clientes`             | Registra un cliente             | `CreateClienteSchema`           | `ClienteSchema`          |
 | HU1.6    | `GET /clientes`              | Lista y busca clientes          | `ListarClientesQuerySchema`     | Lista de `ClienteSchema` |
+| HU2.2    | `GET /clientes/:id`          | Devuelve un cliente             | id UUID en la ruta              | `ClienteSchema`          |
 | HU1.7    | `PATCH /clientes/:id`        | Modifica datos de un cliente    | `UpdateClienteSchema`           | `ClienteSchema`          |
 | HU1.8    | `PATCH /clientes/:id/estado` | Desactiva o reactiva un cliente | `ActualizarEstadoClienteSchema` | `ClienteSchema`          |
 
-No existe `GET /clientes/:id`: el listado (`GET /clientes`) devuelve cada cliente completo, y la edición y los contactos trabajan con ese dato. Si una pantalla necesita traer un solo cliente por su id, se agrega entonces.
+`GET /clientes/:id` (HU2.2) devuelve un solo cliente, con el mismo `ClienteSchema` que cada ítem del listado. Un id que no es UUID es `400 VALIDATION_ERROR`. Un cliente inexistente o con baja lógica es `404 NOT_FOUND`. Se puede consultar en estado `ACTIVO`, `INACTIVO` o `SUSPENDIDO`.
 
 ### `POST /clientes` (HU1.1, HU1.2, HU1.4, HU1.5)
 
-- **Pedido:** los campos del cliente, sin `id`, `estado`, `creadoEn` ni `actualizadoEn`. La periodicidad es opcional al crear: si no se envía, el cliente queda sin periodicidad (`"periodicidad": null` en la respuesta). En el alta no se acepta `"periodicidad": null`; para no configurarla se omite la clave. `canalEntrega` toma `CORREO` por defecto. Si se envía `PORTAL_WEB` es obligatoria la `portalUrl`; si se envía `WHATSAPP` es obligatorio `whatsappNumero`.
-- **Respuesta 201:** el cliente creado, con `estado` `ACTIVO`.
+- **Pedido:** los campos del cliente, sin `id`, `estado`, `matrizConfigurada`, `creadoEn` ni `actualizadoEn`. La periodicidad es opcional al crear: si no se envía, el cliente queda sin periodicidad (`"periodicidad": null` en la respuesta). En el alta no se acepta `"periodicidad": null`; para no configurarla se omite la clave. `canalEntrega` toma `CORREO` por defecto. Si se envía `PORTAL_WEB` es obligatoria la `portalUrl`; si se envía `WHATSAPP` es obligatorio `whatsappNumero`. Si llega `matrizConfigurada`, se ignora.
+- **Respuesta 201:** el cliente creado, con `estado` `ACTIVO` y `matrizConfigurada` `false`.
 - **Errores:**
   - `400 VALIDATION_ERROR`: falta la razón social, la denominación (o supera los 60 caracteres), el CUIT, el sector, el email de rendición o la condición de IVA; CUIT con dígito verificador incorrecto; subtipo ausente en un cliente público; día límite fuera de 1 a 28 o no entero; periodicidad bimestral sin mes de inicio, o con mes fuera de 1 a 12; mes de inicio distinto de `null` en una periodicidad mensual o por campaña; canal `PORTAL_WEB` sin `portalUrl` válida; canal `WHATSAPP` sin `whatsappNumero` válido; canal `CORREO` sin emails de contacto; un texto que supera el largo de su columna (razón social, denominación, emails, teléfono, `portalUrl`) o que tiene caracteres de control; `portalUrl` con un protocolo distinto de `http`/`https` o con usuario y contraseña; emails adicionales repetidos o iguales al email de rendición.
   - `409 CONFLICT`: ya existe un cliente con ese CUIT, **activo o inactivo**. Se devuelve cuál es, porque HU1.1 pide mostrarlo:
@@ -132,21 +135,29 @@ No existe `GET /clientes/:id`: el listado (`GET /clientes`) devuelve cada client
 
 ### `GET /clientes` (HU1.6, HU1.2, HU1.8)
 
-| Parámetro | Obligatorio | Descripción                                                                                                                                                                                                                                                                                                                                                                                                        |
-| --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `q`       | No          | Texto que se busca dentro de la razón social, la denominación o el CUIT. No distingue mayúsculas. El CUIT se busca con o sin guiones. Hasta 150 caracteres (`MAX_BUSQUEDA_CLIENTES` en shared: el largo de la razón social, el campo más largo donde se busca; el buscador de la pantalla limita lo que se escribe con la misma constante). Se busca tal cual: `%`, `_` y `\` son caracteres comunes, no comodines |
-| `estado`  | No          | `ACTIVO` (por defecto), `INACTIVO` o `SUSPENDIDO`                                                                                                                                                                                                                                                                                                                                                                  |
-| `sector`  | No          | `PUBLICO` o `PRIVADO`                                                                                                                                                                                                                                                                                                                                                                                              |
-| `subtipo` | No          | Un subtipo del sector público                                                                                                                                                                                                                                                                                                                                                                                      |
+| Parámetro           | Obligatorio | Descripción                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `q`                 | No          | Texto que se busca dentro de la razón social, la denominación o el CUIT. No distingue mayúsculas. El CUIT se busca con o sin guiones. Hasta 150 caracteres (`MAX_BUSQUEDA_CLIENTES` en shared: el largo de la razón social, el campo más largo donde se busca; el buscador de la pantalla limita lo que se escribe con la misma constante). Se busca tal cual: `%`, `_` y `\` son caracteres comunes, no comodines |
+| `estado`            | No          | `ACTIVO` (por defecto), `INACTIVO` o `SUSPENDIDO`                                                                                                                                                                                                                                                                                                                                                                  |
+| `sector`            | No          | `PUBLICO` o `PRIVADO`                                                                                                                                                                                                                                                                                                                                                                                              |
+| `subtipo`           | No          | Un subtipo del sector público                                                                                                                                                                                                                                                                                                                                                                                      |
+| `matrizConfigurada` | No          | `true` o `false`. Sin el parámetro no se filtra. Se combina con `q`, `estado`, `sector` y `subtipo`                                                                                                                                                                                                                                                                                                                |
 
 - **Respuesta 200:** lista de clientes **ordenada alfabéticamente por razón social**. Si no hay resultados, devuelve una lista vacía: no es un error. El mensaje de "no hay resultados" y la invitación a registrar el primer cliente los muestra el front.
-- **Estado:** si no se envía `estado`, solo devuelve clientes `ACTIVO`. Para ver los desactivados se pide `estado=INACTIVO` (HU1.8), y se combina con `q`, `sector` y `subtipo`. Por ahora no hay forma de listar activos e inactivos juntos (ver sección 7). El front solo ofrece las vistas de activos e inactivos: `SUSPENDIDO` está reservado.
-- **Errores:** `400 VALIDATION_ERROR` si un parámetro tiene un valor no válido, o si `q` supera los 150 caracteres o tiene caracteres de control.
-- **Sprint 2:** la sección 4.7 agrega el campo `matrizConfigurada` a la respuesta y un filtro por ese campo (borrador, todavía no implementado).
+- **Estado:** si no se envía `estado`, solo devuelve clientes `ACTIVO`. Para ver los desactivados se pide `estado=INACTIVO` (HU1.8), y se combina con `q`, `sector`, `subtipo` y `matrizConfigurada`. Por ahora no hay forma de listar activos e inactivos juntos (ver sección 7). El front solo ofrece las vistas de activos e inactivos: `SUSPENDIDO` está reservado.
+- **Errores:** `400 VALIDATION_ERROR` si un parámetro tiene un valor no válido, o si `q` supera los 150 caracteres o tiene caracteres de control. `matrizConfigurada` solo admite `true` o `false`.
+- **Sprint 2 (HU2.2, implementado):** cada cliente incluye `matrizConfigurada` y el listado acepta ese filtro. El detalle está en la sección 4.7. La lectura individual está en `GET /clientes/:id`.
+
+### `GET /clientes/:id` (HU2.2)
+
+- **Pedido:** sin cuerpo. `id` es un UUID en la ruta.
+- **Respuesta 200:** el cliente, con el mismo `ClienteSchema` que `GET /clientes`, incluido `matrizConfigurada`.
+- **Estados:** se puede leer un cliente `ACTIVO`, `INACTIVO` o `SUSPENDIDO`. El estado comercial no bloquea la consulta.
+- **Errores:** `400 VALIDATION_ERROR` si el id no es un UUID. `404 NOT_FOUND` si el cliente no existe o tiene baja lógica. No se exponen clientes dados de baja ni campos internos (`isDeleted`, `deletedAt`, `indicacionesArmado`).
 
 ### `PATCH /clientes/:id` (HU1.7, HU1.2, HU1.4, HU1.5)
 
-- **Pedido:** cualquier subconjunto de los campos del cliente, con al menos uno. Solo se modifican los campos enviados. No se envían `id`, `estado`, `creadoEn` ni `actualizadoEn`: si llegan, se ignoran sin error. El estado se cambia solo con `PATCH /clientes/:id/estado`.
+- **Pedido:** cualquier subconjunto de los campos del cliente, con al menos uno. Solo se modifican los campos enviados. No se envían `id`, `estado`, `matrizConfigurada`, `creadoEn` ni `actualizadoEn`: si llegan, se ignoran sin error. El estado se cambia solo con `PATCH /clientes/:id/estado`. `matrizConfigurada` la mantiene el backend y la respuesta conserva el valor guardado.
 - **Periodicidad:**
   - Sin la clave `periodicidad`, se conserva la que tenga el cliente.
   - Con un objeto, se configura o se reemplaza completa (`tipo`, `diaLimite` y `mesInicioCiclo`), con las mismas reglas que en el alta.
@@ -301,6 +312,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | Rendiciones | `POST /rendiciones/:id/requisitos/:requisitoId` | Agrega a una rendición activa los ítems de un requisito nuevo | 200         |
 | HU2.5       | `PATCH /rendiciones/:id/estado`                 | Anula una rendición (baja lógica, no reversible)              | 200         |
 | Clientes    | `GET /clientes` (extensión)                     | Agrega `matrizConfigurada` y un filtro por ese campo          | 200         |
+| Clientes    | `GET /clientes/:id`                             | Devuelve un cliente con el mismo DTO, incluido el flag        | 200         |
 
 El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
 
@@ -447,6 +459,14 @@ Solo `tipoDocumentoId` es obligatorio. No se envían `clienteId`, fechas ni baja
 - **Qué hace:** baja lógica (`isDeleted`, `deletedAt`). El requisito deja de figurar en la matriz y no entra en las rendiciones que se abran después. Los ítems de rendiciones ya abiertas que salieron de él se conservan sin cambios. Si era el último requisito activo del cliente, `matrizConfigurada` vuelve a `false`.
 - **Respuesta 204:** sin cuerpo.
 - **Errores:** `400 VALIDATION_ERROR` (ids que no son uuid), `404 NOT_FOUND` (el cliente no existe o está borrado; el requisito no existe, ya estaba dado de baja o es de otro cliente), `409 CONFLICT` (`CLIENTE_NO_ACTIVO`).
+
+#### Pantalla `/clientes/:id/matriz` (HU2.2)
+
+La pantalla consulta la matriz (`GET` del cliente y `GET` de sus requisitos), da de alta, edita y da de baja lógica un requisito. `matrizConfigurada` lo calcula el servidor al crear el primero o al dar de baja el último: el front no lo envía. Un tipo de documento desactivado sigue visible y se puede editar; no se ofrece para un alta. Un cliente `INACTIVO` o `SUSPENDIDO` se lee y no se modifica.
+
+La cantidad es un entero de 1 a 100. Los días aproximados se cargan de a uno, o se dejan vacíos; una lista a medias no se envía. Bajar la cantidad no borra días: hay que quitar los que sobran. Se pueden repetir y se guardan ordenados. Son orientativos y no generan alertas.
+
+Queda fuera de esta pantalla la carga masiva (HU2.3), las indicaciones de armado (HU2.4) y las rendiciones (HU2.5).
 
 ### 4.3 Carga masiva de un requisito (HU2.3)
 
@@ -662,7 +682,9 @@ Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo c
 
 ### 4.7 Extensión de `GET /clientes`
 
-- **Campo nuevo en la respuesta:** `matrizConfigurada` (booleano) en cada cliente de `ClienteSchema`. `true` = tiene al menos un requisito activo; `false` = la matriz todavía no se configuró.
+**Implementado (HU2.2).**
+
+- **Campo nuevo en la respuesta:** `matrizConfigurada` (booleano) en cada cliente de `ClienteSchema`. `true` = tiene al menos un requisito activo; `false` = la matriz todavía no se configuró. También lo devuelven `GET /clientes/:id`, `POST /clientes`, `PATCH /clientes/:id` y `PATCH /clientes/:id/estado`, porque usan el mismo DTO.
 - **Parámetro nuevo:** `matrizConfigurada`, opcional, `true` o `false`. Se combina con `q`, `estado`, `sector` y `subtipo`. Sin el parámetro no se filtra.
 - **Errores:** `400 VALIDATION_ERROR` si `matrizConfigurada` no es `true` ni `false`.
 - El campo lo mantiene el backend (ver las reglas generales de esta sección): no se puede enviar en `POST` ni `PATCH /clientes`; si llega, se ignora. `indicacionesArmado` **no** se agrega a `ClienteSchema`: se lee con su propio endpoint (4.4).
@@ -679,7 +701,7 @@ Las preguntas de negocio se cerraron el 20/10/2026 y están aplicadas en esta se
 
 ### 4.9 Schemas a crear en `@realpolitik/shared`
 
-Todos están implementados en `@realpolitik/shared` (T2.2), salvo el punto 7, que queda como tarea aparte.
+Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 
 1. **Hecho.** `TipoDocumentoSchema`, `CreateTipoDocumentoSchema`, `UpdateTipoDocumentoSchema`, `ActualizarEstadoTipoDocumentoSchema` y `ListarTiposDocumentoQuerySchema` (`incluirInactivos`).
 2. **Hecho.** `RequisitoClienteSchema`, `CreateRequisitoClienteSchema` y `UpdateRequisitoClienteSchema` (sin `tipoDocumentoId`, con la regla de días sobre el estado resultante).
@@ -687,7 +709,7 @@ Todos están implementados en `@realpolitik/shared` (T2.2), salvo el punto 7, qu
 4. **Hecho.** `IndicacionesArmadoSchema`, que admite saltos de línea.
 5. **Hecho.** `RendicionSchema`, `RendicionDetalleSchema` (con `items`), `RendicionResumenSchema` (con `resumen`), `ItemChecklistSchema`, `CreateRendicionSchema` (`anio`, `mes`, `numeroFactura`), `ListarRendicionesQuerySchema` (`anio`, `mes`) y `ActualizarEstadoRendicionSchema` (solo `ANULADA`). Todos usan `numeroFactura`, no `referencia`.
 6. **Hecho.** Para `POST /rendiciones/:id/requisitos/:requisitoId` no hace falta schema de pedido (no lleva cuerpo): valida los dos uuid de la ruta y responde con `RendicionDetalleSchema`.
-7. **Pendiente (tarea aparte, con el mapper del backend y los fixtures).** En `ClienteSchema`, el campo `matrizConfigurada`; en `ListarClientesQuerySchema`, el filtro `matrizConfigurada`.
+7. **Hecho (HU2.2).** En `ClienteSchema`, el campo `matrizConfigurada`; en `ListarClientesQuerySchema`, el filtro `matrizConfigurada`. El backend lo expone en el DTO de cliente y filtra `GET /clientes`. No es editable en el alta ni en el `PATCH`.
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 

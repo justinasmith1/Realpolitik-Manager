@@ -32,6 +32,7 @@ const BASE = {
   emailContacto: 'contacto@realpolitik.com.ar',
   periodicidad: null,
   estado: 'ACTIVO' as const,
+  matrizConfigurada: false,
   creadoEn: new Date('2024-01-15'),
   actualizadoEn: new Date('2024-06-30'),
 };
@@ -349,6 +350,43 @@ describe('ClienteSchema', () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe('matrizConfigurada', () => {
+    it('acepta un cliente público con la matriz configurada', () => {
+      const result = ClienteSchema.safeParse({ ...clientePublico, matrizConfigurada: true });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.matrizConfigurada).toBe(true);
+    });
+
+    it('acepta un cliente privado con la matriz sin configurar', () => {
+      const result = ClienteSchema.safeParse({ ...clientePrivado, matrizConfigurada: false });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.matrizConfigurada).toBe(false);
+        expect(result.data).not.toHaveProperty('subtipo');
+      }
+    });
+
+    it.each(['si', 'true', 1, 0, null])(
+      'rechaza un valor no booleano (%j)',
+      (matrizConfigurada) => {
+        const result = ClienteSchema.safeParse({ ...clientePublico, matrizConfigurada });
+        expect(result.success).toBe(false);
+        expect(pathsConError(result)).toContain('matrizConfigurada');
+      },
+    );
+
+    it('rechaza un cliente sin la clave: no se completa con false', () => {
+      const { matrizConfigurada: _omitida, ...sinMatriz } = clientePublico;
+      const result = ClienteSchema.safeParse(sinMatriz);
+      expect(result.success).toBe(false);
+      expect(pathsConError(result)).toContain('matrizConfigurada');
+    });
+
+    it('Cliente tiene matrizConfigurada obligatoria (typecheck)', () => {
+      expectTypeOf<Cliente['matrizConfigurada']>().toEqualTypeOf<boolean>();
+    });
+  });
 });
 
 // ─── Tests de CreateClienteSchema ────────────────────────────────────────────
@@ -388,6 +426,7 @@ describe('CreateClienteSchema', () => {
     if (result.success) {
       expect(result.data).not.toHaveProperty('id');
       expect(result.data).not.toHaveProperty('estado');
+      expect(result.data).not.toHaveProperty('matrizConfigurada');
       expect(result.data).not.toHaveProperty('creadoEn');
       expect(result.data).not.toHaveProperty('actualizadoEn');
     }
@@ -414,10 +453,18 @@ describe('CreateClienteSchema', () => {
       actualizadoEn: '2024-06-30T00:00:00.000Z',
       isDeleted: true,
       deletedAt: '2024-06-30T00:00:00.000Z',
+      matrizConfigurada: true,
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      for (const campo of ['id', 'creadoEn', 'actualizadoEn', 'isDeleted', 'deletedAt']) {
+      for (const campo of [
+        'id',
+        'creadoEn',
+        'actualizadoEn',
+        'isDeleted',
+        'deletedAt',
+        'matrizConfigurada',
+      ]) {
         expect(result.data).not.toHaveProperty(campo);
       }
     }
@@ -426,6 +473,7 @@ describe('CreateClienteSchema', () => {
   it('CreateClienteDto no expone estado (lo verifica el typecheck)', () => {
     expectTypeOf<CreateClienteDto>().not.toHaveProperty('estado');
     expectTypeOf<CreateClienteDto>().not.toHaveProperty('id');
+    expectTypeOf<CreateClienteDto>().not.toHaveProperty('matrizConfigurada');
   });
 
   it.each(['emailContacto', 'ivaCondicion', 'sector'] as const)('sigue exigiendo %s', (campo) => {
@@ -603,9 +651,19 @@ describe('UpdateClienteSchema', () => {
         id: BASE.id,
         creadoEn: '2020-01-01',
         actualizadoEn: '2020-01-01',
+        matrizConfigurada: true,
       });
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual({ razonSocial: 'Otra S.A.' });
+    });
+
+    it('un pedido que solo trae matrizConfigurada no modifica nada', () => {
+      const result = UpdateClienteSchema.safeParse({ matrizConfigurada: true });
+      expect(result.success).toBe(false);
+    });
+
+    it('UpdateClienteDto no permite modificar matrizConfigurada (typecheck)', () => {
+      expectTypeOf<UpdateClienteDto>().not.toHaveProperty('matrizConfigurada');
     });
   });
 
