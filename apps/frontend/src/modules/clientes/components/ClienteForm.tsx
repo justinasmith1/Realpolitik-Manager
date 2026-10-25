@@ -4,8 +4,9 @@ import {
   ClienteSubtipoPublico,
   IvaCondicion,
   PeriodicidadTipo,
+  type Cliente,
 } from '@realpolitik/shared';
-import { useId, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { Controller, useForm, useWatch, type Control, type FieldError } from 'react-hook-form';
 
 import { Alert } from '@/components/ui/alert';
@@ -34,6 +35,7 @@ import {
   type CampoClienteForm,
   type ClienteFormValues,
 } from '@/modules/clientes/components/clienteForm.validation';
+import { IndicacionesArmadoSection } from '@/modules/clientes/components/IndicacionesArmadoSection';
 
 /** Errores que informó el servidor al enviar: por campo y/o uno general. */
 export interface ErroresDeEnvio {
@@ -48,6 +50,11 @@ export interface EnvioDelFormulario {
    * que cambió (ver `construirCambiosCliente`); el alta no los necesita.
    */
   modificados: CamposModificados;
+  /** Estado de las indicaciones de armado del cliente (HU2.4). */
+  indicaciones?: {
+    texto: string | null;
+    modificado: boolean;
+  };
 }
 
 interface ClienteFormProps {
@@ -74,6 +81,10 @@ interface ClienteFormProps {
    * `valoresIniciales`, el botón de enviar queda deshabilitado y se avisa por qué.
    */
   soloConCambios?: boolean;
+  /** Datos del cliente si se está editando (permite cargar sus indicaciones y conocer su estado). */
+  cliente?: Pick<Cliente, 'id' | 'estado' | 'razonSocial'> | null | undefined;
+  indicacionesArmadoInicial?: string | null | undefined;
+  onIndicacionesCambio?: ((valor: string) => void) | undefined;
 }
 
 // Opciones de cada select, derivadas de los enums compartidos y sus etiquetas.
@@ -211,9 +222,26 @@ export function ClienteForm({
   exito = false,
   valoresIniciales = valoresInicialesClienteForm,
   soloConCambios = false,
+  cliente,
+  indicacionesArmadoInicial,
+  onIndicacionesCambio,
 }: ClienteFormProps) {
   const id = useId();
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
+  const [indicacionesTexto, setIndicacionesTexto] = useState<string | null>(
+    indicacionesArmadoInicial ?? null,
+  );
+  const [indicacionesCambiadas, setIndicacionesCambiadas] = useState(false);
+
+  const manejarCambioIndicaciones = useCallback(
+    (texto: string, modificado: boolean) => {
+      setIndicacionesTexto(texto);
+      setIndicacionesCambiadas(modificado);
+      onIndicacionesCambio?.(texto);
+    },
+    [onIndicacionesCambio],
+  );
+
   const {
     control,
     register,
@@ -236,7 +264,7 @@ export function ClienteForm({
   // `dirtyFields` se lee en el render para que RHF lo siga (`formState` es un proxy): así el
   // botón se habilita apenas hay un cambio y `formState.dirtyFields` está al día al enviar.
   const { errors, isSubmitting, submitCount, isDirty } = formState;
-  const sinCambios = soloConCambios && !isDirty;
+  const sinCambios = soloConCambios && !isDirty && !indicacionesCambiadas;
   const sector = useWatch({ control, name: 'sector' });
   const canalEntrega = useWatch({ control, name: 'canalEntrega' });
   const periodicidadTipo = useWatch({ control, name: 'periodicidadTipo' });
@@ -280,6 +308,10 @@ export function ClienteForm({
       setErrorGeneral(null);
       const errores = await onSubmit(datos, {
         modificados: camposModificados(formState.dirtyFields),
+        indicaciones: {
+          texto: indicacionesTexto,
+          modificado: indicacionesCambiadas,
+        },
       });
       if (errores === undefined) {
         return;
@@ -537,6 +569,12 @@ export function ClienteForm({
             </div>
           )}
         </FormSection>
+
+        <IndicacionesArmadoSection
+          cliente={cliente}
+          valorInicial={indicacionesArmadoInicial}
+          onCambio={manejarCambioIndicaciones}
+        />
       </div>
 
       <div className="flex items-center justify-end gap-2 border-t bg-panel-alt px-5 py-4">

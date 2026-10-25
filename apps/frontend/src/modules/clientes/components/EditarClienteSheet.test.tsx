@@ -8,6 +8,10 @@ import { elegirOpcion, etiquetaDeOpcion } from '@/test/select';
 
 // La pausa de éxito (500 ms) no es el tema de estos tests: se prueba en `*.exito.test.tsx`.
 vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
+vi.mock('@/modules/clientes/hooks/useIndicacionesArmado', () => ({
+  useIndicacionesArmado: () => ({ data: { indicacionesArmado: null }, isPending: false }),
+  useGuardarIndicacionesArmado: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
 
 // La API se simula en `fetch`: el test recorre formulario → mutation → clientes.api → http().
 const fetchMock = vi.fn<typeof fetch>();
@@ -666,5 +670,39 @@ describe('EditarClienteSheet: el PATCH lleva solo lo modificado', () => {
     await vi.waitFor(() => expect(onActualizado).toHaveBeenCalledTimes(1));
     const segundo = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string) as unknown;
     expect(segundo).toEqual({ denominacion: 'Muni Nueva' });
+  });
+
+  it('permite guardar cambios modificando únicamente las indicaciones de armado (HU2.4)', async () => {
+    fetchMock.mockImplementation((entrada) => {
+      const url =
+        typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+      if (url.endsWith('/indicaciones-armado')) {
+        return Promise.resolve(jsonResponse({ indicacionesArmado: 'Factura y remito.' }, 200));
+      }
+      return Promise.resolve(jsonResponse(clienteJson, 200));
+    });
+
+    const { user, onActualizado } = renderEdicion();
+
+    expect(botonGuardar()).toBeDisabled();
+    expect(screen.getByText('Sin cambios para guardar.')).toBeInTheDocument();
+
+    const textarea = screen.getByPlaceholderText(
+      /Escribí aquí cómo exige el cliente armar el legajo/i,
+    );
+    await user.type(textarea, 'Factura y remito.');
+
+    expect(botonGuardar()).toBeEnabled();
+    expect(screen.queryByText('Sin cambios para guardar.')).not.toBeInTheDocument();
+
+    await user.click(botonGuardar());
+    await vi.waitFor(() => expect(onActualizado).toHaveBeenCalledTimes(1));
+
+    const llamadas = fetchMock.mock.calls.map(([req]) =>
+      typeof req === 'string' ? req : req instanceof URL ? req.href : req.url,
+    );
+    expect(
+      llamadas.some((url) => url.endsWith(`/clientes/${cliente.id}/indicaciones-armado`)),
+    ).toBe(true);
   });
 });

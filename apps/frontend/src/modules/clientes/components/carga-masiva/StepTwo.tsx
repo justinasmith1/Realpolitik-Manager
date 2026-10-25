@@ -1,7 +1,7 @@
 import type { ClienteSectorType, ClienteSubtipoPublicoType } from '@realpolitik/shared';
 import { SearchIcon } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
-import { useFormContext } from 'react-hook-form';
+import { useFormContext, useWatch } from 'react-hook-form';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -39,9 +39,9 @@ export function StepTwo() {
   const { data: clientes, isLoading, isError, refetch } = useClientes({ estado: 'ACTIVO' });
   const { data: tipos } = useTiposDocumento({ incluirInactivos: false });
 
-  const { watch, setValue } = useFormContext<CargaMasivaFormValues>();
-  const tipoDocumentoId = watch('tipoDocumentoId');
-  const rawClientes = watch('clientes');
+  const { setValue, control } = useFormContext<CargaMasivaFormValues>();
+  const tipoDocumentoId = useWatch({ control, name: 'tipoDocumentoId' });
+  const rawClientes = useWatch({ control, name: 'clientes' });
   const clientesForm = useMemo(() => rawClientes ?? {}, [rawClientes]);
 
   const tipoSeleccionado = useMemo(() => {

@@ -11,6 +11,10 @@ import { avanzar, congelarTiempo, esperar } from '@/test/tiempo-congelado';
 // Feedback de la edición: Guardar cambios → Guardando… → Guardado (500 ms) → recién ahí sigue.
 // La pausa se controla con temporizadores falsos, activados recién después de modificar el
 // formulario (ver `@/test/tiempo-congelado`).
+vi.mock('@/modules/clientes/hooks/useIndicacionesArmado', () => ({
+  useIndicacionesArmado: () => ({ data: { indicacionesArmado: null }, isPending: false }),
+  useGuardarIndicacionesArmado: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
 
 const fetchMock = vi.fn<typeof fetch>();
 

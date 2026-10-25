@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useFormContext } from 'react-hook-form';
+import { useFormContext, useWatch } from 'react-hook-form';
 
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
 import { useRequisitosMultiplesClientes } from '@/modules/clientes/hooks/useRequisitosMultiplesClientes';
@@ -8,9 +8,9 @@ import { useTiposDocumento } from '@/modules/tipos-documento/hooks/useTiposDocum
 import type { CargaMasivaFormValues } from './cargaMasiva.types';
 
 export function StepThree() {
-  const { watch } = useFormContext<CargaMasivaFormValues>();
-  const tipoDocumentoId = watch('tipoDocumentoId');
-  const rawClientes = watch('clientes');
+  const { control } = useFormContext<CargaMasivaFormValues>();
+  const tipoDocumentoId = useWatch({ control, name: 'tipoDocumentoId' });
+  const rawClientes = useWatch({ control, name: 'clientes' });
   const clientesForm = useMemo(() => rawClientes ?? {}, [rawClientes]);
 
   const { data: tipos } = useTiposDocumento({ incluirInactivos: false });
