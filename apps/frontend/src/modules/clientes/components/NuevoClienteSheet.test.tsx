@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 
 import { NuevoClienteSheet } from '@/modules/clientes/components/NuevoClienteSheet';
@@ -129,7 +129,7 @@ describe('NuevoClienteSheet', () => {
     // Portal web y WhatsApp aparecen según el canal elegido (por defecto es Correo).
     expect(screen.queryByLabelText('URL del portal')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Número de WhatsApp')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('textbox')).toHaveLength(4);
+    expect(screen.getAllByRole('textbox')).toHaveLength(5);
     expect(screen.getAllByRole('combobox')).toHaveLength(4);
     expect(screen.queryByLabelText(/teléfono|estado/i)).not.toBeInTheDocument();
   });
@@ -605,5 +605,36 @@ describe('NuevoClienteSheet: periodicidad', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Algunos datos no son válidos.');
     expect(diaLimite()).toHaveAttribute('aria-invalid', 'true');
     expect(diaLimite()).toHaveAccessibleDescription(expect.stringContaining('Revisá este dato.'));
+  });
+
+  it('guarda las indicaciones de armado junto al registrar el nuevo cliente (HU2.4)', async () => {
+    fetchMock.mockImplementation((entrada) => {
+      const url =
+        typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+      if (url.endsWith('/indicaciones-armado')) {
+        return Promise.resolve(jsonResponse({ indicacionesArmado: 'Factura primero.' }, 200));
+      }
+      return Promise.resolve(jsonResponse(clienteCreado, 201));
+    });
+
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    const textarea = screen.getByPlaceholderText(
+      /Escribí aquí cómo exige el cliente armar el legajo/i,
+    );
+    await user.type(textarea, 'Factura primero.');
+    await user.click(botonRegistrar());
+
+    await waitFor(() => {
+      expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }));
+    });
+
+    const llamadas = fetchMock.mock.calls.map(([req]) =>
+      typeof req === 'string' ? req : req instanceof URL ? req.href : req.url,
+    );
+    expect(
+      llamadas.some((url) => url.endsWith(`/clientes/${clienteCreado.id}/indicaciones-armado`)),
+    ).toBe(true);
   });
 });

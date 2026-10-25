@@ -1,4 +1,5 @@
 import type { Cliente } from '@realpolitik/shared';
+import { useState } from 'react';
 
 import {
   Sheet,
@@ -9,6 +10,7 @@ import {
 } from '@/components/ui/sheet';
 import { useExitoBreve } from '@/hooks/use-exito-breve';
 import { interpretarFalloAlta, type NuevoCliente } from '@/modules/clientes/api/clientes.api';
+import { guardarIndicacionesArmado } from '@/modules/clientes/api/indicaciones-armado.api';
 import { ClienteForm, type ErroresDeEnvio } from '@/modules/clientes/components/ClienteForm';
 import { erroresParaElFormulario } from '@/modules/clientes/components/erroresDeEnvio';
 import { useCrearCliente } from '@/modules/clientes/hooks/useCrearCliente';
@@ -29,6 +31,7 @@ interface NuevoClienteSheetProps {
 export function NuevoClienteSheet({ abierto, onAbiertoChange, onCreado }: NuevoClienteSheetProps) {
   const alta = useCrearCliente();
   const exito = useExitoBreve();
+  const [indicaciones, setIndicaciones] = useState<string>('');
 
   async function registrar(datos: NuevoCliente): Promise<ErroresDeEnvio | undefined> {
     let creado: Cliente;
@@ -38,6 +41,15 @@ export function NuevoClienteSheet({ abierto, onAbiertoChange, onCreado }: NuevoC
     } catch (error) {
       return erroresParaElFormulario(interpretarFalloAlta(error), MENSAJE_INESPERADO);
     }
+
+    if (indicaciones.trim() !== '') {
+      try {
+        await guardarIndicacionesArmado(creado.id, { indicacionesArmado: indicaciones });
+      } catch {
+        // Si fallan las indicaciones, no bloquea el alta que ya fue exitosa.
+      }
+    }
+
     await exito.mostrar();
     onCreado(creado);
     return undefined;
@@ -55,7 +67,10 @@ export function NuevoClienteSheet({ abierto, onAbiertoChange, onCreado }: NuevoC
       }}
       // Recién cuando terminó de cerrarse: así el botón no vuelve a "Registrar cliente" mientras sale.
       onOpenChangeComplete={(abiertoAhora) => {
-        if (!abiertoAhora) exito.reiniciar();
+        if (!abiertoAhora) {
+          exito.reiniciar();
+          setIndicaciones('');
+        }
       }}
     >
       <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
@@ -69,6 +84,7 @@ export function NuevoClienteSheet({ abierto, onAbiertoChange, onCreado }: NuevoC
         <ClienteForm
           onSubmit={registrar}
           onCancel={() => onAbiertoChange(false)}
+          onIndicacionesCambio={setIndicaciones}
           textoEnviar="Registrar cliente"
           textoEnviando="Registrando…"
           textoEnviado="Registrado"

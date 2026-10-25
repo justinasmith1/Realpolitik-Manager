@@ -125,8 +125,12 @@ function listadoSegunQuery(url: string, clientes: ClienteJson[]) {
 /** Servidor simulado: GET filtra el catálogo, POST crea. */
 function simularServidor(clientes: ClienteJson[] = catalogo) {
   fetchMock.mockImplementation((entrada, init) => {
+    const url = urlDe(entrada);
+    if (url.includes('/indicaciones-armado')) {
+      return Promise.resolve(json({ indicacionesArmado: null }));
+    }
     if (init?.method === 'POST') return Promise.resolve(respuesta201());
-    return Promise.resolve(json(listadoSegunQuery(urlDe(entrada), clientes)));
+    return Promise.resolve(json(listadoSegunQuery(url, clientes)));
   });
 }
 
@@ -680,8 +684,11 @@ describe('ClientesPage: edición de cliente', () => {
     expect(panel.getByLabelText('Razón social')).toHaveValue('Zeta Producciones S.A.');
     expect(panel.getByLabelText('CUIT')).toHaveValue('20-12345678-6');
     expect(panel.getByLabelText('Sector')).toHaveTextContent(etiquetaDeOpcion('PRIVADO'));
-    // La ficha no se pide aparte: los datos salen del listado.
-    expect(urlsPedidas()).toEqual(['https://api.example/clientes']);
+    // La ficha no se pide aparte (los datos salen del listado) y las indicaciones de armado se consultan al abrir.
+    expect(urlsPedidas()).toEqual([
+      'https://api.example/clientes',
+      `https://api.example/clientes/${clientePrivado.id}/indicaciones-armado`,
+    ]);
   });
 
   it('al guardar hace el PATCH, cierra el panel, confirma y el listado muestra el cambio', async () => {

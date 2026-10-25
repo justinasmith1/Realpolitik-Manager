@@ -11,6 +11,7 @@ import { enfocarYMostrar } from '@/lib/focus';
 import { ApiClientError } from '@/lib/http';
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
 import { interpretarFalloRequisito } from '@/modules/clientes/api/requisitos.api';
+import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import { mensajeFalloBaja } from '@/modules/clientes/components/erroresDeRequisito';
 import { MatrizEncabezado } from '@/modules/clientes/components/MatrizEncabezado';
 import {
@@ -20,6 +21,7 @@ import {
   MatrizError,
   MatrizVacia,
 } from '@/modules/clientes/components/MatrizEstados';
+import { MatrizIndicacionesArmado } from '@/modules/clientes/components/MatrizIndicacionesArmado';
 import { MatrizListado } from '@/modules/clientes/components/MatrizListado';
 import {
   QuitarRequisitoDialog,
@@ -51,6 +53,7 @@ export function MatrizPage() {
   const aviso = useAvisoDePagina({ avisoRef, destinoDelFoco: tituloRef });
   const [modo, setModo] = useState<ModoRequisito | null>(null);
   const [requisitoAQuitar, setRequisitoAQuitar] = useState<RequisitoCliente | null>(null);
+  const [editandoCliente, setEditandoCliente] = useState(false);
   const eliminar = useEliminarRequisito();
   const idValido = esIdDeRuta(id);
   const clienteQuery = useCliente(id, { enabled: idValido });
@@ -238,7 +241,21 @@ export function MatrizPage() {
       )}
       {contenido}
       {cliente !== undefined && (
+        <MatrizIndicacionesArmado
+          cliente={cliente}
+          onEditarCliente={() => setEditandoCliente(true)}
+        />
+      )}
+      {cliente !== undefined && (
         <>
+          <EditarClienteSheet
+            cliente={editandoCliente ? cliente : null}
+            onClose={() => setEditandoCliente(false)}
+            onActualizado={() => {
+              setEditandoCliente(false);
+              void clienteQuery.refetch();
+            }}
+          />
           <RequisitoSheet
             modo={modo}
             cliente={cliente}

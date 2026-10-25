@@ -71,9 +71,11 @@ const json = (cuerpo: unknown, status = 200) =>
 const urlDe = (entrada: Parameters<typeof fetch>[0]) =>
   typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
 
-function servir(cliente: unknown, lista: unknown) {
+function servir(cliente: unknown, lista: unknown, indicaciones: string | null = null) {
   fetchMock.mockImplementation((entrada) => {
     const path = new URL(urlDe(entrada)).pathname;
+    if (path.endsWith('/indicaciones-armado'))
+      return Promise.resolve(json({ indicacionesArmado: indicaciones }));
     if (path.endsWith('/requisitos')) return Promise.resolve(json(lista));
     if (path === '/clientes') return Promise.resolve(json([cliente]));
     return Promise.resolve(json(cliente));
@@ -403,5 +405,35 @@ describe('MatrizPage: requisitos', () => {
     expect(screen.getAllByText('Zeta')).toHaveLength(1);
     expect(screen.queryByText('Periodicidad')).not.toBeInTheDocument();
     expect(screen.queryByText('Municipio')).not.toBeInTheDocument();
+  });
+});
+
+describe('MatrizPage: indicaciones de armado (HU2.4)', () => {
+  it('muestra el cuadro de indicaciones de armado al final y abre la edición al pulsar el botón', async () => {
+    servir(clientePublico, requisitos, 'Todo en un único PDF.\nFactura primero.');
+    const { user } = renderEn(`/clientes/${ID}/matriz`);
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Muni Ejemplo' }),
+    ).toBeInTheDocument();
+
+    // El recuadro de indicaciones de armado debe estar presente
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Indicaciones de armado' }),
+    ).toBeInTheDocument();
+
+    // Texto de las indicaciones
+    const textoIndicaciones = await screen.findByTestId('texto-indicaciones-armado');
+    expect(textoIndicaciones).toHaveTextContent(/Todo en un único PDF/);
+
+    // Botón para editar en la ficha del cliente
+    const botonEditar = screen.getByRole('button', { name: 'Editar en la ficha del cliente' });
+    expect(botonEditar).toBeInTheDocument();
+
+    // Al hacer clic abre el panel lateral de edición
+    await user.click(botonEditar);
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Editar cliente' }),
+    ).toBeInTheDocument();
   });
 });

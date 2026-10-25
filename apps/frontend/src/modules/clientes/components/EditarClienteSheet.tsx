@@ -1,4 +1,5 @@
 import type { Cliente } from '@realpolitik/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 
 import {
@@ -10,6 +11,10 @@ import {
 } from '@/components/ui/sheet';
 import { useExitoBreve } from '@/hooks/use-exito-breve';
 import { interpretarFalloAlta, type NuevoCliente } from '@/modules/clientes/api/clientes.api';
+import {
+  guardarIndicacionesArmado,
+  indicacionesArmadoQueryKey,
+} from '@/modules/clientes/api/indicaciones-armado.api';
 import {
   construirCambiosCliente,
   hayCambios,
@@ -34,11 +39,12 @@ interface EditarClienteSheetProps {
 }
 
 /**
- * Panel lateral de la edición de cliente (HU1.7). Si el envío falla, queda abierto con los datos.
+ * Panel lateral de la edición de cliente (HU1.7, HU2.4). Si el envío falla, queda abierto con los datos.
  * Si sale bien, el botón confirma "Guardado" un instante y recién entonces avisa `onActualizado`.
  */
 export function EditarClienteSheet({ cliente, onClose, onActualizado }: EditarClienteSheetProps) {
   const edicion = useActualizarCliente();
+  const queryClient = useQueryClient();
   const exito = useExitoBreve();
   // Mientras el panel sale, sigue mostrando al último cliente (y su "Guardado"): quien lo usa
   // pasa `cliente` a null al cerrar, y sin esto el formulario desaparecería durante la salida.
@@ -54,7 +60,7 @@ export function EditarClienteSheet({ cliente, onClose, onActualizado }: EditarCl
 
   async function guardar(
     datos: NuevoCliente,
-    { modificados }: EnvioDelFormulario,
+    { modificados, indicaciones }: EnvioDelFormulario,
   ): Promise<ErroresDeEnvio | undefined> {
     if (cliente === null) {
       return undefined;
@@ -66,18 +72,40 @@ export function EditarClienteSheet({ cliente, onClose, onActualizado }: EditarCl
       modificados,
       valoresIniciales ?? clienteAValoresForm(cliente),
     );
-    if (!hayCambios(cambios)) {
+    const hayCambiosCliente = hayCambios(cambios);
+    const hayCambiosIndicaciones = Boolean(indicaciones?.modificado);
+
+    if (!hayCambiosCliente && !hayCambiosIndicaciones) {
       // El botón ya se deshabilita sin cambios; si igual llega acá, no hay nada que pedir.
       onClose();
       return undefined;
     }
-    let actualizado: Cliente;
-    try {
-      // Resuelve con el cambio hecho y el listado ya vuelto a pedir.
-      actualizado = await edicion.mutateAsync({ id: cliente.id, datos: cambios });
-    } catch (error) {
-      return erroresParaElFormulario(interpretarFalloAlta(error), MENSAJE_INESPERADO);
+
+    let actualizado: Cliente = cliente;
+    if (hayCambiosCliente) {
+      try {
+        // Resuelve con el cambio hecho y el listado ya vuelto a pedir.
+        actualizado = await edicion.mutateAsync({ id: cliente.id, datos: cambios });
+      } catch (error) {
+        return erroresParaElFormulario(interpretarFalloAlta(error), MENSAJE_INESPERADO);
+      }
     }
+
+    if (hayCambiosIndicaciones && indicaciones) {
+      try {
+        await guardarIndicacionesArmado(cliente.id, {
+          indicacionesArmado: indicaciones.texto === '' ? null : indicaciones.texto,
+        });
+        void queryClient.invalidateQueries({
+          queryKey: indicacionesArmadoQueryKey(cliente.id),
+        });
+      } catch {
+        if (!hayCambiosCliente) {
+          return { general: MENSAJE_INESPERADO };
+        }
+      }
+    }
+
     await exito.mostrar();
     onActualizado(actualizado);
     return undefined;
@@ -113,6 +141,7 @@ export function EditarClienteSheet({ cliente, onClose, onActualizado }: EditarCl
         {mostrado !== null && valoresIniciales !== null && (
           <ClienteForm
             key={mostrado.id}
+            cliente={mostrado}
             valoresIniciales={valoresIniciales}
             onSubmit={guardar}
             onCancel={onClose}
