@@ -3,6 +3,7 @@ import {
   CreateClienteSchema,
   CreateContactoSchema,
   CreateRequisitoClienteSchema,
+  IndicacionesArmadoSchema,
   ListarClientesQuerySchema,
   ReemplazarContactosSchema,
   UpdateClienteSchema,
@@ -28,6 +29,10 @@ import {
   listarContactosController,
   reemplazarContactosController,
 } from './contactos.controller';
+import {
+  guardarIndicacionesArmadoController,
+  obtenerIndicacionesArmadoController,
+} from './indicaciones-armado.controller';
 import {
   actualizarRequisitoController,
   crearRequisitoController,
@@ -115,4 +120,16 @@ clientesRouter.delete(
   '/:id/requisitos/:requisitoId',
   validate({ params: RequisitoParamsSchema }),
   eliminarRequisitoController,
+);
+
+// Indicaciones de armado (HU2.4).
+clientesRouter.get(
+  '/:id/indicaciones-armado',
+  validate({ params: ClienteIdParamsSchema }),
+  obtenerIndicacionesArmadoController,
+);
+clientesRouter.put(
+  '/:id/indicaciones-armado',
+  validate({ params: ClienteIdParamsSchema, body: IndicacionesArmadoSchema }),
+  guardarIndicacionesArmadoController,
 );
