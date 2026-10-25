@@ -1,6 +1,6 @@
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon } from 'lucide-react';
 import { useState } from 'react';
-import { FormProvider, useForm } from 'react-hook-form';
+import { FormProvider, useForm, useWatch } from 'react-hook-form';
 
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -45,9 +45,9 @@ export function CargaMasivaWizard({ open, onOpenChange, onSuccess }: CargaMasiva
     mode: 'onChange',
   });
 
-  const { watch, reset, setError, clearErrors } = methods;
-  const tipoDocumentoId = watch('tipoDocumentoId');
-  const clientesForm = watch('clientes') ?? {};
+  const { reset, setError, clearErrors, control } = methods;
+  const tipoDocumentoId = useWatch({ control, name: 'tipoDocumentoId' });
+  const clientesForm = useWatch({ control, name: 'clientes' }) ?? {};
 
   const mutacion = useCargarRequisitosMasivo();
 

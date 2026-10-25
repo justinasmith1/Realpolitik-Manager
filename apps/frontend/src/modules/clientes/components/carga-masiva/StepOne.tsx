@@ -1,4 +1,4 @@
-import { useFormContext } from 'react-hook-form';
+import { useFormContext, useWatch } from 'react-hook-form';
 import { Link } from 'react-router';
 
 import { FormField } from '@/components/ui/form-field';
@@ -10,11 +10,11 @@ import type { CargaMasivaFormValues } from './cargaMasiva.types';
 
 export function StepOne() {
   const {
-    watch,
     setValue,
+    control,
     formState: { errors },
   } = useFormContext<CargaMasivaFormValues>();
-  const tipoDocumentoId = watch('tipoDocumentoId');
+  const tipoDocumentoId = useWatch({ control, name: 'tipoDocumentoId' });
 
   const {
     data: tipos,
