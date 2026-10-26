@@ -53,9 +53,11 @@ import { stateDeListado } from '@/modules/clientes/matriz.navegacion';
  * Cada aviso tiene su `id`: el cierre de uno (su temporizador, su animación de salida) nunca
  * alcanza a otro que lo reemplazó. `cerrando` = está en la animación de salida.
  */
+type VarianteDeAviso = 'success' | 'destructive' | 'warning';
+
 type AvisoPagina = {
   id: number;
-  variante: 'success' | 'destructive';
+  variante: VarianteDeAviso;
   texto: string;
   cerrando: boolean;
 } | null;
@@ -75,7 +77,7 @@ export function ClientesPage() {
   const avisoRef = useRef<HTMLDivElement>(null);
   const ultimoIdDeAviso = useRef(0);
 
-  const avisar = (variante: 'success' | 'destructive', texto: string) => {
+  const avisar = (variante: VarianteDeAviso, texto: string) => {
     ultimoIdDeAviso.current += 1;
     setAviso({ id: ultimoIdDeAviso.current, variante, texto, cerrando: false });
   };
@@ -166,8 +168,17 @@ export function ClientesPage() {
     return fallo === null ? { tipo: 'hecho' } : { tipo: 'no-existe' };
   };
 
-  const alCrear = (cliente: Cliente) => {
-    avisarExito(`Se registró el cliente ${cliente.razonSocial} (CUIT ${cliente.cuit}).`);
+  const alCrear = (cliente: Cliente, falloIndicaciones?: string) => {
+    const registrado = `Se registró el cliente ${cliente.razonSocial} (CUIT ${cliente.cuit})`;
+    if (falloIndicaciones === undefined) {
+      avisarExito(`${registrado}.`);
+    } else {
+      // El cliente existe: no es un error del alta, pero las indicaciones hay que volver a cargarlas.
+      avisar(
+        'warning',
+        `${registrado}, pero no pudimos guardar sus indicaciones de armado. ${falloIndicaciones} Podés cargarlas desde "Editar".`,
+      );
+    }
     setAltaAbierta(false);
   };
 
