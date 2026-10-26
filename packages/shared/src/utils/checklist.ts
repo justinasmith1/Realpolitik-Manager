@@ -78,12 +78,27 @@ export interface ItemChecklistNuevo {
   canalEntrega: CanalEntrega;
 }
 
-const ordenarPorNombreEIdDeRequisito = (a: RequisitoDeMatriz, b: RequisitoDeMatriz): number => {
+/** Lo que define la posición de un ítem en el checklist. */
+export interface PosicionEnChecklist {
+  nombreTipoDocumento: string;
+  requisitoClienteId: string;
+  ordinal: number;
+}
+
+/**
+ * Orden del checklist, el único: por nombre del tipo (comparación en español), por id del
+ * requisito si dos tienen el mismo nombre, y por `ordinal`. Lo usa `generarChecklist` y quien
+ * muestre ítems ya guardados (p. ej. el detalle de una rendición), para que el checklist se vea
+ * en el mismo orden al abrirlo y al consultarlo, sin depender del orden de la base.
+ */
+export function compararItemsDeChecklist(a: PosicionEnChecklist, b: PosicionEnChecklist): number {
   const porNombre = a.nombreTipoDocumento.localeCompare(b.nombreTipoDocumento, 'es');
   if (porNombre !== 0) return porNombre;
-  if (a.id === b.id) return 0;
-  return a.id < b.id ? -1 : 1;
-};
+  if (a.requisitoClienteId !== b.requisitoClienteId) {
+    return a.requisitoClienteId < b.requisitoClienteId ? -1 : 1;
+  }
+  return a.ordinal - b.ordinal;
+}
 
 /** Lanza el error que corresponda si el requisito no se puede convertir en ítems. */
 function validarRequisito(requisito: RequisitoDeMatriz): void {
@@ -113,8 +128,8 @@ function validarRequisito(requisito: RequisitoDeMatriz): void {
  *   toman tal como están guardados: ordenarlos es una regla de escritura.
  * - El canal es el efectivo: `requisito.canalEntrega ?? cliente.canalEntrega`.
  * - Copia el nombre del tipo (foto). No copia la nota, la descripción ni datos del cliente.
- * - Orden de salida: por nombre del tipo (comparación en español) y por `ordinal`; si dos
- *   requisitos tienen el mismo nombre, por id del requisito.
+ * - Orden de salida: el de `compararItemsDeChecklist` (nombre del tipo en español, id del
+ *   requisito si se repite el nombre, y `ordinal`).
  *
  * Valida los requisitos activos antes de generar nada: si uno es inválido (`CANTIDAD_INVALIDA`,
  * `DIAS_INCOHERENTES`) falla todo. Son errores defensivos, porque la base y los schemas ya lo
@@ -125,7 +140,6 @@ export function generarChecklist(
   matriz: readonly RequisitoDeMatriz[],
   cliente: { canalEntrega: CanalEntrega },
 ): ItemChecklistNuevo[] {
-  // `filter` crea un arreglo nuevo: ordenarlo no toca el que llegó.
   const activos = matriz.filter((requisito) => !requisito.isDeleted);
   if (activos.length === 0) {
     throw new ChecklistError(
@@ -135,17 +149,20 @@ export function generarChecklist(
   }
   activos.forEach(validarRequisito);
 
-  return [...activos].sort(ordenarPorNombreEIdDeRequisito).flatMap((requisito) =>
-    Array.from({ length: requisito.cantidad }, (_, indice): ItemChecklistNuevo => ({
-      requisitoClienteId: requisito.id,
-      tipoDocumentoId: requisito.tipoDocumentoId,
-      nombreTipoDocumento: requisito.nombreTipoDocumento,
-      ordinal: indice + 1,
-      totalOrdinal: requisito.cantidad,
-      diaAproximado: requisito.diasAproximados[indice] ?? null,
-      canalEntrega: requisito.canalEntrega ?? cliente.canalEntrega,
-    })),
-  );
+  // `flatMap` crea un arreglo nuevo: ordenarlo no toca lo que llegó.
+  return activos
+    .flatMap((requisito) =>
+      Array.from({ length: requisito.cantidad }, (_, indice): ItemChecklistNuevo => ({
+        requisitoClienteId: requisito.id,
+        tipoDocumentoId: requisito.tipoDocumentoId,
+        nombreTipoDocumento: requisito.nombreTipoDocumento,
+        ordinal: indice + 1,
+        totalOrdinal: requisito.cantidad,
+        diaAproximado: requisito.diasAproximados[indice] ?? null,
+        canalEntrega: requisito.canalEntrega ?? cliente.canalEntrega,
+      })),
+    )
+    .sort(compararItemsDeChecklist);
 }
 
 /** Avance de un checklist. */
