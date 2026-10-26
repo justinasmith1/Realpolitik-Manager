@@ -564,6 +564,30 @@ describe('ClientesPage: alta de cliente', () => {
     expect(invalidar).toHaveBeenCalledWith({ queryKey: ['clientes'] });
   });
 
+  it('si el cliente se crea pero sus indicaciones no se guardan, lo avisa en la página (HU2.4)', async () => {
+    fetchMock.mockImplementation((entrada, init) => {
+      const url = urlDe(entrada);
+      if (url.includes('/indicaciones-armado')) {
+        return Promise.resolve(json({ error: { code: 'INTERNAL_ERROR', message: 'Error' } }, 500));
+      }
+      if (init?.method === 'POST') return Promise.resolve(respuesta201());
+      return Promise.resolve(json(listadoSegunQuery(url, [])));
+    });
+    const { user } = renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Nuevo cliente' }));
+    await completarAltaValida(user);
+    const panel = within(panelDeAlta() as HTMLElement);
+    await user.click(panel.getByLabelText('Instrucciones para el legajo'));
+    await user.paste('Factura primero.');
+    await user.click(screen.getByRole('button', { name: 'Registrar cliente' }));
+
+    await vi.waitFor(() => expect(panelDeAlta()).not.toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Se registró el cliente Empresa de Ejemplo S.A. (CUIT 20-12345678-6), pero no pudimos guardar sus indicaciones de armado. Probá de nuevo en unos segundos. Podés cargarlas desde "Editar".',
+    );
+  });
+
   it('después del alta el listado se vuelve a pedir y muestra al cliente nuevo', async () => {
     const creado = {
       ...clientePrivado,
@@ -978,7 +1002,7 @@ describe('ClientesPage: desactivar y reactivar', () => {
       expect(menu.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
         'Editar',
         'Contactos',
-        'Matriz de requisitos',
+        'Ver requisitos',
         'Desactivar',
       ]);
       expect(menu.getByRole('menuitem', { name: 'Desactivar' })).toHaveAttribute(
@@ -1005,7 +1029,7 @@ describe('ClientesPage: desactivar y reactivar', () => {
       expect(menu.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
         'Editar',
         'Contactos',
-        'Matriz de requisitos',
+        'Ver requisitos',
         'Reactivar',
       ]);
       expect(menu.getByRole('menuitem', { name: 'Reactivar' })).toHaveAttribute(

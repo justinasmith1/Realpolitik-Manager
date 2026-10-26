@@ -22,10 +22,6 @@ interface MatrizListadoProps {
   acciones?: AccionesDeMatriz | undefined;
 }
 
-function textoDeCantidad(cantidad: number): string {
-  return `Cantidad: ${cantidad}`;
-}
-
 /** Los días se muestran como llegaron: no son fechas y no se vuelven a ordenar. */
 function textoDeDias(dias: readonly number[]): string {
   if (dias.length === 0) {
@@ -100,7 +96,8 @@ function DatosDeRequisito({
         activo={requisito.tipoDocumento.activo}
       />
     ),
-    cantidad: textoDeCantidad(requisito.cantidad),
+    // Solo el número: la etiqueta ya la ponen el `<dt>` de la tarjeta y el encabezado de la tabla.
+    cantidad: String(requisito.cantidad),
     dias: textoDeDias(requisito.diasAproximados),
     canal: (
       <CanalDeRequisito canal={requisito.canalEntrega ?? canalDelCliente} heredado={heredado} />

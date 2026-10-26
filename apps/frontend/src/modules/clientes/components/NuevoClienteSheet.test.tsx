@@ -638,3 +638,137 @@ describe('NuevoClienteSheet: periodicidad', () => {
     ).toBe(true);
   });
 });
+
+describe('NuevoClienteSheet: indicaciones de armado (HU2.4)', () => {
+  const urlDe = (entrada: Parameters<typeof fetch>[0]) =>
+    typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+  const pedidosDeIndicaciones = () =>
+    fetchMock.mock.calls.filter(([entrada]) => urlDe(entrada).endsWith('/indicaciones-armado'));
+  const indicaciones = () => screen.getByLabelText('Instrucciones para el legajo');
+
+  /** El alta responde 201; el PUT de indicaciones, lo que se indique. */
+  function servirAlta(respuestaIndicaciones: () => Response) {
+    fetchMock.mockImplementation((entrada) =>
+      Promise.resolve(
+        urlDe(entrada).endsWith('/indicaciones-armado')
+          ? respuestaIndicaciones()
+          : jsonResponse(clienteCreado, 201),
+      ),
+    );
+  }
+
+  async function escribirIndicaciones(user: UserEvent, texto: string) {
+    await user.click(indicaciones());
+    await user.paste(texto);
+  }
+
+  it('sin indicaciones no envía el PUT', async () => {
+    servirAlta(() => jsonResponse({ indicacionesArmado: null }, 200));
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }));
+    expect(pedidosDeIndicaciones()).toHaveLength(0);
+  });
+
+  it('envía las indicaciones recortadas y avisa el alta sin fallo', async () => {
+    servirAlta(() => jsonResponse({ indicacionesArmado: 'Factura primero.' }, 200));
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribirIndicaciones(user, '  Factura primero.  ');
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }));
+    const [, init] = pedidosDeIndicaciones()[0] ?? [];
+    expect(init?.method).toBe('PUT');
+    expect(JSON.parse(init?.body as string)).toEqual({ indicacionesArmado: 'Factura primero.' });
+  });
+
+  it.each([
+    [
+      400,
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Los datos enviados no son válidos',
+          details: [
+            {
+              campo: 'indicacionesArmado',
+              mensaje: 'Las indicaciones de armado no pueden contener caracteres de control.',
+            },
+          ],
+        },
+      },
+      'Las indicaciones de armado no pueden contener caracteres de control.',
+    ],
+    [
+      409,
+      {
+        error: {
+          code: 'CONFLICT',
+          message: 'El cliente no está activo',
+          details: { motivo: 'CLIENTE_NO_ACTIVO', estado: 'INACTIVO' },
+        },
+      },
+      'El cliente está inactivo: reactivalo para editar sus indicaciones.',
+    ],
+    [
+      500,
+      { error: { code: 'INTERNAL_ERROR', message: 'Error' } },
+      'Probá de nuevo en unos segundos.',
+    ],
+  ])(
+    'si el PUT responde %i, el alta se da por hecha y el motivo llega a quien abrió el panel',
+    async (status, cuerpo, motivo) => {
+      servirAlta(() => jsonResponse(cuerpo, status));
+      const { user, onCreado } = renderAlta();
+
+      await completar(user);
+      await escribirIndicaciones(user, 'Factura primero.');
+      await user.click(botonRegistrar());
+
+      await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+      expect(onCreado).toHaveBeenCalledWith(
+        expect.objectContaining({ id: clienteCreado.id }),
+        motivo,
+      );
+    },
+  );
+
+  it('con más de 1000 caracteres marca el límite en el campo y no envía nada', async () => {
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribirIndicaciones(user, 'x'.repeat(1001));
+
+    // Pasarse del límite se marca enseguida, sin esperar al envío.
+    expect(indicaciones()).toHaveAttribute('aria-invalid', 'true');
+    expect(indicaciones()).toHaveAccessibleDescription(
+      expect.stringContaining('Las indicaciones de armado no pueden superar los 1000 caracteres.'),
+    );
+
+    await user.click(botonRegistrar());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onCreado).not.toHaveBeenCalled();
+    expect(indicaciones()).toHaveFocus();
+  });
+
+  it('con exactamente 1000 caracteres registra el cliente', async () => {
+    servirAlta(() => jsonResponse({ indicacionesArmado: 'x'.repeat(1000) }, 200));
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribirIndicaciones(user, 'x'.repeat(1000));
+    expect(indicaciones()).not.toHaveAttribute('aria-invalid');
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(pedidosDeIndicaciones()).toHaveLength(1);
+  });
+});

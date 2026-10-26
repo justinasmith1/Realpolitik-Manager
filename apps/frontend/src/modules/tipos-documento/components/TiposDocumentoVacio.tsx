@@ -15,8 +15,8 @@ export function TiposDocumentoVacio({ onNuevoTipo }: TiposDocumentoVacioProps) {
     <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">
       <h2 className="text-base font-semibold">Todavía no hay tipos de documento</h2>
       <p className="max-w-140 text-sm text-content-secondary">
-        Acá se administran los tipos de documento que se pueden pedir en la matriz de requisitos de
-        cada cliente.
+        Acá se administran los tipos de documento que se pueden pedir en los requisitos de cada
+        cliente.
       </p>
       <Button variant="brand" onClick={onNuevoTipo}>
         <PlusIcon aria-hidden="true" />

@@ -79,7 +79,7 @@ export function MatrizCargando({ incluirEncabezado }: { incluirEncabezado: boole
   return (
     <>
       <p role="status" className="sr-only">
-        Cargando la matriz…
+        Cargando los requisitos…
       </p>
       <div aria-busy="true" className="flex flex-col gap-4">
         {incluirEncabezado && (
@@ -114,7 +114,7 @@ export function MatrizEnlaceInvalido({ tituloRef }: { tituloRef: Ref<HTMLHeading
   return (
     <div className="flex flex-col items-start gap-2 rounded-card border bg-card p-6">
       <h1 ref={tituloRef} tabIndex={-1} className="text-xl font-semibold tracking-tight">
-        El enlace a esta matriz no es válido
+        El enlace a estos requisitos no es válido
       </h1>
       <p className="max-w-140 text-sm text-content-secondary">
         Revisá la dirección o volvé al listado de clientes.
@@ -144,7 +144,7 @@ export function MatrizClienteAusente({ tituloRef }: { tituloRef: Ref<HTMLHeading
 export function MatrizVacia() {
   return (
     <div className="flex flex-col items-start gap-2 rounded-card border bg-card p-6">
-      <h2 className="text-base font-semibold">Esta matriz todavía no tiene requisitos</h2>
+      <h2 className="text-base font-semibold">Este cliente todavía no tiene requisitos</h2>
       <p className="max-w-140 text-sm leading-normal text-content-secondary">
         La factura también se configura como un requisito. No se agrega sola.
       </p>

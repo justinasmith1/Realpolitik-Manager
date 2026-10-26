@@ -66,7 +66,7 @@ export function ClienteAccionesMenu({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onVerMatriz?.(cliente)}>
           <ClipboardListIcon aria-hidden="true" />
-          Matriz de requisitos
+          Ver requisitos
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {cliente.estado === 'INACTIVO' ? (

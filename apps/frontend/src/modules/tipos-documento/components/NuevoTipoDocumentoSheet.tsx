@@ -72,7 +72,7 @@ export function NuevoTipoDocumentoSheet({
         <SheetHeader>
           <SheetTitle>Nuevo tipo de documento</SheetTitle>
           <SheetDescription>
-            Agregá un tipo de documento para utilizarlo en las matrices de requisitos.
+            Agregá un tipo de documento para utilizarlo en los requisitos de los clientes.
           </SheetDescription>
         </SheetHeader>
         <TipoDocumentoForm

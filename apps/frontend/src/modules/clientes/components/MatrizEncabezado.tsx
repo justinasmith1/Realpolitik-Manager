@@ -82,9 +82,9 @@ export function MatrizEncabezado({
       </dl>
 
       <p className="text-sm">
-        <span className="text-content-secondary">Estado de la matriz: </span>
+        <span className="text-content-secondary">Estado de los requisitos: </span>
         <span className="font-medium">
-          {cliente.matrizConfigurada ? 'Con requisitos' : 'Sin requisitos configurados'}
+          {cliente.matrizConfigurada ? 'Con requisitos cargados' : 'Sin requisitos cargados'}
         </span>
       </p>
 
@@ -94,7 +94,7 @@ export function MatrizEncabezado({
           className="flex items-start gap-2 rounded-lg border border-warning bg-warning-soft px-3 py-2.5 text-sm text-foreground"
         >
           <CircleAlertIcon aria-hidden="true" className="mt-px size-4 shrink-0 text-warning" />
-          Este cliente debe estar activo para modificar su matriz.
+          Este cliente debe estar activo para modificar sus requisitos.
         </p>
       )}
     </header>

@@ -255,7 +255,7 @@ export function StepTwo() {
                 : 'Privado';
               textoEstadoMatriz = (
                 <span className="text-xs text-warning font-medium">
-                  {etiquetaSub} · matriz pendiente
+                  {etiquetaSub} · sin requisitos cargados
                 </span>
               );
             } else {

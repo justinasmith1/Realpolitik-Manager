@@ -78,7 +78,7 @@ export function QuitarRequisitoDialog({
     >
       <AlertDialogContent finalFocus={pendiente ? focoTrasConfirmar : focoAlCancelar}>
         <AlertDialogHeader>
-          <AlertDialogTitle>¿Quitar este requisito de la matriz?</AlertDialogTitle>
+          <AlertDialogTitle>¿Quitar este requisito?</AlertDialogTitle>
           <AlertDialogDescription>
             «{nombre}» dejará de pedirse en las rendiciones que se abran a partir de ahora para{' '}
             {denominacion}. Las rendiciones ya abiertas no se modifican.
@@ -94,7 +94,7 @@ export function QuitarRequisitoDialog({
             onClick={() => void confirmar()}
             className="min-w-40"
           >
-            Quitar de la matriz
+            Quitar requisito
           </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>

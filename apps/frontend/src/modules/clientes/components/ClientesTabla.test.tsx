@@ -159,7 +159,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     expect(filaDe('Activa').queryByText('Inactivo')).not.toBeInTheDocument();
     const menu = await abrirMenu('Activa S.A.');
 
-    expect(opciones()).toEqual(['Editar', 'Contactos', 'Matriz de requisitos', 'Desactivar']);
+    expect(opciones()).toEqual(['Editar', 'Contactos', 'Ver requisitos', 'Desactivar']);
     expect(menu.queryByRole('menuitem', { name: 'Reactivar' })).not.toBeInTheDocument();
   });
 
@@ -175,7 +175,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     expect(filaDe('Inactiva').getByText('Inactivo')).toBeInTheDocument();
     const menu = await abrirMenu('Inactiva S.A.');
 
-    expect(opciones()).toEqual(['Editar', 'Contactos', 'Matriz de requisitos', 'Reactivar']);
+    expect(opciones()).toEqual(['Editar', 'Contactos', 'Ver requisitos', 'Reactivar']);
     expect(menu.queryByRole('menuitem', { name: 'Desactivar' })).not.toBeInTheDocument();
   });
 
@@ -212,8 +212,8 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   it.each([
     ['Editar', 'onEditar', 'Activa S.A.', activo],
     ['Contactos', 'onAdministrarContactos', 'Activa S.A.', activo],
-    ['Matriz de requisitos', 'onVerMatriz', 'Activa S.A.', activo],
-    ['Matriz de requisitos', 'onVerMatriz', 'Inactiva S.A.', inactivo],
+    ['Ver requisitos', 'onVerMatriz', 'Activa S.A.', activo],
+    ['Ver requisitos', 'onVerMatriz', 'Inactiva S.A.', inactivo],
     ['Desactivar', 'onDesactivar', 'Activa S.A.', activo],
     ['Reactivar', 'onReactivar', 'Inactiva S.A.', inactivo],
   ] as const)(

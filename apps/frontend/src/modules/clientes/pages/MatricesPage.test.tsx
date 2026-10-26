@@ -118,10 +118,10 @@ describe('MatricesPage', () => {
     expect(screen.getByText('Abasto Norte')).toBeInTheDocument();
 
     expect(screen.getByText('Pendiente')).toBeInTheDocument();
-    expect(screen.getAllByText('Configurada')).toHaveLength(2);
+    expect(screen.getAllByText('Configurado')).toHaveLength(2);
   });
 
-  it('permite filtrar por estado (Todas, Configuradas, Pendientes)', async () => {
+  it('permite filtrar por estado (Todos, Configurados, Pendientes)', async () => {
     const { user } = renderMatrices();
 
     // Clic en "Pendientes"
@@ -132,8 +132,8 @@ describe('MatricesPage', () => {
     expect(screen.queryByText('Consejo Magistratura')).not.toBeInTheDocument();
     expect(screen.queryByText('Abasto Norte')).not.toBeInTheDocument();
 
-    // Clic en "Configuradas"
-    const btnConfiguradas = screen.getByRole('button', { name: 'Configuradas' });
+    // Clic en "Configurados"
+    const btnConfiguradas = screen.getByRole('button', { name: 'Configurados' });
     await user.click(btnConfiguradas);
 
     expect(screen.getByText('Consejo Magistratura')).toBeInTheDocument();

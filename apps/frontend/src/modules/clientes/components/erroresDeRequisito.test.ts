@@ -11,16 +11,16 @@ const INESPERADO = 'No pudimos guardar el requisito. Probá de nuevo en unos seg
 describe('mensajes de dominio', () => {
   it('describe el estado del cliente sin tratar a uno activo como si se conociera', () => {
     expect(mensajeClienteNoActivo('INACTIVO')).toBe(
-      'Este cliente está inactivo. Ya no se puede modificar su matriz.',
+      'Este cliente está inactivo. Ya no se pueden modificar sus requisitos.',
     );
     expect(mensajeClienteNoActivo('SUSPENDIDO')).toBe(
-      'Este cliente está suspendido. Ya no se puede modificar su matriz.',
+      'Este cliente está suspendido. Ya no se pueden modificar sus requisitos.',
     );
     expect(mensajeClienteNoActivo(null)).toBe(
-      'Este cliente ya no está activo. No se puede modificar su matriz.',
+      'Este cliente ya no está activo. No se pueden modificar sus requisitos.',
     );
     expect(mensajeClienteNoActivo('ACTIVO')).toBe(
-      'Este cliente ya no está activo. No se puede modificar su matriz.',
+      'Este cliente ya no está activo. No se pueden modificar sus requisitos.',
     );
   });
 
@@ -55,7 +55,7 @@ describe('erroresParaElFormulario', () => {
     expect(
       erroresParaElFormulario({ tipo: 'cliente-no-activo', estado: 'SUSPENDIDO' }, INESPERADO),
     ).toEqual({
-      aviso: 'Este cliente está suspendido. Ya no se puede modificar su matriz.',
+      aviso: 'Este cliente está suspendido. Ya no se pueden modificar sus requisitos.',
       bloqueaEnvio: true,
     });
   });
@@ -115,7 +115,7 @@ describe('mensajeFalloBaja', () => {
 
   it('deja el diálogo abierto si se puede volver a intentar', () => {
     expect(mensajeFalloBaja({ tipo: 'inesperado' })).toEqual({
-      texto: 'No pudimos quitar el requisito de la matriz. Probá de nuevo en unos segundos.',
+      texto: 'No pudimos quitar el requisito. Probá de nuevo en unos segundos.',
       cierra: false,
     });
     expect(

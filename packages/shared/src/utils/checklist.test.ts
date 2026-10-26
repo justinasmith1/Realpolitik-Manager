@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calcularFaltantes,
   ChecklistError,
+  compararItemsDeChecklist,
   esChecklistError,
   generarChecklist,
   type RequisitoDeMatriz,
@@ -423,5 +424,61 @@ describe('calcularFaltantes', () => {
     const copia = structuredClone(items);
     expect(() => calcularFaltantes(items)).not.toThrow();
     expect(items).toEqual(copia);
+  });
+});
+
+describe('compararItemsDeChecklist', () => {
+  const posicion = (nombreTipoDocumento: string, requisitoClienteId = ID_A, ordinal = 1) => ({
+    nombreTipoDocumento,
+    requisitoClienteId,
+    ordinal,
+  });
+
+  it('ordena por nombre en español, sin que mayúsculas ni acentos rompan el orden alfabético', () => {
+    const nombres = ['Zeta', 'arco', 'Árbol', 'alfa'].map((nombre) => posicion(nombre));
+
+    expect([...nombres].sort(compararItemsDeChecklist).map((p) => p.nombreTipoDocumento)).toEqual([
+      'alfa',
+      'Árbol',
+      'arco',
+      'Zeta',
+    ]);
+  });
+
+  it('con el mismo nombre desempata por id del requisito y después por ordinal', () => {
+    const items = [
+      posicion('Print', ID_B, 1),
+      posicion('Print', ID_A, 2),
+      posicion('Print', ID_A, 1),
+    ];
+
+    expect(
+      [...items].sort(compararItemsDeChecklist).map((p) => [p.requisitoClienteId, p.ordinal]),
+    ).toEqual([
+      [ID_A, 1],
+      [ID_A, 2],
+      [ID_B, 1],
+    ]);
+  });
+
+  it('es el orden de generarChecklist: ordenar su salida no la cambia', () => {
+    const items = generarChecklist(
+      [
+        requisito({ id: ID_C, tipoDocumentoId: TIPO_1, nombreTipoDocumento: 'Zeta', cantidad: 2 }),
+        requisito({ id: ID_B, tipoDocumentoId: TIPO_2, nombreTipoDocumento: 'arco' }),
+        requisito({ id: ID_A, tipoDocumentoId: TIPO_3, nombreTipoDocumento: 'Árbol', cantidad: 3 }),
+      ],
+      clienteCorreo,
+    );
+
+    expect([...items].sort(compararItemsDeChecklist)).toEqual(items);
+    expect(items.map((item) => item.nombreTipoDocumento)).toEqual([
+      'Árbol',
+      'Árbol',
+      'Árbol',
+      'arco',
+      'Zeta',
+      'Zeta',
+    ]);
   });
 });

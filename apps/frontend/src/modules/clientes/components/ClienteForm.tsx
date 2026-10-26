@@ -2,11 +2,13 @@ import {
   CanalEntrega,
   ClienteSector,
   ClienteSubtipoPublico,
+  INDICACIONES_ARMADO_MAX,
+  IndicacionesArmadoSchema,
   IvaCondicion,
   PeriodicidadTipo,
-  type Cliente,
+  type ClienteEstadoType,
 } from '@realpolitik/shared';
-import { useCallback, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { Controller, useForm, useWatch, type Control, type FieldError } from 'react-hook-form';
 
 import { Alert } from '@/components/ui/alert';
@@ -40,7 +42,19 @@ import { IndicacionesArmadoSection } from '@/modules/clientes/components/Indicac
 /** Errores que informó el servidor al enviar: por campo y/o uno general. */
 export interface ErroresDeEnvio {
   campos?: Partial<Record<CampoClienteForm, string>>;
+  /** Error del campo de indicaciones de armado. */
+  indicaciones?: string;
   general?: string;
+}
+
+/** Indicaciones de armado ya guardadas de un cliente que se edita (HU2.4). */
+export interface IndicacionesDelCliente {
+  /** Lo guardado: `null` si no tiene; `undefined` mientras no llegó. */
+  guardadas: string | null | undefined;
+  cargando: boolean;
+  errorAlCargar: boolean;
+  /** Fuera de `ACTIVO` las indicaciones se leen pero no se editan. */
+  estadoCliente: ClienteEstadoType;
 }
 
 /** Lo que acompaña a los datos al enviar. */
@@ -50,9 +64,12 @@ export interface EnvioDelFormulario {
    * que cambió (ver `construirCambiosCliente`); el alta no los necesita.
    */
   modificados: CamposModificados;
-  /** Estado de las indicaciones de armado del cliente (HU2.4). */
-  indicaciones?: {
-    texto: string | null;
+  /**
+   * Indicaciones de armado (HU2.4), ya validadas y normalizadas con `IndicacionesArmadoSchema`
+   * (vacías = `null`). `modificado` = difieren de las guardadas.
+   */
+  indicaciones: {
+    valor: string | null;
     modificado: boolean;
   };
 }
@@ -81,10 +98,8 @@ interface ClienteFormProps {
    * `valoresIniciales`, el botón de enviar queda deshabilitado y se avisa por qué.
    */
   soloConCambios?: boolean;
-  /** Datos del cliente si se está editando (permite cargar sus indicaciones y conocer su estado). */
-  cliente?: Pick<Cliente, 'id' | 'estado' | 'razonSocial'> | null | undefined;
-  indicacionesArmadoInicial?: string | null | undefined;
-  onIndicacionesCambio?: ((valor: string) => void) | undefined;
+  /** Las indicaciones guardadas, en una edición. Sin esto (alta) arrancan vacías y editables. */
+  indicaciones?: IndicacionesDelCliente | undefined;
 }
 
 // Opciones de cada select, derivadas de los enums compartidos y sus etiquetas.
@@ -222,25 +237,29 @@ export function ClienteForm({
   exito = false,
   valoresIniciales = valoresInicialesClienteForm,
   soloConCambios = false,
-  cliente,
-  indicacionesArmadoInicial,
-  onIndicacionesCambio,
+  indicaciones,
 }: ClienteFormProps) {
   const id = useId();
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
-  const [indicacionesTexto, setIndicacionesTexto] = useState<string | null>(
-    indicacionesArmadoInicial ?? null,
-  );
-  const [indicacionesCambiadas, setIndicacionesCambiadas] = useState(false);
 
-  const manejarCambioIndicaciones = useCallback(
-    (texto: string, modificado: boolean) => {
-      setIndicacionesTexto(texto);
-      setIndicacionesCambiadas(modificado);
-      onIndicacionesCambio?.(texto);
-    },
-    [onIndicacionesCambio],
-  );
+  // Indicaciones de armado. `null` = la persona todavía no escribió: se muestra lo guardado, así
+  // la respuesta del GET nunca pisa lo que ya se escribió. Se validan con el schema de shared y,
+  // si no son válidas, bloquean el envío (ver `enviar`).
+  const [indicacionesEscritas, setIndicacionesEscritas] = useState<string | null>(null);
+  const [errorIndicacionesServidor, setErrorIndicacionesServidor] = useState<string | null>(null);
+  const indicacionesGuardadas = indicaciones?.guardadas ?? null;
+  const textoIndicaciones = indicacionesEscritas ?? indicacionesGuardadas ?? '';
+  const indicacionesValidadas = IndicacionesArmadoSchema.safeParse({
+    indicacionesArmado: textoIndicaciones,
+  });
+  const errorIndicacionesSchema = indicacionesValidadas.success
+    ? null
+    : (indicacionesValidadas.error.issues[0]?.message ?? 'Revisá las indicaciones de armado.');
+  const indicacionesModificadas =
+    indicacionesEscritas !== null &&
+    (!indicacionesValidadas.success ||
+      indicacionesValidadas.data.indicacionesArmado !== indicacionesGuardadas);
+  const idIndicaciones = `${id}-indicacionesArmado`;
 
   const {
     control,
@@ -264,7 +283,13 @@ export function ClienteForm({
   // `dirtyFields` se lee en el render para que RHF lo siga (`formState` es un proxy): así el
   // botón se habilita apenas hay un cambio y `formState.dirtyFields` está al día al enviar.
   const { errors, isSubmitting, submitCount, isDirty } = formState;
-  const sinCambios = soloConCambios && !isDirty && !indicacionesCambiadas;
+  const sinCambios = soloConCambios && !isDirty && !indicacionesModificadas;
+  // Como los demás campos: el error del schema se muestra después del primer intento de envío.
+  // Pasarse del límite se marca enseguida: no hay forma de que deje de ser un error.
+  const superaLimiteIndicaciones = textoIndicaciones.length > INDICACIONES_ARMADO_MAX;
+  const errorIndicaciones =
+    errorIndicacionesServidor ??
+    (submitCount > 0 || superaLimiteIndicaciones ? errorIndicacionesSchema : null);
   const sector = useWatch({ control, name: 'sector' });
   const canalEntrega = useWatch({ control, name: 'canalEntrega' });
   const periodicidadTipo = useWatch({ control, name: 'periodicidadTipo' });
@@ -306,11 +331,17 @@ export function ClienteForm({
   const enviar = handleSubmit(
     async (datos) => {
       setErrorGeneral(null);
+      // Las indicaciones no son parte del resolver del cliente: si no son válidas no se envía
+      // nada (ni el cliente), y el foco va al campo, donde ya se ve el error del schema.
+      if (!indicacionesValidadas.success) {
+        enfocarYMostrar(document.getElementById(idIndicaciones));
+        return;
+      }
       const errores = await onSubmit(datos, {
         modificados: camposModificados(formState.dirtyFields),
         indicaciones: {
-          texto: indicacionesTexto,
-          modificado: indicacionesCambiadas,
+          valor: indicacionesValidadas.data.indicacionesArmado,
+          modificado: indicacionesModificadas,
         },
       });
       if (errores === undefined) {
@@ -320,7 +351,12 @@ export function ClienteForm({
       for (const [nombre, message] of conError) {
         setError(nombre, { type: 'server', message });
       }
-      enfocarPrimerError(errores.campos ?? {});
+      setErrorIndicacionesServidor(errores.indicaciones ?? null);
+      if (conError.length > 0) {
+        enfocarPrimerError(errores.campos ?? {});
+      } else if (errores.indicaciones !== undefined) {
+        enfocarYMostrar(document.getElementById(idIndicaciones));
+      }
       setErrorGeneral(errores.general ?? null);
     },
     (invalidos) => enfocarPrimerError(invalidos),
@@ -445,7 +481,7 @@ export function ClienteForm({
           <FormField
             id={idDe('canalEntrega')}
             label="Canal principal"
-            hint="Canal por defecto para sus documentos. Cada documento de la matriz puede ir por otro canal."
+            hint="Canal por defecto para sus documentos. Cada requisito puede ir por otro canal."
             error={errors.canalEntrega}
           >
             <SelectCampo
@@ -571,9 +607,16 @@ export function ClienteForm({
         </FormSection>
 
         <IndicacionesArmadoSection
-          cliente={cliente}
-          valorInicial={indicacionesArmadoInicial}
-          onCambio={manejarCambioIndicaciones}
+          id={idIndicaciones}
+          valor={textoIndicaciones}
+          onCambio={(texto) => {
+            setIndicacionesEscritas(texto);
+            setErrorIndicacionesServidor(null);
+          }}
+          error={errorIndicaciones}
+          estadoCliente={indicaciones?.estadoCliente}
+          cargando={indicaciones?.cargando ?? false}
+          errorAlCargar={indicaciones?.errorAlCargar ?? false}
         />
       </div>
 

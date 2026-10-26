@@ -607,7 +607,7 @@ function CatalogoDeTipos({
     return (
       <div className="flex flex-col items-start gap-2">
         <p className="text-sm text-content-secondary">
-          Todos los tipos activos ya están en esta matriz.
+          Todos los tipos activos ya están en los requisitos de este cliente.
         </p>
         {error?.message !== undefined && (
           <p className="text-[13px] leading-snug text-destructive">{error.message}</p>

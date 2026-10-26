@@ -76,6 +76,7 @@ function servir(cliente: unknown, lista: unknown, indicaciones: string | null = 
     const path = new URL(urlDe(entrada)).pathname;
     if (path.endsWith('/indicaciones-armado'))
       return Promise.resolve(json({ indicacionesArmado: indicaciones }));
+    if (path.endsWith('/rendiciones')) return Promise.resolve(json([]));
     if (path.endsWith('/requisitos')) return Promise.resolve(json(lista));
     if (path === '/clientes') return Promise.resolve(json([cliente]));
     return Promise.resolve(json(cliente));
@@ -134,7 +135,7 @@ describe('MatrizPage: navegación', () => {
 
     await screen.findByRole('table');
     await user.click(screen.getByRole('button', { name: 'Acciones de Municipalidad de Ejemplo' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Matriz de requisitos' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Ver requisitos' }));
 
     expect(router.state.location.pathname).toBe(`/clientes/${ID}/matriz`);
     expect(
@@ -173,7 +174,7 @@ describe('MatrizPage: cliente', () => {
 
     const titulo = await screen.findByRole('heading', {
       level: 1,
-      name: 'El enlace a esta matriz no es válido',
+      name: 'El enlace a estos requisitos no es válido',
     });
     expect(titulo).toHaveFocus();
     expect(volver()).toHaveAttribute('href', '/clientes');
@@ -185,11 +186,9 @@ describe('MatrizPage: cliente', () => {
     fetchMock.mockReturnValue(new Promise<Response>(() => undefined));
     renderEn(`/clientes/${ID}/matriz`);
 
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Matriz de requisitos' }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Cargando la matriz');
-    expect(screen.queryByText('Esta matriz todavía no tiene requisitos')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Requisitos' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Cargando los requisitos');
+    expect(screen.queryByText('Este cliente todavía no tiene requisitos')).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
@@ -204,7 +203,7 @@ describe('MatrizPage: cliente', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByText('No pudimos cargar los requisitos')).not.toBeInTheDocument();
-    expect(screen.queryByText('Esta matriz todavía no tiene requisitos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Este cliente todavía no tiene requisitos')).not.toBeInTheDocument();
   });
 
   it('un error de servidor del cliente se distingue y se puede reintentar', async () => {
@@ -212,6 +211,10 @@ describe('MatrizPage: cliente', () => {
     fetchMock.mockImplementation((entrada) => {
       const path = new URL(urlDe(entrada)).pathname;
       if (path.endsWith('/requisitos')) return Promise.resolve(json([]));
+      if (path.endsWith('/indicaciones-armado')) {
+        return Promise.resolve(json({ indicacionesArmado: null }));
+      }
+      if (path.endsWith('/rendiciones')) return Promise.resolve(json([]));
       intentos += 1;
       return intentos === 1
         ? Promise.resolve(json({ error: { code: 'INTERNAL_ERROR' } }, 500))
@@ -269,11 +272,11 @@ describe('MatrizPage: cliente', () => {
     expect(screen.getAllByText('Correo')).toHaveLength(2);
     expect(screen.getByText('Periodicidad')).toBeInTheDocument();
     expect(screen.getByText('Mensual')).toBeInTheDocument();
-    expect(screen.getByText('Con requisitos')).toBeInTheDocument();
-    expect(screen.queryByText('Sin requisitos configurados')).not.toBeInTheDocument();
+    expect(screen.getByText('Con requisitos cargados')).toBeInTheDocument();
+    expect(screen.queryByText('Sin requisitos cargados')).not.toBeInTheDocument();
     expect(screen.queryByText(/matriz completa/i)).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Este cliente debe estar activo para modificar su matriz.'),
+      screen.queryByText('Este cliente debe estar activo para modificar sus requisitos.'),
     ).not.toBeInTheDocument();
   });
 
@@ -287,7 +290,7 @@ describe('MatrizPage: cliente', () => {
         await screen.findByRole('heading', { level: 1, name: 'Muni Ejemplo' }),
       ).toBeInTheDocument();
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Este cliente debe estar activo para modificar su matriz.',
+        'Este cliente debe estar activo para modificar sus requisitos.',
       );
       expect(screen.getByText('Zócalo')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /agregar|quitar|editar requisito/i })).toBeNull();
@@ -306,8 +309,9 @@ describe('MatrizPage: requisitos', () => {
     expect(within(filas[2] as HTMLElement).getByRole('rowheader')).toHaveTextContent('Acta');
     expect(within(filas[2] as HTMLElement).getByText('Desactivado')).toBeInTheDocument();
     expect(within(filas[1] as HTMLElement).queryByText('Desactivado')).not.toBeInTheDocument();
-    expect(screen.getByText('Cantidad: 3')).toBeInTheDocument();
-    expect(screen.getByText('Cantidad: 100')).toBeInTheDocument();
+    // La columna ya dice "Cantidad": la celda tiene solo el número.
+    expect(within(filas[1] as HTMLElement).getAllByRole('cell')[0]).toHaveTextContent(/^3$/);
+    expect(within(filas[2] as HTMLElement).getAllByRole('cell')[0]).toHaveTextContent(/^100$/);
     expect(screen.getByText('15, 1, 8')).toBeInTheDocument();
     expect(screen.queryByText('1, 8, 15')).not.toBeInTheDocument();
     expect(screen.getByText('Sin días aproximados')).toBeInTheDocument();
@@ -344,9 +348,9 @@ describe('MatrizPage: requisitos', () => {
     renderEn(`/clientes/${ID}/matriz`);
 
     expect(
-      await screen.findByRole('heading', { name: 'Esta matriz todavía no tiene requisitos' }),
+      await screen.findByRole('heading', { name: 'Este cliente todavía no tiene requisitos' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Sin requisitos configurados')).toBeInTheDocument();
+    expect(screen.getByText('Sin requisitos cargados')).toBeInTheDocument();
     expect(
       screen.getByText('La factura también se configura como un requisito. No se agrega sola.'),
     ).toBeInTheDocument();
@@ -371,7 +375,7 @@ describe('MatrizPage: requisitos', () => {
     expect(alerta).toHaveTextContent('No pudimos cargar los requisitos');
     expect(alerta).toHaveTextContent('Error del servidor');
     expect(screen.getByRole('heading', { level: 1, name: 'Muni Ejemplo' })).toBeInTheDocument();
-    expect(screen.queryByText('Esta matriz todavía no tiene requisitos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Este cliente todavía no tiene requisitos')).not.toBeInTheDocument();
 
     await user.click(within(alerta).getByRole('button', { name: 'Reintentar' }));
 
@@ -402,6 +406,12 @@ describe('MatrizPage: requisitos', () => {
     );
     expect(screen.getByText(/Llevar tres copias firmadas/)).toHaveTextContent(notaLarga);
     expect(screen.queryByText('Mostrar nota completa')).not.toBeInTheDocument();
+    // Cada dato muestra solo su valor: la etiqueta está en el <dt>, no se repite.
+    expect(within(lista).getByText('Cantidad').nextElementSibling).toHaveTextContent(/^100$/);
+    expect(within(lista).getByText('Días').nextElementSibling).toHaveTextContent(
+      /^Sin días aproximados$/,
+    );
+    expect(within(lista).queryByText(/Cantidad:/)).not.toBeInTheDocument();
     expect(screen.getAllByText('Zeta')).toHaveLength(1);
     expect(screen.queryByText('Periodicidad')).not.toBeInTheDocument();
     expect(screen.queryByText('Municipio')).not.toBeInTheDocument();

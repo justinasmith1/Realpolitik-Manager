@@ -4,13 +4,20 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
+import type * as HooksDeIndicaciones from '@/modules/clientes/hooks/useIndicacionesArmado';
 import { elegirOpcion, etiquetaDeOpcion } from '@/test/select';
 
 // La pausa de éxito (500 ms) no es el tema de estos tests: se prueba en `*.exito.test.tsx`.
 vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
-vi.mock('@/modules/clientes/hooks/useIndicacionesArmado', () => ({
-  useIndicacionesArmado: () => ({ data: { indicacionesArmado: null }, isPending: false }),
-  useGuardarIndicacionesArmado: () => ({ mutateAsync: vi.fn(), isPending: false }),
+// Las indicaciones guardadas se simulan sin pedido: así cada test ve solo el PATCH o el PUT que
+// envía. El guardado (la mutación) es el real y pasa por `fetch`.
+vi.mock('@/modules/clientes/hooks/useIndicacionesArmado', async (importOriginal) => ({
+  ...(await importOriginal<typeof HooksDeIndicaciones>()),
+  useIndicacionesArmado: () => ({
+    data: { indicacionesArmado: null },
+    isPending: false,
+    isError: false,
+  }),
 }));
 
 // La API se simula en `fetch`: el test recorre formulario → mutation → clientes.api → http().

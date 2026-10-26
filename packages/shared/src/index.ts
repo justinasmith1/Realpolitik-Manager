@@ -132,7 +132,11 @@ export type {
   RendicionResumen,
 } from './schemas/rendicion.schema.js';
 
-export { ListarRendicionesQuerySchema } from './schemas/listarRendicionesQuery.schema.js';
+export {
+  FILTRO_ESTADO_POR_DEFECTO,
+  FiltroEstadoRendiciones,
+  ListarRendicionesQuerySchema,
+} from './schemas/listarRendicionesQuery.schema.js';
 export type { ListarRendicionesQuery } from './schemas/listarRendicionesQuery.schema.js';
 
 // ─── Utilidades ───────────────────────────────────────────────────────────────
@@ -152,12 +156,16 @@ export {
   calcularFaltantes,
   ChecklistError,
   esChecklistError,
+  compararItemsDeChecklist,
 } from './utils/checklist.js';
 export type {
+  PosicionEnChecklist,
   RequisitoDeMatriz,
   ItemChecklistNuevo,
   CodigoErrorChecklist,
   Faltantes,
 } from './utils/checklist.js';
+export { canalDeSeleccion, destinatariosDeCorreo } from './utils/envio.js';
+export type { CanalDeSeleccion, DestinatarioDeCorreo } from './utils/envio.js';
 export { ANIO_MIN, ANIO_MAX, mesActual, periodoMuyFuturo } from './utils/periodo.js';
 export type { Periodo } from './utils/periodo.js';

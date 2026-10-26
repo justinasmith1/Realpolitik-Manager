@@ -1,162 +1,134 @@
-import type { Cliente } from '@realpolitik/shared';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import type { ClienteEstadoType } from '@realpolitik/shared';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 
-import * as api from '@/modules/clientes/api/indicaciones-armado.api';
 import { IndicacionesArmadoSection } from '@/modules/clientes/components/IndicacionesArmadoSection';
 
-const CLIENTE_ID = '11111111-1111-4111-a111-111111111111';
+const ID = 'indicaciones';
 
-const clienteActivo: Cliente = {
-  id: CLIENTE_ID,
-  razonSocial: 'Empresa Activa S.A.',
-  denominacion: 'Empresa Activa',
-  cuit: '30-11111111-1',
-  sector: 'PRIVADO',
-  ivaCondicion: 'RESPONSABLE_INSCRIPTO',
-  emailContacto: 'activa@ejemplo.com',
-  emailsAdicionales: [],
-  canalEntrega: 'CORREO',
-  periodicidad: null,
-  estado: 'ACTIVO',
-  matrizConfigurada: false,
-  creadoEn: new Date('2026-10-08T12:00:00.000Z'),
-  actualizadoEn: new Date('2026-10-08T12:00:00.000Z'),
-};
-
-const clienteInactivo: Cliente = {
-  ...clienteActivo,
-  estado: 'INACTIVO',
-};
-
-const clienteSuspendido: Cliente = {
-  ...clienteActivo,
-  estado: 'SUSPENDIDO',
-};
-
-function renderComponente({
-  cliente = clienteActivo,
-  valorInicial,
-  onCambio,
-}: {
-  cliente?: Pick<Cliente, 'id' | 'estado' | 'razonSocial'> | null;
-  valorInicial?: string | null;
-  onCambio?: (valor: string, modificado: boolean) => void;
-} = {}) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  const renderResult = render(
-    <QueryClientProvider client={queryClient}>
-      <IndicacionesArmadoSection
-        cliente={cliente}
-        valorInicial={valorInicial}
-        onCambio={onCambio}
-      />
-    </QueryClientProvider>,
-  );
-
-  return {
-    ...renderResult,
-    user: userEvent.setup(),
-  };
+interface Opciones {
+  inicial?: string;
+  error?: string | null;
+  estadoCliente?: ClienteEstadoType;
+  cargando?: boolean;
+  errorAlCargar?: boolean;
 }
 
+/** La sección es controlada: el estado lo tiene quien la usa (en la app, `ClienteForm`). */
+function ConEstado({ inicial = '', error = null, ...resto }: Opciones) {
+  const [valor, setValor] = useState(inicial);
+  return (
+    <IndicacionesArmadoSection id={ID} valor={valor} onCambio={setValor} error={error} {...resto} />
+  );
+}
+
+function renderSeccion(opciones: Opciones = {}) {
+  render(<ConEstado {...opciones} />);
+  return { user: userEvent.setup() };
+}
+
+const textarea = () => screen.getByLabelText('Instrucciones para el legajo');
+
 describe('IndicacionesArmadoSection (HU2.4)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(api, 'obtenerIndicacionesArmado').mockResolvedValue({
-      indicacionesArmado: null,
-    });
-    vi.spyOn(api, 'guardarIndicacionesArmado').mockResolvedValue({
-      indicacionesArmado: 'Factura primero.',
-    });
-  });
-
-  it('muestra la advertencia de seguridad destacada sobre contraseñas', () => {
-    renderComponente();
+  it('avisa una sola vez que no se guarden contraseñas', () => {
+    renderSeccion();
 
     expect(
-      screen.getByText(
-        'Atención: No utilices este campo para guardar contraseñas de portales gubernamentales.',
-      ),
-    ).toBeInTheDocument();
+      screen.getAllByText('No guardes contraseñas ni credenciales de portales en este campo.'),
+    ).toHaveLength(1);
   });
 
-  it('muestra el textarea y el contador dinámico de caracteres arrancando en 0', () => {
-    renderComponente();
+  it('muestra un solo contador, que arranca en 0 y sigue lo que se escribe', async () => {
+    const { user } = renderSeccion();
 
-    const textarea = screen.getByPlaceholderText(
-      /Escribí aquí cómo exige el cliente armar el legajo/i,
+    expect(screen.getAllByTestId('contador-caracteres')).toHaveLength(1);
+    expect(screen.getByTestId('contador-caracteres')).toHaveTextContent('0 / 1000');
+
+    await user.type(textarea(), 'Todo en un PDF');
+
+    expect(screen.getByTestId('contador-caracteres')).toHaveTextContent('14 / 1000');
+  });
+
+  it('conserva los saltos de línea', async () => {
+    const { user } = renderSeccion();
+
+    await user.click(textarea());
+    await user.paste('Factura primero.\nDespués los prints.');
+
+    expect(textarea()).toHaveValue('Factura primero.\nDespués los prints.');
+  });
+
+  it('describe el campo con ids que existen: aviso, ayuda y contador', () => {
+    renderSeccion();
+
+    const ids = textarea().getAttribute('aria-describedby')?.split(' ') ?? [];
+    expect(ids).toEqual([`${ID}-aviso`, `${ID}-ayuda`, `${ID}-contador`]);
+    for (const id of ids) {
+      expect(document.getElementById(id)).not.toBeNull();
+    }
+  });
+
+  it('con un error, lo muestra, marca el campo y lo suma a la descripción', () => {
+    renderSeccion({ error: 'Las indicaciones no pueden superar los 1000 caracteres.' });
+
+    expect(textarea()).toHaveAttribute('aria-invalid', 'true');
+    expect(textarea()).toHaveAccessibleDescription(
+      expect.stringContaining('Las indicaciones no pueden superar los 1000 caracteres.'),
     );
-    expect(textarea).toBeInTheDocument();
-    expect(screen.getAllByText('0 / 1000').length).toBeGreaterThan(0);
+    expect(document.getElementById(`${ID}-error`)).not.toBeNull();
   });
 
-  it('actualiza el contador dinámicamente a medida que se escribe', async () => {
-    const { user } = renderComponente();
+  it('marca el contador cuando se pasa del límite', () => {
+    renderSeccion({ inicial: 'x'.repeat(1001) });
 
-    const textarea = screen.getByPlaceholderText(
-      /Escribí aquí cómo exige el cliente armar el legajo/i,
+    expect(screen.getByTestId('contador-caracteres')).toHaveTextContent('1001 / 1000');
+    expect(screen.getByTestId('contador-caracteres')).toHaveClass('text-destructive');
+  });
+
+  it('no tiene un botón propio de guardar: se envía con el formulario del cliente', () => {
+    renderSeccion();
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['INACTIVO', 'inactivo'],
+    ['SUSPENDIDO', 'suspendido'],
+  ] as const)(
+    'con el cliente %s se lee pero no se edita, y se dice por qué',
+    (estado, etiqueta) => {
+      renderSeccion({ inicial: 'Factura primero.', estadoCliente: estado });
+
+      expect(textarea()).toBeDisabled();
+      expect(textarea()).toHaveValue('Factura primero.');
+      expect(
+        screen.getByText(
+          `El cliente está ${etiqueta}: reactivalo para editar sus indicaciones de armado.`,
+        ),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it('con el cliente ACTIVO se puede editar', () => {
+    renderSeccion({ estadoCliente: 'ACTIVO' });
+
+    expect(textarea()).toBeEnabled();
+  });
+
+  it('mientras cargan las guardadas no se edita', () => {
+    renderSeccion({ cargando: true });
+
+    expect(textarea()).toBeDisabled();
+    expect(textarea()).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('si no se pudieron cargar, no se edita y se avisa', () => {
+    renderSeccion({ errorAlCargar: true });
+
+    expect(textarea()).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'No pudimos cargar las indicaciones de armado.',
     );
-    await user.type(textarea, 'Todo en un PDF');
-
-    expect(screen.getAllByText('14 / 1000').length).toBeGreaterThan(0);
-  });
-
-  it('no muestra un botón propio de guardar (el submit se unifica con el formulario del cliente)', () => {
-    renderComponente();
-
-    expect(screen.queryByRole('button', { name: /guardar/i })).not.toBeInTheDocument();
-  });
-
-  it('deshabilita el textarea si el cliente está INACTIVO y muestra aviso', () => {
-    renderComponente({ cliente: clienteInactivo });
-
-    const textarea = screen.getByPlaceholderText(
-      /Escribí aquí cómo exige el cliente armar el legajo/i,
-    );
-    expect(textarea).toBeDisabled();
-
-    expect(
-      screen.getByText(
-        /El cliente está inactivo\. Debe reactivarse para editar sus indicaciones de armado\./i,
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it('deshabilita el textarea si el cliente está SUSPENDIDO y muestra aviso', () => {
-    renderComponente({ cliente: clienteSuspendido });
-
-    const textarea = screen.getByPlaceholderText(
-      /Escribí aquí cómo exige el cliente armar el legajo/i,
-    );
-    expect(textarea).toBeDisabled();
-
-    expect(
-      screen.getByText(
-        /El cliente está suspendido\. Debe reactivarse para editar sus indicaciones de armado\./i,
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it('notifica al callback onCambio con el texto y estado modificado al escribir', async () => {
-    const onCambio = vi.fn();
-    const { user } = renderComponente({ onCambio });
-
-    const textarea = screen.getByPlaceholderText(
-      /Escribí aquí cómo exige el cliente armar el legajo/i,
-    );
-    await user.type(textarea, 'Factura primero.');
-
-    await waitFor(() => {
-      expect(onCambio).toHaveBeenCalledWith('Factura primero.', true);
-    });
   });
 });
