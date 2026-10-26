@@ -1,4 +1,4 @@
-import { PanelLeftCloseIcon, PanelLeftOpenIcon, UsersIcon } from 'lucide-react';
+import { FileTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, UsersIcon } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { NavLink, useMatch } from 'react-router';
 
@@ -23,7 +23,10 @@ interface NavDestination {
 }
 
 // Solo destinos que existen como ruta real.
-const destinations: NavDestination[] = [{ to: '/clientes', label: 'Clientes', icon: UsersIcon }];
+const destinations: NavDestination[] = [
+  { to: '/clientes', label: 'Clientes', icon: UsersIcon },
+  { to: '/documentos', label: 'Documentos', icon: FileTextIcon },
+];
 
 // Misma curva y duración que el ancho del Sidebar (ver `sidebar.tsx`): todo se mueve junto.
 const transicion = 'duration-200 ease-standard';

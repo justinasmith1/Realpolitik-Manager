@@ -45,15 +45,18 @@ describe('AppLayout', () => {
     expect(screen.getByText('Realpolitik Manager')).toBeInTheDocument();
   });
 
-  it('ofrece Clientes como único destino de navegación y lo marca como página actual', () => {
+  it('ofrece Clientes y Documentos como destinos, y marca Clientes como página actual en /clientes', () => {
     renderRoute('/clientes');
 
     const nav = screen.getByRole('navigation', { name: 'Principal' });
     const links = within(nav).getAllByRole('link');
-    expect(links).toHaveLength(1);
+    expect(links).toHaveLength(2);
     expect(links[0]).toHaveAccessibleName('Clientes');
     expect(links[0]).toHaveAttribute('href', '/clientes');
     expect(links[0]).toHaveAttribute('aria-current', 'page');
+    expect(links[1]).toHaveAccessibleName('Documentos');
+    expect(links[1]).toHaveAttribute('href', '/documentos');
+    expect(links[1]).not.toHaveAttribute('aria-current');
   });
 
   it('en escritorio no repite el título: no hay Header y la página conserva su h1', () => {

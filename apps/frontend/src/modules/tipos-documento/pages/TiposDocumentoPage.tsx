@@ -2,7 +2,6 @@ import type { TipoDocumento } from '@realpolitik/shared';
 import { PlusIcon } from 'lucide-react';
 import { useId, useRef, useState, type ReactNode } from 'react';
 
-import { ClientesNav } from '@/components/layout/ClientesNav';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -38,8 +37,8 @@ const avisoDeEstado: Record<AccionDeEstado, (nombre: string) => string> = {
 };
 
 /**
- * Catálogo de tipos de documento (HU2.1), dentro de la sección Clientes: por eso el título es
- * "Clientes" y la navegación secundaria marca "Tipos de documento".
+ * Catálogo de tipos de documento (HU2.1), en su propia sección del Sidebar, "Documentos"
+ * (`/documentos`): es un catálogo general del sistema, no de un cliente.
  *
  * Además de consultar, se crean tipos ("Nuevo tipo"), se editan (desde el nombre o el ⋯) y se
  * desactivan o reactivan con confirmación. Cada operación invalida el catálogo (lo hacen los
@@ -187,10 +186,10 @@ export function TiposDocumentoPage() {
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
           <h1 ref={tituloRef} tabIndex={-1} className="text-xl font-semibold tracking-tight">
-            Clientes
+            Documentos
           </h1>
           <p className="mt-0.5 text-sm text-content-secondary">
-            Tipos de documento que se pueden pedir como requisito.
+            Catálogo de tipos de documento que se pueden pedir como requisito.
           </p>
         </div>
         <Button variant="brand" onClick={abrirAlta} className="max-sm:w-full">
@@ -198,13 +197,6 @@ export function TiposDocumentoPage() {
           Nuevo tipo
         </Button>
       </div>
-
-      <ClientesNav />
-
-      <p className="max-w-160 text-sm text-content-secondary">
-        Catálogo de tipos que se pueden pedir como requisito. No se permiten nombres repetidos,
-        aunque cambien mayúsculas o acentos.
-      </p>
 
       {aviso !== null && (
         <Alert

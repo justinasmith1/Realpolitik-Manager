@@ -5,16 +5,15 @@ import { cn } from '@/lib/utils';
 interface DestinoClientes {
   to: string;
   label: string;
-  /** Coincidencia exacta: `/clientes` no debe quedar activo en `/clientes/tipos-documento`. */
+  /** Coincidencia exacta: `/clientes` no debe quedar activo en `/clientes/matrices`. */
   end: boolean;
 }
 
-// Solo secciones que existen como ruta real. Es del layout y no de un módulo porque la usan
-// páginas de dos módulos (clientes y tipos de documento) y ninguno debe depender del otro.
+// Solo secciones que existen como ruta real. Los tipos de documento ya no están acá: son una
+// sección propia del Sidebar (`/documentos`).
 const destinos: DestinoClientes[] = [
   { to: '/clientes', label: 'Clientes', end: true },
   { to: '/clientes/matrices', label: 'Requisitos', end: false },
-  { to: '/clientes/tipos-documento', label: 'Tipos de documento', end: false },
 ];
 
 /**

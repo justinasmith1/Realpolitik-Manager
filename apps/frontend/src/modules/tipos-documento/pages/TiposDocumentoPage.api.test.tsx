@@ -108,10 +108,9 @@ async function porNombre(nombre: string): Promise<TipoDocumento> {
 const ESPERA_RED = { timeout: 8_000 };
 
 function renderPagina() {
-  const router = createMemoryRouter(
-    [{ path: '/clientes/tipos-documento', element: <TiposDocumentoPage /> }],
-    { initialEntries: ['/clientes/tipos-documento'] },
-  );
+  const router = createMemoryRouter([{ path: '/documentos', element: <TiposDocumentoPage /> }], {
+    initialEntries: ['/documentos'],
+  });
   render(
     <QueryClientProvider client={crearQueryClient()}>
       <RouterProvider router={router} />
