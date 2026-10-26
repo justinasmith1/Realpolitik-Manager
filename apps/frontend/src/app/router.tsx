@@ -6,6 +6,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
 import { MatricesPage } from '@/modules/clientes/pages/MatricesPage';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
+import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
 import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
 
 export const routes: RouteObject[] = [
@@ -22,7 +23,7 @@ export const routes: RouteObject[] = [
       {
         path: 'clientes/matrices',
         element: <MatricesPage />,
-        handle: { title: 'Matrices' } satisfies AppRouteHandle,
+        handle: { title: 'Requisitos' } satisfies AppRouteHandle,
       },
       // Hermana de `clientes`, no hija: las dos páginas renderizan `ClientesNav` y el Sidebar
       // marca Clientes en ambas (su enlace no exige coincidencia exacta).
@@ -35,7 +36,12 @@ export const routes: RouteObject[] = [
       {
         path: 'clientes/:id/matriz',
         element: <MatrizPage />,
-        handle: { title: 'Matriz' } satisfies AppRouteHandle,
+        handle: { title: 'Requisitos' } satisfies AppRouteHandle,
+      },
+      {
+        path: 'clientes/:id/rendiciones/:rendicionId',
+        element: <RendicionDetallePage />,
+        handle: { title: 'Rendición' } satisfies AppRouteHandle,
       },
       { path: '*', element: <NotFoundPage /> },
     ],
