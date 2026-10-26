@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { ListarRendicionesQuerySchema } from './listarRendicionesQuery.schema.js';
+import {
+  FILTRO_ESTADO_POR_DEFECTO,
+  ListarRendicionesQuerySchema,
+} from './listarRendicionesQuery.schema.js';
 
 describe('ListarRendicionesQuerySchema', () => {
   it('sin parámetros: ningún filtro', () => {
@@ -74,5 +77,34 @@ describe('ListarRendicionesQuerySchema', () => {
     const r = ListarRendicionesQuerySchema.safeParse({ anio: 'x', mes: 'y' });
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues.map((i) => i.path)).toEqual([['anio'], ['mes']]);
+  });
+
+  describe('estado', () => {
+    it('es opcional y no se completa: sin el parámetro el pedido sigue vacío', () => {
+      expect(ListarRendicionesQuerySchema.parse({})).toEqual({});
+      expect(FILTRO_ESTADO_POR_DEFECTO).toBe('ACTIVA');
+    });
+
+    it.each(['ACTIVA', 'ANULADA', 'TODAS'])('acepta %s', (estado) => {
+      expect(ListarRendicionesQuerySchema.parse({ estado })).toEqual({ estado });
+    });
+
+    it('se combina con el período', () => {
+      expect(
+        ListarRendicionesQuerySchema.parse({ anio: '2026', mes: '10', estado: 'TODAS' }),
+      ).toEqual({ anio: 2026, mes: 10, estado: 'TODAS' });
+    });
+
+    it.each(['activa', 'ANULADAS', 'BORRADA', '', ['ACTIVA', 'ANULADA']])(
+      'rechaza %j con un mensaje claro',
+      (estado) => {
+        const r = ListarRendicionesQuerySchema.safeParse({ estado });
+        expect(r.success).toBe(false);
+        if (!r.success) {
+          expect(r.error.issues[0]?.message).toBe('El estado debe ser ACTIVA, ANULADA o TODAS.');
+          expect(r.error.issues[0]?.path).toEqual(['estado']);
+        }
+      },
+    );
   });
 });
