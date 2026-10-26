@@ -261,7 +261,7 @@ Reglas que valen para toda la sección (además de las de la sección 1):
 - **Cliente borrado:** igual que en clientes y contactos, un cliente con baja lógica (`isDeleted`) se trata como inexistente. Todas las rutas `/clientes/:id/...` responden `404 NOT_FOUND`.
 - **Cliente no activo:** solo un cliente `ACTIVO` puede tener su matriz editada (alta, modificación o baja de requisitos), sus indicaciones de armado editadas, rendiciones nuevas o requisitos agregados a una rendición abierta. `INACTIVO` y `SUSPENDIDO` se tratan igual (un cliente que dejó de operar temporalmente y puede volver): esas operaciones responden `409 CONFLICT` con `motivo: "CLIENTE_NO_ACTIVO"`, y primero hay que reactivarlo. Las lecturas (`GET`) responden igual para cualquier estado. La anulación de una rendición tampoco se restringe, en ningún estado: es la corrección de un error, no una operación nueva.
 - **Ids de la ruta:** `:id` y `:requisitoId` se validan. Uno que no es un uuid responde `400 VALIDATION_ERROR`.
-- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay dos excepciones: `PATCH /rendiciones/:id/estado` (ver 4.6) y `POST /rendiciones/:id/requisitos/:requisitoId`, que con una rendición anulada responde `409 RENDICION_ANULADA` (ver 4.5).
+- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay cuatro excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), y `POST /rendiciones/:id/requisitos/:requisitoId`, que con una rendición anulada responde `409 RENDICION_ANULADA` (ver 4.5).
 - **Fechas:** como en clientes y contactos, la API devuelve `creadoEn` y `actualizadoEn`; las columnas `createdAt` y `updatedAt` se traducen en el backend. `isDeleted` y `deletedAt` no se exponen.
 - **Sin requisitos condicionales:** ningún pedido lleva decisiones del tipo "este período aplica / no aplica". Todo requisito activo entra siempre en el checklist.
 - **La factura es un requisito más:** no es implícita. Todo cliente pide al menos la factura, que figura en su matriz como requisito del tipo "Factura".
@@ -307,7 +307,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | HU2.4       | `GET /clientes/:id/indicaciones-armado`         | Lee las indicaciones de armado                                | 200         |
 | HU2.4       | `PUT /clientes/:id/indicaciones-armado`         | Guarda las indicaciones de armado                             | 200         |
 | Rendiciones | `POST /clientes/:id/rendiciones`                | Abre una rendición y genera su checklist                      | 201         |
-| Rendiciones | `GET /clientes/:id/rendiciones`                 | Lista las rendiciones activas del cliente                     | 200         |
+| Rendiciones | `GET /clientes/:id/rendiciones`                 | Lista las rendiciones del cliente (por defecto, las activas)  | 200         |
 | Rendiciones | `GET /rendiciones/:id`                          | Trae una rendición con su checklist                           | 200         |
 | Rendiciones | `POST /rendiciones/:id/requisitos/:requisitoId` | Agrega a una rendición activa los ítems de un requisito nuevo | 200         |
 | HU2.5       | `PATCH /rendiciones/:id/estado`                 | Anula una rendición (baja lógica, no reversible)              | 200         |
@@ -582,7 +582,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
 - **Período:** cualquier mes pasado es válido (desde enero de 2020) y, como máximo, el **mes siguiente al actual**. "El mes actual" se mide en horario de Buenos Aires (`America/Argentina/Buenos_Aires`), no en UTC, también en el front, para coincidir con el backend. El error se informa en el campo `mes`.
 - **Número de factura (`numeroFactura`):** obligatorio, hasta 100 caracteres, recortado en los bordes y **en mayúsculas** (`fc-0001` se guarda como `FC-0001`); no puede quedar vacío. El largo se mide sobre el valor ya normalizado. Se normaliza porque la unicidad de la base compara el texto exacto.
 - **Unicidad:** un número de factura está en una sola rendición **activa** del cliente, sin importar el mes ni el año. La misma factura en dos clientes distintos se acepta. Una rendición anulada no impide volver a usar su número de factura.
-- **Estado (`estado`, `anuladaEn`):** `ACTIVA` o `ANULADA`, derivado de la baja lógica; `anuladaEn` es la fecha de anulación (`deletedAt`) o `null`. Los listados y el detalle solo devuelven `ACTIVA`.
+- **Estado (`estado`, `anuladaEn`):** `ACTIVA` o `ANULADA`, derivado de la baja lógica; `anuladaEn` es la fecha de anulación (`deletedAt`) o `null`. El listado devuelve por defecto solo `ACTIVA` y muestra las anuladas solo si se piden con el filtro `estado`; el detalle devuelve también una anulada, que se conserva como historial.
 - **Ítems (`items`):** solo en el detalle y en la respuesta de alta. Cada ítem es un documento a presentar, ordenados por `nombreTipoDocumento` y luego por `ordinal`. `completadoEn` es la columna `completadoAt`, con el mismo criterio de nombres que `creadoEn`. El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
 
 #### `POST /clientes/:id/rendiciones`
@@ -617,12 +617,14 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
 
 #### `GET /clientes/:id/rendiciones`
 
-| Parámetro | Obligatorio | Descripción                                                |
-| --------- | ----------- | ---------------------------------------------------------- |
-| `anio`    | No          | Entero de 2020 a 2100                                      |
-| `mes`     | No          | Entero de 1 a 12. Se puede combinar con `anio` o usar solo |
+| Parámetro | Obligatorio | Descripción                                                                          |
+| --------- | ----------- | ------------------------------------------------------------------------------------ |
+| `anio`    | No          | Entero de 2020 a 2100                                                                |
+| `mes`     | No          | Entero de 1 a 12. Se puede combinar con `anio` o usar solo                           |
+| `estado`  | No          | `ACTIVA`, `ANULADA` o `TODAS`. Sin el parámetro, `ACTIVA`. Se combina con el período |
 
-- **Respuesta 200:** las rendiciones **activas** del cliente, sin `items` y con un resumen de avance. Las anuladas no aparecen. Lista vacía si no tiene. Orden: `anio` descendente, `mes` descendente y, dentro del mismo mes, la más reciente primero (`creadoEn` descendente).
+- **Respuesta 200:** las rendiciones del cliente según `estado`, sin `items` y con un resumen de avance. Sin el parámetro, solo las **activas**, como antes: las anuladas se consultan pidiéndolas. Lista vacía si no hay. Orden: `anio` descendente, `mes` descendente y, dentro del mismo mes, la más reciente primero (`creadoEn` descendente). Con `TODAS`, primero las activas y después las anuladas, cada grupo con ese orden.
+- **Estado y baja lógica:** una rendición anulada es su baja lógica (no hay otro estado oculto). Las rendiciones de un cliente borrado no se listan con ningún filtro: el cliente no existe (`404`).
 
 ```json
 [
@@ -641,12 +643,12 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
 ]
 ```
 
-- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid; `anio` o `mes` fuera de rango o no enteros), `404 NOT_FOUND` (el cliente no existe o está borrado).
+- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid; `anio` o `mes` fuera de rango o no enteros; `estado` que no es `ACTIVA`, `ANULADA` ni `TODAS`, o repetido), `404 NOT_FOUND` (el cliente no existe o está borrado).
 
 #### `GET /rendiciones/:id`
 
-- **Respuesta 200:** la rendición con su checklist (`items`).
-- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid), `404 NOT_FOUND` (la rendición no existe o está anulada, o su cliente está borrado).
+- **Respuesta 200:** la rendición con su checklist (`items`), también si está anulada (`"estado": "ANULADA"` y `anuladaEn`): el detalle se conserva como historial, en solo lectura.
+- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid), `404 NOT_FOUND` (la rendición no existe o su cliente está borrado).
 
 #### `POST /rendiciones/:id/requisitos/:requisitoId`
 
@@ -674,7 +676,7 @@ Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo c
 
 - **Pedido:** `{ "estado": "ANULADA" }`. La anulación **no es reversible**: enviar `ACTIVA` es `400 VALIDATION_ERROR`. No se registra un motivo.
 - **Qué hace:** baja lógica: marca `isDeleted` y guarda `deletedAt`. No borra la rendición ni sus ítems, que conservan su valor fiscal. Desde ese momento no aparece en listados ni en el detalle, y su número de factura se puede usar en otra rendición.
-- **Idempotente:** anular una rendición ya anulada responde 200 con la rendición tal cual, **sin escribir** (`anuladaEn` no cambia), igual que pedir el estado que un cliente ya tiene. Es el único endpoint que responde con una rendición anulada.
+- **Idempotente:** anular una rendición ya anulada responde 200 con la rendición tal cual, **sin escribir** (`anuladaEn` no cambia), igual que pedir el estado que un cliente ya tiene.
 - **Cualquier estado del cliente:** se puede anular aunque el cliente esté `INACTIVO` o `SUSPENDIDO`: es la corrección de un error, no una operación nueva. No responde `CLIENTE_NO_ACTIVO`.
 - **Respuesta 200:** la rendición con `"estado": "ANULADA"` y `anuladaEn`, sin `items`.
 - **Errores:** `400 VALIDATION_ERROR` (estado ausente, `ACTIVA` o un valor desconocido, id que no es uuid), `404 NOT_FOUND` (la rendición no existe o su cliente está borrado).
