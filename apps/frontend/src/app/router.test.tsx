@@ -86,9 +86,9 @@ describe('router', () => {
     renderRoute('/clientes/11111111-1111-4111-a111-111111111111/matriz');
 
     const header = within(screen.getByRole('banner'));
-    expect(header.getByText('Matriz')).toBeInTheDocument();
+    expect(header.getByText('Requisitos')).toBeInTheDocument();
     expect(header.queryByRole('heading')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Matriz de requisitos');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Requisitos');
   });
 
   it('muestra una página mínima, dentro del shell, para una ruta desconocida', () => {

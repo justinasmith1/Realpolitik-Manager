@@ -138,7 +138,7 @@ describe('TiposDocumentoPage: encabezado', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Clientes' })).toBeInTheDocument();
     expect(
-      screen.getByText('Tipos de documento que se pueden pedir en una matriz.'),
+      screen.getByText('Tipos de documento que se pueden pedir como requisito.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Secciones de Clientes' })).toBeInTheDocument();
     expect(screen.getByText(/No se permiten nombres repetidos/)).toBeInTheDocument();

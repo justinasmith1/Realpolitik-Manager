@@ -195,7 +195,7 @@ describe.skipIf(API === undefined)('MatrizPage contra la API real', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: cliente.denominacion }, ESPERA),
     ).toBeInTheDocument();
-    expect(screen.getByText('Sin requisitos configurados')).toBeInTheDocument();
+    expect(screen.getByText('Sin requisitos cargados')).toBeInTheDocument();
 
     await user.click(await screen.findByRole('button', { name: 'Agregar requisito' }, ESPERA));
     const alta = await panel('Agregar requisito');
@@ -214,10 +214,10 @@ describe.skipIf(API === undefined)('MatrizPage contra la API real', () => {
     await user.click(within(alta).getByRole('button', { name: 'Agregar requisito' }));
 
     expect(
-      await screen.findByText(`Se agregó ${tipo.nombre} a la matriz.`, {}, ESPERA),
+      await screen.findByText(`Se agregó ${tipo.nombre} a los requisitos del cliente.`, {}, ESPERA),
     ).toBeInTheDocument();
     expect(await screen.findByText('5, 20', {}, ESPERA)).toBeInTheDocument();
-    expect(screen.getByText('Con requisitos')).toBeInTheDocument();
+    expect(screen.getByText('Con requisitos cargados')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: `Acciones de ${tipo.nombre}` }));
     await user.click(await screen.findByRole('menuitem', { name: 'Editar' }));
@@ -241,12 +241,12 @@ describe.skipIf(API === undefined)('MatrizPage contra la API real', () => {
     expect(leerRequisito(requisitoId)).toMatchObject({ isDeleted: false, matrizConfigurada: true });
 
     await user.click(screen.getByRole('button', { name: `Acciones de ${tipo.nombre}` }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Quitar de la matriz' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Quitar requisito' }));
     await user.click(
       within(await screen.findByRole('alertdialog', { name: /Quitar este requisito/ })).getByRole(
         'button',
         {
-          name: 'Quitar de la matriz',
+          name: 'Quitar requisito',
         },
       ),
     );
@@ -254,11 +254,11 @@ describe.skipIf(API === undefined)('MatrizPage contra la API real', () => {
     expect(
       await screen.findByRole(
         'heading',
-        { name: 'Esta matriz todavía no tiene requisitos' },
+        { name: 'Este cliente todavía no tiene requisitos' },
         ESPERA,
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('Sin requisitos configurados')).toBeInTheDocument();
+    expect(screen.getByText('Sin requisitos cargados')).toBeInTheDocument();
     const baja = leerRequisito(requisitoId);
     expect(baja.isDeleted).toBe(true);
     expect(baja.deletedAt).not.toBeNull();
@@ -310,7 +310,7 @@ describe.skipIf(API === undefined)('MatrizPage contra la API real', () => {
 
     expect(await screen.findByText(tipo.nombre, {}, ESPERA)).toBeInTheDocument();
     expect(
-      screen.getByText('Este cliente debe estar activo para modificar su matriz.'),
+      screen.getByText('Este cliente debe estar activo para modificar sus requisitos.'),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /agregar|quitar|editar requisito/i }),

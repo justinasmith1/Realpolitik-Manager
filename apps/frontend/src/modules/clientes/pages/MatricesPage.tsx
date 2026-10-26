@@ -128,7 +128,7 @@ export function MatricesPage() {
             Clientes
           </h1>
           <p className="text-sm text-content-secondary">
-            Matrices de requisitos: qué documentación necesita cada cliente para sus rendiciones.
+            Qué documentación pide cada cliente para cobrar.
           </p>
         </div>
 
@@ -191,7 +191,7 @@ export function MatricesPage() {
                     : 'text-content-secondary hover:text-foreground'
                 }`}
               >
-                Todas
+                Todos
               </button>
               <button
                 type="button"
@@ -202,7 +202,7 @@ export function MatricesPage() {
                     : 'text-content-secondary hover:text-foreground'
                 }`}
               >
-                Configuradas
+                Configurados
               </button>
               <button
                 type="button"
@@ -232,7 +232,7 @@ export function MatricesPage() {
 
         {/* Contador resumen */}
         <p className="text-xs text-content-secondary">
-          {totalActivos} clientes activos · {totalPendientes} con matriz pendiente
+          {totalActivos} clientes activos · {totalPendientes} sin requisitos cargados
         </p>
       </div>
 
@@ -249,7 +249,9 @@ export function MatricesPage() {
           role="alert"
           className="flex flex-col items-start gap-3 rounded-card border bg-card p-6"
         >
-          <p className="text-sm text-destructive">No pudimos cargar los clientes y sus matrices.</p>
+          <p className="text-sm text-destructive">
+            No pudimos cargar los clientes y sus requisitos.
+          </p>
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
             Reintentar
           </Button>
@@ -261,7 +263,7 @@ export function MatricesPage() {
       ) : (
         <div className="overflow-x-auto rounded-card border bg-card shadow-xs">
           <table className="w-full text-left text-sm">
-            <caption className="sr-only">Listado de matrices por cliente</caption>
+            <caption className="sr-only">Listado de requisitos por cliente</caption>
             <thead className="border-b bg-table-head text-xs font-semibold uppercase tracking-wider text-content-secondary">
               <tr>
                 <th scope="col" className="py-3 px-4 min-w-[200px]">
@@ -337,7 +339,7 @@ export function MatricesPage() {
                         {tieneMatriz ? (
                           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
                             <span className="size-2 rounded-full bg-emerald-500" />
-                            Configurada
+                            Configurado
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-warning">

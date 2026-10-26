@@ -92,8 +92,8 @@ export function StepThree() {
         )}
 
         <p className="text-xs text-content-secondary mt-1">
-          Cada requisito usa el canal principal de cada cliente. Se puede cambiar después desde su
-          matriz.
+          Cada requisito usa el canal principal de cada cliente. Se puede cambiar después desde sus
+          requisitos.
         </p>
 
         {/* Avisos de clientes con matriz pendiente que quedarán configurados */}
@@ -104,8 +104,8 @@ export function StepThree() {
               key={`pendiente-${cliente.id}`}
               className="rounded-lg bg-panel-alt border border-border/80 px-4 py-2.5 text-xs text-content-secondary"
             >
-              <strong>{cliente.denominacion}</strong> tiene la matriz pendiente: queda configurada
-              con este requisito.
+              <strong>{cliente.denominacion}</strong> todavía no tiene requisitos cargados: este va
+              a ser el primero.
             </div>
           ))}
       </div>

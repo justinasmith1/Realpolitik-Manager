@@ -225,7 +225,7 @@ describe('TiposDocumentoPage: nuevo tipo', () => {
     const panel = await abrirAlta(user);
 
     const descripcionDelPanel =
-      'Agregá un tipo de documento para utilizarlo en las matrices de requisitos.';
+      'Agregá un tipo de documento para utilizarlo en los requisitos de los clientes.';
     expect(panel.getByText(descripcionDelPanel)).toBeInTheDocument();
     const nombre = panel.getByLabelText('Nombre');
     expect(nombre).toHaveAttribute('placeholder', 'Ej. Constancia de inscripción');
@@ -290,7 +290,9 @@ describe('TiposDocumentoPage: nuevo tipo', () => {
     await user.type(panel.getByLabelText('Nombre'), '  Libre deuda ');
     await user.click(panel.getByRole('button', { name: 'Crear tipo' }));
 
-    await esperarAviso('Se creó el tipo Libre deuda. Ya está disponible para las matrices.');
+    await esperarAviso(
+      'Se creó el tipo Libre deuda. Ya está disponible para los requisitos de los clientes.',
+    );
     await waitFor(() => expect(panelDeAlta()).not.toBeInTheDocument());
     expect(cuerpoDe('POST')).toStrictEqual({ nombre: 'Libre deuda', descripcion: null });
     expect(invalidar).toHaveBeenCalledWith({ queryKey: ['tipos-documento'] });
@@ -423,7 +425,9 @@ describe('TiposDocumentoPage: nombre duplicado', () => {
 
     expect(panel.getByLabelText('Nombre')).not.toHaveAttribute('aria-invalid');
     await user.click(panel.getByRole('button', { name: 'Crear tipo' }));
-    await esperarAviso('Se creó el tipo Constancia ARCA 2. Ya está disponible para las matrices.');
+    await esperarAviso(
+      'Se creó el tipo Constancia ARCA 2. Ya está disponible para los requisitos de los clientes.',
+    );
   });
 });
 
@@ -800,7 +804,9 @@ describe('TiposDocumentoPage: avisos', () => {
     const alta = await abrirAlta(user);
     await user.type(alta.getByLabelText('Nombre'), 'OC');
     await user.click(alta.getByRole('button', { name: 'Crear tipo' }));
-    await esperarAviso('Se creó el tipo OC. Ya está disponible para las matrices.');
+    await esperarAviso(
+      'Se creó el tipo OC. Ya está disponible para los requisitos de los clientes.',
+    );
     await waitFor(() => expect(panelDeAlta()).not.toBeInTheDocument());
 
     await elegirAccion(user, 'Factura', 'Desactivar');
@@ -818,7 +824,9 @@ describe('TiposDocumentoPage: avisos', () => {
     const alta = await abrirAlta(user);
     await user.type(alta.getByLabelText('Nombre'), 'OC');
     await user.click(alta.getByRole('button', { name: 'Crear tipo' }));
-    const aviso = await esperarAviso('Se creó el tipo OC. Ya está disponible para las matrices.');
+    const aviso = await esperarAviso(
+      'Se creó el tipo OC. Ya está disponible para los requisitos de los clientes.',
+    );
     await waitFor(() => expect(panelDeAlta()).not.toBeInTheDocument());
     expect(aviso).toHaveAttribute('role', 'status');
 
@@ -837,7 +845,9 @@ describe('TiposDocumentoPage: avisos', () => {
     const alta = await abrirAlta(user);
     await user.type(alta.getByLabelText('Nombre'), 'OC');
     await user.click(alta.getByRole('button', { name: 'Crear tipo' }));
-    await esperarAviso('Se creó el tipo OC. Ya está disponible para las matrices.');
+    await esperarAviso(
+      'Se creó el tipo OC. Ya está disponible para los requisitos de los clientes.',
+    );
     await waitFor(() => expect(panelDeAlta()).not.toBeInTheDocument());
 
     await abrirEdicionDesdeElNombre(user, 'Constancia ARCA');

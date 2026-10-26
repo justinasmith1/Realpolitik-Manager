@@ -63,13 +63,13 @@ describe('ClientesNav', () => {
     const links = within(navSecundaria()).getAllByRole('link');
     expect(links.map((link) => link.textContent)).toEqual([
       'Clientes',
-      'Matrices',
+      'Requisitos',
       'Tipos de documento',
     ]);
     expect(enlaceSecundario('Clientes')).toHaveAttribute('href', '/clientes');
     expect(enlaceSecundario('Clientes')).toHaveAttribute('aria-current', 'page');
-    expect(enlaceSecundario('Matrices')).toHaveAttribute('href', '/clientes/matrices');
-    expect(enlaceSecundario('Matrices')).not.toHaveAttribute('aria-current');
+    expect(enlaceSecundario('Requisitos')).toHaveAttribute('href', '/clientes/matrices');
+    expect(enlaceSecundario('Requisitos')).not.toHaveAttribute('aria-current');
     expect(enlaceSecundario('Tipos de documento')).toHaveAttribute(
       'href',
       '/clientes/tipos-documento',
@@ -98,7 +98,7 @@ describe('ClientesNav', () => {
     await user.click(enlaceSecundario('Tipos de documento'));
     expect(router.state.location.pathname).toBe('/clientes/tipos-documento');
     expect(
-      await screen.findByText('Tipos de documento que se pueden pedir en una matriz.'),
+      await screen.findByText('Tipos de documento que se pueden pedir como requisito.'),
     ).toBeInTheDocument();
 
     await act(() => router.navigate(-1));

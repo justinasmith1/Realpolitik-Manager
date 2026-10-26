@@ -36,9 +36,9 @@ const campoDeLaApi: Partial<Record<string, CampoRequisito>> = {
 
 export function mensajeClienteNoActivo(estado: ClienteEstadoType | null): string {
   if (estado === null || estado === 'ACTIVO') {
-    return 'Este cliente ya no está activo. No se puede modificar su matriz.';
+    return 'Este cliente ya no está activo. No se pueden modificar sus requisitos.';
   }
-  return `Este cliente está ${etiquetasEstado[estado]}. Ya no se puede modificar su matriz.`;
+  return `Este cliente está ${etiquetasEstado[estado]}. Ya no se pueden modificar sus requisitos.`;
 }
 
 export function mensajeDuplicado(existente: RequisitoExistente | null): string {
@@ -112,7 +112,7 @@ export function mensajeFalloBaja(fallo: FalloRequisito): { texto: string; cierra
       return { texto: mensajeClienteNoActivo(fallo.estado), cierra: true };
     default:
       return {
-        texto: 'No pudimos quitar el requisito de la matriz. Probá de nuevo en unos segundos.',
+        texto: 'No pudimos quitar el requisito. Probá de nuevo en unos segundos.',
         cierra: false,
       };
   }

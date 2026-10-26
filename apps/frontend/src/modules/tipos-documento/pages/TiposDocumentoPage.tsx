@@ -87,7 +87,10 @@ export function TiposDocumentoPage() {
   };
 
   const alCrear = (tipo: TipoDocumento) => {
-    avisar('success', `Se creó el tipo ${tipo.nombre}. Ya está disponible para las matrices.`);
+    avisar(
+      'success',
+      `Se creó el tipo ${tipo.nombre}. Ya está disponible para los requisitos de los clientes.`,
+    );
     setAltaAbierta(false);
   };
 
@@ -187,7 +190,7 @@ export function TiposDocumentoPage() {
             Clientes
           </h1>
           <p className="mt-0.5 text-sm text-content-secondary">
-            Tipos de documento que se pueden pedir en una matriz.
+            Tipos de documento que se pueden pedir como requisito.
           </p>
         </div>
         <Button variant="brand" onClick={abrirAlta} className="max-sm:w-full">
@@ -199,7 +202,7 @@ export function TiposDocumentoPage() {
       <ClientesNav />
 
       <p className="max-w-160 text-sm text-content-secondary">
-        Catálogo de tipos que se pueden pedir en una matriz. No se permiten nombres repetidos,
+        Catálogo de tipos que se pueden pedir como requisito. No se permiten nombres repetidos,
         aunque cambien mayúsculas o acentos.
       </p>
 

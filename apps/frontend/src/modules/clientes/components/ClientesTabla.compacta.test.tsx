@@ -138,7 +138,7 @@ describe('ClientesTabla en pantallas angostas', () => {
     expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
       'Editar',
       'Contactos',
-      'Matriz de requisitos',
+      'Ver requisitos',
       'Desactivar',
     ]);
     await user.click(screen.getByRole('menuitem', { name: 'Editar' }));

@@ -250,7 +250,9 @@ describe('alta', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Agregar requisito' }));
     expect(
-      await screen.findByText('Todos los tipos activos ya están en esta matriz.'),
+      await screen.findByText(
+        'Todos los tipos activos ya están en los requisitos de este cliente.',
+      ),
     ).toBeInTheDocument();
     expect(
       within(await panel('Agregar requisito')).getByRole('button', { name: 'Agregar requisito' }),
@@ -280,7 +282,9 @@ describe('alta', () => {
     await user.type(within(alta).getByLabelText('Día 1'), '5');
     await user.click(within(alta).getByRole('button', { name: 'Agregar requisito' }));
 
-    expect(await screen.findByText('Se agregó Factura a la matriz.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Se agregó Factura a los requisitos del cliente.'),
+    ).toBeInTheDocument();
     const post = pedidos('POST').at(-1);
     expect(jsonDePedido(post?.[1]?.body)).toEqual({
       tipoDocumentoId: TIPO_FACTURA,
@@ -377,7 +381,9 @@ describe('alta', () => {
         201,
       ),
     );
-    expect(await screen.findByText('Se agregó Factura a la matriz.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Se agregó Factura a los requisitos del cliente.'),
+    ).toBeInTheDocument();
   });
 
   it('conserva el foco de la nota si el catálogo termina de cargar mientras se escribe', async () => {
@@ -464,7 +470,7 @@ describe('alta', () => {
 
     expect(
       await within(alta).findByText(
-        'Este cliente está inactivo. Ya no se puede modificar su matriz.',
+        'Este cliente está inactivo. Ya no se pueden modificar sus requisitos.',
       ),
     ).toBeInTheDocument();
     expect(within(alta).getByRole('button', { name: 'Agregar requisito' })).toBeDisabled();
@@ -580,7 +586,7 @@ describe('baja', () => {
     preparar();
     const { user } = renderMatriz();
     await user.click(await screen.findByRole('button', { name: 'Acciones de Zócalo' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Quitar de la matriz' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Quitar requisito' }));
     const dialogo = await screen.findByRole('alertdialog', { name: /Quitar este requisito/ });
     expect(dialogo).toHaveTextContent('Las rendiciones ya abiertas no se modifican.');
     await user.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
@@ -592,22 +598,22 @@ describe('baja', () => {
     preparar({ requisitos: [zocalo] });
     const { user } = renderMatriz();
     await user.click(await screen.findByRole('button', { name: 'Acciones de Zócalo' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Quitar de la matriz' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Quitar requisito' }));
     await user.click(
       within(await screen.findByRole('alertdialog', { name: /Quitar este requisito/ })).getByRole(
         'button',
-        { name: 'Quitar de la matriz' },
+        { name: 'Quitar requisito' },
       ),
     );
     expect(
       await screen.findByText(
-        'Se quitó Zócalo de la matriz. Las rendiciones ya abiertas no cambian.',
+        'Se quitó Zócalo de los requisitos del cliente. Las rendiciones ya abiertas no cambian.',
       ),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole('heading', { name: 'Esta matriz todavía no tiene requisitos' }),
+      await screen.findByRole('heading', { name: 'Este cliente todavía no tiene requisitos' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Sin requisitos configurados')).toBeInTheDocument();
+    expect(screen.getByText('Sin requisitos cargados')).toBeInTheDocument();
   });
 
   it('un 404 cierra el diálogo y avisa en la página', async () => {
@@ -616,10 +622,10 @@ describe('baja', () => {
     });
     const { user } = renderMatriz();
     await user.click(await screen.findByRole('button', { name: 'Acciones de Zócalo' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Quitar de la matriz' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Quitar requisito' }));
     await user.click(
       within(await screen.findByRole('alertdialog')).getByRole('button', {
-        name: 'Quitar de la matriz',
+        name: 'Quitar requisito',
       }),
     );
     expect(await screen.findByText('Este recurso ya no está disponible.')).toBeInTheDocument();
@@ -639,18 +645,18 @@ describe('baja', () => {
     });
     const { user } = renderMatriz();
     await user.click(await screen.findByRole('button', { name: 'Acciones de Zócalo' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Quitar de la matriz' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Quitar requisito' }));
     const dialogo = await screen.findByRole('alertdialog');
-    await user.click(within(dialogo).getByRole('button', { name: 'Quitar de la matriz' }));
+    await user.click(within(dialogo).getByRole('button', { name: 'Quitar requisito' }));
     expect(
       await within(dialogo).findByText(
-        'No pudimos quitar el requisito de la matriz. Probá de nuevo en unos segundos.',
+        'No pudimos quitar el requisito. Probá de nuevo en unos segundos.',
       ),
     ).toBeInTheDocument();
-    await user.click(within(dialogo).getByRole('button', { name: 'Quitar de la matriz' }));
+    await user.click(within(dialogo).getByRole('button', { name: 'Quitar requisito' }));
     expect(
       await screen.findByText(
-        'Se quitó Zócalo de la matriz. Las rendiciones ya abiertas no cambian.',
+        'Se quitó Zócalo de los requisitos del cliente. Las rendiciones ya abiertas no cambian.',
       ),
     ).toBeInTheDocument();
   });
@@ -665,9 +671,9 @@ describe('baja', () => {
     });
     const { user } = renderMatriz();
     await user.click(await screen.findByRole('button', { name: 'Acciones de Zócalo' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Quitar de la matriz' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Quitar requisito' }));
     const boton = within(await screen.findByRole('alertdialog')).getByRole('button', {
-      name: 'Quitar de la matriz',
+      name: 'Quitar requisito',
     });
     const insistente = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
     await insistente.click(boton);

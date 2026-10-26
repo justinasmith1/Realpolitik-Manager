@@ -51,7 +51,7 @@ export function RequisitoAccionesMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={() => onQuitar(requisito)}>
           <MinusIcon aria-hidden="true" />
-          Quitar de la matriz
+          Quitar requisito
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
