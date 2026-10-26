@@ -1,28 +1,28 @@
 import type { Cliente } from '@realpolitik/shared';
-import { QueryClientContext } from '@tanstack/react-query';
-import { useContext } from 'react';
 
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useIndicacionesArmado } from '@/modules/clientes/hooks/useIndicacionesArmado';
 
 export interface MatrizIndicacionesArmadoProps {
-  cliente: Pick<Cliente, 'id' | 'estado' | 'razonSocial' | 'denominacion'>;
-  onEditarCliente: () => void;
-  /** Valor alternativo cuando se renderiza sin React Query. */
-  indicacionesFallback?: string | null | undefined;
+  cliente: Pick<Cliente, 'id'>;
+  /** Abre la edición en la ficha. Sin esto (p. ej. en el detalle de una rendición), solo lectura. */
+  onEditarCliente?: (() => void) | undefined;
 }
 
-function MatrizIndicacionesPresentacion({
+/**
+ * Cuadro de Indicaciones de Armado al final de la Matriz de Requisitos (HU2.4).
+ * Muestra el texto libre registrado para el cliente y un botón para abrir la edición en la ficha.
+ * Si no se pudieron leer, lo dice y ofrece reintentar: "sin indicaciones" sería afirmar algo que
+ * no se sabe.
+ */
+export function MatrizIndicacionesArmado({
+  cliente,
   onEditarCliente,
-  cargando = false,
-  texto,
-}: {
-  onEditarCliente: () => void;
-  cargando?: boolean;
-  texto?: string | null | undefined;
-}) {
-  const contenido = texto?.trim();
+}: MatrizIndicacionesArmadoProps) {
+  const { data, isLoading, isError, isFetching, refetch } = useIndicacionesArmado(cliente.id);
+  const contenido = data?.indicacionesArmado?.trim();
 
   return (
     <section
@@ -33,18 +33,35 @@ function MatrizIndicacionesPresentacion({
         <h2 id="titulo-indicaciones-armado" className="text-base font-semibold text-foreground">
           Indicaciones de armado
         </h2>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onEditarCliente}
-          className="text-xs font-medium"
-        >
-          Editar en la ficha del cliente
-        </Button>
+        {onEditarCliente !== undefined && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onEditarCliente}
+            className="text-xs font-medium"
+          >
+            Editar en la ficha del cliente
+          </Button>
+        )}
       </div>
 
-      {cargando ? (
+      {isError ? (
+        <Alert>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>No pudimos cargar las indicaciones de armado.</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void refetch()}
+              disabled={isFetching}
+            >
+              Reintentar
+            </Button>
+          </div>
+        </Alert>
+      ) : isLoading ? (
         <div className="flex flex-col gap-2 pt-1" data-testid="indicaciones-cargando">
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-4 w-1/2" />
@@ -62,36 +79,5 @@ function MatrizIndicacionesPresentacion({
         </p>
       )}
     </section>
-  );
-}
-
-function MatrizIndicacionesConQuery({ cliente, onEditarCliente }: MatrizIndicacionesArmadoProps) {
-  const { data, isLoading } = useIndicacionesArmado(cliente.id);
-
-  return (
-    <MatrizIndicacionesPresentacion
-      onEditarCliente={onEditarCliente}
-      cargando={isLoading}
-      texto={data?.indicacionesArmado}
-    />
-  );
-}
-
-/**
- * Cuadro de Indicaciones de Armado al final de la Matriz de Requisitos (HU2.4).
- * Muestra el texto libre registrado para el cliente y un botón para abrir la edición en la ficha.
- */
-export function MatrizIndicacionesArmado(props: MatrizIndicacionesArmadoProps) {
-  const queryClient = useContext(QueryClientContext);
-
-  if (queryClient && props.cliente?.id) {
-    return <MatrizIndicacionesConQuery {...props} />;
-  }
-
-  return (
-    <MatrizIndicacionesPresentacion
-      onEditarCliente={props.onEditarCliente}
-      texto={props.indicacionesFallback}
-    />
   );
 }

@@ -97,4 +97,32 @@ describe('MatrizIndicacionesArmado (HU2.4)', () => {
 
     expect(onEditarCliente).toHaveBeenCalledTimes(1);
   });
+
+  it('si no se pudieron cargar, lo dice en vez de afirmar que no hay indicaciones', async () => {
+    vi.spyOn(api, 'obtenerIndicacionesArmado').mockRejectedValue(new Error('fallo de red'));
+
+    renderComponente();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No pudimos cargar las indicaciones de armado.',
+    );
+    expect(screen.queryByText('Sin indicaciones de armado registradas.')).not.toBeInTheDocument();
+  });
+
+  it('Reintentar vuelve a pedirlas y muestra el texto', async () => {
+    const obtener = vi
+      .spyOn(api, 'obtenerIndicacionesArmado')
+      .mockRejectedValueOnce(new Error('fallo de red'))
+      .mockResolvedValueOnce({ indicacionesArmado: 'Todo en un único PDF.' });
+
+    const { user } = renderComponente();
+    await screen.findByRole('alert');
+    await user.click(screen.getByRole('button', { name: 'Reintentar' }));
+
+    expect(await screen.findByTestId('texto-indicaciones-armado')).toHaveTextContent(
+      'Todo en un único PDF.',
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(obtener).toHaveBeenCalledTimes(2);
+  });
 });
