@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
 afterEach(() => {
@@ -36,18 +36,69 @@ describe('router', () => {
     expect(router.state.location.pathname).toBe('/clientes');
   });
 
-  it('sigue mostrando el catálogo de tipos en su ruta, no como matriz de un cliente', () => {
-    renderRoute('/clientes/tipos-documento');
+  it('muestra el catálogo de tipos en /documentos, como sección propia y no como matriz de un cliente', () => {
+    renderRoute('/documentos');
 
     const main = screen.getByRole('main');
-    expect(within(main).getByRole('heading', { level: 1, name: 'Clientes' })).toBeInTheDocument();
+    expect(within(main).getByRole('heading', { level: 1, name: 'Documentos' })).toBeInTheDocument();
     expect(
-      within(screen.getByRole('navigation', { name: 'Secciones de Clientes' })).getByRole('link', {
-        name: 'Tipos de documento',
+      within(screen.getByRole('navigation', { name: 'Principal' })).getByRole('link', {
+        name: 'Documentos',
       }),
     ).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('navigation', { name: 'Secciones de Clientes' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Volver a clientes' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Página no encontrada' })).not.toBeInTheDocument();
+  });
+
+  describe('la ruta vieja /clientes/tipos-documento', () => {
+    it('redirige a /documentos', async () => {
+      const router = renderRoute('/clientes/tipos-documento');
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Documentos' }),
+      ).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe('/documentos');
+    });
+
+    it('conserva la query string: ?desactivados=1 sigue incluyendo los desactivados', async () => {
+      const router = renderRoute('/clientes/tipos-documento?desactivados=1');
+
+      await screen.findByRole('heading', { level: 1, name: 'Documentos' });
+      expect(router.state.location.pathname).toBe('/documentos');
+      expect(router.state.location.search).toBe('?desactivados=1');
+    });
+
+    it('conserva varios parámetros, también los que la página no usa', async () => {
+      const router = renderRoute('/clientes/tipos-documento?desactivados=1&otro=x');
+
+      await screen.findByRole('heading', { level: 1, name: 'Documentos' });
+      expect(router.state.location.search).toBe('?desactivados=1&otro=x');
+    });
+
+    it('reemplaza la entrada del historial: Atrás no vuelve a la ruta vieja', async () => {
+      const router = createMemoryRouter(routes, { initialEntries: ['/clientes'] });
+      render(
+        <AppProviders>
+          <RouterProvider router={router} />
+        </AppProviders>,
+      );
+      await act(() => router.navigate('/clientes/tipos-documento'));
+      await screen.findByRole('heading', { level: 1, name: 'Documentos' });
+      expect(router.state.location.pathname).toBe('/documentos');
+
+      await act(() => router.navigate(-1));
+
+      expect(router.state.location.pathname).toBe('/clientes');
+    });
+
+    it('solo redirige la ruta exacta: una subruta sigue sin existir', () => {
+      renderRoute('/clientes/tipos-documento/extra');
+
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'Página no encontrada' }),
+      ).toBeInTheDocument();
+    });
   });
 
   it('abre /clientes/:id/matriz dentro del shell y deja Clientes marcado en el sidebar', () => {
@@ -67,9 +118,10 @@ describe('router', () => {
     expect(within(secciones).getByRole('link', { name: 'Clientes' })).not.toHaveAttribute(
       'aria-current',
     );
-    expect(within(secciones).getByRole('link', { name: 'Tipos de documento' })).not.toHaveAttribute(
+    expect(within(secciones).getByRole('link', { name: 'Requisitos' })).not.toHaveAttribute(
       'aria-current',
     );
+    expect(within(secciones).queryByRole('link', { name: 'Tipos de documento' })).toBeNull();
   });
 
   it('en mobile el header dice Matriz y no reemplaza al h1 de la página', () => {

@@ -25,12 +25,19 @@ export const routes: RouteObject[] = [
         element: <MatricesPage />,
         handle: { title: 'Requisitos' } satisfies AppRouteHandle,
       },
-      // Hermana de `clientes`, no hija: las dos páginas renderizan `ClientesNav` y el Sidebar
-      // marca Clientes en ambas (su enlace no exige coincidencia exacta).
+      // El catálogo de tipos de documento es general del sistema, no de un cliente: tiene su
+      // propia sección en el Sidebar.
+      {
+        path: 'documentos',
+        element: <TiposDocumentoPage />,
+        handle: { title: 'Documentos' } satisfies AppRouteHandle,
+      },
+      // Ruta anterior del catálogo: se redirige para no romper enlaces guardados. Conserva la
+      // query string (`?desactivados=1`); el hash no llega a un loader y la página no lo usa. El
+      // redirect de un loader reemplaza la entrada del historial, así Atrás no vuelve acá.
       {
         path: 'clientes/tipos-documento',
-        element: <TiposDocumentoPage />,
-        handle: { title: 'Tipos de documento' } satisfies AppRouteHandle,
+        loader: ({ request }) => redirect(`/documentos${new URL(request.url).search}`),
       },
       // Detalle de un cliente, no una sección del catálogo: ClientesNav no gana un ítem.
       {

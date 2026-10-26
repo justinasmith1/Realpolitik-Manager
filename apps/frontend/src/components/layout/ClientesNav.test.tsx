@@ -57,32 +57,31 @@ afterEach(() => {
 });
 
 describe('ClientesNav', () => {
-  it('en /clientes aparece con sus dos destinos y marca solo Clientes', () => {
+  it('en /clientes aparece solo con Clientes y Requisitos, y marca solo Clientes', () => {
     renderRoute('/clientes');
 
     const links = within(navSecundaria()).getAllByRole('link');
-    expect(links.map((link) => link.textContent)).toEqual([
-      'Clientes',
-      'Requisitos',
-      'Tipos de documento',
-    ]);
+    expect(links.map((link) => link.textContent)).toEqual(['Clientes', 'Requisitos']);
     expect(enlaceSecundario('Clientes')).toHaveAttribute('href', '/clientes');
     expect(enlaceSecundario('Clientes')).toHaveAttribute('aria-current', 'page');
     expect(enlaceSecundario('Requisitos')).toHaveAttribute('href', '/clientes/matrices');
     expect(enlaceSecundario('Requisitos')).not.toHaveAttribute('aria-current');
-    expect(enlaceSecundario('Tipos de documento')).toHaveAttribute(
-      'href',
-      '/clientes/tipos-documento',
-    );
-    expect(enlaceSecundario('Tipos de documento')).not.toHaveAttribute('aria-current');
   });
 
-  it('en /clientes/tipos-documento marca solo Tipos de documento (Clientes no coincide parcialmente)', () => {
-    renderRoute('/clientes/tipos-documento');
+  it('ya no ofrece Tipos de documento: es una sección propia, Documentos', () => {
+    renderRoute('/clientes');
 
-    expect(enlaceSecundario('Tipos de documento')).toHaveAttribute('aria-current', 'page');
+    expect(
+      within(navSecundaria()).queryByRole('link', { name: 'Tipos de documento' }),
+    ).not.toBeInTheDocument();
+    expect(within(navSecundaria()).queryByRole('link', { name: 'Documentos' })).toBeNull();
+  });
+
+  it('en /clientes/matrices marca solo Requisitos (Clientes no coincide parcialmente)', () => {
+    renderRoute('/clientes/matrices');
+
+    expect(enlaceSecundario('Requisitos')).toHaveAttribute('aria-current', 'page');
     expect(enlaceSecundario('Clientes')).not.toHaveAttribute('aria-current');
-    expect(screen.getByRole('heading', { level: 1, name: 'Clientes' })).toBeInTheDocument();
   });
 
   it('son enlaces reales en un <nav>, no pestañas', () => {
@@ -92,25 +91,23 @@ describe('ClientesNav', () => {
     expect(within(navSecundaria()).queryByRole('tablist')).not.toBeInTheDocument();
   });
 
-  it('lleva de Clientes a Tipos de documento y Atrás/Adelante vuelven sobre sus pasos', async () => {
+  it('lleva de Clientes a Requisitos y Atrás/Adelante vuelven sobre sus pasos', async () => {
     const { router, user } = renderRoute('/clientes');
 
-    await user.click(enlaceSecundario('Tipos de documento'));
-    expect(router.state.location.pathname).toBe('/clientes/tipos-documento');
-    expect(
-      await screen.findByText('Tipos de documento que se pueden pedir como requisito.'),
-    ).toBeInTheDocument();
+    await user.click(enlaceSecundario('Requisitos'));
+    expect(router.state.location.pathname).toBe('/clientes/matrices');
+    expect(enlaceSecundario('Requisitos')).toHaveAttribute('aria-current', 'page');
 
     await act(() => router.navigate(-1));
     expect(router.state.location.pathname).toBe('/clientes');
     expect(enlaceSecundario('Clientes')).toHaveAttribute('aria-current', 'page');
 
     await act(() => router.navigate(1));
-    expect(router.state.location.pathname).toBe('/clientes/tipos-documento');
+    expect(router.state.location.pathname).toBe('/clientes/matrices');
   });
 
-  it('desde Tipos de documento vuelve a Clientes con su enlace', async () => {
-    const { router, user } = renderRoute('/clientes/tipos-documento');
+  it('desde Requisitos vuelve a Clientes con su enlace', async () => {
+    const { router, user } = renderRoute('/clientes/matrices');
 
     await user.click(enlaceSecundario('Clientes'));
 
@@ -123,38 +120,73 @@ describe('ClientesNav', () => {
   it('se recorre con el teclado y Enter sigue el enlace', async () => {
     const { router, user } = renderRoute('/clientes');
 
-    enlaceSecundario('Tipos de documento').focus();
-    expect(enlaceSecundario('Tipos de documento')).toHaveFocus();
+    enlaceSecundario('Requisitos').focus();
+    expect(enlaceSecundario('Requisitos')).toHaveFocus();
     await user.keyboard('{Enter}');
 
-    expect(router.state.location.pathname).toBe('/clientes/tipos-documento');
+    expect(router.state.location.pathname).toBe('/clientes/matrices');
   });
 });
 
-describe('Ruta /clientes/tipos-documento en el shell', () => {
-  it('la entrada directa por URL muestra el catálogo dentro del shell', async () => {
-    renderRoute('/clientes/tipos-documento');
+describe('Ruta /documentos en el shell', () => {
+  it('la entrada directa por URL muestra el catálogo dentro del shell, con el encabezado Documentos', async () => {
+    renderRoute('/documentos');
 
     expect(screen.getByRole('navigation', { name: 'Principal' })).toBeInTheDocument();
     expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Clientes',
+      'Documentos',
     );
+    expect(
+      screen.getByText('Catálogo de tipos de documento que se pueden pedir como requisito.'),
+    ).toBeInTheDocument();
     expect(await screen.findByText('Todavía no hay tipos de documento')).toBeInTheDocument();
   });
 
-  it('el Sidebar sigue marcando Clientes como sección y no suma un destino propio', () => {
-    renderRoute('/clientes/tipos-documento');
+  it('no muestra la navegación secundaria de Clientes', () => {
+    renderRoute('/documentos');
 
-    const nav = screen.getByRole('navigation', { name: 'Principal' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(1);
-    expect(enlaceDelSidebar('Clientes')).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('navigation', { name: 'Secciones de Clientes' })).toBeNull();
   });
 
-  it('en mobile el Header dice "Tipos de documento"', () => {
-    simularMobile();
-    renderRoute('/clientes/tipos-documento');
+  it('el Sidebar ofrece Clientes y Documentos, y marca solo Documentos', () => {
+    renderRoute('/documentos');
 
-    expect(within(screen.getByRole('banner')).getByText('Tipos de documento')).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Principal' });
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Clientes', 'Documentos']);
+    expect(enlaceDelSidebar('Documentos')).toHaveAttribute('href', '/documentos');
+    expect(enlaceDelSidebar('Documentos')).toHaveAttribute('aria-current', 'page');
+    expect(enlaceDelSidebar('Clientes')).not.toHaveAttribute('aria-current');
+  });
+
+  it('en /clientes el Sidebar marca Clientes y no Documentos', () => {
+    renderRoute('/clientes');
+
+    expect(enlaceDelSidebar('Clientes')).toHaveAttribute('aria-current', 'page');
+    expect(enlaceDelSidebar('Documentos')).not.toHaveAttribute('aria-current');
+  });
+
+  it('se llega a Documentos desde el Sidebar sin pasar por Clientes, y Atrás vuelve', async () => {
+    const { router, user } = renderRoute('/clientes/matrices');
+
+    await user.click(enlaceDelSidebar('Documentos'));
+    expect(router.state.location.pathname).toBe('/documentos');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Documentos' }),
+    ).toBeInTheDocument();
+
+    await act(() => router.navigate(-1));
+    expect(router.state.location.pathname).toBe('/clientes/matrices');
+  });
+
+  it('en mobile el Header dice "Documentos"', () => {
+    simularMobile();
+    renderRoute('/documentos');
+
+    expect(within(screen.getByRole('banner')).getByText('Documentos')).toBeInTheDocument();
   });
 
   it('en mobile, en /clientes, el Header sigue diciendo "Clientes"', () => {
@@ -164,7 +196,7 @@ describe('Ruta /clientes/tipos-documento en el shell', () => {
     expect(within(screen.getByRole('banner')).getByText('Clientes')).toBeInTheDocument();
   });
 
-  it.each(['/clientes/otra-ruta-invalida', '/clientes/tipos-documento/extra'])(
+  it.each(['/clientes/otra-ruta-invalida', '/documentos/extra'])(
     '%s no existe: muestra la página no encontrada',
     (path) => {
       renderRoute(path);

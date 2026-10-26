@@ -185,7 +185,7 @@ function renderMatriz() {
   const router = createMemoryRouter(
     [
       { path: '/clientes/:id/matriz', element: <MatrizPage /> },
-      { path: '/clientes/tipos-documento', element: <h1>Tipos de documento</h1> },
+      { path: '/documentos', element: <h1>Documentos</h1> },
     ],
     { initialEntries: [`/clientes/${ID}/matriz`] },
   );
@@ -241,7 +241,7 @@ describe('alta', () => {
     await user.click(
       within(alta).getByRole('link', { name: 'Ir al catálogo de tipos de documento' }),
     );
-    expect(router.state.location.pathname).toBe('/clientes/tipos-documento');
+    expect(router.state.location.pathname).toBe('/documentos');
   });
 
   it('avisa cuando todos los tipos activos ya están asignados', async () => {

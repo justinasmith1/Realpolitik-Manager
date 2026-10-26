@@ -12,12 +12,11 @@ vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera')
 
 const fetchMock = vi.fn<typeof fetch>();
 
-function renderPage(url = '/clientes/tipos-documento') {
+function renderPage(url = '/documentos') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const router = createMemoryRouter(
-    [{ path: '/clientes/tipos-documento', element: <TiposDocumentoPage /> }],
-    { initialEntries: [url] },
-  );
+  const router = createMemoryRouter([{ path: '/documentos', element: <TiposDocumentoPage /> }], {
+    initialEntries: [url],
+  });
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -165,7 +164,7 @@ const cuerpoDe = (metodo: string, indice = 0): unknown =>
 const panelDeAlta = () => screen.queryByRole('dialog', { name: 'Nuevo tipo de documento' });
 const panelDeEdicion = () => screen.queryByRole('dialog', { name: 'Editar tipo de documento' });
 const confirmacion = () => screen.queryByRole('alertdialog');
-const titulo = () => screen.getByRole('heading', { level: 1, name: 'Clientes' });
+const titulo = () => screen.getByRole('heading', { level: 1, name: 'Documentos' });
 const filtro = () => screen.getByRole('checkbox', { name: 'Incluir desactivados' });
 
 /** Los avisos de la página (los `Alert` que no están dentro de un panel o diálogo). */
@@ -536,7 +535,7 @@ describe('TiposDocumentoPage: editar', () => {
 
   it('edita un tipo desactivado y sigue desactivado', async () => {
     simularServidor([arca, print]);
-    const { user } = renderPage('/clientes/tipos-documento?desactivados=1');
+    const { user } = renderPage('/documentos?desactivados=1');
     await screen.findByRole('table');
     const panel = await abrirEdicionDesdeElNombre(user, 'Print');
 
@@ -649,7 +648,7 @@ describe('TiposDocumentoPage: desactivar y reactivar', () => {
 
   it('con desactivados incluidos, el tipo sigue en la lista como Desactivado y el filtro no cambia', async () => {
     simularServidor([arca, factura]);
-    const { user, router } = renderPage('/clientes/tipos-documento?desactivados=1');
+    const { user, router } = renderPage('/documentos?desactivados=1');
     await screen.findByRole('table');
 
     await elegirAccion(user, 'Constancia ARCA', 'Desactivar');
@@ -664,7 +663,7 @@ describe('TiposDocumentoPage: desactivar y reactivar', () => {
 
   it('Reactivar pide confirmación y, al confirmar, PATCH { activo: true } y aviso', async () => {
     simularServidor([arca, print]);
-    const { user } = renderPage('/clientes/tipos-documento?desactivados=1');
+    const { user } = renderPage('/documentos?desactivados=1');
     await screen.findByRole('table');
 
     await elegirAccion(user, 'Print', 'Reactivar');
@@ -686,7 +685,7 @@ describe('TiposDocumentoPage: desactivar y reactivar', () => {
 
   it('el menú ofrece solo la acción que corresponde al estado', async () => {
     simularServidor([arca, print]);
-    const { user } = renderPage('/clientes/tipos-documento?desactivados=1');
+    const { user } = renderPage('/documentos?desactivados=1');
     await screen.findByRole('table');
 
     await user.click(screen.getByRole('button', { name: 'Acciones de Print' }));

@@ -9,12 +9,11 @@ import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumen
 const fetchMock = vi.fn<typeof fetch>();
 const BASE = 'https://api.example';
 
-function renderPage(url = '/clientes/tipos-documento') {
+function renderPage(url = '/documentos') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const router = createMemoryRouter(
-    [{ path: '/clientes/tipos-documento', element: <TiposDocumentoPage /> }],
-    { initialEntries: [url] },
-  );
+  const router = createMemoryRouter([{ path: '/documentos', element: <TiposDocumentoPage /> }], {
+    initialEntries: [url],
+  });
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -132,16 +131,17 @@ afterEach(() => {
 });
 
 describe('TiposDocumentoPage: encabezado', () => {
-  it('mantiene el título de la sección, con el subtítulo, la navegación y la explicación del catálogo', async () => {
+  it('titula la sección "Documentos", con una sola frase que explica el catálogo, sin la navegación de Clientes', async () => {
     simularServidor([factura]);
     renderPage();
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Clientes' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Documentos' })).toBeInTheDocument();
+    expect(screen.getAllByText(/se pueden pedir como requisito/)).toHaveLength(1);
     expect(
-      screen.getByText('Tipos de documento que se pueden pedir como requisito.'),
+      screen.getByText('Catálogo de tipos de documento que se pueden pedir como requisito.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'Secciones de Clientes' })).toBeInTheDocument();
-    expect(screen.getByText(/No se permiten nombres repetidos/)).toBeInTheDocument();
+    expect(screen.queryByText(/nombres repetidos/)).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Secciones de Clientes' })).toBeNull();
     await screen.findByRole('table', { name: 'Tipos de documento' });
   });
 
@@ -184,7 +184,7 @@ describe('TiposDocumentoPage: listado', () => {
 
   it('con desactivados, cada tipo dice su estado con texto', async () => {
     simularServidor([factura, print]);
-    renderPage('/clientes/tipos-documento?desactivados=1');
+    renderPage('/documentos?desactivados=1');
 
     await screen.findByRole('table', { name: 'Tipos de documento' });
     expect(within(filaDe('Factura')).getByText('Activo')).toBeInTheDocument();
@@ -208,7 +208,7 @@ describe('TiposDocumentoPage: pantallas angostas', () => {
   it('muestra tarjetas con la misma información que la tabla', async () => {
     simularPantallaAngosta();
     simularServidor([oc, print]);
-    renderPage('/clientes/tipos-documento?desactivados=1');
+    renderPage('/documentos?desactivados=1');
 
     const lista = await screen.findByRole('list', { name: 'Tipos de documento' });
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -243,7 +243,7 @@ describe('TiposDocumentoPage: filtro "Incluir desactivados"', () => {
 
   it('con ?desactivados=1 arranca marcado y pide todos (sobrevive a una recarga)', async () => {
     simularServidor([factura, print]);
-    renderPage('/clientes/tipos-documento?desactivados=1');
+    renderPage('/documentos?desactivados=1');
 
     await screen.findByRole('table', { name: 'Tipos de documento' });
     expect(filtro()).toBeChecked();
@@ -265,7 +265,7 @@ describe('TiposDocumentoPage: filtro "Incluir desactivados"', () => {
 
   it('desmarcarlo quita el parámetro y vuelve a los activos', async () => {
     simularServidor([factura, print]);
-    const { router, user } = renderPage('/clientes/tipos-documento?desactivados=1');
+    const { router, user } = renderPage('/documentos?desactivados=1');
     await screen.findByText('Print');
 
     await user.click(filtro());
@@ -292,7 +292,7 @@ describe('TiposDocumentoPage: filtro "Incluir desactivados"', () => {
 
   it('conserva los demás parámetros de la URL al marcar y desmarcar', async () => {
     simularServidor([factura]);
-    const { router, user } = renderPage('/clientes/tipos-documento?otro=x');
+    const { router, user } = renderPage('/documentos?otro=x');
     await screen.findByRole('table', { name: 'Tipos de documento' });
 
     await user.click(filtro());
@@ -308,7 +308,7 @@ describe('TiposDocumentoPage: filtro "Incluir desactivados"', () => {
     ['el parámetro repetido', '?desactivados=1&desactivados=1', '?desactivados=1', true],
   ])('normaliza %s, sin sumar una entrada al historial', async (_caso, query, limpia, marcado) => {
     simularServidor([factura, print]);
-    const { router } = renderPage(`/clientes/tipos-documento${query}`);
+    const { router } = renderPage(`/documentos${query}`);
 
     await screen.findByRole('table', { name: 'Tipos de documento' });
     expect(router.state.location.search).toBe(limpia);
@@ -318,7 +318,7 @@ describe('TiposDocumentoPage: filtro "Incluir desactivados"', () => {
 
   it('un valor equivalente a "sin filtro" no genera otra consulta', async () => {
     simularServidor([factura]);
-    renderPage('/clientes/tipos-documento?desactivados=0');
+    renderPage('/documentos?desactivados=0');
 
     await screen.findByRole('table', { name: 'Tipos de documento' });
     expect(urlsPedidas()).toEqual([`${BASE}/tipos-documento`]);
@@ -434,7 +434,7 @@ describe('TiposDocumentoPage: estados de la consulta', () => {
 
   it('con desactivados incluidos y el catálogo vacío, el filtro sigue a la vista para volver', async () => {
     simularServidor([]);
-    renderPage('/clientes/tipos-documento?desactivados=1');
+    renderPage('/documentos?desactivados=1');
 
     expect(await screen.findByText('Todavía no hay tipos de documento')).toBeInTheDocument();
     expect(filtro()).toBeChecked();
@@ -465,7 +465,7 @@ describe('TiposDocumentoPage: cambio de filtro en curso', () => {
 
   it('si la lista anterior estaba vacía, no muestra un estado vacío mientras llega la nueva', async () => {
     const responder = servidorEnPausa();
-    const { user } = renderPage('/clientes/tipos-documento?desactivados=1');
+    const { user } = renderPage('/documentos?desactivados=1');
     await responder('/tipos-documento?incluirInactivos=true', []);
     await screen.findByText('Todavía no hay tipos de documento');
 
