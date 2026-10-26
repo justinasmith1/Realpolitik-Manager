@@ -42,7 +42,7 @@ import { tiposDocumentoQueryKey } from '@/modules/tipos-documento/api/tipos-docu
 import { useTiposDocumento } from '@/modules/tipos-documento/hooks/useTiposDocumento';
 
 const MENSAJE_INESPERADO = 'No pudimos guardar el requisito. Probá de nuevo en unos segundos.';
-const AVISO_INACTIVO = 'Este cliente debe estar activo para modificar su matriz.';
+const AVISO_INACTIVO = 'Este cliente debe estar activo para modificar sus requisitos.';
 
 export type ModoRequisito = { tipo: 'alta' } | { tipo: 'edicion'; requisito: RequisitoCliente };
 
@@ -52,7 +52,8 @@ interface RequisitoSheetProps {
   cliente: Cliente;
   requisitos: readonly RequisitoCliente[];
   onClose: () => void;
-  onGuardado: (texto: string) => void;
+  /** El texto del aviso y, en un alta, el requisito creado (para ofrecer sumarlo a rendiciones). */
+  onGuardado: (texto: string, creado?: RequisitoCliente) => void;
   /** A dónde vuelve el foco al cerrarse. */
   retornoDeFoco: RefObject<HTMLElement | null>;
   onCerrado?: () => void;
@@ -132,7 +133,10 @@ export function RequisitoSheet({
           datos: cuerpoDeAlta(datos),
         });
         await exito.mostrar();
-        onGuardado(`Se agregó ${creado.tipoDocumento.nombre} a la matriz.`);
+        onGuardado(
+          `Se agregó ${creado.tipoDocumento.nombre} a los requisitos del cliente.`,
+          creado,
+        );
         return undefined;
       }
       const cambios = cambiosDeRequisito(datos, borrador.requisito);

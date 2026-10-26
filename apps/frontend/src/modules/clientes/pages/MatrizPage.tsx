@@ -32,6 +32,9 @@ import { useCliente } from '@/modules/clientes/hooks/useCliente';
 import { useEliminarRequisito } from '@/modules/clientes/hooks/useEliminarRequisito';
 import { useRequisitos } from '@/modules/clientes/hooks/useRequisitos';
 import { busquedaParaVolver } from '@/modules/clientes/matriz.navegacion';
+import { RendicionesSection } from '@/modules/rendiciones/components/RendicionesSection';
+import { SumarRequisitoDialog } from '@/modules/rendiciones/components/SumarRequisitoDialog';
+import { useRendiciones } from '@/modules/rendiciones/hooks/useRendiciones';
 
 /** Un 404 del detalle: el cliente no existe o ya fue dado de baja. */
 function esClienteAusente(error: unknown): boolean {
@@ -54,6 +57,8 @@ export function MatrizPage() {
   const [modo, setModo] = useState<ModoRequisito | null>(null);
   const [requisitoAQuitar, setRequisitoAQuitar] = useState<RequisitoCliente | null>(null);
   const [editandoCliente, setEditandoCliente] = useState(false);
+  // Requisito recién agregado que se puede sumar a rendiciones abiertas (contrato 4.5).
+  const [requisitoASumar, setRequisitoASumar] = useState<RequisitoCliente | null>(null);
   const eliminar = useEliminarRequisito();
   const idValido = esIdDeRuta(id);
   const clienteQuery = useCliente(id, { enabled: idValido });
@@ -61,6 +66,8 @@ export function MatrizPage() {
   // En paralelo con el cliente, salvo que ya se sepa que no existe o el id no sirve.
   // Si el cliente falla, esta consulta no se muestra: un 404 no se suma a otro error.
   const requisitosQuery = useRequisitos(id, { enabled: idValido && !clienteQuery.isError });
+  // Todas las abiertas, sin los filtros del listado: para ofrecer sumar un requisito nuevo.
+  const rendicionesAbiertas = useRendiciones(idValido ? id : undefined);
 
   const cliente = clienteQuery.data;
   // A qué título llevar el foco. Cambia al pasar de carga a cliente, de error a éxito y de un
@@ -115,7 +122,7 @@ export function MatrizPage() {
     if (cliente === undefined) {
       return {
         tipo: 'error',
-        mensaje: 'No pudimos quitar el requisito de la matriz. Probá de nuevo en unos segundos.',
+        mensaje: 'No pudimos quitar el requisito. Probá de nuevo en unos segundos.',
       };
     }
     try {
@@ -129,7 +136,7 @@ export function MatrizPage() {
     }
     aviso.avisar(
       'success',
-      `Se quitó ${requisito.tipoDocumento.nombre} de la matriz. Las rendiciones ya abiertas no cambian.`,
+      `Se quitó ${requisito.tipoDocumento.nombre} de los requisitos del cliente. Las rendiciones ya abiertas no cambian.`,
     );
     setRequisitoAQuitar(null);
     return { tipo: 'hecho' };
@@ -142,7 +149,7 @@ export function MatrizPage() {
     contenido = (
       <>
         <h1 ref={tituloRef} tabIndex={-1} className="sr-only">
-          Matriz de requisitos
+          Requisitos
         </h1>
         <MatrizCargando incluirEncabezado />
       </>
@@ -153,7 +160,7 @@ export function MatrizPage() {
     contenido = (
       <>
         <h1 ref={tituloRef} tabIndex={-1} className="text-xl font-semibold tracking-tight">
-          Matriz de requisitos
+          Requisitos
         </h1>
         <MatrizError
           recurso="cliente"
@@ -247,6 +254,13 @@ export function MatrizPage() {
         />
       )}
       {cliente !== undefined && (
+        <RendicionesSection
+          cliente={cliente}
+          onAviso={aviso.avisar}
+          onConfigurarMatriz={puedeModificar ? abrirAlta : undefined}
+        />
+      )}
+      {cliente !== undefined && (
         <>
           <EditarClienteSheet
             cliente={editandoCliente ? cliente : null}
@@ -261,9 +275,12 @@ export function MatrizPage() {
             cliente={cliente}
             requisitos={requisitosQuery.data ?? []}
             onClose={() => setModo(null)}
-            onGuardado={(texto) => {
+            onGuardado={(texto, creado) => {
               aviso.avisar('success', texto);
               setModo(null);
+              if (creado !== undefined && (rendicionesAbiertas.data?.length ?? 0) > 0) {
+                setRequisitoASumar(creado);
+              }
             }}
             retornoDeFoco={retornoRef}
             onCerrado={() => {
@@ -271,6 +288,16 @@ export function MatrizPage() {
                 enfocarYMostrar(tituloRef.current);
               }
             }}
+          />
+          <SumarRequisitoDialog
+            requisito={requisitoASumar}
+            rendiciones={rendicionesAbiertas.data ?? []}
+            onCerrar={() => setRequisitoASumar(null)}
+            onTerminado={(variante, texto) => {
+              aviso.avisar(variante, texto);
+              setRequisitoASumar(null);
+            }}
+            focoAlCerrar={tituloRef}
           />
           <QuitarRequisitoDialog
             requisito={requisitoAQuitar}
