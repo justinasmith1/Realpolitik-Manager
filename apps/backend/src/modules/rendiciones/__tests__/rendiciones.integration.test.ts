@@ -143,10 +143,10 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
   it('abre la rendición y su checklist en la base, con el snapshot de la matriz', async () => {
     const cliente = await clienteConMatriz();
 
-    const res = await abrir(cliente.id, 'fc-1');
+    const res = await abrir(cliente.id, 'a 1-1');
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(cuerpo(res).numeroFactura).toBe('FC-1');
+    expect(cuerpo(res).numeroFactura).toBe('A 00001-00000001');
     expect(
       cuerpo(res).items?.map(({ nombreTipoDocumento, ordinal, diaAproximado, canalEntrega }) => ({
         nombre: nombreTipoDocumento.replace(`${MARCA} `, ''),
@@ -178,7 +178,7 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
       });
     }
 
-    const apertura = await abrir(cliente.id, 'FC-ORDEN');
+    const apertura = await abrir(cliente.id, 'A 00001-00000010');
     const detalle = await request(app).get(`/rendiciones/${cuerpo(apertura).id}`);
 
     const nombres = (res: request.Response) =>
@@ -189,18 +189,23 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
 
   it('la misma factura en el mismo cliente, aun en otro período, es 409 RENDICION_DUPLICADA', async () => {
     const cliente = await clienteConMatriz();
-    const primera = await abrir(cliente.id, 'FC-2');
+    const primera = await abrir(cliente.id, 'B 00002-00000002');
     const anterior =
       PERIODO.mes === 1
         ? { anio: PERIODO.anio - 1, mes: 12 }
         : { anio: PERIODO.anio, mes: PERIODO.mes - 1 };
 
-    const res = await abrir(cliente.id, ' fc-2 ', anterior);
+    // Otra escritura del mismo comprobante: la unicidad compara el valor canónico.
+    const res = await abrir(cliente.id, ' b 2-2 ', anterior);
 
     expect(res.status, JSON.stringify(res.body)).toBe(409);
     expect(detalles(res)).toEqual({
       motivo: 'RENDICION_DUPLICADA',
-      rendicionExistente: { id: cuerpo(primera).id, ...PERIODO, numeroFactura: 'FC-2' },
+      rendicionExistente: {
+        id: cuerpo(primera).id,
+        ...PERIODO,
+        numeroFactura: 'B 00002-00000002',
+      },
     });
   });
 
@@ -208,14 +213,17 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
     const uno = await clienteConMatriz();
     const otro = await clienteConMatriz();
 
-    expect((await abrir(uno.id, 'FC-3')).status).toBe(201);
-    expect((await abrir(otro.id, 'FC-3')).status).toBe(201);
+    expect((await abrir(uno.id, 'A 00001-00000003')).status).toBe(201);
+    expect((await abrir(otro.id, 'A 00001-00000003')).status).toBe(201);
   });
 
   it('con dos altas simultáneas de la misma factura se crea una sola', async () => {
     const cliente = await clienteConMatriz();
 
-    const respuestas = await Promise.all([abrir(cliente.id, 'FC-4'), abrir(cliente.id, 'FC-4')]);
+    const respuestas = await Promise.all([
+      abrir(cliente.id, 'A 00001-00000004'),
+      abrir(cliente.id, 'a 1-4'),
+    ]);
 
     expect(respuestas.map((res) => res.status).sort()).toEqual([201, 409]);
     expect(
@@ -225,7 +233,7 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
 
   it('anular conserva la rendición y sus ítems, es idempotente y libera la factura', async () => {
     const cliente = await clienteConMatriz();
-    const abierta = cuerpo(await abrir(cliente.id, 'FC-5'));
+    const abierta = cuerpo(await abrir(cliente.id, 'A 00001-00000005'));
 
     const primera = await anular(abierta.id);
     const segunda = await anular(abierta.id);
@@ -240,7 +248,7 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
     expect(
       ((await request(app).get(`/clientes/${cliente.id}/rendiciones`)).body as unknown[]).length,
     ).toBe(0);
-    expect((await abrir(cliente.id, 'FC-5')).status).toBe(201);
+    expect((await abrir(cliente.id, 'a 1-5')).status).toBe(201);
   });
 
   it('el filtro de estado separa activas y anuladas; con TODAS, las activas van primero', async () => {
@@ -250,8 +258,8 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
         ? { anio: PERIODO.anio - 1, mes: 12 }
         : { anio: PERIODO.anio, mes: PERIODO.mes - 1 };
     // La anulada es la del período más reciente: sin el orden por estado iría primera.
-    const anulada = cuerpo(await abrir(cliente.id, 'FC-RECIENTE'));
-    const activa = cuerpo(await abrir(cliente.id, 'FC-ANTERIOR', anterior));
+    const anulada = cuerpo(await abrir(cliente.id, 'A 00001-00000011'));
+    const activa = cuerpo(await abrir(cliente.id, 'A 00001-00000012', anterior));
     await anular(anulada.id);
     const listar = async (query: string) =>
       (
@@ -270,7 +278,7 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
   it('sin requisitos activos es 409 MATRIZ_VACIA y no crea nada', async () => {
     const cliente = await crearCliente();
 
-    const res = await abrir(cliente.id, 'FC-6');
+    const res = await abrir(cliente.id, 'A 00001-00000006');
 
     expect(res.status).toBe(409);
     expect(detalles(res)).toEqual({ motivo: 'MATRIZ_VACIA' });
@@ -280,7 +288,7 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
   it('con el cliente inactivo es 409 CLIENTE_NO_ACTIVO', async () => {
     const cliente = await crearCliente('INACTIVO');
 
-    const res = await abrir(cliente.id, 'FC-7');
+    const res = await abrir(cliente.id, 'A 00001-00000007');
 
     expect(res.status).toBe(409);
     expect(detalles(res)).toEqual({ motivo: 'CLIENTE_NO_ACTIVO', estado: 'INACTIVO' });

@@ -102,7 +102,7 @@ describe.skipIf(url === undefined)(
   'sumar un requisito a una rendición, contra PostgreSQL real',
   () => {
     it('suma los ítems del requisito nuevo y deja igual los que ya estaban', async () => {
-      const { cliente, rendicionId } = await rendicionAbierta('FC-R1');
+      const { cliente, rendicionId } = await rendicionAbierta('A 00001-00000201');
       const antes = await prisma.itemChecklist.findMany({ where: { rendicionId } });
       const nuevo = await crearRequisito(cliente.id, 'Print', 2);
 
@@ -130,7 +130,7 @@ describe.skipIf(url === undefined)(
     });
 
     it('con dos pedidos simultáneos del mismo requisito, suma una sola vez', async () => {
-      const { cliente, rendicionId } = await rendicionAbierta('FC-R2');
+      const { cliente, rendicionId } = await rendicionAbierta('A 00001-00000202');
       const nuevo = await crearRequisito(cliente.id, 'Print', 2);
 
       const respuestas = await Promise.all([
@@ -145,7 +145,7 @@ describe.skipIf(url === undefined)(
     });
 
     it('un requisito que ya está en la rendición es 409 REQUISITO_YA_EN_RENDICION', async () => {
-      const { cliente, rendicionId } = await rendicionAbierta('FC-R3');
+      const { cliente, rendicionId } = await rendicionAbierta('A 00001-00000203');
       const factura = await prisma.requisitoCliente.findFirstOrThrow({
         where: { clienteId: cliente.id },
       });
@@ -159,7 +159,7 @@ describe.skipIf(url === undefined)(
     });
 
     it('con la rendición anulada es 409 RENDICION_ANULADA', async () => {
-      const { cliente, rendicionId } = await rendicionAbierta('FC-R4');
+      const { cliente, rendicionId } = await rendicionAbierta('A 00001-00000204');
       const nuevo = await crearRequisito(cliente.id, 'Print', 1);
       await request(app).patch(`/rendiciones/${rendicionId}/estado`).send({ estado: 'ANULADA' });
 

@@ -62,7 +62,7 @@ function filaRendicion(extra: Record<string, unknown> = {}) {
     clienteId: CLIENTE,
     anio: 2026,
     mes: 10,
-    numeroFactura: 'FC-0001',
+    numeroFactura: 'A 00001-00000001',
     isDeleted: false,
     deletedAt: null,
     createdAt: AHORA,
@@ -133,7 +133,8 @@ const error = (res: request.Response) => (res.body as CuerpoDeError).error;
 const campos = (res: request.Response) =>
   (error(res).details as { campo: string }[]).map((detalle) => detalle.campo);
 
-const pedido = { anio: 2026, mes: 10, numeroFactura: 'fc-0001' };
+/** Escrito como lo cargaría la operadora: se guarda en su forma canónica `B 00002-00001482`. */
+const pedido = { anio: 2026, mes: 10, numeroFactura: 'b 2-1482' };
 
 /** Lo que la creación recibió en `data` (sin el anidado de ítems). */
 function datosCreados() {
@@ -218,15 +219,15 @@ describe('POST /clientes/:id/rendiciones', () => {
     ).toBe(true);
   });
 
-  it('guarda el número de factura normalizado y copia solo el snapshot del contrato', async () => {
-    await abrir({ ...pedido, numeroFactura: '  fc-0001 ' });
+  it('guarda el número de factura en su forma canónica y copia solo el snapshot del contrato', async () => {
+    await abrir({ ...pedido, numeroFactura: '  b2 - 1482 ' });
 
     const datos = datosCreados();
     expect(datos).toMatchObject({
       clienteId: CLIENTE,
       anio: 2026,
       mes: 10,
-      numeroFactura: 'FC-0001',
+      numeroFactura: 'B 00002-00001482',
     });
     expect(datos?.items.createMany.data[0]).toEqual({
       requisitoClienteId: REQ_FACTURA,
@@ -244,7 +245,11 @@ describe('POST /clientes/:id/rendiciones', () => {
 
     const cuerpo = res.body as Record<string, unknown>;
     expect(Object.keys(cuerpo).sort()).toEqual([...CAMPOS_DE_RENDICION, 'items'].sort());
-    expect(cuerpo).toMatchObject({ estado: 'ACTIVA', anuladaEn: null, numeroFactura: 'FC-0001' });
+    expect(cuerpo).toMatchObject({
+      estado: 'ACTIVA',
+      anuladaEn: null,
+      numeroFactura: 'B 00002-00001482',
+    });
   });
 
   it('lee la matriz y crea la rendición en una transacción serializable', async () => {
@@ -261,6 +266,13 @@ describe('POST /clientes/:id/rendiciones', () => {
   it.each([
     ['sin número de factura', { anio: 2026, mes: 10 }, 'numeroFactura'],
     ['con un número de factura en blanco', { ...pedido, numeroFactura: '   ' }, 'numeroFactura'],
+    [
+      'con un número de factura sin letra',
+      { ...pedido, numeroFactura: '00002-00001482' },
+      'numeroFactura',
+    ],
+    ['con la letra D', { ...pedido, numeroFactura: 'D 00002-00001482' }, 'numeroFactura'],
+    ['con el formato viejo', { ...pedido, numeroFactura: 'FC-1234' }, 'numeroFactura'],
     ['con un mes fuera de rango', { ...pedido, mes: 13 }, 'mes'],
     ['con un año anterior a 2020', { ...pedido, anio: 2019 }, 'anio'],
     ['con un período posterior al mes siguiente', { ...pedido, mes: 12 }, 'mes'],
@@ -271,6 +283,27 @@ describe('POST /clientes/:id/rendiciones', () => {
     expect(campos(res)).toContain(campo);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
+
+  it('el 400 de un número de factura inválido dice el formato esperado con un ejemplo', async () => {
+    const res = await abrir({ ...pedido, numeroFactura: 'B 000002-00001482' });
+
+    expect(res.status).toBe(400);
+    expect(error(res).details).toEqual([
+      {
+        campo: 'numeroFactura',
+        mensaje: expect.stringContaining('B 00002-00001482') as unknown,
+      },
+    ]);
+  });
+
+  it.each(['b 2-1482', 'B2-1482', ' B 00002 - 00001482 ', 'B 00002-00001482'])(
+    'escrituras distintas del mismo comprobante se guardan igual (%j): la unicidad las ve como una',
+    async (numeroFactura) => {
+      await abrir({ ...pedido, numeroFactura });
+
+      expect(datosCreados()?.numeroFactura).toBe('B 00002-00001482');
+    },
+  );
 
   it('acepta el mes siguiente al actual', async () => {
     const res = await abrir({ ...pedido, mes: 11 });
@@ -328,7 +361,7 @@ describe('POST /clientes/:id/rendiciones', () => {
         id: OTRA,
         anio: 2026,
         mes: 9,
-        numeroFactura: 'FC-0001',
+        numeroFactura: 'B 00002-00001482',
       });
 
       const res = await abrir(pedido);
@@ -336,11 +369,12 @@ describe('POST /clientes/:id/rendiciones', () => {
       expect(res.status).toBe(409);
       expect(error(res).details).toEqual({
         motivo: 'RENDICION_DUPLICADA',
-        rendicionExistente: { id: OTRA, anio: 2026, mes: 9, numeroFactura: 'FC-0001' },
+        rendicionExistente: { id: OTRA, anio: 2026, mes: 9, numeroFactura: 'B 00002-00001482' },
       });
+      // Se busca la existente por el valor canónico, no por lo que se escribió.
       expect(prismaMock.rendicion.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { clienteId: CLIENTE, numeroFactura: 'FC-0001', isDeleted: false },
+          where: { clienteId: CLIENTE, numeroFactura: 'B 00002-00001482', isDeleted: false },
         }),
       );
     },
@@ -376,7 +410,7 @@ describe('GET /clientes/:id/rendiciones', () => {
   beforeEach(() => {
     prismaMock.rendicion.findMany.mockResolvedValue([
       filaRendicion(),
-      filaRendicion({ id: OTRA, mes: 9, numeroFactura: 'FC-0002' }),
+      filaRendicion({ id: OTRA, mes: 9, numeroFactura: 'A 00001-00000002' }),
     ]);
     prismaMock.itemChecklist.groupBy.mockResolvedValue([
       { rendicionId: RENDICION, completado: false, _count: { _all: 3 } },
