@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -223,6 +223,79 @@ describe('MatricesPage', () => {
     expect(router.state.location.state).toEqual({
       origen: 'requisitos',
       busqueda: '?matrizConfigurada=false',
+    });
+  });
+
+  describe('accesibilidad', () => {
+    it('los filtros de estado son un grupo "Estado" y aria-pressed marca el activo', async () => {
+      const { user } = renderMatrices();
+
+      const grupo = within(screen.getByRole('group', { name: 'Estado' }));
+      expect(grupo.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
+      expect(grupo.getByRole('button', { name: 'Pendientes' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+
+      await user.click(grupo.getByRole('button', { name: 'Pendientes' }));
+
+      expect(grupo.getByRole('button', { name: 'Pendientes' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(grupo.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'false');
+      expect(grupo.getByRole('button', { name: 'Configurados' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+
+    it('el buscador tiene una etiqueta accesible', async () => {
+      const { user } = renderMatrices();
+
+      await user.type(screen.getByRole('textbox', { name: 'Buscar cliente' }), 'Vialidad');
+
+      expect(screen.getByText('Vialidad PBA')).toBeInTheDocument();
+      expect(screen.queryByText('Abasto Norte')).not.toBeInTheDocument();
+    });
+
+    it('cada fila tiene un enlace a la matriz del cliente, sin onClick en la fila', () => {
+      renderMatrices();
+
+      const enlace = screen.getByRole('link', { name: 'Vialidad PBA' });
+      expect(enlace).toHaveAttribute(
+        'href',
+        '/clientes/22222222-2222-4222-a222-222222222222/matriz',
+      );
+      // El enlace se estira sobre la fila (posicionada) con su pseudo-elemento.
+      expect(enlace.closest('tr')).toHaveClass('relative');
+      expect(enlace).toHaveClass('after:absolute', 'after:inset-0');
+    });
+
+    it('con teclado: Tab llega al cliente, Enter abre su matriz y conserva el origen para volver', async () => {
+      const { user, router } = renderMatrices('/clientes/matrices?matrizConfigurada=false');
+      const enlace = screen.getByRole('link', { name: 'Vialidad PBA' });
+
+      for (let i = 0; i < 20 && document.activeElement !== enlace; i++) await user.tab();
+      expect(enlace).toHaveFocus();
+      await user.keyboard('{Enter}');
+
+      expect(await screen.findByText('Detalle Matriz')).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(
+        '/clientes/22222222-2222-4222-a222-222222222222/matriz',
+      );
+      expect(router.state.location.state).toEqual({
+        origen: 'requisitos',
+        busqueda: '?matrizConfigurada=false',
+      });
+    });
+
+    it('el botón de carga masiva es el CTA del sistema de diseño, sin colores directos', () => {
+      renderMatrices();
+
+      const boton = screen.getByRole('button', { name: /Añadir requisitos a varios clientes/i });
+      expect(boton).toHaveClass('bg-primary', 'text-primary-foreground');
+      expect(boton.className).not.toMatch(/bg-black|text-white|neutral-\d/);
     });
   });
 });
