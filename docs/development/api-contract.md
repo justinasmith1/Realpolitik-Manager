@@ -261,7 +261,7 @@ Reglas que valen para toda la sección (además de las de la sección 1):
 - **Cliente borrado:** igual que en clientes y contactos, un cliente con baja lógica (`isDeleted`) se trata como inexistente. Todas las rutas `/clientes/:id/...` responden `404 NOT_FOUND`.
 - **Cliente no activo:** solo un cliente `ACTIVO` puede tener su matriz editada (alta, modificación o baja de requisitos), sus indicaciones de armado editadas, rendiciones nuevas o requisitos agregados a una rendición abierta. `INACTIVO` y `SUSPENDIDO` se tratan igual (un cliente que dejó de operar temporalmente y puede volver): esas operaciones responden `409 CONFLICT` con `motivo: "CLIENTE_NO_ACTIVO"`, y primero hay que reactivarlo. Las lecturas (`GET`) responden igual para cualquier estado. La anulación de una rendición tampoco se restringe, en ningún estado: es la corrección de un error, no una operación nueva.
 - **Ids de la ruta:** `:id` y `:requisitoId` se validan. Uno que no es un uuid responde `400 VALIDATION_ERROR`.
-- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay cuatro excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), y `POST /rendiciones/:id/requisitos/:requisitoId`, que con una rendición anulada responde `409 RENDICION_ANULADA` (ver 4.5).
+- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay cinco excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), `POST /rendiciones/:id/requisitos/:requisitoId` y `PATCH /rendiciones/:id/items/:itemId/canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
 - **Fechas:** como en clientes y contactos, la API devuelve `creadoEn` y `actualizadoEn`; las columnas `createdAt` y `updatedAt` se traducen en el backend. `isDeleted` y `deletedAt` no se exponen.
 - **Sin requisitos condicionales:** ningún pedido lleva decisiones del tipo "este período aplica / no aplica". Todo requisito activo entra siempre en el checklist.
 - **La factura es un requisito más:** no es implícita. Todo cliente pide al menos la factura, que figura en su matriz como requisito del tipo "Factura".
@@ -277,7 +277,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | `REQUISITO_DUPLICADO`       | `requisitoExistente`     | El cliente ya tiene un requisito activo para ese tipo de documento                                                                              |
 | `RENDICION_DUPLICADA`       | `rendicionExistente`     | Ese número de factura ya está en otra rendición activa del cliente, de cualquier mes y año                                                      |
 | `MATRIZ_VACIA`              | No lleva                 | Se intenta abrir una rendición para un cliente sin requisitos activos                                                                           |
-| `RENDICION_ANULADA`         | No lleva                 | Se intenta agregar un requisito a una rendición anulada                                                                                         |
+| `RENDICION_ANULADA`         | No lleva                 | Se intenta agregar un requisito o corregir el canal de un ítem en una rendición anulada                                                         |
 | `REQUISITO_YA_EN_RENDICION` | No lleva                 | Se intenta agregar a una rendición un requisito cuyo tipo de documento ya tiene ítems en ella, aunque sea de otro requisito                     |
 | `CLIENTE_NO_ACTIVO`         | `estado` del cliente     | Se intenta editar la matriz o las indicaciones de armado, abrir una rendición o agregarle un requisito, de un cliente `INACTIVO` o `SUSPENDIDO` |
 
@@ -310,6 +310,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | Rendiciones | `GET /clientes/:id/rendiciones`                 | Lista las rendiciones del cliente (por defecto, las activas)  | 200         |
 | Rendiciones | `GET /rendiciones/:id`                          | Trae una rendición con su checklist                           | 200         |
 | Rendiciones | `POST /rendiciones/:id/requisitos/:requisitoId` | Agrega a una rendición activa los ítems de un requisito nuevo | 200         |
+| Rendiciones | `PATCH /rendiciones/:id/items/:itemId/canal`    | Corrige el canal de un ítem de una rendición activa           | 200         |
 | HU2.5       | `PATCH /rendiciones/:id/estado`                 | Anula una rendición (baja lógica, no reversible)              | 200         |
 | Clientes    | `GET /clientes` (extensión)                     | Agrega `matrizConfigurada` y un filtro por ese campo          | 200         |
 | Clientes    | `GET /clientes/:id`                             | Devuelve un cliente con el mismo DTO, incluido el flag        | 200         |
@@ -400,7 +401,7 @@ Un requisito es un documento que el cliente exige en cada rendición.
 ```
 
 - **Tipo (`tipoDocumentoId` en el pedido, `tipoDocumento` en la respuesta):** obligatorio al crear y **no editable**: para cambiar de tipo se da de baja el requisito y se crea otro. Tiene que ser un tipo activo. Un cliente no puede tener dos requisitos **activos** del mismo tipo; uno dado de baja no impide volver a agregarlo.
-- **Cantidad (`cantidad`):** entero, al menos 1, `1` por defecto. Cuántos documentos de ese tipo por rendición. Máximo **100** (`CANTIDAD_MAX`): un tope **provisorio**, pendiente de confirmar con el negocio. Lo valida `@realpolitik/shared`, no la base, que no fija un máximo. Existe para que abrir una rendición no cree miles de ítems.
+- **Cantidad (`cantidad`):** entero, al menos 1, `1` por defecto. Cuántos documentos de ese tipo por rendición. Máximo **31** (`CANTIDAD_MAX`), confirmado con el negocio el 27/10/2026: los documentos comunes se piden una vez por mes y los Prints, como máximo uno por día (ADR-0003, "Reglas confirmadas con el negocio"). Lo valida `@realpolitik/shared`, no la base, que no fija un máximo: un requisito guardado antes con más de 31 se sigue pudiendo leer.
 - **Días aproximados (`diasAproximados`):** lista de enteros de 1 a 31, `[]` por defecto. Vacía, o con **exactamente** `cantidad` días. Se permiten días repetidos y desordenados, pero se guardan **ordenados de menor a mayor** (`[15, 1, 15]` se guarda como `[1, 15, 15]`), para que el ítem N de la rendición tome siempre el día N.
 - **Canal (`canalEntrega`):** `CORREO`, `PORTAL_WEB`, `WHATSAPP` o `null`. `null` (por defecto) significa "usa el canal principal del cliente". La respuesta devuelve el valor guardado, no el canal resuelto. **Pendiente de backend:** un requisito con canal `PORTAL_WEB` o `WHATSAPP` cuando el cliente no tiene `portalUrl` o `whatsappNumero` no se valida en `@realpolitik/shared` (ver 4.8).
 - **Nota (`nota`):** opcional, hasta 500 caracteres, `null` si no hay.
@@ -464,7 +465,7 @@ Solo `tipoDocumentoId` es obligatorio. No se envían `clienteId`, fechas ni baja
 
 La pantalla consulta la matriz (`GET` del cliente y `GET` de sus requisitos), da de alta, edita y da de baja lógica un requisito. `matrizConfigurada` lo calcula el servidor al crear el primero o al dar de baja el último: el front no lo envía. Un tipo de documento desactivado sigue visible y se puede editar; no se ofrece para un alta. Un cliente `INACTIVO` o `SUSPENDIDO` se lee y no se modifica.
 
-La cantidad es un entero de 1 a 100. Los días aproximados se cargan de a uno, o se dejan vacíos; una lista a medias no se envía. Bajar la cantidad no borra días: hay que quitar los que sobran. Se pueden repetir y se guardan ordenados. Son orientativos y no generan alertas.
+La cantidad es un entero de 1 a 31. Los días aproximados se cargan de a uno, o se dejan vacíos; una lista a medias no se envía. Bajar la cantidad no borra días: hay que quitar los que sobran. Se pueden repetir y se guardan ordenados. Son orientativos y no generan alertas.
 
 Queda fuera de esta pantalla la carga masiva (HU2.3), las indicaciones de armado (HU2.4) y las rendiciones (HU2.5).
 
@@ -497,7 +498,7 @@ Agrega **un mismo** requisito a **varios** clientes a la vez. Reemplaza a "copia
 | `tipoDocumentoId`            | Sí          | Tipo de documento activo                                                    |
 | `clientes`                   | Sí          | Lista no vacía. Un mismo `clienteId` no puede repetirse. Sin tope de largo  |
 | `clientes[].clienteId`       | Sí          | uuid del cliente                                                            |
-| `clientes[].cantidad`        | No          | Entero de 1 a 100. `1` por defecto                                          |
+| `clientes[].cantidad`        | No          | Entero de 1 a 31. `1` por defecto                                           |
 | `clientes[].diasAproximados` | No          | Vacía o exactamente `cantidad` días, cada uno de 1 a 31. `[]` por defecto   |
 | `canalEntrega`               | No          | Override de canal. Si se envía, se aplica a todos los requisitos creados    |
 | `nota`                       | No          | Hasta 500 caracteres. Si se envía, se aplica a todos los requisitos creados |
@@ -553,7 +554,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
   "clienteId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
   "anio": 2026,
   "mes": 10,
-  "numeroFactura": "0001-00001234",
+  "numeroFactura": "B 00002-00001482",
   "estado": "ACTIVA",
   "anuladaEn": null,
   "creadoEn": "2026-10-20T12:00:00.000Z",
@@ -580,14 +581,14 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
 - **Año (`anio`):** entero de 2020 a 2100.
 - **Mes (`mes`):** entero de 1 a 12.
 - **Período:** cualquier mes pasado es válido (desde enero de 2020) y, como máximo, el **mes siguiente al actual**. "El mes actual" se mide en horario de Buenos Aires (`America/Argentina/Buenos_Aires`), no en UTC, también en el front, para coincidir con el backend. El error se informa en el campo `mes`.
-- **Número de factura (`numeroFactura`):** obligatorio, hasta 100 caracteres, recortado en los bordes y **en mayúsculas** (`fc-0001` se guarda como `FC-0001`); no puede quedar vacío. El largo se mide sobre el valor ya normalizado. Se normaliza porque la unicidad de la base compara el texto exacto.
+- **Número de factura (`numeroFactura`):** obligatorio, con formato de factura argentina: letra `A`, `B` o `C`, punto de venta de 5 dígitos y número de comprobante de 8 dígitos. Se guarda y se devuelve en su **formato canónico** `B 00002-00001482`. Al escribir se normaliza antes de validar: la letra puede venir en minúscula, con o sin espacio; el guion puede tener espacios alrededor; y el punto de venta y el número se completan con ceros a la izquierda si vienen más cortos (`b 2-1482` se guarda como `B 00002-00001482`). Se normaliza porque la unicidad de la base compara el texto exacto: así dos escrituras del mismo comprobante son la misma factura. **Al leer no se valida el formato:** una rendición cargada antes con otro formato se sigue viendo tal cual.
 - **Unicidad:** un número de factura está en una sola rendición **activa** del cliente, sin importar el mes ni el año. La misma factura en dos clientes distintos se acepta. Una rendición anulada no impide volver a usar su número de factura.
 - **Estado (`estado`, `anuladaEn`):** `ACTIVA` o `ANULADA`, derivado de la baja lógica; `anuladaEn` es la fecha de anulación (`deletedAt`) o `null`. El listado devuelve por defecto solo `ACTIVA` y muestra las anuladas solo si se piden con el filtro `estado`; el detalle devuelve también una anulada, que se conserva como historial.
 - **Ítems (`items`):** solo en el detalle y en la respuesta de alta. Cada ítem es un documento a presentar, ordenados por `nombreTipoDocumento` y luego por `ordinal`. `completadoEn` es la columna `completadoAt`, con el mismo criterio de nombres que `creadoEn`. El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
 
 #### `POST /clientes/:id/rendiciones`
 
-- **Pedido:** `{ "anio": 2026, "mes": 10, "numeroFactura": "0001-00001234" }`. Ningún otro dato: no hay decisiones de condicionales, todos los requisitos activos entran.
+- **Pedido:** `{ "anio": 2026, "mes": 10, "numeroFactura": "B 00002-00001482" }`. Ningún otro dato: no hay decisiones de condicionales, todos los requisitos activos entran.
 - **Qué hace**, en una sola transacción:
   1. Crea la rendición.
   2. Por cada requisito **activo** de la matriz del cliente crea `cantidad` ítems, con `ordinal` de 1 a `cantidad` y `totalOrdinal` = `cantidad`. Entran también los requisitos cuyo tipo de documento está inactivo.
@@ -595,7 +596,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
   4. No copia la nota del requisito, la descripción del tipo ni datos del cliente.
 - **Respuesta 201:** la rendición con su checklist (`items`).
 - **Errores:**
-  - `400 VALIDATION_ERROR`: falta `anio`, `mes` o `numeroFactura`; `anio` fuera de 2020 a 2100 o no entero; `mes` fuera de 1 a 12 o no entero; período posterior al mes siguiente al actual (el error cae en `mes`); `numeroFactura` vacío, de solo espacios, de más de 100 caracteres o con caracteres de control; id que no es uuid.
+  - `400 VALIDATION_ERROR`: falta `anio`, `mes` o `numeroFactura`; `anio` fuera de 2020 a 2100 o no entero; `mes` fuera de 1 a 12 o no entero; período posterior al mes siguiente al actual (el error cae en `mes`); `numeroFactura` vacío, de solo espacios o que, después de normalizarlo, no cumple el formato (sin letra, otra letra que A, B o C, punto de venta de más de 5 dígitos, número de más de 8, letras en los números o sin guion; el mensaje dice el formato esperado con el ejemplo `B 00002-00001482`); id que no es uuid.
   - `404 NOT_FOUND`: el cliente no existe o está borrado.
   - `409 CONFLICT`:
     - `motivo: "CLIENTE_NO_ACTIVO"`: el cliente es `INACTIVO` o `SUSPENDIDO`.
@@ -609,7 +610,12 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
     "message": "Ese número de factura ya está en otra rendición del cliente",
     "details": {
       "motivo": "RENDICION_DUPLICADA",
-      "rendicionExistente": { "id": "…", "anio": 2026, "mes": 9, "numeroFactura": "0001-00001234" }
+      "rendicionExistente": {
+        "id": "…",
+        "anio": 2026,
+        "mes": 9,
+        "numeroFactura": "B 00002-00001482"
+      }
     }
   }
 }
@@ -633,7 +639,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
     "clienteId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
     "anio": 2026,
     "mes": 10,
-    "numeroFactura": "0001-00001234",
+    "numeroFactura": "B 00002-00001482",
     "estado": "ACTIVA",
     "anuladaEn": null,
     "resumen": { "totalItems": 4, "completados": 1 },
@@ -668,6 +674,20 @@ Para cuando un cliente empieza a pedir un documento nuevo justo en un mes cuya r
     - `motivo: "CLIENTE_NO_ACTIVO"`: el cliente es `INACTIVO` o `SUSPENDIDO`.
 - **Cómo lo usa el front:** justo después de agregar un requisito a la matriz, si el cliente tiene una rendición abierta, ofrece agregarlo también a esa rendición.
 
+#### `PATCH /rendiciones/:id/items/:itemId/canal`
+
+Para cuando un requisito tenía un canal equivocado: los ítems guardan el canal efectivo del momento en que se abrió la rendición (o se sumó el requisito), así que corregir el requisito después no los cambia. Ver [ADR-0003](../adr/0003-modelado-requisitos-y-rendiciones.md), punto 9.
+
+- **Pedido:** `{ "canalEntrega": "PORTAL_WEB" }`. `canalEntrega` es obligatorio: `CORREO`, `PORTAL_WEB` o `WHATSAPP` (el mismo enum que el canal del cliente; `ActualizarCanalDeItemSchema` de `@realpolitik/shared`). Otros campos se ignoran: es la única parte del snapshot que se corrige; el tipo, el ordinal y el día aproximado no cambian.
+- **Qué hace:** cambia el canal de ese ítem en esa rendición. No modifica el requisito del cliente ni los ítems de otras rendiciones. Corre en una transacción serializable, así no se cruza con una anulación simultánea.
+- **Idempotente:** con el canal que el ítem ya tiene, responde 200 **sin escribir** (`actualizadoEn` del ítem no cambia).
+- **Respuesta 200:** la rendición con su checklist (`items`), como `GET /rendiciones/:id`.
+- **Errores:**
+  - `400 VALIDATION_ERROR`: ids que no son uuid; `canalEntrega` ausente o fuera del enum.
+  - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado; el ítem no existe o es de otra rendición.
+  - `409 CONFLICT` con `motivo: "RENDICION_ANULADA"`: la rendición está anulada.
+- **Cómo lo usa el front:** desde el detalle de una rendición activa, ítem por ítem, con confirmación. En una anulada no se ofrece.
+
 ### 4.6 Anular una rendición (HU2.5)
 
 Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo cambia el estado.
@@ -697,7 +717,6 @@ Las preguntas de negocio se cerraron el 20/10/2026 y están aplicadas en esta se
 
 | Tema                        | Qué falta                                                                                                                                                                                                                | A cargo |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| Tope de `cantidad`          | El máximo de 100 por requisito (`CANTIDAD_MAX`) es **provisorio**: hay que confirmarlo con el negocio.                                                                                                                   | Negocio |
 | Tope de clientes por pedido | `POST /requisitos/masivo` no limita cuántos clientes lleva una lista: el negocio no lo definió.                                                                                                                          | Negocio |
 | Canal propio del requisito  | Un requisito con canal `PORTAL_WEB` o `WHATSAPP`, cuando el cliente no tiene `portalUrl` o `whatsappNumero`, no se valida: `@realpolitik/shared` no puede consultar al cliente. Hay que decidir y validar en el backend. | Backend |
 
