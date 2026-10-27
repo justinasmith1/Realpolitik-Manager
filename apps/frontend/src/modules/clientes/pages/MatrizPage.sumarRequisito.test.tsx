@@ -70,8 +70,11 @@ const urlDe = (entrada: Parameters<typeof fetch>[0]) =>
 
 /** `sumar` responde el POST de cada rendición; por defecto, 200. */
 function servir({
-  rendiciones = [rendicion(REND_OCT, 10, 'FC-0001'), rendicion(REND_SEP, 9, 'FC-0002')],
-  sumar = () => json({ ...rendicion(REND_OCT, 10, 'FC-0001'), items: [] }),
+  rendiciones = [
+    rendicion(REND_OCT, 10, 'A 00001-00000001'),
+    rendicion(REND_SEP, 9, 'A 00001-00000002'),
+  ],
+  sumar = () => json({ ...rendicion(REND_OCT, 10, 'A 00001-00000001'), items: [] }),
 }: {
   rendiciones?: unknown[];
   sumar?: (rendicionId: string) => Response;
@@ -157,10 +160,10 @@ describe('MatrizPage: sumar un requisito nuevo a rendiciones abiertas', () => {
 
     const ventana = within(await dialogo());
     expect(
-      ventana.getByRole('checkbox', { name: 'Octubre 2026 (factura FC-0001)' }),
+      ventana.getByRole('checkbox', { name: 'Octubre 2026 (factura A 00001-00000001)' }),
     ).not.toBeChecked();
     expect(
-      ventana.getByRole('checkbox', { name: 'Septiembre 2026 (factura FC-0002)' }),
+      ventana.getByRole('checkbox', { name: 'Septiembre 2026 (factura A 00001-00000002)' }),
     ).not.toBeChecked();
     expect(ventana.getByRole('button', { name: 'Sumar a las elegidas' })).toBeDisabled();
   });
@@ -197,11 +200,13 @@ describe('MatrizPage: sumar un requisito nuevo a rendiciones abiertas', () => {
     await agregarFactura(user);
 
     const ventana = within(await dialogo());
-    await user.click(ventana.getByRole('checkbox', { name: 'Octubre 2026 (factura FC-0001)' }));
+    await user.click(
+      ventana.getByRole('checkbox', { name: 'Octubre 2026 (factura A 00001-00000001)' }),
+    );
     await user.click(ventana.getByRole('button', { name: 'Sumar a las elegidas' }));
 
     expect(
-      await screen.findByText('Se sumó Factura a Octubre 2026 (factura FC-0001).'),
+      await screen.findByText('Se sumó Factura a Octubre 2026 (factura A 00001-00000001).'),
     ).toBeInTheDocument();
     expect(posteosDeSumar()).toEqual([`/rendiciones/${REND_OCT}/requisitos/${REQ_NUEVO}`]);
   });
@@ -220,20 +225,24 @@ describe('MatrizPage: sumar un requisito nuevo a rendiciones abiertas', () => {
               },
               409,
             )
-          : json({ ...rendicion(REND_OCT, 10, 'FC-0001'), items: [] }),
+          : json({ ...rendicion(REND_OCT, 10, 'A 00001-00000001'), items: [] }),
     });
     const { user } = renderMatriz();
     await screen.findByRole('article', { name: 'Octubre 2026' });
     await agregarFactura(user);
 
     const ventana = within(await dialogo());
-    await user.click(ventana.getByRole('checkbox', { name: 'Octubre 2026 (factura FC-0001)' }));
-    await user.click(ventana.getByRole('checkbox', { name: 'Septiembre 2026 (factura FC-0002)' }));
+    await user.click(
+      ventana.getByRole('checkbox', { name: 'Octubre 2026 (factura A 00001-00000001)' }),
+    );
+    await user.click(
+      ventana.getByRole('checkbox', { name: 'Septiembre 2026 (factura A 00001-00000002)' }),
+    );
     await user.click(ventana.getByRole('button', { name: 'Sumar a las elegidas' }));
 
     expect(
       await screen.findByText(
-        'Se sumó Factura a Octubre 2026 (factura FC-0001). No se pudo sumar a Septiembre 2026 (factura FC-0002): ya tenía ese documento.',
+        'Se sumó Factura a Octubre 2026 (factura A 00001-00000001). No se pudo sumar a Septiembre 2026 (factura A 00001-00000002): ya tenía ese documento.',
       ),
     ).toBeInTheDocument();
     expect(posteosDeSumar()).toHaveLength(2);

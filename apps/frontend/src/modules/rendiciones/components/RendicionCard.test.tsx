@@ -53,7 +53,7 @@ describe('RendicionCard', () => {
     renderTarjeta();
 
     const tarjeta = screen.getByRole('article', { name: 'Octubre 2026' });
-    expect(tarjeta).toHaveTextContent('Factura FC-0001');
+    expect(tarjeta).toHaveTextContent('Factura A 00001-00000001');
     expect(tarjeta).toHaveTextContent('1 de 4 reunidos');
     expect(within(tarjeta).queryByText('Checklist completo')).not.toBeInTheDocument();
   });

@@ -58,7 +58,7 @@ function renderPanel({ conMatriz = true }: { conMatriz?: boolean } = {}) {
 const campo = (etiqueta: string) => screen.getByLabelText(etiqueta);
 const botonAbrir = () => screen.getByRole('button', { name: 'Abrir rendición' });
 
-async function enviarFactura(user: UserEvent, factura = 'fc-0001') {
+async function enviarFactura(user: UserEvent, factura = 'a 1-1') {
   await user.type(campo('Número de factura'), factura);
   await user.click(botonAbrir());
 }
@@ -101,6 +101,36 @@ describe('AbrirRendicionSheet', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('muestra el formato esperado del número de factura como ayuda del campo', () => {
+    renderPanel();
+
+    expect(campo('Número de factura')).toHaveAccessibleDescription(
+      expect.stringContaining('Formato: B 00002-00001482'),
+    );
+  });
+
+  it.each([
+    ['sin letra', '00002-00001482'],
+    ['con la letra D', 'D 00002-00001482'],
+    ['con un punto de venta de 6 dígitos', 'B 000002-00001482'],
+    ['con letras en el número', 'B 00002-0000148A'],
+  ])(
+    'un número %s se marca debajo del campo con el formato y no se envía',
+    async (_caso, factura) => {
+      const { user } = renderPanel();
+
+      await enviarFactura(user, factura);
+
+      expect(campo('Número de factura')).toHaveAccessibleDescription(
+        expect.stringContaining(
+          'El número de factura debe tener el formato letra (A, B o C), punto de venta de 5 dígitos y número de 8 dígitos, por ejemplo B 00002-00001482.',
+        ),
+      );
+      expect(campo('Número de factura')).toHaveFocus();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('un período posterior al mes siguiente se marca en el mes y no se envía', async () => {
     const { user } = renderPanel();
 
@@ -120,7 +150,7 @@ describe('AbrirRendicionSheet', () => {
     const invalidar = vi.spyOn(queryClient, 'invalidateQueries');
 
     await elegirOpcion(user, campo('Mes'), '11');
-    await enviarFactura(user, '  fc-0001 ');
+    await enviarFactura(user, '  a 1-1 ');
 
     await waitFor(() => expect(onAbierta).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0] ?? [];
@@ -129,7 +159,7 @@ describe('AbrirRendicionSheet', () => {
     expect(JSON.parse(init?.body as string)).toEqual({
       anio: 2026,
       mes: 11,
-      numeroFactura: 'FC-0001',
+      numeroFactura: 'A 00001-00000001',
     });
     expect(onAbierta).toHaveBeenCalledWith(expect.objectContaining({ id: abierta.id }));
     expect(invalidar).toHaveBeenCalledWith({ queryKey: ['clientes', CLIENTE_ID, 'rendiciones'] });
@@ -139,7 +169,7 @@ describe('AbrirRendicionSheet', () => {
     fetchMock.mockResolvedValue(
       errorJson(409, 'CONFLICT', {
         motivo: 'RENDICION_DUPLICADA',
-        rendicionExistente: { id: OTRA_ID, anio: 2026, mes: 9, numeroFactura: 'FC-0001' },
+        rendicionExistente: { id: OTRA_ID, anio: 2026, mes: 9, numeroFactura: 'A 00001-00000001' },
       }),
     );
     const { user, onVerRendicion, onAbierta } = renderPanel();
@@ -147,7 +177,7 @@ describe('AbrirRendicionSheet', () => {
     await enviarFactura(user);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Ya hay una rendición abierta con la factura FC-0001 (Septiembre 2026).',
+      'Ya hay una rendición abierta con la factura A 00001-00000001 (Septiembre 2026).',
     );
     expect(campo('Número de factura')).toHaveAccessibleDescription(
       expect.stringContaining('Esa factura ya está en otra rendición del cliente.'),
@@ -202,6 +232,6 @@ describe('AbrirRendicionSheet', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'No pudimos abrir la rendición. Probá de nuevo en unos segundos.',
     );
-    expect(campo('Número de factura')).toHaveValue('fc-0001');
+    expect(campo('Número de factura')).toHaveValue('a 1-1');
   });
 });
