@@ -23,7 +23,7 @@ export interface ValidacionClienteRow {
 
 /**
  * Valida la fila de un cliente seleccionado según las reglas de negocio de @realpolitik/shared:
- * - `cantidad`: número entero entre 1 y CANTIDAD_MAX (100).
+ * - `cantidad`: número entero entre 1 y CANTIDAD_MAX (31).
  * - `diasAproximados`: si se ingresa texto, se parsea con parsearDiasEscritos. Cada número debe ser
  *   un entero entre 1 y 31 (sin NaN) y la cantidad de días debe coincidir estrictamente con `cantidad`.
  */

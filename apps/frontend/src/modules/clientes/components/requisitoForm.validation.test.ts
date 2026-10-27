@@ -43,22 +43,22 @@ function alta(parcial: Partial<RequisitoFormValues> = {}): RequisitoFormValues {
 }
 
 describe('cantidad', () => {
-  it('acepta un entero entre 1 y 100 y rechaza vacío, texto, cero y el tope', () => {
+  it('acepta un entero entre 1 y 31 y rechaza vacío, texto, cero y más del tope', () => {
     expect(validarRequisito(alta({ cantidad: '1' }), true).ok).toBe(true);
-    expect(validarRequisito(alta({ cantidad: '100' }), true).ok).toBe(true);
+    expect(validarRequisito(alta({ cantidad: '31' }), true).ok).toBe(true);
 
     const vacia = validarRequisito(alta({ cantidad: '  ' }), true);
     const texto = validarRequisito(alta({ cantidad: '3a' }), true);
     const cero = validarRequisito(alta({ cantidad: '0' }), true);
-    const tope = validarRequisito(alta({ cantidad: '101' }), true);
+    const tope = validarRequisito(alta({ cantidad: '32' }), true);
     expect(vacia.ok).toBe(false);
     expect(texto.ok).toBe(false);
     expect(cero.ok).toBe(false);
     expect(tope.ok).toBe(false);
     if (!vacia.ok) expect(vacia.errores.cantidad?.message).toBe('Ingresá la cantidad.');
-    if (!texto.ok) expect(texto.errores.cantidad?.message).toContain('entre 1 y 100');
+    if (!texto.ok) expect(texto.errores.cantidad?.message).toContain('entre 1 y 31');
     if (!cero.ok) expect(cero.errores.cantidad?.message).toBe('La cantidad debe ser al menos 1.');
-    if (!tope.ok) expect(tope.errores.cantidad?.message).toBe('La cantidad no puede superar 100.');
+    if (!tope.ok) expect(tope.errores.cantidad?.message).toBe('La cantidad no puede superar 31.');
   });
 });
 
