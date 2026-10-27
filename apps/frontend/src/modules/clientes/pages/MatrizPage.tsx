@@ -11,6 +11,10 @@ import { enfocarYMostrar } from '@/lib/focus';
 import { ApiClientError } from '@/lib/http';
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
 import { interpretarFalloRequisito } from '@/modules/clientes/api/requisitos.api';
+import {
+  TEXTO_VOLVER_A_CLIENTES,
+  TEXTO_VOLVER_A_REQUISITOS,
+} from '@/modules/clientes/clientes.etiquetas';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import { mensajeFalloBaja } from '@/modules/clientes/components/erroresDeRequisito';
 import { MatrizEncabezado } from '@/modules/clientes/components/MatrizEncabezado';
@@ -31,7 +35,7 @@ import { RequisitoSheet, type ModoRequisito } from '@/modules/clientes/component
 import { useCliente } from '@/modules/clientes/hooks/useCliente';
 import { useEliminarRequisito } from '@/modules/clientes/hooks/useEliminarRequisito';
 import { useRequisitos } from '@/modules/clientes/hooks/useRequisitos';
-import { busquedaParaVolver } from '@/modules/clientes/matriz.navegacion';
+import { destinoDeVuelta } from '@/modules/clientes/matriz.navegacion';
 import { RendicionesSection } from '@/modules/rendiciones/components/RendicionesSection';
 import { SumarRequisitoDialog } from '@/modules/rendiciones/components/SumarRequisitoDialog';
 import { useRendiciones } from '@/modules/rendiciones/hooks/useRendiciones';
@@ -91,8 +95,13 @@ export function MatrizPage() {
     enfocarYMostrar(tituloRef.current);
   }, [anclaDeFoco, id]);
 
-  const search = busquedaParaVolver(location.state);
-  const volver = search === '' ? '/clientes' : { pathname: '/clientes', search };
+  const destino = destinoDeVuelta(location.state);
+  const volver =
+    destino.search === ''
+      ? destino.pathname
+      : { pathname: destino.pathname, search: destino.search };
+  const textoVolver =
+    destino.origen === 'requisitos' ? TEXTO_VOLVER_A_REQUISITOS : TEXTO_VOLVER_A_CLIENTES;
   const puedeModificar = cliente?.estado === 'ACTIVO' && requisitosQuery.isSuccess;
 
   function abrirAlta() {
@@ -227,7 +236,7 @@ export function MatrizPage() {
         className="inline-flex w-fit items-center gap-1 rounded-chip text-sm text-content-secondary outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
       >
         <ArrowLeftIcon aria-hidden="true" />
-        Volver a clientes
+        {textoVolver}
       </Link>
       <ClientesNav />
       {aviso.aviso !== null && (

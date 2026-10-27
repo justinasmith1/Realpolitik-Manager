@@ -68,3 +68,7 @@ export const etiquetasEstado: Record<ClienteEstadoType, string> = {
   INACTIVO: 'inactivo',
   SUSPENDIDO: 'suspendido',
 };
+
+// Textos del enlace de vuelta de la matriz de un cliente, según desde dónde se abrió.
+export const TEXTO_VOLVER_A_CLIENTES = 'Volver a clientes';
+export const TEXTO_VOLVER_A_REQUISITOS = 'Volver a requisitos';

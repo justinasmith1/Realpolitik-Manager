@@ -1,12 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MatricesPage } from './MatricesPage';
 
-const mockClientes = [
+let mockClientes: typeof clientesBase = [];
+
+const clientesBase = [
   {
     id: '11111111-1111-4111-a111-111111111111',
     razonSocial: 'Consejo de la Magistratura',
@@ -38,6 +40,8 @@ const mockClientes = [
     matrizConfigurada: true,
   },
 ];
+
+mockClientes = clientesBase;
 
 const mockRequisitosPorCliente = new Map([
   [
@@ -77,7 +81,7 @@ vi.mock('@/modules/tipos-documento/hooks/useTiposDocumento', () => ({
   }),
 }));
 
-function renderMatrices() {
+function renderMatrices(entrada = '/clientes/matrices') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -86,7 +90,7 @@ function renderMatrices() {
       { path: '/clientes/matrices', element: <MatricesPage /> },
       { path: '/clientes/:id/matriz', element: <div>Detalle Matriz</div> },
     ],
-    { initialEntries: ['/clientes/matrices'] },
+    { initialEntries: [entrada] },
   );
 
   render(
@@ -100,6 +104,9 @@ function renderMatrices() {
     router,
   };
 }
+
+const busqueda = (router: ReturnType<typeof renderMatrices>['router']) =>
+  router.state.location.search;
 
 describe('MatricesPage', () => {
   it('muestra el botón destacado de añadir requisitos, la tabla con columnas CLIENTE, REQUISITOS, ESTADO y los datos', () => {
@@ -159,5 +166,63 @@ describe('MatricesPage', () => {
     await user.click(btnMasivo);
 
     expect(await screen.findByText('Agregar requisito a varios clientes')).toBeInTheDocument();
+  });
+
+  it('carga con ?matrizConfigurada=false y ya muestra solo los pendientes', () => {
+    renderMatrices('/clientes/matrices?matrizConfigurada=false');
+
+    expect(screen.getByText('Vialidad PBA')).toBeInTheDocument();
+    expect(screen.queryByText('Consejo Magistratura')).not.toBeInTheDocument();
+    expect(screen.queryByText('Abasto Norte')).not.toBeInTheDocument();
+  });
+
+  it('elegir Pendientes actualiza la URL y Todos la limpia', async () => {
+    const { user, router } = renderMatrices();
+
+    await user.click(screen.getByRole('button', { name: 'Pendientes' }));
+    expect(busqueda(router)).toBe('?matrizConfigurada=false');
+
+    await user.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(busqueda(router)).toBe('');
+    expect(screen.getByText('Abasto Norte')).toBeInTheDocument();
+  });
+
+  it('al volver (Atrás) desde el detalle de un cliente conserva el filtro', async () => {
+    const { user, router } = renderMatrices('/clientes/matrices?matrizConfigurada=false');
+
+    await user.click(screen.getByText('Vialidad PBA'));
+    expect(await screen.findByText('Detalle Matriz')).toBeInTheDocument();
+
+    await act(() => router.navigate(-1));
+
+    expect(busqueda(router)).toBe('?matrizConfigurada=false');
+    expect(screen.getByText('Vialidad PBA')).toBeInTheDocument();
+    expect(screen.queryByText('Abasto Norte')).not.toBeInTheDocument();
+  });
+
+  it('con Pendientes y ningún cliente pendiente muestra el mensaje genérico de sin coincidencias', () => {
+    mockClientes = clientesBase.filter((c) => c.matrizConfigurada);
+    try {
+      renderMatrices('/clientes/matrices?matrizConfigurada=false');
+
+      expect(
+        screen.getByText('No hay clientes que coincidan con los filtros aplicados.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    } finally {
+      mockClientes = clientesBase;
+    }
+  });
+
+  it('al abrir un cliente pasa el origen y el filtro en el state de la navegación', async () => {
+    const { user, router } = renderMatrices('/clientes/matrices?matrizConfigurada=false');
+
+    await user.click(screen.getByText('Vialidad PBA'));
+
+    expect(await screen.findByText('Detalle Matriz')).toBeInTheDocument();
+    expect(router.state.location.state).toEqual({
+      origen: 'requisitos',
+      busqueda: '?matrizConfigurada=false',
+    });
   });
 });

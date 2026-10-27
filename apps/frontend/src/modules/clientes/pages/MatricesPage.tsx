@@ -1,6 +1,6 @@
 import { ArrowRightIcon, SearchIcon } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 
 import { ClientesNav } from '@/components/layout/ClientesNav';
 import { Alert } from '@/components/ui/alert';
@@ -11,9 +11,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { etiquetasSubtipo } from '@/modules/clientes/clientes.etiquetas';
 import { CargaMasivaWizard } from '@/modules/clientes/components/carga-masiva/CargaMasivaWizard';
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
+import { useFiltroMatrices } from '@/modules/clientes/hooks/useFiltroMatrices';
 import { useRequisitosMultiplesClientes } from '@/modules/clientes/hooks/useRequisitosMultiplesClientes';
+import { stateDeRequisitos } from '@/modules/clientes/matriz.navegacion';
 
-type FiltroEstadoMatriz = 'TODAS' | 'CONFIGURADAS' | 'PENDIENTES';
 type OrdenMatriz = 'NOMBRE_ASC' | 'PENDIENTES_PRIMERO' | 'REQUISITOS_DESC';
 
 const opcionesOrden: SelectOption[] = [
@@ -24,6 +25,7 @@ const opcionesOrden: SelectOption[] = [
 
 export function MatricesPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const searchId = useId();
   const ordenId = useId();
 
@@ -32,7 +34,7 @@ export function MatricesPage() {
   const [avisoWarning, setAvisoWarning] = useState<string | null>(null);
 
   const [filtroTexto, setFiltroTexto] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState<FiltroEstadoMatriz>('TODAS');
+  const { filtroEstado, elegirEstado } = useFiltroMatrices();
   const [orden, setOrden] = useState<OrdenMatriz>('NOMBRE_ASC');
 
   // Solo clientes activos para matrices
@@ -184,7 +186,7 @@ export function MatricesPage() {
             <div className="inline-flex rounded-lg border border-border bg-card p-1 text-xs font-medium">
               <button
                 type="button"
-                onClick={() => setFiltroEstado('TODAS')}
+                onClick={() => elegirEstado('TODAS')}
                 className={`rounded-md px-3 py-1.5 transition-colors cursor-pointer ${
                   filtroEstado === 'TODAS'
                     ? 'bg-black text-white font-semibold shadow-xs'
@@ -195,7 +197,7 @@ export function MatricesPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setFiltroEstado('CONFIGURADAS')}
+                onClick={() => elegirEstado('CONFIGURADAS')}
                 className={`rounded-md px-3 py-1.5 transition-colors cursor-pointer ${
                   filtroEstado === 'CONFIGURADAS'
                     ? 'bg-black text-white font-semibold shadow-xs'
@@ -206,7 +208,7 @@ export function MatricesPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setFiltroEstado('PENDIENTES')}
+                onClick={() => elegirEstado('PENDIENTES')}
                 className={`rounded-md px-3 py-1.5 transition-colors cursor-pointer ${
                   filtroEstado === 'PENDIENTES'
                     ? 'bg-black text-white font-semibold shadow-xs'
@@ -313,7 +315,9 @@ export function MatricesPage() {
                   <tr
                     key={cliente.id}
                     onClick={() => {
-                      void navigate(`/clientes/${cliente.id}/matriz`);
+                      void navigate(`/clientes/${cliente.id}/matriz`, {
+                        state: stateDeRequisitos(location.search),
+                      });
                     }}
                     className="group cursor-pointer hover:bg-muted/40 transition-colors"
                   >
@@ -338,12 +342,12 @@ export function MatricesPage() {
                       <div className="inline-flex items-center gap-2">
                         {tieneMatriz ? (
                           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                            <span className="size-2 rounded-full bg-emerald-500" />
+                            <span className="size-2 rounded-full bg-success" />
                             Configurado
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-warning">
-                            <span className="size-2 rounded-full bg-amber-500" />
+                            <span className="size-2 rounded-full bg-warning" />
                             Pendiente
                           </span>
                         )}
