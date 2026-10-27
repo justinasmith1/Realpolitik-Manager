@@ -624,7 +624,7 @@ describe('POST /clientes/:id/requisitos', () => {
   it.each([
     ['sin tipo', {}, 'tipoDocumentoId'],
     ['cantidad 0', { tipoDocumentoId: TIPO, cantidad: 0 }, 'cantidad'],
-    ['cantidad 101', { tipoDocumentoId: TIPO, cantidad: 101 }, 'cantidad'],
+    ['cantidad 32 (más de una por día)', { tipoDocumentoId: TIPO, cantidad: 32 }, 'cantidad'],
     [
       'días que no coinciden con la cantidad',
       { tipoDocumentoId: TIPO, cantidad: 2, diasAproximados: [1] },
