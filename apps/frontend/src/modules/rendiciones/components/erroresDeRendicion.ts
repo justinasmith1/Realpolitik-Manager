@@ -7,6 +7,7 @@ import type {
   FalloAgregado,
   FalloAnulacion,
   FalloApertura,
+  FalloCorreccionDeCanal,
 } from '@/modules/rendiciones/api/rendiciones.api';
 import type { CampoAbrirRendicion } from '@/modules/rendiciones/components/abrirRendicionForm.validation';
 import { etiquetaDePeriodo } from '@/modules/rendiciones/rendiciones.etiquetas';
@@ -96,5 +97,17 @@ export function motivoFalloAgregado(fallo: FalloAgregado): string {
       return 'la rendición o el requisito ya no existe';
     case 'inesperado':
       return 'no pudimos sumarlo, probá de nuevo';
+  }
+}
+
+/** Por qué no se cambió el canal de un ítem: se muestra dentro del diálogo. */
+export function mensajeFalloCorreccionDeCanal(fallo: FalloCorreccionDeCanal): string {
+  switch (fallo.tipo) {
+    case 'rendicion-anulada':
+      return 'La rendición está anulada: ya no se puede modificar.';
+    case 'no-existe':
+      return 'Este documento ya no está en la rendición. Volvé a cargar la página.';
+    case 'inesperado':
+      return 'No pudimos cambiar el canal. Probá de nuevo en unos segundos.';
   }
 }

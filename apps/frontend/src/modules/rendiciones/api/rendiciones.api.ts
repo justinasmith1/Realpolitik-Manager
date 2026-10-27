@@ -6,6 +6,7 @@ import {
   RendicionDetalleSchema,
   RendicionResumenSchema,
   RendicionSchema,
+  type CanalEntregaType,
   type ClienteEstadoType,
   type CreateRendicionDto,
   type ListarRendicionesQuery,
@@ -236,6 +237,43 @@ export function interpretarFalloAgregado(error: unknown): FalloAgregado {
       case 'CLIENTE_NO_ACTIVO':
         return { tipo: 'cliente-no-activo', estado: leerEstadoCliente(details.estado) };
     }
+  }
+  return { tipo: 'inesperado' };
+}
+
+// ─── Corregir el canal de un ítem ─────────────────────────────────────────────────────────
+
+/** `PATCH /rendiciones/:id/items/:itemId/canal`: responde la rendición con su checklist. */
+export async function corregirCanalDeItem(
+  rendicionId: string,
+  itemId: string,
+  canalEntrega: CanalEntregaType,
+): Promise<RendicionDetalle> {
+  const response = await http(
+    `/rendiciones/${encodeURIComponent(rendicionId)}/items/${encodeURIComponent(itemId)}/canal`,
+    pedidoJson('PATCH', { canalEntrega }),
+  );
+  return RendicionDetalleSchema.parse(await response.json());
+}
+
+/** Por qué no se pudo corregir el canal de un ítem, en términos del dominio. */
+export type FalloCorreccionDeCanal =
+  { tipo: 'rendicion-anulada' } | { tipo: 'no-existe' } | { tipo: 'inesperado' };
+
+/** Traduce el error de corregir el canal. Mismo criterio que `interpretarFalloAgregado`. */
+export function interpretarFalloCorreccionDeCanal(error: unknown): FalloCorreccionDeCanal {
+  const respuesta = respuestaDeError(error);
+  if (respuesta?.status === 404 && respuesta.cuerpo?.code === 'NOT_FOUND') {
+    return { tipo: 'no-existe' };
+  }
+  const details = respuesta?.cuerpo?.details;
+  if (
+    respuesta?.status === 409 &&
+    respuesta.cuerpo?.code === 'CONFLICT' &&
+    esObjeto(details) &&
+    details.motivo === 'RENDICION_ANULADA'
+  ) {
+    return { tipo: 'rendicion-anulada' };
   }
   return { tipo: 'inesperado' };
 }

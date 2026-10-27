@@ -1,4 +1,8 @@
-import type { CreateRendicionDto, ListarRendicionesQuery } from '@realpolitik/shared';
+import type {
+  CanalEntregaType,
+  CreateRendicionDto,
+  ListarRendicionesQuery,
+} from '@realpolitik/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
@@ -6,6 +10,7 @@ import {
   abrirRendicion,
   agregarRequisitoARendicion,
   anularRendicion,
+  corregirCanalDeItem,
   listarRendiciones,
   obtenerRendicion,
   rendicionesQueryKey,
@@ -25,9 +30,12 @@ export function useRendiciones(clienteId?: string, filtros: ListarRendicionesQue
 }
 
 /** Una rendición con su checklist. Cuelga de la key del cliente para refrescarse con ella. */
+const detalleQueryKey = (clienteId: string, rendicionId: string) =>
+  [...rendicionesQueryKey(clienteId), 'detalle', rendicionId] as const;
+
 export function useRendicion(clienteId?: string, rendicionId?: string) {
   return useQuery({
-    queryKey: [...rendicionesQueryKey(clienteId ?? ''), 'detalle', rendicionId ?? ''],
+    queryKey: detalleQueryKey(clienteId ?? '', rendicionId ?? ''),
     queryFn: ({ signal }) => obtenerRendicion(rendicionId ?? '', signal),
     enabled: esIdDeRuta(clienteId) && esIdDeRuta(rendicionId),
   });
@@ -81,6 +89,33 @@ export function useAgregarRequisitoARendicion() {
     }) => agregarRequisitoARendicion(rendicionId, requisitoId),
     retry: false,
     onSettled: (_resultado, _error, { clienteId }) =>
+      queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+  });
+}
+
+/**
+ * Corrige el canal de un ítem. Sin reintentos. Si sale bien, el detalle queda con la rendición que
+ * devolvió el servidor (sin otro pedido: la selección y los filtros de la pantalla se conservan).
+ * Si falla, se vuelve a pedir: la rendición pudo anularse o el ítem dejar de existir.
+ */
+export function useCorregirCanalDeItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      rendicionId,
+      itemId,
+      canalEntrega,
+    }: {
+      clienteId: string;
+      rendicionId: string;
+      itemId: string;
+      canalEntrega: CanalEntregaType;
+    }) => corregirCanalDeItem(rendicionId, itemId, canalEntrega),
+    retry: false,
+    onSuccess: (detalle, { clienteId, rendicionId }) => {
+      queryClient.setQueryData(detalleQueryKey(clienteId, rendicionId), detalle);
+    },
+    onError: (_error, { clienteId }) =>
       queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
   });
 }
