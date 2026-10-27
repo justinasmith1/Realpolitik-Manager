@@ -113,6 +113,10 @@ export type {
 } from './schemas/indicacionesArmado.schema.js';
 
 export {
+  MENSAJE_NUMERO_FACTURA_FORMATO,
+  MENSAJE_NUMERO_FACTURA_OBLIGATORIO,
+  NUMERO_FACTURA_EJEMPLO,
+  normalizarNumeroFactura,
   NumeroFacturaSchema,
   CreateRendicionSchema,
   ActualizarEstadoRendicionSchema,
@@ -132,6 +136,11 @@ export type {
   RendicionResumen,
 } from './schemas/rendicion.schema.js';
 
+export {
+  ActualizarCanalDeItemSchema,
+  MENSAJE_CANAL_DE_ITEM,
+} from './schemas/canalDeItem.schema.js';
+export type { ActualizarCanalDeItemDto } from './schemas/canalDeItem.schema.js';
 export {
   FILTRO_ESTADO_POR_DEFECTO,
   FiltroEstadoRendiciones,
