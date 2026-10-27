@@ -9,10 +9,10 @@ import {
 } from './diasAproximados.js';
 
 describe('límites', () => {
-  it('los días van de 1 a 31 y el tope de cantidad provisorio es 100', () => {
+  it('los días van de 1 a 31 y el tope de cantidad es 31 (uno por día del mes)', () => {
     expect(DIA_MIN).toBe(1);
     expect(DIA_MAX).toBe(31);
-    expect(CANTIDAD_MAX).toBe(100);
+    expect(CANTIDAD_MAX).toBe(31);
   });
 });
 

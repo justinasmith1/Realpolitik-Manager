@@ -9,11 +9,12 @@ export const DIA_MIN = 1;
 export const DIA_MAX = 31;
 
 /**
- * Máximo de documentos por requisito y por rendición. **PROVISORIO**: el negocio no lo confirmó.
- * Existe porque abrir una rendición crea un ítem por unidad, y sin tope una cantidad enorme
- * crearía miles de ítems mientras la API no tenga autenticación. Cambiarlo es cambiar este valor.
+ * Máximo de documentos por requisito y por rendición: 31, confirmado con el negocio (ADR-0003,
+ * "Reglas confirmadas con el negocio"). Los documentos comunes se piden una vez por mes; los
+ * Prints pueden pedirse varias veces, como máximo uno por día. Además acota cuántos ítems crea
+ * abrir una rendición.
  */
-export const CANTIDAD_MAX = 100;
+export const CANTIDAD_MAX = 31;
 
 /**
  * Lee días escritos a mano y separados por coma (`"1, 8, 15"`), por ejemplo desde un input de
