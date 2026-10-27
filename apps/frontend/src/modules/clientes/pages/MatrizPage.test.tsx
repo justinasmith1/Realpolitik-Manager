@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { stateDeRequisitos } from '@/modules/clientes/matriz.navegacion';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
 
@@ -88,6 +89,7 @@ function renderEn(entrada: string | { pathname: string; state?: unknown }) {
   const router = createMemoryRouter(
     [
       { path: '/clientes', element: <ClientesPage /> },
+      { path: '/clientes/matrices', element: <p>Pestaña Requisitos</p> },
       { path: '/clientes/:id/matriz', element: <MatrizPage /> },
     ],
     { initialEntries: [entrada] },
@@ -126,6 +128,7 @@ afterEach(() => {
 });
 
 const volver = () => screen.getByRole('link', { name: 'Volver a clientes' });
+const volverARequisitos = () => screen.getByRole('link', { name: 'Volver a requisitos' });
 
 describe('MatrizPage: navegación', () => {
   it('desde el listado abre la matriz del cliente y al volver restaura la búsqueda real', async () => {
@@ -146,6 +149,36 @@ describe('MatrizPage: navegación', () => {
 
     expect(router.state.location.pathname).toBe('/clientes');
     expect(router.state.location.search).toBe('?estado=INACTIVO&q=muni&matrizConfigurada=false');
+  });
+
+  it('desde la pestaña Requisitos el enlace dice "Volver a requisitos" y vuelve con el filtro', async () => {
+    servir(clientePublico, []);
+    const { router, user } = renderEn({
+      pathname: `/clientes/${ID}/matriz`,
+      state: stateDeRequisitos('?matrizConfigurada=false'),
+    });
+
+    expect(screen.queryByRole('link', { name: 'Volver a clientes' })).not.toBeInTheDocument();
+    expect(volverARequisitos()).toHaveAttribute(
+      'href',
+      '/clientes/matrices?matrizConfigurada=false',
+    );
+
+    await user.click(volverARequisitos());
+
+    expect(router.state.location.pathname).toBe('/clientes/matrices');
+    expect(router.state.location.search).toBe('?matrizConfigurada=false');
+    expect(await screen.findByText('Pestaña Requisitos')).toBeInTheDocument();
+  });
+
+  it('desde Requisitos con una búsqueda hostil vuelve igual a /clientes/matrices, sin query', () => {
+    servir(clientePublico, []);
+    renderEn({
+      pathname: `/clientes/${ID}/matriz`,
+      state: { origen: 'requisitos', busqueda: '//x.com' },
+    });
+
+    expect(volverARequisitos()).toHaveAttribute('href', '/clientes/matrices');
   });
 
   it('una entrada directa, o un state que no es una búsqueda, vuelve a /clientes', async () => {
