@@ -110,6 +110,16 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
       expect(res.body).toEqual({ indicacionesArmado: texto });
     });
 
+    it('lee un registro viejo con una tabulación sin romper el GET', async () => {
+      const texto = 'Factura\tprimero.\nTodo en un solo PDF.';
+      prismaMock.cliente.findFirst.mockResolvedValue({ indicacionesArmado: texto });
+
+      const res = await request(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ indicacionesArmado: texto });
+    });
+
     it.each(['INACTIVO', 'SUSPENDIDO'] as const)(
       'permite leer las indicaciones de un cliente %s (cualquier estado)',
       async () => {
