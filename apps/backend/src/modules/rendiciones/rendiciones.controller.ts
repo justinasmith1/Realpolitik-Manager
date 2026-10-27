@@ -1,4 +1,5 @@
 import type {
+  ActualizarCanalDeItemSchema,
   ActualizarEstadoRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
@@ -10,11 +11,16 @@ import type { Request, Response } from 'express';
 
 import type { ValidatedLocals } from '../../middleware/validate';
 
-import type { IdParamsSchema, RequisitoDeRendicionParamsSchema } from './rendiciones.routes';
+import type {
+  IdParamsSchema,
+  ItemDeRendicionParamsSchema,
+  RequisitoDeRendicionParamsSchema,
+} from './rendiciones.routes';
 import {
   abrirRendicion,
   agregarRequisitoARendicion,
   anularRendicion,
+  corregirCanalDeItem,
   listarRendiciones,
   obtenerRendicion,
 } from './rendiciones.service';
@@ -75,5 +81,19 @@ export async function agregarRequisitoARendicionController(
 ): Promise<void> {
   const { id, requisitoId } = res.locals.validated.params;
   const rendicion = await agregarRequisitoARendicion(id, requisitoId);
+  res.status(200).json(rendicion);
+}
+
+type CorregirCanalDeItemLocals = ValidatedLocals<{
+  params: typeof ItemDeRendicionParamsSchema;
+  body: typeof ActualizarCanalDeItemSchema;
+}>;
+
+export async function corregirCanalDeItemController(
+  _req: Request,
+  res: Response<RendicionDetalle, CorregirCanalDeItemLocals>,
+): Promise<void> {
+  const { id, itemId } = res.locals.validated.params;
+  const rendicion = await corregirCanalDeItem(id, itemId, res.locals.validated.body.canalEntrega);
   res.status(200).json(rendicion);
 }

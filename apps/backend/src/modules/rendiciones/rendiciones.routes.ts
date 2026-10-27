@@ -1,4 +1,5 @@
 import {
+  ActualizarCanalDeItemSchema,
   ActualizarEstadoRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
@@ -12,6 +13,7 @@ import {
   abrirRendicionController,
   agregarRequisitoARendicionController,
   anularRendicionController,
+  corregirCanalDeItemController,
   listarRendicionesController,
   obtenerRendicionController,
 } from './rendiciones.controller';
@@ -57,4 +59,16 @@ rendicionesRouter.post(
   '/:id/requisitos/:requisitoId',
   validate({ params: RequisitoDeRendicionParamsSchema }),
   agregarRequisitoARendicionController,
+);
+
+export const ItemDeRendicionParamsSchema = z.object({
+  id: z.string().uuid({ message: 'El ID debe ser un UUID válido.' }),
+  itemId: z.string().uuid({ message: 'El ID del ítem debe ser un UUID válido.' }),
+});
+
+// Corregir el canal de un ítem de una rendición activa (contrato 4.5).
+rendicionesRouter.patch(
+  '/:id/items/:itemId/canal',
+  validate({ params: ItemDeRendicionParamsSchema, body: ActualizarCanalDeItemSchema }),
+  corregirCanalDeItemController,
 );

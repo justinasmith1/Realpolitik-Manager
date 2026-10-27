@@ -454,3 +454,46 @@ export async function agregarRequisitoARendicion(
     throw error;
   }
 }
+
+/**
+ * Corrige el canal de un ítem del checklist (contrato 4.5). Es la única parte del snapshot que se
+ * puede corregir: si el requisito tenía un canal equivocado al abrir la rendición, el ítem quedó
+ * con ese canal. Solo en una rendición activa (anulada: `409 RENDICION_ANULADA`); no toca el
+ * requisito del cliente ni otras rendiciones. Con el mismo canal responde sin escribir.
+ */
+export async function corregirCanalDeItem(
+  rendicionId: string,
+  itemId: string,
+  canalEntrega: CanalEntregaType,
+): Promise<RendicionDetalle> {
+  return enTransaccionSerializable(async (tx) => {
+    const rendicion = await tx.rendicion.findFirst({
+      where: { id: rendicionId, cliente: { isDeleted: false } },
+      select: { id: true, isDeleted: true },
+    });
+    if (rendicion === null) {
+      throw notFound('Rendición no encontrada');
+    }
+    if (rendicion.isDeleted) {
+      throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
+    }
+
+    // Un ítem de otra rendición no existe para esta.
+    const item = await tx.itemChecklist.findFirst({
+      where: { id: itemId, rendicionId },
+      select: { id: true, canalEntrega: true },
+    });
+    if (item === null) {
+      throw notFound('Ítem no encontrado');
+    }
+    if (item.canalEntrega !== canalEntrega) {
+      await tx.itemChecklist.update({ where: { id: item.id }, data: { canalEntrega } });
+    }
+
+    const actualizada = await tx.rendicion.findUniqueOrThrow({
+      where: { id: rendicionId },
+      include: CON_ITEMS,
+    });
+    return toRendicionDetalleDto(conItemsEnOrden(actualizada));
+  });
+}
