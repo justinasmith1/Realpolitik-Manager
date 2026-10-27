@@ -4,6 +4,9 @@ import {
   ActualizarEstadoRendicionSchema,
   CreateRendicionSchema,
   ItemChecklistSchema,
+  MENSAJE_NUMERO_FACTURA_FORMATO,
+  normalizarNumeroFactura,
+  NUMERO_FACTURA_EJEMPLO,
   NumeroFacturaSchema,
   RendicionDetalleSchema,
   RendicionResumenSchema,
@@ -24,47 +27,55 @@ afterEach(() => {
 });
 
 describe('NumeroFacturaSchema', () => {
-  it('recorta y pasa a mayúsculas', () => {
-    expect(NumeroFacturaSchema.parse(' a-0001 ')).toBe('A-0001');
-    expect(NumeroFacturaSchema.parse('0001-00001234')).toBe('0001-00001234');
+  it('acepta el formato canónico tal cual', () => {
+    expect(NumeroFacturaSchema.parse('B 00002-00001482')).toBe('B 00002-00001482');
+    expect(NUMERO_FACTURA_EJEMPLO).toBe('B 00002-00001482');
   });
 
-  it('conserva los espacios internos: la base compara el texto exacto', () => {
-    expect(NumeroFacturaSchema.parse('fc a 0001')).toBe('FC A 0001');
+  it.each([
+    ['letra en minúscula y números cortos', 'b 2-1482'],
+    ['sin espacio después de la letra', 'B2-1482'],
+    ['con espacios alrededor del guion', 'b 00002 - 00001482'],
+    ['con espacios en los bordes', '  b 2-1482  '],
+    ['con todos los ceros', 'B 00002-00001482'],
+  ])('normaliza %s a la forma canónica', (_caso, valor) => {
+    expect(NumeroFacturaSchema.parse(valor)).toBe('B 00002-00001482');
+  });
+
+  it.each([
+    ['A 1-1', 'A 00001-00000001'],
+    ['c 99999-99999999', 'C 99999-99999999'],
+  ])('completa con ceros a la izquierda: %s → %s', (valor, canonico) => {
+    expect(NumeroFacturaSchema.parse(valor)).toBe(canonico);
+  });
+
+  it('normalizarNumeroFactura devuelve la forma canónica o null', () => {
+    expect(normalizarNumeroFactura('b 2-1482')).toBe('B 00002-00001482');
+    expect(normalizarNumeroFactura('FC-0001')).toBeNull();
+  });
+
+  it.each([
+    ['sin letra', '00002-00001482'],
+    ['con la letra D', 'D 00002-00001482'],
+    ['con un punto de venta de 6 dígitos', 'B 000002-00001482'],
+    ['con un número de 9 dígitos', 'B 00002-000001482'],
+    ['con letras en el número', 'B 00002-0000148A'],
+    ['sin guion', 'B 00002 00001482'],
+    ['con el formato viejo', 'FC-0001'],
+    ['con dos letras', 'AB 00002-00001482'],
+    ['con una tabulación entre las partes', 'B\t00002-00001482'],
+    ['con dígitos no ASCII', 'B ٠٠٠٠٢-٠٠٠٠١٤٨٢'],
+  ])('rechaza un número %s, diciendo el formato esperado con un ejemplo', (_caso, valor) => {
+    expect(errores(NumeroFacturaSchema.safeParse(valor))).toEqual([
+      { path: [], message: MENSAJE_NUMERO_FACTURA_FORMATO },
+    ]);
+    expect(MENSAJE_NUMERO_FACTURA_FORMATO).toContain('B 00002-00001482');
   });
 
   it.each(['', '   '])('rechaza un número vacío o de solo espacios (%j)', (valor) => {
     expect(errores(NumeroFacturaSchema.safeParse(valor))).toEqual([
       { path: [], message: 'El número de factura es obligatorio.' },
     ]);
-  });
-
-  it('acepta 100 caracteres y rechaza 101', () => {
-    expect(NumeroFacturaSchema.safeParse('a'.repeat(100)).success).toBe(true);
-    expect(errores(NumeroFacturaSchema.safeParse('a'.repeat(101)))[0]?.message).toBe(
-      'El número de factura no puede superar los 100 caracteres.',
-    );
-  });
-
-  it('mide el largo después de pasar a mayúsculas (ß pasa a SS)', () => {
-    // 51 ß son 51 caracteres, pero 102 una vez en mayúsculas.
-    expect(NumeroFacturaSchema.safeParse('ß'.repeat(51)).success).toBe(false);
-    expect(NumeroFacturaSchema.safeParse('ß'.repeat(50)).success).toBe(true);
-  });
-
-  it('mide el largo después de recortar', () => {
-    expect(NumeroFacturaSchema.safeParse(` ${'a'.repeat(100)} `).success).toBe(true);
-  });
-
-  it.each([
-    ['un NUL', 'A\u0000B'],
-    ['un salto de línea', 'A\nB'],
-    ['una tabulación', 'A\tB'],
-    ['un DEL', 'A\u007FB'],
-  ])('rechaza caracteres de control: %s', (_descripcion, valor) => {
-    expect(errores(NumeroFacturaSchema.safeParse(valor))[0]?.message).toBe(
-      'El número de factura no puede contener caracteres de control.',
-    );
   });
 
   it.each([undefined, null, 123, true])('rechaza lo que no es texto (%j)', (valor) => {
@@ -74,7 +85,7 @@ describe('NumeroFacturaSchema', () => {
 
 describe('CreateRendicionSchema', () => {
   const AHORA = new Date('2026-10-15T12:00:00-03:00');
-  const pedido = { anio: 2026, mes: 10, numeroFactura: '0001-00001234' };
+  const pedido = { anio: 2026, mes: 10, numeroFactura: 'B 00002-00001482' };
 
   function conFecha(fecha: Date) {
     vi.useFakeTimers();
@@ -86,11 +97,18 @@ describe('CreateRendicionSchema', () => {
     expect(CreateRendicionSchema.parse(pedido)).toEqual(pedido);
   });
 
-  it('normaliza el número de factura', () => {
+  it('normaliza el número de factura a su forma canónica', () => {
     conFecha(AHORA);
     expect(
-      CreateRendicionSchema.parse({ ...pedido, numeroFactura: ' fc-0001 ' }).numeroFactura,
-    ).toBe('FC-0001');
+      CreateRendicionSchema.parse({ ...pedido, numeroFactura: ' b 2-1482 ' }).numeroFactura,
+    ).toBe('B 00002-00001482');
+  });
+
+  it('un número con formato inválido es un error en `numeroFactura`', () => {
+    conFecha(AHORA);
+    expect(
+      errores(CreateRendicionSchema.safeParse({ ...pedido, numeroFactura: 'FC-0001' })),
+    ).toEqual([{ path: ['numeroFactura'], message: MENSAJE_NUMERO_FACTURA_FORMATO }]);
   });
 
   it('descarta lo que no es del pedido: no hay decisiones de condicionales', () => {
@@ -333,7 +351,7 @@ describe('entidades de lectura', () => {
       expect(r.anuladaEn).toBeInstanceOf(Date);
     });
 
-    it('el número de factura es un string simple: no se normaliza al leer', () => {
+    it('el número de factura es un string simple: al leer no se normaliza ni se valida el formato', () => {
       expect(RendicionSchema.parse({ ...rendicion, numeroFactura: ' fc-1 ' }).numeroFactura).toBe(
         ' fc-1 ',
       );
