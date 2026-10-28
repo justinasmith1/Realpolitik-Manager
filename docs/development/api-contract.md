@@ -153,7 +153,7 @@ Reglas de los datos:
 - **Pedido:** sin cuerpo. `id` es un UUID en la ruta.
 - **Respuesta 200:** el cliente, con el mismo `ClienteSchema` que `GET /clientes`, incluido `matrizConfigurada`.
 - **Estados:** se puede leer un cliente `ACTIVO`, `INACTIVO` o `SUSPENDIDO`. El estado comercial no bloquea la consulta.
-- **Errores:** `400 VALIDATION_ERROR` si el id no es un UUID. `404 NOT_FOUND` si el cliente no existe o tiene baja lógica. No se exponen clientes dados de baja ni campos internos (`isDeleted`, `deletedAt`, `indicacionesArmado`).
+- **Errores:** `400 VALIDATION_ERROR` si el id no es un UUID. `404 NOT_FOUND` si el cliente no existe o tiene baja lógica. No se exponen clientes dados de baja ni campos internos (`isDeleted`, `deletedAt`, `indicacionesArmado`, `observaciones`).
 
 ### `PATCH /clientes/:id` (HU1.7, HU1.2, HU1.4, HU1.5)
 
@@ -259,7 +259,7 @@ Guarda de una vez todos los contactos del cliente, como los muestra el editor. L
 Reglas que valen para toda la sección (además de las de la sección 1):
 
 - **Cliente borrado:** igual que en clientes y contactos, un cliente con baja lógica (`isDeleted`) se trata como inexistente. Todas las rutas `/clientes/:id/...` responden `404 NOT_FOUND`.
-- **Cliente no activo:** solo un cliente `ACTIVO` puede tener su matriz editada (alta, modificación o baja de requisitos), sus indicaciones de armado editadas, rendiciones nuevas o requisitos agregados a una rendición abierta. `INACTIVO` y `SUSPENDIDO` se tratan igual (un cliente que dejó de operar temporalmente y puede volver): esas operaciones responden `409 CONFLICT` con `motivo: "CLIENTE_NO_ACTIVO"`, y primero hay que reactivarlo. Las lecturas (`GET`) responden igual para cualquier estado. La anulación de una rendición tampoco se restringe, en ningún estado: es la corrección de un error, no una operación nueva.
+- **Cliente no activo:** solo un cliente `ACTIVO` puede tener su matriz editada (alta, modificación o baja de requisitos), sus indicaciones de armado editadas, rendiciones nuevas o requisitos agregados a una rendición abierta. `INACTIVO` y `SUSPENDIDO` se tratan igual (un cliente que dejó de operar temporalmente y puede volver): esas operaciones responden `409 CONFLICT` con `motivo: "CLIENTE_NO_ACTIVO"`, y primero hay que reactivarlo. Las lecturas (`GET`) responden igual para cualquier estado. La anulación de una rendición tampoco se restringe, en ningún estado: es la corrección de un error, no una operación nueva. **Excepción:** las observaciones internas (HU2.10) se leen y se guardan con el cliente en cualquier estado, porque son una nota interna y no generan operaciones (ver 4.4).
 - **Ids de la ruta:** `:id` y `:requisitoId` se validan. Uno que no es un uuid responde `400 VALIDATION_ERROR`.
 - **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay seis excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), `POST /rendiciones/:id/requisitos/:requisitoId`, `PATCH /rendiciones/:id/items/:itemId/canal` y `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
 - **Fechas:** como en clientes y contactos, la API devuelve `creadoEn` y `actualizadoEn`; las columnas `createdAt` y `updatedAt` se traducen en el backend. `isDeleted` y `deletedAt` no se exponen.
@@ -307,6 +307,8 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | HU2.3       | `POST /requisitos/masivo`                                   | Agrega un mismo requisito a varios clientes                             | 200         |
 | HU2.4       | `GET /clientes/:id/indicaciones-armado`                     | Lee las indicaciones de armado                                          | 200         |
 | HU2.4       | `PUT /clientes/:id/indicaciones-armado`                     | Guarda las indicaciones de armado                                       | 200         |
+| HU2.10      | `GET /clientes/:id/observaciones`                           | Lee las observaciones internas                                          | 200         |
+| HU2.10      | `PUT /clientes/:id/observaciones`                           | Guarda o borra las observaciones internas                               | 200         |
 | Rendiciones | `POST /clientes/:id/rendiciones`                            | Abre una rendición y genera su checklist                                | 201         |
 | Rendiciones | `GET /clientes/:id/rendiciones`                             | Lista las rendiciones del cliente (por defecto, las activas)            | 200         |
 | Rendiciones | `GET /rendiciones/:id`                                      | Trae una rendición con su checklist                                     | 200         |
@@ -524,7 +526,7 @@ Agrega **un mismo** requisito a **varios** clientes a la vez. Reemplaza a "copia
   - `400 VALIDATION_ERROR`: falta `tipoDocumentoId` o no es un uuid; el tipo está inactivo; `clientes` falta o está vacía; un `clienteId` se repite en el pedido o no es un uuid; una `cantidad` inválida; días que no coinciden con la cantidad o fuera de 1 a 31 (`campo` señala el cliente, por ejemplo `clientes.1.diasAproximados`); `canalEntrega` desconocido; `nota` inválida.
   - `404 NOT_FOUND`: el tipo de documento no existe, o algún cliente no existe o está borrado.
 
-### 4.4 Indicaciones de armado (HU2.4)
+### 4.4 Indicaciones de armado (HU2.4) y observaciones internas (HU2.10)
 
 Un texto libre por cliente con indicaciones para armar el legajo. Se lee y se guarda aparte de los datos del cliente.
 
@@ -543,6 +545,26 @@ Un texto libre por cliente con indicaciones para armar el legajo. Se lee y se gu
   - **Se admiten saltos de línea:** es una excepción explícita a la regla de la sección 1 sobre caracteres de control. El resto de los caracteres de control sigue siendo `400`.
 - **Respuesta 200:** el mismo objeto que `GET`, con lo guardado.
 - **Errores:** `400 VALIDATION_ERROR` (falta la clave, no es texto ni `null`, supera los 1000 caracteres, tiene caracteres de control que no son saltos de línea, id que no es uuid), `404 NOT_FOUND` (el cliente no existe o está borrado), `409 CONFLICT` (`CLIENTE_NO_ACTIVO`: el cliente es `INACTIVO` o `SUSPENDIDO`).
+
+Las **observaciones internas** (HU2.10) son una nota por cliente con hechos puntuales de la cuenta (por ejemplo: cambió el mail, pausó la pauta, cambió el importe). No se repite mes a mes y no reemplaza a las indicaciones de armado, que son reglas fijas del legajo. Igual que las indicaciones, se leen y se guardan aparte de los datos del cliente: **no** salen en `ClienteSchema` ni en `GET /clientes/:id`. Es una sola nota: guardar reemplaza la anterior, sin historial. En la interfaz se leen en la pantalla del cliente y se editan en la hoja "Editar cliente" (también se pueden cargar en "Nuevo cliente"), como las indicaciones.
+
+#### `GET /clientes/:id/observaciones` (HU2.10)
+
+- **Respuesta 200:** `{ "observaciones": "Cambió el mail.\nPausó la pauta hasta marzo." }`. Sin observaciones cargadas: `{ "observaciones": null }`.
+- **Cualquier estado:** responde igual para un cliente `ACTIVO`, `INACTIVO` o `SUSPENDIDO`.
+- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid), `404 NOT_FOUND` (el cliente no existe o está borrado).
+
+#### `PUT /clientes/:id/observaciones` (HU2.10)
+
+- **Pedido:** `{ "observaciones": "texto" }` o `{ "observaciones": null }` para borrarla. La clave es obligatoria.
+- **Cualquier estado del cliente:** es una excepción a la regla de la sección 4 ("Cliente no activo"). Las observaciones se guardan con el cliente `ACTIVO`, `INACTIVO` o `SUSPENDIDO`: son una nota interna y no generan operaciones, y es justo lo que se anota cuando una cuenta se pausa. No existe `409 CLIENTE_NO_ACTIVO` para este endpoint.
+- **Reglas del texto:** las mismas que las de las indicaciones de armado.
+  - Hasta 1000 caracteres, recortado en los bordes.
+  - Un texto vacío o de solo espacios se guarda como `null`.
+  - **Se admiten saltos de línea:** excepción explícita a la regla de la sección 1 sobre caracteres de control. El resto de los caracteres de control sigue siendo `400`.
+- **Sin comparar con lo guardado:** guardar el mismo texto otra vez también escribe la fila (y actualiza `actualizadoEn` del cliente), como en las indicaciones.
+- **Respuesta 200:** el mismo objeto que `GET`, con lo guardado.
+- **Errores:** `400 VALIDATION_ERROR` (falta la clave, no es texto ni `null`, supera los 1000 caracteres, tiene caracteres de control que no son saltos de línea, id que no es uuid), `404 NOT_FOUND` (el cliente no existe o está borrado).
 
 ### 4.5 Rendiciones
 
@@ -737,7 +759,7 @@ Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo c
 - **Campo nuevo en la respuesta:** `matrizConfigurada` (booleano) en cada cliente de `ClienteSchema`. `true` = tiene al menos un requisito activo; `false` = la matriz todavía no se configuró. También lo devuelven `GET /clientes/:id`, `POST /clientes`, `PATCH /clientes/:id` y `PATCH /clientes/:id/estado`, porque usan el mismo DTO.
 - **Parámetro nuevo:** `matrizConfigurada`, opcional, `true` o `false`. Se combina con `q`, `estado`, `sector` y `subtipo`. Sin el parámetro no se filtra.
 - **Errores:** `400 VALIDATION_ERROR` si `matrizConfigurada` no es `true` ni `false`.
-- El campo lo mantiene el backend (ver las reglas generales de esta sección): no se puede enviar en `POST` ni `PATCH /clientes`; si llega, se ignora. `indicacionesArmado` **no** se agrega a `ClienteSchema`: se lee con su propio endpoint (4.4).
+- El campo lo mantiene el backend (ver las reglas generales de esta sección): no se puede enviar en `POST` ni `PATCH /clientes`; si llega, se ignora. `indicacionesArmado` y `observaciones` **no** se agregan a `ClienteSchema`: cada una se lee con su propio endpoint (4.4).
 
 ### 4.8 Preguntas abiertas
 
@@ -760,6 +782,7 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 6. **Hecho.** Para `POST /rendiciones/:id/requisitos/:requisitoId` no hace falta schema de pedido (no lleva cuerpo): valida los dos uuid de la ruta y responde con `RendicionDetalleSchema`.
 7. **Hecho (HU2.2).** En `ClienteSchema`, el campo `matrizConfigurada`; en `ListarClientesQuerySchema`, el filtro `matrizConfigurada`. El backend lo expone en el DTO de cliente y filtra `GET /clientes`. No es editable en el alta ni en el `PATCH`.
 8. **Hecho.** `ActualizarCanalDeItemSchema` (corregir el canal de un ítem), `PropagarCanalDeRequisitoSchema` (pedido de la propagación) y `ResultadoPropagarCanalSchema` (su respuesta). Todos usan el enum `CanalEntrega` del cliente. `ListarRendicionesQuerySchema` suma `estado` y `requisitoId`.
+9. **Hecho (HU2.10).** `ObservacionesClienteSchema` (cuerpo de `PUT /clientes/:id/observaciones`, admite saltos de línea) y `ObservacionesClienteLecturaSchema` (respuesta del `GET`, que no rechaza caracteres de control ya guardados), con el tope `OBSERVACIONES_CLIENTE_MAX` (1000).
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 
