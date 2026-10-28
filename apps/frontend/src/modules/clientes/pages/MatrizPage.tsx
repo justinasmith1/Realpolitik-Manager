@@ -28,6 +28,7 @@ import {
 } from '@/modules/clientes/components/MatrizEstados';
 import { MatrizIndicacionesArmado } from '@/modules/clientes/components/MatrizIndicacionesArmado';
 import { MatrizListado } from '@/modules/clientes/components/MatrizListado';
+import { ObservacionesClientePanel } from '@/modules/clientes/components/ObservacionesClientePanel';
 import {
   QuitarRequisitoDialog,
   type ResultadoBaja,
@@ -65,7 +66,11 @@ export function MatrizPage() {
   const aviso = useAvisoDePagina({ avisoRef, destinoDelFoco: tituloRef });
   const [modo, setModo] = useState<ModoRequisito | null>(null);
   const [requisitoAQuitar, setRequisitoAQuitar] = useState<RequisitoCliente | null>(null);
-  const [editandoCliente, setEditandoCliente] = useState(false);
+  // La hoja "Editar cliente": `null` cerrada; abierta, con el campo al que llevar el foco si se
+  // abrió desde un panel que lo pide.
+  const [edicionDeCliente, setEdicionDeCliente] = useState<{
+    enfocar?: 'observaciones';
+  } | null>(null);
   // Requisito recién agregado que se puede sumar a rendiciones abiertas (contrato 4.5).
   const [requisitoASumar, setRequisitoASumar] = useState<RequisitoCliente | null>(null);
   // Requisito al que le cambió el canal, con las rendiciones activas que lo tienen (ADR-0003).
@@ -287,9 +292,15 @@ export function MatrizPage() {
       )}
       {contenido}
       {cliente !== undefined && (
+        <ObservacionesClientePanel
+          cliente={cliente}
+          onEditarCliente={() => setEdicionDeCliente({ enfocar: 'observaciones' })}
+        />
+      )}
+      {cliente !== undefined && (
         <MatrizIndicacionesArmado
           cliente={cliente}
-          onEditarCliente={() => setEditandoCliente(true)}
+          onEditarCliente={() => setEdicionDeCliente({})}
         />
       )}
       {cliente !== undefined && (
@@ -302,10 +313,11 @@ export function MatrizPage() {
       {cliente !== undefined && (
         <>
           <EditarClienteSheet
-            cliente={editandoCliente ? cliente : null}
-            onClose={() => setEditandoCliente(false)}
+            cliente={edicionDeCliente !== null ? cliente : null}
+            enfocar={edicionDeCliente?.enfocar}
+            onClose={() => setEdicionDeCliente(null)}
             onActualizado={() => {
-              setEditandoCliente(false);
+              setEdicionDeCliente(null);
               void clienteQuery.refetch();
             }}
           />

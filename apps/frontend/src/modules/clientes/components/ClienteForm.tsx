@@ -5,10 +5,12 @@ import {
   INDICACIONES_ARMADO_MAX,
   IndicacionesArmadoSchema,
   IvaCondicion,
+  OBSERVACIONES_CLIENTE_MAX,
+  ObservacionesClienteSchema,
   PeriodicidadTipo,
   type ClienteEstadoType,
 } from '@realpolitik/shared';
-import { useId, useState } from 'react';
+import { useId, useState, type Ref } from 'react';
 import { Controller, useForm, useWatch, type Control, type FieldError } from 'react-hook-form';
 
 import { Alert } from '@/components/ui/alert';
@@ -38,12 +40,15 @@ import {
   type ClienteFormValues,
 } from '@/modules/clientes/components/clienteForm.validation';
 import { IndicacionesArmadoSection } from '@/modules/clientes/components/IndicacionesArmadoSection';
+import { ObservacionesSection } from '@/modules/clientes/components/ObservacionesSection';
 
 /** Errores que informó el servidor al enviar: por campo y/o uno general. */
 export interface ErroresDeEnvio {
   campos?: Partial<Record<CampoClienteForm, string>>;
   /** Error del campo de indicaciones de armado. */
   indicaciones?: string;
+  /** Error del campo de observaciones internas. */
+  observaciones?: string;
   general?: string;
 }
 
@@ -55,6 +60,14 @@ export interface IndicacionesDelCliente {
   errorAlCargar: boolean;
   /** Fuera de `ACTIVO` las indicaciones se leen pero no se editan. */
   estadoCliente: ClienteEstadoType;
+}
+
+/** Observaciones internas ya guardadas de un cliente que se edita (HU2.10). */
+export interface ObservacionesDelCliente {
+  /** Lo guardado: `null` si no tiene; `undefined` mientras no llegó. */
+  guardadas: string | null | undefined;
+  cargando: boolean;
+  errorAlCargar: boolean;
 }
 
 /** Lo que acompaña a los datos al enviar. */
@@ -69,6 +82,14 @@ export interface EnvioDelFormulario {
    * (vacías = `null`). `modificado` = difieren de las guardadas.
    */
   indicaciones: {
+    valor: string | null;
+    modificado: boolean;
+  };
+  /**
+   * Observaciones internas (HU2.10), ya validadas y normalizadas con `ObservacionesClienteSchema`
+   * (vacías = `null`). `modificado` = difieren de las guardadas.
+   */
+  observaciones: {
     valor: string | null;
     modificado: boolean;
   };
@@ -100,6 +121,10 @@ interface ClienteFormProps {
   soloConCambios?: boolean;
   /** Las indicaciones guardadas, en una edición. Sin esto (alta) arrancan vacías y editables. */
   indicaciones?: IndicacionesDelCliente | undefined;
+  /** Las observaciones guardadas, en una edición. Sin esto (alta) arrancan vacías y editables. */
+  observaciones?: ObservacionesDelCliente | undefined;
+  /** El cuadro de las observaciones, para llevarle el foco al abrir (ver `EditarClienteSheet`). */
+  observacionesRef?: Ref<HTMLTextAreaElement> | undefined;
 }
 
 // Opciones de cada select, derivadas de los enums compartidos y sus etiquetas.
@@ -238,6 +263,8 @@ export function ClienteForm({
   valoresIniciales = valoresInicialesClienteForm,
   soloConCambios = false,
   indicaciones,
+  observaciones,
+  observacionesRef,
 }: ClienteFormProps) {
   const id = useId();
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
@@ -261,6 +288,24 @@ export function ClienteForm({
       indicacionesValidadas.data.indicacionesArmado !== indicacionesGuardadas);
   const idIndicaciones = `${id}-indicacionesArmado`;
 
+  // Observaciones internas (HU2.10): mismo manejo que las indicaciones, sin depender del estado
+  // del cliente.
+  const [observacionesEscritas, setObservacionesEscritas] = useState<string | null>(null);
+  const [errorObservacionesServidor, setErrorObservacionesServidor] = useState<string | null>(null);
+  const observacionesGuardadas = observaciones?.guardadas ?? null;
+  const textoObservaciones = observacionesEscritas ?? observacionesGuardadas ?? '';
+  const observacionesValidadas = ObservacionesClienteSchema.safeParse({
+    observaciones: textoObservaciones,
+  });
+  const errorObservacionesSchema = observacionesValidadas.success
+    ? null
+    : (observacionesValidadas.error.issues[0]?.message ?? 'Revisá las observaciones internas.');
+  const observacionesModificadas =
+    observacionesEscritas !== null &&
+    (!observacionesValidadas.success ||
+      observacionesValidadas.data.observaciones !== observacionesGuardadas);
+  const idObservaciones = `${id}-observaciones`;
+
   const {
     control,
     register,
@@ -283,13 +328,18 @@ export function ClienteForm({
   // `dirtyFields` se lee en el render para que RHF lo siga (`formState` es un proxy): así el
   // botón se habilita apenas hay un cambio y `formState.dirtyFields` está al día al enviar.
   const { errors, isSubmitting, submitCount, isDirty } = formState;
-  const sinCambios = soloConCambios && !isDirty && !indicacionesModificadas;
+  const sinCambios =
+    soloConCambios && !isDirty && !indicacionesModificadas && !observacionesModificadas;
   // Como los demás campos: el error del schema se muestra después del primer intento de envío.
   // Pasarse del límite se marca enseguida: no hay forma de que deje de ser un error.
   const superaLimiteIndicaciones = textoIndicaciones.length > INDICACIONES_ARMADO_MAX;
   const errorIndicaciones =
     errorIndicacionesServidor ??
     (submitCount > 0 || superaLimiteIndicaciones ? errorIndicacionesSchema : null);
+  const superaLimiteObservaciones = textoObservaciones.length > OBSERVACIONES_CLIENTE_MAX;
+  const errorObservaciones =
+    errorObservacionesServidor ??
+    (submitCount > 0 || superaLimiteObservaciones ? errorObservacionesSchema : null);
   const sector = useWatch({ control, name: 'sector' });
   const canalEntrega = useWatch({ control, name: 'canalEntrega' });
   const periodicidadTipo = useWatch({ control, name: 'periodicidadTipo' });
@@ -331,10 +381,14 @@ export function ClienteForm({
   const enviar = handleSubmit(
     async (datos) => {
       setErrorGeneral(null);
-      // Las indicaciones no son parte del resolver del cliente: si no son válidas no se envía
+      // Las notas no son parte del resolver del cliente: si alguna no es válida no se envía
       // nada (ni el cliente), y el foco va al campo, donde ya se ve el error del schema.
-      if (!indicacionesValidadas.success) {
-        enfocarYMostrar(document.getElementById(idIndicaciones));
+      if (!indicacionesValidadas.success || !observacionesValidadas.success) {
+        enfocarYMostrar(
+          document.getElementById(
+            !indicacionesValidadas.success ? idIndicaciones : idObservaciones,
+          ),
+        );
         return;
       }
       const errores = await onSubmit(datos, {
@@ -342,6 +396,10 @@ export function ClienteForm({
         indicaciones: {
           valor: indicacionesValidadas.data.indicacionesArmado,
           modificado: indicacionesModificadas,
+        },
+        observaciones: {
+          valor: observacionesValidadas.data.observaciones,
+          modificado: observacionesModificadas,
         },
       });
       if (errores === undefined) {
@@ -352,10 +410,13 @@ export function ClienteForm({
         setError(nombre, { type: 'server', message });
       }
       setErrorIndicacionesServidor(errores.indicaciones ?? null);
+      setErrorObservacionesServidor(errores.observaciones ?? null);
       if (conError.length > 0) {
         enfocarPrimerError(errores.campos ?? {});
       } else if (errores.indicaciones !== undefined) {
         enfocarYMostrar(document.getElementById(idIndicaciones));
+      } else if (errores.observaciones !== undefined) {
+        enfocarYMostrar(document.getElementById(idObservaciones));
       }
       setErrorGeneral(errores.general ?? null);
     },
@@ -617,6 +678,19 @@ export function ClienteForm({
           estadoCliente={indicaciones?.estadoCliente}
           cargando={indicaciones?.cargando ?? false}
           errorAlCargar={indicaciones?.errorAlCargar ?? false}
+        />
+
+        <ObservacionesSection
+          id={idObservaciones}
+          valor={textoObservaciones}
+          onCambio={(texto) => {
+            setObservacionesEscritas(texto);
+            setErrorObservacionesServidor(null);
+          }}
+          error={errorObservaciones}
+          cargando={observaciones?.cargando ?? false}
+          errorAlCargar={observaciones?.errorAlCargar ?? false}
+          cuadroRef={observacionesRef}
         />
       </div>
 

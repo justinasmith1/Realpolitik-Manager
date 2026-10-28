@@ -207,7 +207,9 @@ describe('RendicionDetallePage', () => {
       'Todo en un único PDF.',
     );
     expect(
-      screen.queryByRole('button', { name: 'Editar en la ficha del cliente' }),
+      screen.queryByRole('button', {
+        name: 'Editar en la ficha del cliente: indicaciones de armado',
+      }),
     ).not.toBeInTheDocument();
   });
 

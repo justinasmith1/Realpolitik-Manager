@@ -129,7 +129,8 @@ describe('NuevoClienteSheet', () => {
     // Portal web y WhatsApp aparecen según el canal elegido (por defecto es Correo).
     expect(screen.queryByLabelText('URL del portal')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Número de WhatsApp')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('textbox')).toHaveLength(5);
+    // Los cuatro campos de texto del alta, más las indicaciones de armado y las observaciones.
+    expect(screen.getAllByRole('textbox')).toHaveLength(6);
     expect(screen.getAllByRole('combobox')).toHaveLength(4);
     expect(screen.queryByLabelText(/teléfono|estado/i)).not.toBeInTheDocument();
   });
@@ -733,10 +734,10 @@ describe('NuevoClienteSheet: indicaciones de armado (HU2.4)', () => {
       await user.click(botonRegistrar());
 
       await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
-      expect(onCreado).toHaveBeenCalledWith(
-        expect.objectContaining({ id: clienteCreado.id }),
-        motivo,
-      );
+      expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }), {
+        motivos: { indicaciones: motivo },
+        guardadas: [],
+      });
     },
   );
 
@@ -770,5 +771,259 @@ describe('NuevoClienteSheet: indicaciones de armado (HU2.4)', () => {
 
     await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
     expect(pedidosDeIndicaciones()).toHaveLength(1);
+  });
+});
+
+describe('NuevoClienteSheet: observaciones internas (HU2.10)', () => {
+  const urlDe = (entrada: Parameters<typeof fetch>[0]) =>
+    typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+  const putsDe = (sufijo: string) =>
+    fetchMock.mock.calls.filter(
+      ([entrada, init]) => init?.method === 'PUT' && urlDe(entrada).endsWith(sufijo),
+    );
+  const pedidosDeObservaciones = () => putsDe('/observaciones');
+  const observaciones = () => screen.getByRole('textbox', { name: 'Observaciones internas' });
+  const indicaciones = () => screen.getByLabelText('Instrucciones para el legajo');
+
+  interface Respuestas {
+    observaciones?: () => Response | Promise<Response>;
+    indicaciones?: () => Response | Promise<Response>;
+  }
+
+  /** El alta responde 201; el PUT de cada nota, lo que se indique (por defecto, 200). */
+  function servirAlta({ observaciones: puedeObs, indicaciones: puedeInd }: Respuestas = {}) {
+    fetchMock.mockImplementation((entrada) => {
+      const url = urlDe(entrada);
+      if (url.endsWith('/observaciones')) {
+        return Promise.resolve(puedeObs?.() ?? jsonResponse({ observaciones: 'Nota.' }, 200));
+      }
+      if (url.endsWith('/indicaciones-armado')) {
+        return Promise.resolve(
+          puedeInd?.() ?? jsonResponse({ indicacionesArmado: 'Factura primero.' }, 200),
+        );
+      }
+      return Promise.resolve(jsonResponse(clienteCreado, 201));
+    });
+  }
+
+  async function escribir(user: UserEvent, campoDeTexto: HTMLElement, texto: string) {
+    await user.click(campoDeTexto);
+    await user.paste(texto);
+  }
+
+  it('el campo arranca vacío, editable y sin esperar nada guardado', () => {
+    renderAlta();
+
+    expect(observaciones()).toHaveValue('');
+    expect(observaciones()).toBeEnabled();
+  });
+
+  it('sin observaciones no envía el PUT', async () => {
+    servirAlta();
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }));
+    expect(pedidosDeObservaciones()).toHaveLength(0);
+  });
+
+  it('un texto de solo espacios no se envía: equivale a no haber escrito nada', async () => {
+    servirAlta();
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribir(user, observaciones(), '   \n  ');
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(pedidosDeObservaciones()).toHaveLength(0);
+  });
+
+  it('crea el cliente y después envía la nota recortada, y avisa el alta sin fallo', async () => {
+    servirAlta();
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribir(user, observaciones(), '  Pausó la pauta.\nRetoma en marzo.  ');
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }));
+    const escrituras = fetchMock.mock.calls
+      .filter(([, init]) => init?.method !== undefined && init.method !== 'GET')
+      .map(([entrada, init]) => `${init?.method} ${new URL(urlDe(entrada)).pathname}`);
+    expect(escrituras).toEqual([
+      'POST /clientes',
+      `PUT /clientes/${clienteCreado.id}/observaciones`,
+    ]);
+    expect(JSON.parse(pedidosDeObservaciones()[0]?.[1]?.body as string)).toEqual({
+      observaciones: 'Pausó la pauta.\nRetoma en marzo.',
+    });
+  });
+
+  it('con las dos notas, las guarda a las dos y avisa el alta sin fallo', async () => {
+    servirAlta();
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribir(user, indicaciones(), 'Factura primero.');
+    await escribir(user, observaciones(), 'Nota.');
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }));
+    expect(putsDe('/indicaciones-armado')).toHaveLength(1);
+    expect(pedidosDeObservaciones()).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      400,
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Los datos enviados no son válidos',
+          details: [
+            {
+              campo: 'observaciones',
+              mensaje: 'Las observaciones no pueden contener caracteres de control.',
+            },
+          ],
+        },
+      },
+      'Las observaciones no pueden contener caracteres de control.',
+    ],
+    [404, { error: { code: 'NOT_FOUND', message: 'No existe' } }, 'El cliente ya no existe.'],
+    [
+      500,
+      { error: { code: 'INTERNAL_ERROR', message: 'Error' } },
+      'Probá de nuevo en unos segundos.',
+    ],
+  ])(
+    'si el PUT de la nota responde %i, el alta se da por hecha y el motivo llega a quien abrió el panel',
+    async (status, cuerpo, motivo) => {
+      servirAlta({ observaciones: () => jsonResponse(cuerpo, status) });
+      const { user, onCreado } = renderAlta();
+
+      await completar(user);
+      await escribir(user, observaciones(), 'Nota.');
+      await user.click(botonRegistrar());
+
+      await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+      expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }), {
+        motivos: { observaciones: motivo },
+        guardadas: [],
+      });
+    },
+  );
+
+  it('si fallan las indicaciones, la nota se intenta igual y se informa que se guardó', async () => {
+    servirAlta({
+      indicaciones: () =>
+        jsonResponse({ error: { code: 'INTERNAL_ERROR', message: 'Error' } }, 500),
+    });
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribir(user, indicaciones(), 'Factura primero.');
+    await escribir(user, observaciones(), 'Nota.');
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }), {
+      motivos: { indicaciones: 'Probá de nuevo en unos segundos.' },
+      guardadas: ['observaciones'],
+    });
+    expect(pedidosDeObservaciones()).toHaveLength(1);
+  });
+
+  it('si fallan las dos notas, llegan los dos motivos', async () => {
+    const falla = () => jsonResponse({ error: { code: 'INTERNAL_ERROR', message: 'Error' } }, 500);
+    servirAlta({ indicaciones: falla, observaciones: falla });
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribir(user, indicaciones(), 'Factura primero.');
+    await escribir(user, observaciones(), 'Nota.');
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ id: clienteCreado.id }), {
+      motivos: {
+        indicaciones: 'Probá de nuevo en unos segundos.',
+        observaciones: 'Probá de nuevo en unos segundos.',
+      },
+      guardadas: [],
+    });
+  });
+
+  it('con más de 1000 caracteres marca el límite en el campo y no crea nada', async () => {
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribir(user, observaciones(), 'x'.repeat(1001));
+
+    // Pasarse del límite se marca enseguida, sin esperar al envío.
+    expect(observaciones()).toHaveAttribute('aria-invalid', 'true');
+    expect(observaciones()).toHaveAccessibleDescription(
+      expect.stringContaining('Las observaciones no pueden superar los 1000 caracteres.'),
+    );
+
+    await user.click(botonRegistrar());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onCreado).not.toHaveBeenCalled();
+    expect(observaciones()).toHaveFocus();
+  });
+
+  it('con una tabulación no crea nada y lleva el foco al campo', async () => {
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await user.click(observaciones());
+    await user.paste('Cambió\tel mail');
+    await user.click(botonRegistrar());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onCreado).not.toHaveBeenCalled();
+    expect(observaciones()).toHaveFocus();
+  });
+
+  it('con exactamente 1000 caracteres registra el cliente', async () => {
+    servirAlta();
+    const { user, onCreado } = renderAlta();
+
+    await completar(user);
+    await escribir(user, observaciones(), 'x'.repeat(1000));
+    expect(observaciones()).not.toHaveAttribute('aria-invalid');
+    await user.click(botonRegistrar());
+
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
+    expect(pedidosDeObservaciones()).toHaveLength(1);
+  });
+
+  it('mientras guarda la nota no se cierra el panel', async () => {
+    let terminar: (respuesta: Response) => void = () => undefined;
+    servirAlta({
+      observaciones: () =>
+        new Promise<Response>((resolver) => {
+          terminar = resolver;
+        }),
+    });
+    const { user, onCreado, onAbiertoChange } = renderAlta();
+    await completar(user);
+    await escribir(user, observaciones(), 'Nota.');
+
+    await user.click(botonRegistrar());
+    await waitFor(() => expect(pedidosDeObservaciones()).toHaveLength(1));
+    await user.keyboard('{Escape}');
+
+    expect(onAbiertoChange).not.toHaveBeenCalled();
+
+    terminar(jsonResponse({ observaciones: 'Nota.' }, 200));
+    await waitFor(() => expect(onCreado).toHaveBeenCalledTimes(1));
   });
 });

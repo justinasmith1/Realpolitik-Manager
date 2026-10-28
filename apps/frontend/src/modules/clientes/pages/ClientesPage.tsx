@@ -23,6 +23,10 @@ import {
   CLIENTES_TABLA_ID,
 } from '@/modules/clientes/clientes.columnas';
 import {
+  avisoDeAltaConFallos,
+  type FallosDelAlta,
+} from '@/modules/clientes/components/avisoDelAlta';
+import {
   CambiarEstadoClienteDialog,
   type CambioAConfirmar,
   type ResultadoCambioEstado,
@@ -168,16 +172,14 @@ export function ClientesPage() {
     return fallo === null ? { tipo: 'hecho' } : { tipo: 'no-existe' };
   };
 
-  const alCrear = (cliente: Cliente, falloIndicaciones?: string) => {
+  const alCrear = (cliente: Cliente, fallos?: FallosDelAlta) => {
     const registrado = `Se registró el cliente ${cliente.razonSocial} (CUIT ${cliente.cuit})`;
-    if (falloIndicaciones === undefined) {
+    if (fallos === undefined) {
       avisarExito(`${registrado}.`);
     } else {
-      // El cliente existe: no es un error del alta, pero las indicaciones hay que volver a cargarlas.
-      avisar(
-        'warning',
-        `${registrado}, pero no pudimos guardar sus indicaciones de armado. ${falloIndicaciones} Podés cargarlas desde "Editar".`,
-      );
+      // El cliente existe: no es un error del alta, pero las notas que fallaron hay que volver a
+      // cargarlas. Un solo aviso cuenta qué se guardó y qué no.
+      avisar('warning', avisoDeAltaConFallos(registrado, fallos));
     }
     setAltaAbierta(false);
   };

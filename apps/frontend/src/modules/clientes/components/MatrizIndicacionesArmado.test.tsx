@@ -54,9 +54,13 @@ describe('MatrizIndicacionesArmado (HU2.4)', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Indicaciones de armado' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Editar en la ficha del cliente' }),
-    ).toBeInTheDocument();
+    const boton = screen.getByRole('button', {
+      name: 'Editar en la ficha del cliente: indicaciones de armado',
+    });
+    // El texto visible es el mismo que el del botón de las observaciones internas; el nombre
+    // accesible agrega de qué son las indicaciones.
+    expect(boton).toHaveTextContent(/^Editar en la ficha del cliente$/);
+    expect(boton).toHaveAccessibleName('Editar en la ficha del cliente: indicaciones de armado');
   });
 
   it('muestra el texto de las indicaciones respetando saltos de línea cuando existen', async () => {
@@ -92,7 +96,9 @@ describe('MatrizIndicacionesArmado (HU2.4)', () => {
     const onEditarCliente = vi.fn();
     const { user } = renderComponente({ onEditarCliente });
 
-    const boton = screen.getByRole('button', { name: 'Editar en la ficha del cliente' });
+    const boton = screen.getByRole('button', {
+      name: 'Editar en la ficha del cliente: indicaciones de armado',
+    });
     await user.click(boton);
 
     expect(onEditarCliente).toHaveBeenCalledTimes(1);
