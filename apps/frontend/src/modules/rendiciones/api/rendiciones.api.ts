@@ -6,6 +6,7 @@ import {
   RendicionDetalleSchema,
   RendicionResumenSchema,
   RendicionSchema,
+  ResultadoPropagarCanalSchema,
   type CanalEntregaType,
   type ClienteEstadoType,
   type CreateRendicionDto,
@@ -13,6 +14,7 @@ import {
   type Rendicion,
   type RendicionDetalle,
   type RendicionResumen,
+  type ResultadoPropagarCanal,
 } from '@realpolitik/shared';
 
 import {
@@ -44,7 +46,8 @@ function pedidoJson(method: 'POST' | 'PATCH', cuerpo: Record<string, unknown>): 
 
 /**
  * `GET /clientes/:id/rendiciones`, con el avance de cada una. Los filtros `anio` y `mes` son
- * opcionales; sin ellos, todos los períodos. Sin `estado`, el backend lista solo las activas.
+ * opcionales; sin ellos, todos los períodos. Sin `estado`, el backend lista solo las activas. Con
+ * `requisitoId`, solo las que tienen ítems de ese requisito.
  */
 export async function listarRendiciones(
   clienteId: string,
@@ -55,6 +58,7 @@ export async function listarRendiciones(
   if (filtros.anio !== undefined) params.set('anio', String(filtros.anio));
   if (filtros.mes !== undefined) params.set('mes', String(filtros.mes));
   if (filtros.estado !== undefined) params.set('estado', filtros.estado);
+  if (filtros.requisitoId !== undefined) params.set('requisitoId', filtros.requisitoId);
   const query = params.toString() === '' ? '' : `?${params.toString()}`;
   const response = await http(
     `${rutaDeRendicionesDe(clienteId)}${query}`,
@@ -274,6 +278,59 @@ export function interpretarFalloCorreccionDeCanal(error: unknown): FalloCorrecci
     details.motivo === 'RENDICION_ANULADA'
   ) {
     return { tipo: 'rendicion-anulada' };
+  }
+  return { tipo: 'inesperado' };
+}
+
+// ─── Propagar el canal de un requisito a rendiciones abiertas ─────────────────────────────
+
+/**
+ * `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`: todo o nada. Responde el canal
+ * aplicado y cuántos ítems cambiaron en cada rendición.
+ */
+export async function propagarCanalDeRequisito(
+  clienteId: string,
+  requisitoId: string,
+  rendicionIds: readonly string[],
+): Promise<ResultadoPropagarCanal> {
+  const response = await http(
+    `/clientes/${encodeURIComponent(clienteId)}/requisitos/${encodeURIComponent(requisitoId)}/propagar-canal`,
+    pedidoJson('POST', { rendicionIds }),
+  );
+  return ResultadoPropagarCanalSchema.parse(await response.json());
+}
+
+/**
+ * Por qué no se propagó el canal. Los conflictos nombran la rendición que no cumple (o `null` si
+ * el servidor no la informó). Como es todo o nada, ninguna rendición cambió.
+ */
+export type FalloPropagacion =
+  | { tipo: 'rendicion-anulada'; rendicionId: string | null }
+  | { tipo: 'requisito-no-en-rendicion'; rendicionId: string | null }
+  | { tipo: 'no-existe' }
+  | { tipo: 'inesperado' };
+
+/** Traduce el error de propagar el canal. Mismo criterio que `interpretarFalloAgregado`. */
+export function interpretarFalloPropagacion(error: unknown): FalloPropagacion {
+  const respuesta = respuestaDeError(error);
+  if (respuesta === null) {
+    return { tipo: 'inesperado' };
+  }
+  if (respuesta.status === 404 && respuesta.cuerpo?.code === 'NOT_FOUND') {
+    return { tipo: 'no-existe' };
+  }
+  const details = respuesta.cuerpo?.details;
+  if (respuesta.status === 409 && respuesta.cuerpo?.code === 'CONFLICT' && esObjeto(details)) {
+    const rendicionId =
+      typeof details.rendicionId === 'string' && details.rendicionId !== ''
+        ? details.rendicionId
+        : null;
+    switch (details.motivo) {
+      case 'RENDICION_ANULADA':
+        return { tipo: 'rendicion-anulada', rendicionId };
+      case 'REQUISITO_NO_EN_RENDICION':
+        return { tipo: 'requisito-no-en-rendicion', rendicionId };
+    }
   }
   return { tipo: 'inesperado' };
 }

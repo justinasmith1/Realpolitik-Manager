@@ -3,7 +3,7 @@ import type {
   CreateRendicionDto,
   ListarRendicionesQuery,
 } from '@realpolitik/shared';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
 import {
@@ -13,6 +13,7 @@ import {
   corregirCanalDeItem,
   listarRendiciones,
   obtenerRendicion,
+  propagarCanalDeRequisito,
   rendicionesQueryKey,
 } from '@/modules/rendiciones/api/rendiciones.api';
 
@@ -22,9 +23,17 @@ import {
  * refresca todas las variantes (con y sin filtros) y los detalles de ese cliente.
  */
 export function useRendiciones(clienteId?: string, filtros: ListarRendicionesQuery = {}) {
-  return useQuery({
-    queryKey: [...rendicionesQueryKey(clienteId ?? ''), 'lista', filtros],
-    queryFn: ({ signal }) => listarRendiciones(clienteId ?? '', filtros, signal),
+  return useQuery(listaDeRendiciones(clienteId ?? '', filtros));
+}
+
+/**
+ * La consulta del listado, para usarla también fuera de un componente (`fetchQuery`): así una
+ * lectura puntual comparte key y caché con `useRendiciones`.
+ */
+export function listaDeRendiciones(clienteId: string, filtros: ListarRendicionesQuery = {}) {
+  return queryOptions({
+    queryKey: [...rendicionesQueryKey(clienteId), 'lista', filtros],
+    queryFn: ({ signal }) => listarRendiciones(clienteId, filtros, signal),
     enabled: esIdDeRuta(clienteId),
   });
 }
@@ -116,6 +125,29 @@ export function useCorregirCanalDeItem() {
       queryClient.setQueryData(detalleQueryKey(clienteId, rendicionId), detalle);
     },
     onError: (_error, { clienteId }) =>
+      queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+  });
+}
+
+/**
+ * Pasa los ítems de un requisito a su canal actual en las rendiciones elegidas (todo o nada). Sin
+ * reintentos. Al terminar, bien o mal, las rendiciones del cliente (listado y detalles) se vuelven
+ * a pedir: cambiaron los canales o alguna dejó de cumplir (se anuló, por ejemplo).
+ */
+export function usePropagarCanalDeRequisito() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      clienteId,
+      requisitoId,
+      rendicionIds,
+    }: {
+      clienteId: string;
+      requisitoId: string;
+      rendicionIds: readonly string[];
+    }) => propagarCanalDeRequisito(clienteId, requisitoId, rendicionIds),
+    retry: false,
+    onSettled: (_resultado, _error, { clienteId }) =>
       queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
   });
 }
