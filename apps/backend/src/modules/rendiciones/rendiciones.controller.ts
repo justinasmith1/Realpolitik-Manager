@@ -3,13 +3,16 @@ import type {
   ActualizarEstadoRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
+  PropagarCanalDeRequisitoSchema,
   Rendicion,
   RendicionDetalle,
   RendicionResumen,
+  ResultadoPropagarCanal,
 } from '@realpolitik/shared';
 import type { Request, Response } from 'express';
 
 import type { ValidatedLocals } from '../../middleware/validate';
+import type { RequisitoParamsSchema } from '../clientes/clientes.routes';
 
 import type {
   IdParamsSchema,
@@ -23,6 +26,7 @@ import {
   corregirCanalDeItem,
   listarRendiciones,
   obtenerRendicion,
+  propagarCanalDeRequisito,
 } from './rendiciones.service';
 
 type AbrirRendicionLocals = ValidatedLocals<{
@@ -96,4 +100,22 @@ export async function corregirCanalDeItemController(
   const { id, itemId } = res.locals.validated.params;
   const rendicion = await corregirCanalDeItem(id, itemId, res.locals.validated.body.canalEntrega);
   res.status(200).json(rendicion);
+}
+
+type PropagarCanalLocals = ValidatedLocals<{
+  params: typeof RequisitoParamsSchema;
+  body: typeof PropagarCanalDeRequisitoSchema;
+}>;
+
+export async function propagarCanalDeRequisitoController(
+  _req: Request,
+  res: Response<ResultadoPropagarCanal, PropagarCanalLocals>,
+): Promise<void> {
+  const { params, body } = res.locals.validated;
+  const resultado = await propagarCanalDeRequisito(
+    params.id,
+    params.requisitoId,
+    body.rendicionIds,
+  );
+  res.status(200).json(resultado);
 }

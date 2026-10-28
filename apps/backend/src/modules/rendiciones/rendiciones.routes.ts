@@ -3,11 +3,13 @@ import {
   ActualizarEstadoRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
+  PropagarCanalDeRequisitoSchema,
 } from '@realpolitik/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { validate } from '../../middleware/validate';
+import { RequisitoParamsSchema } from '../clientes/clientes.routes';
 
 import {
   abrirRendicionController,
@@ -16,6 +18,7 @@ import {
   corregirCanalDeItemController,
   listarRendicionesController,
   obtenerRendicionController,
+  propagarCanalDeRequisitoController,
 } from './rendiciones.controller';
 
 export const IdParamsSchema = z.object({
@@ -37,6 +40,12 @@ rendicionesDeClienteRouter.get(
   '/:id/rendiciones',
   validate({ params: IdParamsSchema, query: ListarRendicionesQuerySchema }),
   listarRendicionesController,
+);
+// Pasar el canal actual de un requisito a sus ítems en rendiciones abiertas (contrato 4.5).
+rendicionesDeClienteRouter.post(
+  '/:id/requisitos/:requisitoId/propagar-canal',
+  validate({ params: RequisitoParamsSchema, body: PropagarCanalDeRequisitoSchema }),
+  propagarCanalDeRequisitoController,
 );
 
 /** Una rendición por su id (contrato 4.5 y 4.6). Se monta en `/rendiciones`. */

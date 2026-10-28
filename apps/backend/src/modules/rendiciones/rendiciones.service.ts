@@ -12,6 +12,7 @@ import {
   type Rendicion,
   type RendicionDetalle,
   type RendicionResumen,
+  type ResultadoPropagarCanal,
 } from '@realpolitik/shared';
 
 import { conflict, notFound, type AppError } from '../../errors/app-error';
@@ -253,12 +254,13 @@ const BAJA_SEGUN_ESTADO: Record<FiltroEstadoRendiciones, boolean | undefined> = 
 
 /**
  * Rendiciones del cliente, con el avance de su checklist (contrato 4.5). Sin `estado`, solo las
- * activas. Orden: año y mes descendentes y, dentro del mismo mes, la más reciente primero; con
- * `TODAS`, primero las activas y después las anuladas, cada grupo con ese orden.
+ * activas. Con `requisitoId`, solo las que tienen ítems de ese requisito. Orden: año y mes
+ * descendentes y, dentro del mismo mes, la más reciente primero; con `TODAS`, primero las activas
+ * y después las anuladas, cada grupo con ese orden.
  */
 export async function listarRendiciones(
   clienteId: string,
-  { anio, mes, estado = FILTRO_ESTADO_POR_DEFECTO }: ListarRendicionesQuery,
+  { anio, mes, estado = FILTRO_ESTADO_POR_DEFECTO, requisitoId }: ListarRendicionesQuery,
 ): Promise<RendicionResumen[]> {
   await exigirClienteVigente(clienteId);
 
@@ -269,6 +271,9 @@ export async function listarRendiciones(
       ...(isDeleted !== undefined && { isDeleted }),
       ...(anio !== undefined && { anio }),
       ...(mes !== undefined && { mes }),
+      ...(requisitoId !== undefined && {
+        items: { some: { requisitoClienteId: requisitoId } },
+      }),
     },
     orderBy: [
       // Solo con `TODAS`: `false` antes que `true`, las activas primero.
@@ -495,5 +500,86 @@ export async function corregirCanalDeItem(
       include: CON_ITEMS,
     });
     return toRendicionDetalleDto(conItemsEnOrden(actualizada));
+  });
+}
+
+// ─── Propagar el canal de un requisito a rendiciones abiertas (contrato 4.5) ─────────────
+
+/**
+ * Pasa los ítems de un requisito al canal efectivo actual del requisito (el propio o, si hereda,
+ * el del cliente) en las rendiciones elegidas (ADR-0003). Es una acción explícita de la operadora
+ * después de editar el canal del requisito, nunca automática.
+ *
+ * Todo o nada, en una transacción serializable: cada rendición tiene que ser del cliente (si no,
+ * 404), estar activa (409 `RENDICION_ANULADA`) y tener ítems del requisito (409
+ * `REQUISITO_NO_EN_RENDICION`); si una no cumple, no se cambia ninguna. Los conflictos llevan el
+ * `rendicionId` de la primera que no cumple, en el orden pedido. Solo cambia el canal de esos
+ * ítems: el resto del snapshot y los otros ítems no se tocan. Como la corrección de un ítem, se
+ * permite aunque el cliente esté inactivo.
+ */
+export async function propagarCanalDeRequisito(
+  clienteId: string,
+  requisitoId: string,
+  rendicionIds: readonly string[],
+): Promise<ResultadoPropagarCanal> {
+  return enTransaccionSerializable(async (tx) => {
+    const cliente = await tx.cliente.findFirst({
+      where: { id: clienteId, isDeleted: false },
+      select: { canalEntrega: true },
+    });
+    if (cliente === null) {
+      throw notFound('Cliente no encontrado');
+    }
+    const requisito = await tx.requisitoCliente.findFirst({
+      where: { id: requisitoId, clienteId, isDeleted: false },
+      select: { canalEntrega: true },
+    });
+    if (requisito === null) {
+      throw notFound('Requisito no encontrado');
+    }
+    // El mismo canal efectivo que copia `generarChecklist` al abrir una rendición.
+    const canalEntrega = requisito.canalEntrega ?? cliente.canalEntrega;
+
+    // Una rendición de otro cliente no existe para este.
+    const rendiciones = await tx.rendicion.findMany({
+      where: { id: { in: [...rendicionIds] }, clienteId },
+      select: { id: true, isDeleted: true },
+    });
+    const porId = new Map(rendiciones.map((rendicion) => [rendicion.id, rendicion]));
+    if (rendicionIds.some((id) => !porId.has(id))) {
+      throw notFound('Rendición no encontrada');
+    }
+    const anulada = rendicionIds.find((id) => porId.get(id)?.isDeleted === true);
+    if (anulada !== undefined) {
+      throw conflict('RENDICION_ANULADA', { rendicionId: anulada }, 'La rendición está anulada');
+    }
+    const conItems = await tx.itemChecklist.groupBy({
+      by: ['rendicionId'],
+      where: { rendicionId: { in: [...rendicionIds] }, requisitoClienteId: requisitoId },
+    });
+    const conElRequisito = new Set(conItems.map((fila) => fila.rendicionId));
+    const sinElRequisito = rendicionIds.find((id) => !conElRequisito.has(id));
+    if (sinElRequisito !== undefined) {
+      throw conflict(
+        'REQUISITO_NO_EN_RENDICION',
+        { rendicionId: sinElRequisito },
+        'La rendición no tiene ítems de ese requisito',
+      );
+    }
+
+    // Solo los ítems con otro canal: los que ya lo tienen no se reescriben.
+    const resultados: ResultadoPropagarCanal['rendiciones'] = [];
+    for (const rendicionId of rendicionIds) {
+      const { count } = await tx.itemChecklist.updateMany({
+        where: {
+          rendicionId,
+          requisitoClienteId: requisitoId,
+          canalEntrega: { not: canalEntrega },
+        },
+        data: { canalEntrega },
+      });
+      resultados.push({ rendicionId, itemsActualizados: count });
+    }
+    return { canalEntrega, rendiciones: resultados };
   });
 }

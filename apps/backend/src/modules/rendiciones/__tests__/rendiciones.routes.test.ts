@@ -445,6 +445,32 @@ describe('GET /clientes/:id/rendiciones', () => {
     );
   });
 
+  it('con requisitoId lista solo las que tienen ítems de ese requisito', async () => {
+    const requisitoId = 'd1e2f3a4-b5c6-4789-8abc-def012345601';
+
+    await listar(`?estado=ACTIVA&requisitoId=${requisitoId}`);
+
+    expect(prismaMock.rendicion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          clienteId: CLIENTE,
+          isDeleted: false,
+          items: { some: { requisitoClienteId: requisitoId } },
+        },
+      }),
+    );
+  });
+
+  it('400 si requisitoId no es un uuid', async () => {
+    const res = await listar('?requisitoId=no-es-uuid');
+
+    expect(res.status).toBe(400);
+    expect(
+      (res.body as { error: { details: { campo: string }[] } }).error.details.map((d) => d.campo),
+    ).toEqual(['requisitoId']);
+    expect(prismaMock.rendicion.findMany).not.toHaveBeenCalled();
+  });
+
   it('sin rendiciones responde una lista vacía y no cuenta ítems', async () => {
     prismaMock.rendicion.findMany.mockResolvedValue([]);
 
