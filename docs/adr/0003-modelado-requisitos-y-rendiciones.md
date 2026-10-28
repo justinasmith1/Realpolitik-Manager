@@ -45,7 +45,7 @@ Motivo: inmutabilidad histórica. La matriz cambia con el tiempo (se agregan, qu
 El snapshot no se re-lee de la matriz. Dos excepciones explícitas, siempre a mano y solo en una rendición activa:
 
 - la operadora puede agregar a una rendición activa los ítems de un requisito nuevo que el cliente empieza a pedir ese mes; los ítems existentes no cambian. Nunca es automático: el alta en la matriz no toca rendiciones abiertas (endpoint `POST /rendiciones/:id/requisitos/:requisitoId`, T2.3);
-- la operadora puede corregir el **canal** de un ítem (punto 9). El resto del snapshot no cambia.
+- la operadora puede corregir el **canal** de los ítems: de a uno (punto 9) o todos los de un requisito en las rendiciones que elija (punto 10). El resto del snapshot no cambia.
 
 **Qué se copia en el ítem** (columnas tipadas):
 
@@ -164,8 +164,22 @@ No borra filas ni cambia ids: las FK de requisitos e ítems no se tocan.
 - El canal de un ítem se corrige desde el detalle de la rendición, **ítem por ítem** (`PATCH /rendiciones/:id/items/:itemId/canal`).
 - **Solo el canal.** El tipo, el nombre, el ordinal y el día aproximado siguen siendo la foto del punto 2: no se editan.
 - **Solo en rendiciones activas.** Una anulada responde `409 RENDICION_ANULADA`: se conserva como historial, tal cual.
-- **Local a esa rendición.** No modifica el requisito del cliente ni los ítems de otras rendiciones. Si el requisito también está mal, se corrige aparte, en la matriz.
+- **Local a esa rendición.** No modifica el requisito del cliente ni los ítems de otras rendiciones. Si el requisito también está mal, se corrige aparte, en la matriz (y desde ahí se puede propagar, punto 10).
 - Con el mismo canal no se escribe (idempotente).
+
+### 10. Propagar el canal de un requisito a rendiciones abiertas (27/10/2026)
+
+**Problema.** Con el punto 9, si cambia el canal de un requisito (por ejemplo, Print pasa de WhatsApp a Portal web), hay que entrar a cada rendición abierta y cambiar cada ítem: con Print x3, tres cambios por rendición.
+
+**Decisión de PO.**
+
+- Al guardar la edición de un requisito en la que cambió el **canal efectivo** (el propio o, si hereda, el del cliente; incluye volver a heredar, si el del cliente es distinto), si el cliente tiene rendiciones **activas** con ítems de ese requisito, se ofrece actualizarlas. Mismo patrón que sumar un requisito nuevo: la lista de esas rendiciones (período y factura), **ninguna tildada**, "Ahora no" y "Actualizar las elegidas".
+- Si el canal efectivo no cambió, o no hay rendiciones activas con ese requisito, no se ofrece nada.
+- En cada rendición elegida pasan al canal efectivo nuevo **todos** los ítems de ese requisito. Ningún otro campo del snapshot ni otros ítems cambian (`POST /clientes/:id/requisitos/:requisitoId/propagar-canal`).
+- Las **anuladas** nunca se ofrecen ni se modifican.
+- **Todo o nada.** Si una rendición elegida dejó de cumplir (se anuló, no tiene ítems del requisito, es de otro cliente), no se cambia ninguna. El requisito ya quedó guardado igual.
+- El canal no viaja en el pedido: el backend lo resuelve con el requisito y el cliente, como al abrir una rendición.
+- La corrección ítem por ítem del punto 9 sigue existiendo para los casos puntuales.
 
 ### Reglas de negocio adicionales (T2.2)
 
@@ -182,7 +196,7 @@ Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo a
 - **Período.** No se puede abrir una rendición más allá del **mes siguiente** al actual. Sí se pueden abrir rendiciones de **meses anteriores** (por ejemplo, si reclaman una rendición vieja). El único piso es técnico: el año va de 2020 (`ANIO_MIN`) a 2100.
 - **Número de factura.** Formato de factura argentina: letra `A`, `B` o `C`, punto de venta de 5 dígitos y número de comprobante de 8 dígitos. Formato canónico: `B 00002-00001482`. Al escribir se normaliza antes de validar (letra en mayúscula, con o sin espacio, y ceros a la izquierda en el punto de venta y el número: `b 2-1482` → `B 00002-00001482`). La unicidad (punto 5) compara el valor canónico, así dos escrituras del mismo comprobante son la misma factura. La lectura no valida el formato: las rendiciones cargadas antes con otro formato se siguen viendo.
 - **Días aproximados.** Solo son relevantes para los Prints. El orden no le importa a la operadora, así que ordenarlos al guardar se mantiene.
-- **Canal de un ítem.** Se puede corregir en rendiciones activas; el resto del snapshot no cambia (punto 9).
+- **Canal de un ítem.** Se puede corregir en rendiciones activas, de a uno (punto 9) o todos los de un requisito al cambiarle el canal (punto 10); el resto del snapshot no cambia.
 
 ## Alternativas consideradas
 

@@ -261,7 +261,7 @@ Reglas que valen para toda la sección (además de las de la sección 1):
 - **Cliente borrado:** igual que en clientes y contactos, un cliente con baja lógica (`isDeleted`) se trata como inexistente. Todas las rutas `/clientes/:id/...` responden `404 NOT_FOUND`.
 - **Cliente no activo:** solo un cliente `ACTIVO` puede tener su matriz editada (alta, modificación o baja de requisitos), sus indicaciones de armado editadas, rendiciones nuevas o requisitos agregados a una rendición abierta. `INACTIVO` y `SUSPENDIDO` se tratan igual (un cliente que dejó de operar temporalmente y puede volver): esas operaciones responden `409 CONFLICT` con `motivo: "CLIENTE_NO_ACTIVO"`, y primero hay que reactivarlo. Las lecturas (`GET`) responden igual para cualquier estado. La anulación de una rendición tampoco se restringe, en ningún estado: es la corrección de un error, no una operación nueva.
 - **Ids de la ruta:** `:id` y `:requisitoId` se validan. Uno que no es un uuid responde `400 VALIDATION_ERROR`.
-- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay cinco excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), `POST /rendiciones/:id/requisitos/:requisitoId` y `PATCH /rendiciones/:id/items/:itemId/canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
+- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay seis excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), `POST /rendiciones/:id/requisitos/:requisitoId`, `PATCH /rendiciones/:id/items/:itemId/canal` y `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
 - **Fechas:** como en clientes y contactos, la API devuelve `creadoEn` y `actualizadoEn`; las columnas `createdAt` y `updatedAt` se traducen en el backend. `isDeleted` y `deletedAt` no se exponen.
 - **Sin requisitos condicionales:** ningún pedido lleva decisiones del tipo "este período aplica / no aplica". Todo requisito activo entra siempre en el checklist.
 - **La factura es un requisito más:** no es implícita. Todo cliente pide al menos la factura, que figura en su matriz como requisito del tipo "Factura".
@@ -271,15 +271,16 @@ Reglas que valen para toda la sección (además de las de la sección 1):
 
 Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: `details` trae `motivo` y, cuando corresponde, el registro existente):
 
-| `motivo`                    | Datos en `details`       | Cuándo                                                                                                                                          |
-| --------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TIPO_DOCUMENTO_DUPLICADO`  | `tipoDocumentoExistente` | Ya existe un tipo de documento con ese nombre, sin distinguir mayúsculas ni acentos                                                             |
-| `REQUISITO_DUPLICADO`       | `requisitoExistente`     | El cliente ya tiene un requisito activo para ese tipo de documento                                                                              |
-| `RENDICION_DUPLICADA`       | `rendicionExistente`     | Ese número de factura ya está en otra rendición activa del cliente, de cualquier mes y año                                                      |
-| `MATRIZ_VACIA`              | No lleva                 | Se intenta abrir una rendición para un cliente sin requisitos activos                                                                           |
-| `RENDICION_ANULADA`         | No lleva                 | Se intenta agregar un requisito o corregir el canal de un ítem en una rendición anulada                                                         |
-| `REQUISITO_YA_EN_RENDICION` | No lleva                 | Se intenta agregar a una rendición un requisito cuyo tipo de documento ya tiene ítems en ella, aunque sea de otro requisito                     |
-| `CLIENTE_NO_ACTIVO`         | `estado` del cliente     | Se intenta editar la matriz o las indicaciones de armado, abrir una rendición o agregarle un requisito, de un cliente `INACTIVO` o `SUSPENDIDO` |
+| `motivo`                    | Datos en `details`                      | Cuándo                                                                                                                                          |
+| --------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TIPO_DOCUMENTO_DUPLICADO`  | `tipoDocumentoExistente`                | Ya existe un tipo de documento con ese nombre, sin distinguir mayúsculas ni acentos                                                             |
+| `REQUISITO_DUPLICADO`       | `requisitoExistente`                    | El cliente ya tiene un requisito activo para ese tipo de documento                                                                              |
+| `RENDICION_DUPLICADA`       | `rendicionExistente`                    | Ese número de factura ya está en otra rendición activa del cliente, de cualquier mes y año                                                      |
+| `MATRIZ_VACIA`              | No lleva                                | Se intenta abrir una rendición para un cliente sin requisitos activos                                                                           |
+| `RENDICION_ANULADA`         | `rendicionId` solo al propagar un canal | Se intenta agregar un requisito, corregir el canal de un ítem o propagar el canal de un requisito en una rendición anulada                      |
+| `REQUISITO_NO_EN_RENDICION` | `rendicionId`                           | Se intenta propagar el canal de un requisito a una rendición que no tiene ítems de ese requisito                                                |
+| `REQUISITO_YA_EN_RENDICION` | No lleva                                | Se intenta agregar a una rendición un requisito cuyo tipo de documento ya tiene ítems en ella, aunque sea de otro requisito                     |
+| `CLIENTE_NO_ACTIVO`         | `estado` del cliente                    | Se intenta editar la matriz o las indicaciones de armado, abrir una rendición o agregarle un requisito, de un cliente `INACTIVO` o `SUSPENDIDO` |
 
 ```json
 {
@@ -293,27 +294,28 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 
 ### Resumen
 
-| Historia    | Método y ruta                                   | Qué hace                                                      | Código HTTP |
-| ----------- | ----------------------------------------------- | ------------------------------------------------------------- | ----------- |
-| Catálogo    | `GET /tipos-documento`                          | Lista los tipos de documento                                  | 200         |
-| Catálogo    | `POST /tipos-documento`                         | Crea un tipo de documento                                     | 201         |
-| Catálogo    | `PATCH /tipos-documento/:id`                    | Modifica nombre o descripción                                 | 200         |
-| Catálogo    | `PATCH /tipos-documento/:id/estado`             | Activa o desactiva un tipo                                    | 200         |
-| Matriz      | `GET /clientes/:id/requisitos`                  | Lista la matriz del cliente                                   | 200         |
-| Matriz      | `POST /clientes/:id/requisitos`                 | Agrega un requisito                                           | 201         |
-| Matriz      | `PATCH /clientes/:id/requisitos/:requisitoId`   | Modifica un requisito                                         | 200         |
-| Matriz      | `DELETE /clientes/:id/requisitos/:requisitoId`  | Da de baja un requisito (baja lógica)                         | 204         |
-| HU2.3       | `POST /requisitos/masivo`                       | Agrega un mismo requisito a varios clientes                   | 200         |
-| HU2.4       | `GET /clientes/:id/indicaciones-armado`         | Lee las indicaciones de armado                                | 200         |
-| HU2.4       | `PUT /clientes/:id/indicaciones-armado`         | Guarda las indicaciones de armado                             | 200         |
-| Rendiciones | `POST /clientes/:id/rendiciones`                | Abre una rendición y genera su checklist                      | 201         |
-| Rendiciones | `GET /clientes/:id/rendiciones`                 | Lista las rendiciones del cliente (por defecto, las activas)  | 200         |
-| Rendiciones | `GET /rendiciones/:id`                          | Trae una rendición con su checklist                           | 200         |
-| Rendiciones | `POST /rendiciones/:id/requisitos/:requisitoId` | Agrega a una rendición activa los ítems de un requisito nuevo | 200         |
-| Rendiciones | `PATCH /rendiciones/:id/items/:itemId/canal`    | Corrige el canal de un ítem de una rendición activa           | 200         |
-| HU2.5       | `PATCH /rendiciones/:id/estado`                 | Anula una rendición (baja lógica, no reversible)              | 200         |
-| Clientes    | `GET /clientes` (extensión)                     | Agrega `matrizConfigurada` y un filtro por ese campo          | 200         |
-| Clientes    | `GET /clientes/:id`                             | Devuelve un cliente con el mismo DTO, incluido el flag        | 200         |
+| Historia    | Método y ruta                                               | Qué hace                                                                | Código HTTP |
+| ----------- | ----------------------------------------------------------- | ----------------------------------------------------------------------- | ----------- |
+| Catálogo    | `GET /tipos-documento`                                      | Lista los tipos de documento                                            | 200         |
+| Catálogo    | `POST /tipos-documento`                                     | Crea un tipo de documento                                               | 201         |
+| Catálogo    | `PATCH /tipos-documento/:id`                                | Modifica nombre o descripción                                           | 200         |
+| Catálogo    | `PATCH /tipos-documento/:id/estado`                         | Activa o desactiva un tipo                                              | 200         |
+| Matriz      | `GET /clientes/:id/requisitos`                              | Lista la matriz del cliente                                             | 200         |
+| Matriz      | `POST /clientes/:id/requisitos`                             | Agrega un requisito                                                     | 201         |
+| Matriz      | `PATCH /clientes/:id/requisitos/:requisitoId`               | Modifica un requisito                                                   | 200         |
+| Matriz      | `DELETE /clientes/:id/requisitos/:requisitoId`              | Da de baja un requisito (baja lógica)                                   | 204         |
+| HU2.3       | `POST /requisitos/masivo`                                   | Agrega un mismo requisito a varios clientes                             | 200         |
+| HU2.4       | `GET /clientes/:id/indicaciones-armado`                     | Lee las indicaciones de armado                                          | 200         |
+| HU2.4       | `PUT /clientes/:id/indicaciones-armado`                     | Guarda las indicaciones de armado                                       | 200         |
+| Rendiciones | `POST /clientes/:id/rendiciones`                            | Abre una rendición y genera su checklist                                | 201         |
+| Rendiciones | `GET /clientes/:id/rendiciones`                             | Lista las rendiciones del cliente (por defecto, las activas)            | 200         |
+| Rendiciones | `GET /rendiciones/:id`                                      | Trae una rendición con su checklist                                     | 200         |
+| Rendiciones | `POST /rendiciones/:id/requisitos/:requisitoId`             | Agrega a una rendición activa los ítems de un requisito nuevo           | 200         |
+| Rendiciones | `PATCH /rendiciones/:id/items/:itemId/canal`                | Corrige el canal de un ítem de una rendición activa                     | 200         |
+| Rendiciones | `POST /clientes/:id/requisitos/:requisitoId/propagar-canal` | Pasa el canal actual de un requisito a sus ítems en rendiciones activas | 200         |
+| HU2.5       | `PATCH /rendiciones/:id/estado`                             | Anula una rendición (baja lógica, no reversible)                        | 200         |
+| Clientes    | `GET /clientes` (extensión)                                 | Agrega `matrizConfigurada` y un filtro por ese campo                    | 200         |
+| Clientes    | `GET /clientes/:id`                                         | Devuelve un cliente con el mismo DTO, incluido el flag                  | 200         |
 
 El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
 
@@ -431,7 +433,7 @@ Solo `tipoDocumentoId` es obligatorio. No se envían `clienteId`, fechas ni baja
 - **Qué hace:** crea el requisito. Si es el primer requisito activo del cliente, `matrizConfigurada` pasa a `true`.
 - **Respuesta 201:** el requisito creado.
 - **Errores:**
-  - `400 VALIDATION_ERROR`: falta `tipoDocumentoId` o no es un uuid; el tipo de documento está inactivo (`campo: "tipoDocumentoId"`); `cantidad` no es un entero, es menor que 1 o supera 100; `diasAproximados` con un día fuera de 1 a 31, con un valor no entero o con una cantidad de días distinta de 0 y de `cantidad`; `canalEntrega` desconocido; `nota` de más de 500 caracteres o con caracteres de control.
+  - `400 VALIDATION_ERROR`: falta `tipoDocumentoId` o no es un uuid; el tipo de documento está inactivo (`campo: "tipoDocumentoId"`); `cantidad` no es un entero, es menor que 1 o supera 31; `diasAproximados` con un día fuera de 1 a 31, con un valor no entero o con una cantidad de días distinta de 0 y de `cantidad`; `canalEntrega` desconocido; `nota` de más de 500 caracteres o con caracteres de control.
   - `404 NOT_FOUND`: el cliente no existe o está borrado; el tipo de documento no existe.
   - `409 CONFLICT`: `motivo: "CLIENTE_NO_ACTIVO"` si el cliente es `INACTIVO` o `SUSPENDIDO`; `motivo: "REQUISITO_DUPLICADO"` si el cliente ya tiene un requisito activo de ese tipo:
 
@@ -623,11 +625,12 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
 
 #### `GET /clientes/:id/rendiciones`
 
-| Parámetro | Obligatorio | Descripción                                                                          |
-| --------- | ----------- | ------------------------------------------------------------------------------------ |
-| `anio`    | No          | Entero de 2020 a 2100                                                                |
-| `mes`     | No          | Entero de 1 a 12. Se puede combinar con `anio` o usar solo                           |
-| `estado`  | No          | `ACTIVA`, `ANULADA` o `TODAS`. Sin el parámetro, `ACTIVA`. Se combina con el período |
+| Parámetro     | Obligatorio | Descripción                                                                                            |
+| ------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| `anio`        | No          | Entero de 2020 a 2100                                                                                  |
+| `mes`         | No          | Entero de 1 a 12. Se puede combinar con `anio` o usar solo                                             |
+| `estado`      | No          | `ACTIVA`, `ANULADA` o `TODAS`. Sin el parámetro, `ACTIVA`. Se combina con el período                   |
+| `requisitoId` | No          | uuid de un requisito. Solo las rendiciones que tienen ítems de ese requisito. Se combina con los demás |
 
 - **Respuesta 200:** las rendiciones del cliente según `estado`, sin `items` y con un resumen de avance. Sin el parámetro, solo las **activas**, como antes: las anuladas se consultan pidiéndolas. Lista vacía si no hay. Orden: `anio` descendente, `mes` descendente y, dentro del mismo mes, la más reciente primero (`creadoEn` descendente). Con `TODAS`, primero las activas y después las anuladas, cada grupo con ese orden.
 - **Estado y baja lógica:** una rendición anulada es su baja lógica (no hay otro estado oculto). Las rendiciones de un cliente borrado no se listan con ningún filtro: el cliente no existe (`404`).
@@ -649,7 +652,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
 ]
 ```
 
-- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid; `anio` o `mes` fuera de rango o no enteros; `estado` que no es `ACTIVA`, `ANULADA` ni `TODAS`, o repetido), `404 NOT_FOUND` (el cliente no existe o está borrado).
+- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid; `anio` o `mes` fuera de rango o no enteros; `estado` que no es `ACTIVA`, `ANULADA` ni `TODAS`, o repetido; `requisitoId` que no es uuid, o repetido), `404 NOT_FOUND` (el cliente no existe o está borrado). Un `requisitoId` de otro cliente no es un error: la lista sale vacía.
 
 #### `GET /rendiciones/:id`
 
@@ -687,6 +690,31 @@ Para cuando un requisito tenía un canal equivocado: los ítems guardan el canal
   - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado; el ítem no existe o es de otra rendición.
   - `409 CONFLICT` con `motivo: "RENDICION_ANULADA"`: la rendición está anulada.
 - **Cómo lo usa el front:** desde el detalle de una rendición activa, ítem por ítem, con confirmación. En una anulada no se ofrece.
+
+#### `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`
+
+Para cuando cambia el canal de un requisito (por ejemplo, Print pasa de WhatsApp a Portal web) y el cliente ya tiene rendiciones abiertas con ese documento: en vez de corregir cada ítem de cada rendición, se pasan al canal nuevo todos los ítems del requisito en las rendiciones elegidas. Ver [ADR-0003](../adr/0003-modelado-requisitos-y-rendiciones.md), punto 10.
+
+- **Pedido:** `{ "rendicionIds": ["e1f2a3b4-c5d6-4789-8abc-def012345678"] }`. De 1 a 200 uuid, sin repetir (`PropagarCanalDeRequisitoSchema` de `@realpolitik/shared`). El canal no viaja en el pedido: es el canal efectivo actual del requisito (`requisito.canalEntrega ?? cliente.canalEntrega`), el mismo que tomaría una rendición que se abriera ahora. Otros campos se ignoran.
+- **Qué hace:** en cada rendición elegida, pasa a ese canal **todos** los ítems de ese requisito. No cambia ningún otro campo del snapshot, ni los ítems de otros requisitos, ni otras rendiciones, ni el requisito. Un ítem que ya tiene ese canal no se reescribe (su `actualizadoEn` no cambia).
+- **Todo o nada:** corre en una transacción serializable. Cada rendición tiene que ser del cliente, estar activa y tener ítems del requisito; si una no cumple, no se cambia ninguna. Los `409` informan la primera que no cumple, en el orden del pedido.
+- **Cliente inactivo:** se permite, como corregir el canal de un ítem o anular. En la práctica viene después de editar el requisito, que sí exige un cliente activo.
+- **Respuesta 200:** el canal aplicado y, por cada rendición pedida (en el mismo orden), cuántos de sus ítems cambiaron (`ResultadoPropagarCanalSchema`).
+
+```json
+{
+  "canalEntrega": "PORTAL_WEB",
+  "rendiciones": [{ "rendicionId": "e1f2a3b4-c5d6-4789-8abc-def012345678", "itemsActualizados": 3 }]
+}
+```
+
+- **Errores:**
+  - `400 VALIDATION_ERROR`: ids de la ruta que no son uuid; `rendicionIds` ausente, vacía, con más de 200, con un id repetido o con un id que no es uuid.
+  - `404 NOT_FOUND`: el cliente no existe o está borrado; el requisito no existe, está dado de baja o es de otro cliente; una rendición no existe o es de otro cliente.
+  - `409 CONFLICT`:
+    - `motivo: "RENDICION_ANULADA"`, con `rendicionId`: una rendición está anulada.
+    - `motivo: "REQUISITO_NO_EN_RENDICION"`, con `rendicionId`: una rendición no tiene ítems de ese requisito.
+- **Cómo lo usa el front:** al guardar la edición de un requisito en la que cambió el canal efectivo (también al volver a heredar el del cliente, si es distinto), pide `GET /clientes/:id/rendiciones?estado=ACTIVA&requisitoId=…`. Si hay alguna, ofrece "¿Actualizar el canal en las rendiciones abiertas?", con la lista (período y factura) y ninguna tildada. Si el canal efectivo no cambió o no hay rendiciones, no muestra nada. Si el pedido falla, el requisito ya quedó guardado: el error se muestra en el mismo diálogo, con la selección intacta.
 
 ### 4.6 Anular una rendición (HU2.5)
 
@@ -731,6 +759,7 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 5. **Hecho.** `RendicionSchema`, `RendicionDetalleSchema` (con `items`), `RendicionResumenSchema` (con `resumen`), `ItemChecklistSchema`, `CreateRendicionSchema` (`anio`, `mes`, `numeroFactura`), `ListarRendicionesQuerySchema` (`anio`, `mes`) y `ActualizarEstadoRendicionSchema` (solo `ANULADA`). Todos usan `numeroFactura`, no `referencia`.
 6. **Hecho.** Para `POST /rendiciones/:id/requisitos/:requisitoId` no hace falta schema de pedido (no lleva cuerpo): valida los dos uuid de la ruta y responde con `RendicionDetalleSchema`.
 7. **Hecho (HU2.2).** En `ClienteSchema`, el campo `matrizConfigurada`; en `ListarClientesQuerySchema`, el filtro `matrizConfigurada`. El backend lo expone en el DTO de cliente y filtra `GET /clientes`. No es editable en el alta ni en el `PATCH`.
+8. **Hecho.** `ActualizarCanalDeItemSchema` (corregir el canal de un ítem), `PropagarCanalDeRequisitoSchema` (pedido de la propagación) y `ResultadoPropagarCanalSchema` (su respuesta). Todos usan el enum `CanalEntrega` del cliente. `ListarRendicionesQuerySchema` suma `estado` y `requisitoId`.
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 
