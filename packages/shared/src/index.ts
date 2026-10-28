@@ -113,6 +113,10 @@ export type {
 } from './schemas/indicacionesArmado.schema.js';
 
 export {
+  MENSAJE_NUMERO_FACTURA_FORMATO,
+  MENSAJE_NUMERO_FACTURA_OBLIGATORIO,
+  NUMERO_FACTURA_EJEMPLO,
+  normalizarNumeroFactura,
   NumeroFacturaSchema,
   CreateRendicionSchema,
   ActualizarEstadoRendicionSchema,
@@ -133,9 +137,23 @@ export type {
 } from './schemas/rendicion.schema.js';
 
 export {
+  ActualizarCanalDeItemSchema,
+  MENSAJE_CANAL_DE_ITEM,
+  MAX_RENDICIONES_A_PROPAGAR,
+  MENSAJE_RENDICION_IDS,
+  PropagarCanalDeRequisitoSchema,
+  ResultadoPropagarCanalSchema,
+} from './schemas/canalDeItem.schema.js';
+export type {
+  ActualizarCanalDeItemDto,
+  PropagarCanalDeRequisitoDto,
+  ResultadoPropagarCanal,
+} from './schemas/canalDeItem.schema.js';
+export {
   FILTRO_ESTADO_POR_DEFECTO,
   FiltroEstadoRendiciones,
   ListarRendicionesQuerySchema,
+  MENSAJE_REQUISITO_ID,
 } from './schemas/listarRendicionesQuery.schema.js';
 export type { ListarRendicionesQuery } from './schemas/listarRendicionesQuery.schema.js';
 

@@ -106,7 +106,7 @@ beforeEach(() => {
       clienteId: CLIENTE,
       anio: 2026,
       mes: 10,
-      numeroFactura: 'FC-0001',
+      numeroFactura: 'A 00001-00000001',
       isDeleted: false,
       deletedAt: null,
       createdAt: AHORA,

@@ -42,11 +42,15 @@ export function useFiltroMatrices() {
     }
   }, [valorEnUrl, actualizar]);
 
-  const elegirEstado = (nuevo: FiltroEstadoMatriz) =>
+  // Elegir el filtro que ya está activo no navega: con `replace: false`, React Router agrega una
+  // entrada aunque la URL sea la misma, y Atrás tendría que tocarse de más.
+  const elegirEstado = (nuevo: FiltroEstadoMatriz) => {
+    if (nuevo === filtroEstado) return;
     actualizar(
       nuevo === 'PENDIENTES' ? 'false' : nuevo === 'CONFIGURADAS' ? 'true' : undefined,
       false,
     );
+  };
 
   return { filtroEstado, elegirEstado };
 }

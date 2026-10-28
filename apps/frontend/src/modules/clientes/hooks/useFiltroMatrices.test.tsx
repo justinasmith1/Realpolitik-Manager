@@ -23,10 +23,16 @@ function Sonda() {
 }
 
 function renderEn(...entradas: string[]) {
-  const router = createMemoryRouter([{ path: '/clientes/matrices', element: <Sonda /> }], {
-    initialEntries: entradas,
-    initialIndex: entradas.length - 1,
-  });
+  const router = createMemoryRouter(
+    [
+      { path: '/clientes/matrices', element: <Sonda /> },
+      { path: '/clientes', element: <p>Listado</p> },
+    ],
+    {
+      initialEntries: entradas,
+      initialIndex: entradas.length - 1,
+    },
+  );
   render(<RouterProvider router={router} />);
   return router;
 }
@@ -129,5 +135,26 @@ describe('useFiltroMatrices: elegir el filtro', () => {
     await act(() => router.navigate(-1));
     expect(busqueda(router)).toBe('');
     expect(screen.getByText('filtro:TODAS')).toBeInTheDocument();
+  });
+
+  it('elegir el filtro que ya está activo no agrega entradas al historial', async () => {
+    const router = renderEn('/clientes', '/clientes/matrices?matrizConfigurada=false');
+
+    clic('pendientes');
+    clic('pendientes');
+    expect(router.state.historyAction).toBe('POP');
+
+    // Un solo Atrás sale de la pestaña: no quedaron entradas repetidas.
+    await act(() => router.navigate(-1));
+    expect(router.state.location.pathname).toBe('/clientes');
+  });
+
+  it('con un valor inválido en la URL, elegir Todos no agrega una entrada', async () => {
+    const router = renderEn('/clientes/matrices?matrizConfigurada=foo');
+    await waitFor(() => expect(busqueda(router)).toBe(''));
+
+    clic('todas');
+
+    expect(router.state.historyAction).toBe('REPLACE');
   });
 });

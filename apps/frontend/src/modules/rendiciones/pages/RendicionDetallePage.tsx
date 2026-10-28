@@ -1,7 +1,7 @@
 import {
   calcularFaltantes,
   canalDeSeleccion,
-  type CanalEntregaType,
+  type ItemChecklist,
   type Cliente,
   type RendicionDetalle,
 } from '@realpolitik/shared';
@@ -21,6 +21,7 @@ import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteS
 import { MatrizIndicacionesArmado } from '@/modules/clientes/components/MatrizIndicacionesArmado';
 import { useCliente } from '@/modules/clientes/hooks/useCliente';
 import { esRendicionInexistente } from '@/modules/rendiciones/api/rendiciones.api';
+import { CambiarCanalDialog } from '@/modules/rendiciones/components/CambiarCanalDialog';
 import { EnvioDialog, type Envio } from '@/modules/rendiciones/components/EnvioDialog';
 import { ItemChecklistFila } from '@/modules/rendiciones/components/ItemChecklistFila';
 import { useRendicion } from '@/modules/rendiciones/hooks/useRendiciones';
@@ -158,18 +159,25 @@ function DetalleDeRendicion({
   const enviarRef = useRef<HTMLButtonElement>(null);
   const [soloFaltantes, setSoloFaltantes] = useState(false);
   const [seleccion, setSeleccion] = useState<ReadonlySet<string>>(new Set());
-  const [canalesMezclados, setCanalesMezclados] = useState<CanalEntregaType[] | null>(null);
+  // El aviso de canales mezclados se pidió al tocar "Enviar"; los canales se calculan con los
+  // datos de ahora, así corregir el canal de un ítem lo actualiza o lo retira solo.
+  const [avisoDeMezcla, setAvisoDeMezcla] = useState(false);
   const [envio, setEnvio] = useState<Envio | null>(null);
+  const [itemACorregir, setItemACorregir] = useState<ItemChecklist | null>(null);
+  const [avisoDeCanal, setAvisoDeCanal] = useState<string | null>(null);
   const [editandoCliente, setEditandoCliente] = useState(false);
   const avance = calcularFaltantes(rendicion.items);
   const anulada = rendicion.estado === 'ANULADA';
   const completo = checklistCompleto(avance);
   const visibles = soloFaltantes ? avance.faltantes : rendicion.items;
   const elegidos = rendicion.items.filter((item) => seleccion.has(item.id));
+  const canalDeElegidos = canalDeSeleccion(elegidos);
+  const canalesMezclados =
+    avisoDeMezcla && canalDeElegidos.tipo === 'mezclados' ? canalDeElegidos.canales : null;
   const denominacion = cliente?.denominacion;
 
   function alternar(itemId: string, marcado: boolean) {
-    setCanalesMezclados(null);
+    setAvisoDeMezcla(false);
     setSeleccion((actual) => {
       const siguiente = new Set(actual);
       if (marcado) siguiente.add(itemId);
@@ -179,9 +187,10 @@ function DetalleDeRendicion({
   }
 
   function enviar() {
-    const canal = canalDeSeleccion(elegidos);
-    if (canal.tipo === 'mezclados') setCanalesMezclados(canal.canales);
-    else if (canal.tipo === 'un-canal') setEnvio({ canal: canal.canal, items: elegidos });
+    if (canalDeElegidos.tipo === 'mezclados') setAvisoDeMezcla(true);
+    else if (canalDeElegidos.tipo === 'un-canal') {
+      setEnvio({ canal: canalDeElegidos.canal, items: elegidos });
+    }
   }
 
   return (
@@ -254,10 +263,15 @@ function DetalleDeRendicion({
             </div>
           </div>
           {canalesMezclados !== null && (
-            <Alert variant="warning" onCerrar={() => setCanalesMezclados(null)}>
+            <Alert variant="warning" onCerrar={() => setAvisoDeMezcla(false)}>
               Los ítems seleccionados se envían por canales distintos (
               {canalesMezclados.map((canal) => etiquetasCanalEntrega[canal]).join(', ')}). Separalos
               en envíos distintos.
+            </Alert>
+          )}
+          {avisoDeCanal !== null && (
+            <Alert variant="success" onCerrar={() => setAvisoDeCanal(null)}>
+              {avisoDeCanal}
             </Alert>
           )}
           {visibles.length === 0 ? (
@@ -277,6 +291,10 @@ function DetalleDeRendicion({
                       marcado: seleccion.has(item.id),
                       onCambio: (marcado: boolean) => alternar(item.id, marcado),
                     },
+                    onCambiarCanal: () => {
+                      setAvisoDeCanal(null);
+                      setItemACorregir(item);
+                    },
                   })}
                 />
               ))}
@@ -288,6 +306,16 @@ function DetalleDeRendicion({
         </div>
       </div>
 
+      <CambiarCanalDialog
+        item={itemACorregir}
+        clienteId={rendicion.clienteId}
+        rendicionId={rendicion.id}
+        onCerrar={() => setItemACorregir(null)}
+        onCambiado={(texto) => {
+          setItemACorregir(null);
+          setAvisoDeCanal(texto);
+        }}
+      />
       <EnvioDialog
         envio={envio}
         cliente={cliente}

@@ -2,34 +2,57 @@ import { z } from 'zod';
 
 import { ANIO_MAX, ANIO_MIN, periodoMuyFuturo } from '../utils/periodo.js';
 
-import { sinCaracteresDeControl } from './campos.js';
 import { CanalEntrega } from './cliente.schema.js';
 
-// Largo de `Rendicion.numeroFactura` (`apps/backend/prisma/schema.prisma`).
-const NUMERO_FACTURA_MAX = 100;
+/** Ejemplo del formato canónico del número de factura, para la ayuda y los errores. */
+export const NUMERO_FACTURA_EJEMPLO = 'B 00002-00001482';
+
+export const MENSAJE_NUMERO_FACTURA_OBLIGATORIO = 'El número de factura es obligatorio.';
+export const MENSAJE_NUMERO_FACTURA_FORMATO = `El número de factura debe tener el formato letra (A, B o C), punto de venta de 5 dígitos y número de 8 dígitos, por ejemplo ${NUMERO_FACTURA_EJEMPLO}.`;
 
 /**
- * Número de factura normalizado: sin espacios en los bordes, en mayúsculas, de 1 a 100 caracteres
- * y sin caracteres de control. Se normaliza acá porque la unicidad de la base (cliente + número,
- * entre las rendiciones activas) compara el texto exacto: `fc-1` y `FC-1` serían dos facturas.
- *
- * El orden importa: `.trim()` antes de `.min()`/`.max()`, y `.toUpperCase()` también antes del
- * `.max()`, para medir el largo del valor final (`ß` pasa a `SS` y agranda el texto). Los espacios
- * internos se conservan.
+ * Lo que se acepta al escribir: letra A, B o C (en mayúscula o minúscula), con o sin espacio,
+ * punto de venta de 1 a 5 dígitos, un guion (con o sin espacios alrededor) y número de 1 a 8
+ * dígitos. Entre las partes solo se aceptan espacios (no tabulaciones ni saltos de línea), y
+ * `\d` en JavaScript son solo los dígitos ASCII.
+ */
+const NUMERO_FACTURA_ESCRITO = /^([abc]) *(\d{1,5}) *- *(\d{1,8})$/i;
+
+/**
+ * Número de factura en su formato canónico (`B 00002-00001482`), o `null` si no es un número de
+ * factura argentina: letra en mayúscula, un espacio, punto de venta de 5 dígitos y número de 8,
+ * completados con ceros a la izquierda. `b 2-1482` y `B 00002-00001482` dan lo mismo.
+ */
+export function normalizarNumeroFactura(valor: string): string | null {
+  const partes = NUMERO_FACTURA_ESCRITO.exec(valor.trim());
+  if (partes === null) return null;
+  const [, letra = '', puntoDeVenta = '', numero = ''] = partes;
+  return `${letra.toUpperCase()} ${puntoDeVenta.padStart(5, '0')}-${numero.padStart(8, '0')}`;
+}
+
+/**
+ * Número de factura al escribir (alta de una rendición), ya en su formato canónico. Se normaliza
+ * antes de validar: la unicidad de la base (cliente + número, entre las rendiciones activas)
+ * compara el texto exacto, así que dos escrituras del mismo comprobante tienen que dar el mismo
+ * valor. La lectura (`RendicionSchema`) no valida el formato: las rendiciones cargadas antes con
+ * otro formato se siguen viendo.
  */
 export const NumeroFacturaSchema = z
   .string({
-    required_error: 'El número de factura es obligatorio.',
+    required_error: MENSAJE_NUMERO_FACTURA_OBLIGATORIO,
     invalid_type_error: 'El número de factura debe ser un texto.',
   })
-  .trim()
-  .toUpperCase()
-  .min(1, { message: 'El número de factura es obligatorio.' })
-  .max(NUMERO_FACTURA_MAX, {
-    message: `El número de factura no puede superar los ${NUMERO_FACTURA_MAX} caracteres.`,
-  })
-  .refine(sinCaracteresDeControl, {
-    message: 'El número de factura no puede contener caracteres de control.',
+  .transform((valor, ctx) => {
+    if (valor.trim() === '') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: MENSAJE_NUMERO_FACTURA_OBLIGATORIO });
+      return z.NEVER;
+    }
+    const canonico = normalizarNumeroFactura(valor);
+    if (canonico === null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: MENSAJE_NUMERO_FACTURA_FORMATO });
+      return z.NEVER;
+    }
+    return canonico;
   });
 
 export const MENSAJE_ANIO = `El año debe ser un número entero entre ${ANIO_MIN} y ${ANIO_MAX}.`;

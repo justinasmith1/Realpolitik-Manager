@@ -8,7 +8,7 @@ import { CanalEntrega } from './cliente.schema.js';
 // Largo de `RequisitoCliente.nota` (`apps/backend/prisma/schema.prisma`).
 const NOTA_MAX = 500;
 
-/** Cuántos documentos de este tipo por rendición: entero de 1 a `CANTIDAD_MAX` (provisorio). */
+/** Cuántos documentos de este tipo por rendición: entero de 1 a `CANTIDAD_MAX` (31). */
 export const CantidadSchema = z
   .number({
     required_error: 'Ingresá la cantidad.',

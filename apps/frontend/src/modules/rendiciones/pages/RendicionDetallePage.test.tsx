@@ -110,7 +110,7 @@ describe('RendicionDetallePage', () => {
       await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' }),
     ).toHaveFocus();
     expect(await screen.findByText('Muni Ejemplo')).toBeInTheDocument();
-    expect(screen.getByText('FC-0001')).toBeInTheDocument();
+    expect(screen.getByText('A 00001-00000001')).toBeInTheDocument();
     expect(screen.getByText('Activa')).toBeInTheDocument();
     expect(screen.getByText('1 de 3 reunidos')).toBeInTheDocument();
   });

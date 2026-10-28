@@ -7,6 +7,8 @@ import type {
   FalloAgregado,
   FalloAnulacion,
   FalloApertura,
+  FalloCorreccionDeCanal,
+  FalloPropagacion,
 } from '@/modules/rendiciones/api/rendiciones.api';
 import type { CampoAbrirRendicion } from '@/modules/rendiciones/components/abrirRendicionForm.validation';
 import { etiquetaDePeriodo } from '@/modules/rendiciones/rendiciones.etiquetas';
@@ -97,4 +99,42 @@ export function motivoFalloAgregado(fallo: FalloAgregado): string {
     case 'inesperado':
       return 'no pudimos sumarlo, probá de nuevo';
   }
+}
+
+/** Por qué no se cambió el canal de un ítem: se muestra dentro del diálogo. */
+export function mensajeFalloCorreccionDeCanal(fallo: FalloCorreccionDeCanal): string {
+  switch (fallo.tipo) {
+    case 'rendicion-anulada':
+      return 'La rendición está anulada: ya no se puede modificar.';
+    case 'no-existe':
+      return 'Este documento ya no está en la rendición. Volvé a cargar la página.';
+    case 'inesperado':
+      return 'No pudimos cambiar el canal. Probá de nuevo en unos segundos.';
+  }
+}
+
+/**
+ * Por qué no se propagó el canal: se muestra dentro del diálogo. Es todo o nada, así que ninguna
+ * rendición cambió; el requisito sí quedó guardado. `describir` nombra la rendición del conflicto
+ * (período y factura) si está en la lista.
+ */
+export function mensajeFalloPropagacion(
+  fallo: FalloPropagacion,
+  describir: (rendicionId: string) => string | null,
+): string {
+  const quien = (rendicionId: string | null) =>
+    (rendicionId === null ? null : describir(rendicionId)) ?? 'una de las rendiciones elegidas';
+  const motivo = (() => {
+    switch (fallo.tipo) {
+      case 'rendicion-anulada':
+        return `${quien(fallo.rendicionId)} está anulada. Destildala y probá de nuevo.`;
+      case 'requisito-no-en-rendicion':
+        return `${quien(fallo.rendicionId)} ya no tiene documentos de este requisito. Destildala y probá de nuevo.`;
+      case 'no-existe':
+        return 'alguna de las rendiciones o el requisito ya no existe. Volvé a cargar la página.';
+      case 'inesperado':
+        return 'probá de nuevo en unos segundos.';
+    }
+  })();
+  return `El requisito quedó guardado, pero no se actualizó ninguna rendición: ${motivo}`;
 }

@@ -1,4 +1,8 @@
-import type { CreateRendicionDto, RendicionDetalle } from '@realpolitik/shared';
+import {
+  NUMERO_FACTURA_EJEMPLO,
+  type CreateRendicionDto,
+  type RendicionDetalle,
+} from '@realpolitik/shared';
 import { useId, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 
@@ -230,7 +234,7 @@ function AbrirRendicionForm({
         <FormField
           id={idDe('numeroFactura')}
           label="Número de factura"
-          hint="Se guarda en mayúsculas. No puede estar en otra rendición abierta del cliente."
+          hint={`Formato: ${NUMERO_FACTURA_EJEMPLO} (letra, punto de venta y número; se completa con ceros). No puede estar en otra rendición abierta del cliente.`}
           error={errors.numeroFactura}
         >
           <Input

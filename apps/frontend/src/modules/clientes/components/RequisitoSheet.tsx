@@ -46,14 +46,22 @@ const AVISO_INACTIVO = 'Este cliente debe estar activo para modificar sus requis
 
 export type ModoRequisito = { tipo: 'alta' } | { tipo: 'edicion'; requisito: RequisitoCliente };
 
+/**
+ * Qué se guardó. El alta lleva el requisito creado (para ofrecer sumarlo a rendiciones); la
+ * edición, cómo estaba y cómo quedó (para ofrecer pasar un canal nuevo a las rendiciones).
+ */
+export type RequisitoGuardado =
+  | { tipo: 'alta'; creado: RequisitoCliente }
+  | { tipo: 'edicion'; anterior: RequisitoCliente; actualizado: RequisitoCliente };
+
 interface RequisitoSheetProps {
   /** `null` mantiene el panel cerrado. */
   modo: ModoRequisito | null;
   cliente: Cliente;
   requisitos: readonly RequisitoCliente[];
   onClose: () => void;
-  /** El texto del aviso y, en un alta, el requisito creado (para ofrecer sumarlo a rendiciones). */
-  onGuardado: (texto: string, creado?: RequisitoCliente) => void;
+  /** El texto del aviso y qué se guardó. */
+  onGuardado: (texto: string, guardado: RequisitoGuardado) => void;
   /** A dónde vuelve el foco al cerrarse. */
   retornoDeFoco: RefObject<HTMLElement | null>;
   onCerrado?: () => void;
@@ -133,10 +141,10 @@ export function RequisitoSheet({
           datos: cuerpoDeAlta(datos),
         });
         await exito.mostrar();
-        onGuardado(
-          `Se agregó ${creado.tipoDocumento.nombre} a los requisitos del cliente.`,
+        onGuardado(`Se agregó ${creado.tipoDocumento.nombre} a los requisitos del cliente.`, {
+          tipo: 'alta',
           creado,
-        );
+        });
         return undefined;
       }
       const cambios = cambiosDeRequisito(datos, borrador.requisito);
@@ -150,7 +158,11 @@ export function RequisitoSheet({
         datos: cambios,
       });
       await exito.mostrar();
-      onGuardado(`Se guardaron los cambios de ${actualizado.tipoDocumento.nombre}.`);
+      onGuardado(`Se guardaron los cambios de ${actualizado.tipoDocumento.nombre}.`, {
+        tipo: 'edicion',
+        anterior: borrador.requisito,
+        actualizado,
+      });
       return undefined;
     } catch (error) {
       const fallo = interpretarFalloRequisito(error);

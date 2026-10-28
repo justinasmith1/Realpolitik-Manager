@@ -54,7 +54,7 @@ const DOS_RENDICIONES = [
   resumenJson({
     id: OTRA_ID,
     mes: 9,
-    numeroFactura: 'FC-0002',
+    numeroFactura: 'A 00001-00000002',
     resumen: { totalItems: 2, completados: 2 },
   }),
 ];
@@ -130,7 +130,7 @@ describe('RendicionesSection', () => {
         init?.method === 'POST'
           ? json(
               {
-                ...rendicionJson({ numeroFactura: 'FC-0009' }),
+                ...rendicionJson({ numeroFactura: 'A 00001-00000009' }),
                 items: [itemJson(), itemJson({ id: 'f1a2b3c4-d5e6-4789-8abc-def012345679' })],
               },
               201,
@@ -142,7 +142,7 @@ describe('RendicionesSection', () => {
     await screen.findByText('No hay rendiciones activas para este cliente.');
 
     await user.click(screen.getByRole('button', { name: 'Abrir rendición' }));
-    await user.type(screen.getByLabelText('Número de factura'), 'fc-0009');
+    await user.type(screen.getByLabelText('Número de factura'), 'a 1-9');
     await user.click(screen.getByRole('button', { name: 'Abrir rendición' }));
 
     expect(
@@ -152,7 +152,9 @@ describe('RendicionesSection', () => {
       `/clientes/${CLIENTE_ID}/rendiciones/${RENDICION_ID}`,
     );
     expect(
-      screen.getByText('Se abrió la rendición de Octubre 2026 (factura FC-0009) con 2 documentos.'),
+      screen.getByText(
+        'Se abrió la rendición de Octubre 2026 (factura A 00001-00000009) con 2 documentos.',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -162,7 +164,12 @@ describe('RendicionesSection', () => {
         init?.method === 'POST'
           ? errorJson(409, 'CONFLICT', {
               motivo: 'RENDICION_DUPLICADA',
-              rendicionExistente: { id: OTRA_ID, anio: 2026, mes: 9, numeroFactura: 'FC-0002' },
+              rendicionExistente: {
+                id: OTRA_ID,
+                anio: 2026,
+                mes: 9,
+                numeroFactura: 'A 00001-00000002',
+              },
             })
           : json([]),
       ),
@@ -171,7 +178,7 @@ describe('RendicionesSection', () => {
     await screen.findByText('No hay rendiciones activas para este cliente.');
 
     await user.click(screen.getByRole('button', { name: 'Abrir rendición' }));
-    await user.type(screen.getByLabelText('Número de factura'), 'fc-0002');
+    await user.type(screen.getByLabelText('Número de factura'), 'a 1-2');
     await user.click(screen.getByRole('button', { name: 'Abrir rendición' }));
     await user.click(await screen.findByRole('button', { name: 'Ver rendición' }));
 
@@ -230,7 +237,7 @@ describe('RendicionesSection', () => {
     const ANULADA = resumenJson({
       id: OTRA_ID,
       mes: 11,
-      numeroFactura: 'FC-0009',
+      numeroFactura: 'A 00001-00000009',
       estado: 'ANULADA',
       anuladaEn: '2026-10-20T15:00:00.000Z',
     });

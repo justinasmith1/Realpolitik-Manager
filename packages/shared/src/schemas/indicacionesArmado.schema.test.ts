@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { INDICACIONES_ARMADO_MAX, IndicacionesArmadoSchema } from './indicacionesArmado.schema.js';
+import {
+  INDICACIONES_ARMADO_MAX,
+  IndicacionesArmadoLecturaSchema,
+  IndicacionesArmadoSchema,
+} from './indicacionesArmado.schema.js';
 
 describe('IndicacionesArmadoSchema', () => {
   it('el tope es el de la columna: 1000', () => {
@@ -79,5 +83,36 @@ describe('IndicacionesArmadoSchema', () => {
         'Las indicaciones de armado no pueden contener caracteres de control, salvo saltos de línea.',
       );
     }
+  });
+});
+
+describe('IndicacionesArmadoLecturaSchema', () => {
+  const CON_TAB = 'Factura\tprimero.\nTodo en un PDF.';
+
+  it('un valor con tabulación se lee bien, tal cual, pero no se puede guardar', () => {
+    expect(IndicacionesArmadoLecturaSchema.parse({ indicacionesArmado: CON_TAB })).toEqual({
+      indicacionesArmado: CON_TAB,
+    });
+    expect(IndicacionesArmadoSchema.safeParse({ indicacionesArmado: CON_TAB }).success).toBe(false);
+  });
+
+  it.each(['a\u0000b', 'a\u001Bb', 'a\u0085b'])(
+    'tampoco rechaza otros caracteres de control al leer (%j)',
+    (texto) => {
+      expect(IndicacionesArmadoLecturaSchema.parse({ indicacionesArmado: texto })).toEqual({
+        indicacionesArmado: texto,
+      });
+    },
+  );
+
+  it('acepta null y respeta el largo de la columna', () => {
+    expect(IndicacionesArmadoLecturaSchema.parse({ indicacionesArmado: null })).toEqual({
+      indicacionesArmado: null,
+    });
+    expect(
+      IndicacionesArmadoLecturaSchema.safeParse({
+        indicacionesArmado: 'a'.repeat(INDICACIONES_ARMADO_MAX + 1),
+      }).success,
+    ).toBe(false);
   });
 });

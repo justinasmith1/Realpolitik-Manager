@@ -1,8 +1,10 @@
 import type { ItemChecklist } from '@realpolitik/shared';
 import { cn } from 'cn';
+import { PencilIcon } from 'lucide-react';
 import { useId } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { etiquetasCanalEntrega } from '@/modules/clientes/clientes.etiquetas';
 import { nombreDeItem } from '@/modules/rendiciones/rendiciones.etiquetas';
@@ -11,6 +13,8 @@ interface ItemChecklistFilaProps {
   item: ItemChecklist;
   /** Casilla para elegirlo para un envío. Sin ella (rendición anulada), la fila no se elige. */
   seleccion?: { marcado: boolean; onCambio: (marcado: boolean) => void };
+  /** Abre la corrección del canal. Sin esto (rendición anulada), el canal no se cambia. */
+  onCambiarCanal?: () => void;
 }
 
 /**
@@ -19,7 +23,7 @@ interface ItemChecklistFilaProps {
  * distinguen con el token de alerta y más peso; el estado también va como texto, así el color
  * nunca es el único canal.
  */
-export function ItemChecklistFila({ item, seleccion }: ItemChecklistFilaProps) {
+export function ItemChecklistFila({ item, seleccion, onCambiarCanal }: ItemChecklistFilaProps) {
   const idCasilla = useId();
   const pendiente = !item.completado;
   const claseDelNombre = cn('text-sm text-foreground', pendiente && 'font-semibold');
@@ -54,7 +58,21 @@ export function ItemChecklistFila({ item, seleccion }: ItemChecklistFilaProps) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone="neutral">{etiquetasCanalEntrega[item.canalEntrega]}</Badge>
+        <span className="inline-flex items-center gap-0.5">
+          <Badge tone="neutral">{etiquetasCanalEntrega[item.canalEntrega]}</Badge>
+          {onCambiarCanal !== undefined && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={onCambiarCanal}
+              aria-label={`Cambiar el canal de ${nombreDeItem(item)}`}
+              title="Cambiar el canal"
+            >
+              <PencilIcon aria-hidden="true" />
+            </Button>
+          )}
+        </span>
         <Badge
           className={
             pendiente

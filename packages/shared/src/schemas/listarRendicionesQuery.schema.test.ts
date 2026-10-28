@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FILTRO_ESTADO_POR_DEFECTO,
   ListarRendicionesQuerySchema,
+  MENSAJE_REQUISITO_ID,
 } from './listarRendicionesQuery.schema.js';
 
 describe('ListarRendicionesQuerySchema', () => {
@@ -103,6 +104,30 @@ describe('ListarRendicionesQuerySchema', () => {
         if (!r.success) {
           expect(r.error.issues[0]?.message).toBe('El estado debe ser ACTIVA, ANULADA o TODAS.');
           expect(r.error.issues[0]?.path).toEqual(['estado']);
+        }
+      },
+    );
+  });
+
+  describe('requisitoId', () => {
+    const REQUISITO = 'd1e2f3a4-b5c6-4789-8abc-def012345601';
+
+    it('es opcional y se combina con el estado', () => {
+      expect(ListarRendicionesQuerySchema.parse({})).toEqual({});
+      expect(
+        ListarRendicionesQuerySchema.parse({ estado: 'ACTIVA', requisitoId: REQUISITO }),
+      ).toEqual({ estado: 'ACTIVA', requisitoId: REQUISITO });
+    });
+
+    it.each(['no-es-uuid', '', [REQUISITO, REQUISITO]])(
+      'rechaza %j con un mensaje claro',
+      (requisitoId) => {
+        const r = ListarRendicionesQuerySchema.safeParse({ requisitoId });
+        expect(r.success).toBe(false);
+        if (!r.success) {
+          expect(r.error.issues).toEqual([
+            expect.objectContaining({ path: ['requisitoId'], message: MENSAJE_REQUISITO_ID }),
+          ]);
         }
       },
     );

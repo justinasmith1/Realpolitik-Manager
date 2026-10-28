@@ -27,7 +27,7 @@ export function rendicionJson(extra: Record<string, unknown> = {}) {
     clienteId: CLIENTE_ID,
     anio: 2026,
     mes: 10,
-    numeroFactura: 'FC-0001',
+    numeroFactura: 'A 00001-00000001',
     estado: 'ACTIVA',
     anuladaEn: null,
     creadoEn: FECHA,

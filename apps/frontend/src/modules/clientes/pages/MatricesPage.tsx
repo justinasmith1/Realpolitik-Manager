@@ -1,6 +1,7 @@
-import { ArrowRightIcon, SearchIcon } from 'lucide-react';
+import { cn } from 'cn';
+import { ArrowRightIcon, PlusIcon, SearchIcon } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { Link, useLocation } from 'react-router';
 
 import { ClientesNav } from '@/components/layout/ClientesNav';
 import { Alert } from '@/components/ui/alert';
@@ -11,11 +12,20 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { etiquetasSubtipo } from '@/modules/clientes/clientes.etiquetas';
 import { CargaMasivaWizard } from '@/modules/clientes/components/carga-masiva/CargaMasivaWizard';
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
-import { useFiltroMatrices } from '@/modules/clientes/hooks/useFiltroMatrices';
+import {
+  useFiltroMatrices,
+  type FiltroEstadoMatriz,
+} from '@/modules/clientes/hooks/useFiltroMatrices';
 import { useRequisitosMultiplesClientes } from '@/modules/clientes/hooks/useRequisitosMultiplesClientes';
 import { stateDeRequisitos } from '@/modules/clientes/matriz.navegacion';
 
 type OrdenMatriz = 'NOMBRE_ASC' | 'PENDIENTES_PRIMERO' | 'REQUISITOS_DESC';
+
+const opcionesEstado: { valor: FiltroEstadoMatriz; etiqueta: string }[] = [
+  { valor: 'TODAS', etiqueta: 'Todos' },
+  { valor: 'CONFIGURADAS', etiqueta: 'Configurados' },
+  { valor: 'PENDIENTES', etiqueta: 'Pendientes' },
+];
 
 const opcionesOrden: SelectOption[] = [
   { value: 'NOMBRE_ASC', label: 'Nombre (A–Z)' },
@@ -24,7 +34,6 @@ const opcionesOrden: SelectOption[] = [
 ];
 
 export function MatricesPage() {
-  const navigate = useNavigate();
   const location = useLocation();
   const searchId = useId();
   const ordenId = useId();
@@ -134,19 +143,19 @@ export function MatricesPage() {
           </p>
         </div>
 
-        {/* Botón negro con letras blancas y (+) en rojo */}
-        <button
-          type="button"
+        {/* CTA de la pantalla: la variante `brand` (tinta de la marca con el ícono en su rojo). */}
+        <Button
+          variant="brand"
           onClick={() => {
             setAvisoExito(null);
             setAvisoWarning(null);
             setWizardAbierto(true);
           }}
-          className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black cursor-pointer"
+          className="max-sm:w-full"
         >
-          <span className="text-brand-accent font-black text-base leading-none">+</span>
-          <span>Añadir requisitos a varios clientes</span>
-        </button>
+          <PlusIcon aria-hidden="true" />
+          Añadir requisitos a varios clientes
+        </Button>
       </div>
 
       <ClientesNav />
@@ -172,6 +181,9 @@ export function MatricesPage() {
               aria-hidden="true"
               className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
             />
+            <label htmlFor={searchId} className="sr-only">
+              Buscar cliente
+            </label>
             <Input
               id={searchId}
               value={filtroTexto}
@@ -182,41 +194,31 @@ export function MatricesPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Botones de filtro por Estado */}
-            <div className="inline-flex rounded-lg border border-border bg-card p-1 text-xs font-medium">
-              <button
-                type="button"
-                onClick={() => elegirEstado('TODAS')}
-                className={`rounded-md px-3 py-1.5 transition-colors cursor-pointer ${
-                  filtroEstado === 'TODAS'
-                    ? 'bg-black text-white font-semibold shadow-xs'
-                    : 'text-content-secondary hover:text-foreground'
-                }`}
-              >
-                Todos
-              </button>
-              <button
-                type="button"
-                onClick={() => elegirEstado('CONFIGURADAS')}
-                className={`rounded-md px-3 py-1.5 transition-colors cursor-pointer ${
-                  filtroEstado === 'CONFIGURADAS'
-                    ? 'bg-black text-white font-semibold shadow-xs'
-                    : 'text-content-secondary hover:text-foreground'
-                }`}
-              >
-                Configurados
-              </button>
-              <button
-                type="button"
-                onClick={() => elegirEstado('PENDIENTES')}
-                className={`rounded-md px-3 py-1.5 transition-colors cursor-pointer ${
-                  filtroEstado === 'PENDIENTES'
-                    ? 'bg-black text-white font-semibold shadow-xs'
-                    : 'text-content-secondary hover:text-foreground'
-                }`}
-              >
-                Pendientes
-              </button>
+            {/* Filtro por estado: botones de alternancia; `aria-pressed` anuncia el activo. */}
+            <div
+              role="group"
+              aria-label="Estado"
+              className="inline-flex rounded-lg border border-border bg-card p-1 text-xs font-medium"
+            >
+              {opcionesEstado.map(({ valor, etiqueta }) => {
+                const activo = filtroEstado === valor;
+                return (
+                  <button
+                    key={valor}
+                    type="button"
+                    aria-pressed={activo}
+                    onClick={() => elegirEstado(valor)}
+                    className={cn(
+                      'cursor-pointer rounded-md px-3 py-1.5 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30',
+                      activo
+                        ? 'bg-primary font-semibold text-primary-foreground shadow-xs'
+                        : 'text-content-secondary hover:text-foreground',
+                    )}
+                  >
+                    {etiqueta}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Desplegable de Ordenamiento */}
@@ -311,21 +313,23 @@ export function MatricesPage() {
                   );
                 }
 
+                // Toda la fila abre la matriz del cliente: el enlace del nombre se estira sobre
+                // ella (mismo patrón que `RendicionCard`), así hay un solo enlace para el teclado
+                // y los lectores de pantalla, y lleva el origen para "Volver a requisitos".
                 return (
                   <tr
                     key={cliente.id}
-                    onClick={() => {
-                      void navigate(`/clientes/${cliente.id}/matriz`, {
-                        state: stateDeRequisitos(location.search),
-                      });
-                    }}
-                    className="group cursor-pointer hover:bg-muted/40 transition-colors"
+                    className="group relative cursor-pointer hover:bg-muted/40 transition-colors"
                   >
                     <td className="py-3.5 px-4">
                       <div className="flex flex-col">
-                        <span className="font-semibold text-foreground group-hover:text-brand-accent transition-colors">
+                        <Link
+                          to={`/clientes/${cliente.id}/matriz`}
+                          state={stateDeRequisitos(location.search)}
+                          className="w-fit font-semibold text-foreground outline-none transition-colors group-hover:text-brand-accent after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-3 focus-visible:after:ring-ring/30 focus-visible:after:ring-inset"
+                        >
                           {cliente.denominacion}
-                        </span>
+                        </Link>
                         <span className="text-xs text-content-secondary">{subtituloSector}</span>
                       </div>
                     </td>

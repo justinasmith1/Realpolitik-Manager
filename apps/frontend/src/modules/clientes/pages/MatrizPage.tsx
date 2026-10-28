@@ -1,4 +1,5 @@
-import type { RequisitoCliente } from '@realpolitik/shared';
+import type { RendicionResumen, RequisitoCliente } from '@realpolitik/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
@@ -36,9 +37,13 @@ import { useCliente } from '@/modules/clientes/hooks/useCliente';
 import { useEliminarRequisito } from '@/modules/clientes/hooks/useEliminarRequisito';
 import { useRequisitos } from '@/modules/clientes/hooks/useRequisitos';
 import { destinoDeVuelta } from '@/modules/clientes/matriz.navegacion';
+import {
+  PropagarCanalDialog,
+  type Propagacion,
+} from '@/modules/rendiciones/components/PropagarCanalDialog';
 import { RendicionesSection } from '@/modules/rendiciones/components/RendicionesSection';
 import { SumarRequisitoDialog } from '@/modules/rendiciones/components/SumarRequisitoDialog';
-import { useRendiciones } from '@/modules/rendiciones/hooks/useRendiciones';
+import { listaDeRendiciones, useRendiciones } from '@/modules/rendiciones/hooks/useRendiciones';
 
 /** Un 404 del detalle: el cliente no existe o ya fue dado de baja. */
 function esClienteAusente(error: unknown): boolean {
@@ -63,6 +68,9 @@ export function MatrizPage() {
   const [editandoCliente, setEditandoCliente] = useState(false);
   // Requisito recién agregado que se puede sumar a rendiciones abiertas (contrato 4.5).
   const [requisitoASumar, setRequisitoASumar] = useState<RequisitoCliente | null>(null);
+  // Requisito al que le cambió el canal, con las rendiciones activas que lo tienen (ADR-0003).
+  const [propagacion, setPropagacion] = useState<Propagacion | null>(null);
+  const queryClient = useQueryClient();
   const eliminar = useEliminarRequisito();
   const idValido = esIdDeRuta(id);
   const clienteQuery = useCliente(id, { enabled: idValido });
@@ -125,6 +133,28 @@ export function MatrizPage() {
     retornoRef.current =
       document.getElementById(`acciones-requisito-${requisito.id}`) ?? tituloRef.current;
     setRequisitoAQuitar(requisito);
+  }
+
+  /**
+   * Si cambió el canal efectivo del requisito (el propio o, si hereda, el del cliente), busca las
+   * rendiciones activas con ítems de ese requisito y, si hay, ofrece actualizarlas. Si la búsqueda
+   * falla no se ofrece nada: el requisito ya quedó guardado y el aviso lo dice.
+   */
+  async function ofrecerPropagarCanal(anterior: RequisitoCliente, actualizado: RequisitoCliente) {
+    if (cliente === undefined) return;
+    const canal = actualizado.canalEntrega ?? cliente.canalEntrega;
+    if (canal === (anterior.canalEntrega ?? cliente.canalEntrega)) return;
+    let rendiciones: RendicionResumen[];
+    try {
+      rendiciones = await queryClient.fetchQuery(
+        listaDeRendiciones(cliente.id, { estado: 'ACTIVA', requisitoId: actualizado.id }),
+      );
+    } catch {
+      return;
+    }
+    if (rendiciones.length > 0) {
+      setPropagacion({ clienteId: cliente.id, requisito: actualizado, canal, rendiciones });
+    }
   }
 
   async function confirmarBaja(requisito: RequisitoCliente): Promise<ResultadoBaja> {
@@ -284,11 +314,14 @@ export function MatrizPage() {
             cliente={cliente}
             requisitos={requisitosQuery.data ?? []}
             onClose={() => setModo(null)}
-            onGuardado={(texto, creado) => {
+            onGuardado={(texto, guardado) => {
               aviso.avisar('success', texto);
               setModo(null);
-              if (creado !== undefined && (rendicionesAbiertas.data?.length ?? 0) > 0) {
-                setRequisitoASumar(creado);
+              if (guardado.tipo === 'alta' && (rendicionesAbiertas.data?.length ?? 0) > 0) {
+                setRequisitoASumar(guardado.creado);
+              }
+              if (guardado.tipo === 'edicion') {
+                void ofrecerPropagarCanal(guardado.anterior, guardado.actualizado);
               }
             }}
             retornoDeFoco={retornoRef}
@@ -305,6 +338,15 @@ export function MatrizPage() {
             onTerminado={(variante, texto) => {
               aviso.avisar(variante, texto);
               setRequisitoASumar(null);
+            }}
+            focoAlCerrar={tituloRef}
+          />
+          <PropagarCanalDialog
+            propagacion={propagacion}
+            onCerrar={() => setPropagacion(null)}
+            onTerminado={(texto) => {
+              aviso.avisar('success', texto);
+              setPropagacion(null);
             }}
             focoAlCerrar={tituloRef}
           />

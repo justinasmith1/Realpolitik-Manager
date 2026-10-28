@@ -31,6 +31,8 @@ export type FiltroEstadoRendiciones = z.infer<typeof FiltroEstadoRendiciones>;
  */
 export const FILTRO_ESTADO_POR_DEFECTO: FiltroEstadoRendiciones = 'ACTIVA';
 
+export const MENSAJE_REQUISITO_ID = 'El ID del requisito debe ser un UUID válido.';
+
 /**
  * Parámetros de `GET /clientes/:id/rendiciones` (query string).
  *
@@ -38,6 +40,8 @@ export const FILTRO_ESTADO_POR_DEFECTO: FiltroEstadoRendiciones = 'ACTIVA';
  * - `mes`: entero de 1 a 12. Opcional; se puede combinar con `anio` o usar solo.
  * - `estado`: `ACTIVA`, `ANULADA` o `TODAS`. Opcional; sin él, `ACTIVA`
  *   (`FILTRO_ESTADO_POR_DEFECTO`).
+ * - `requisitoId`: uuid de un requisito del cliente. Opcional; solo las rendiciones que tienen
+ *   ítems de ese requisito (para ofrecer propagarles un cambio de canal).
  *
  * Sin `anio` ni `mes`, no se filtra por período. Se entregan ya como números.
  */
@@ -45,6 +49,10 @@ export const ListarRendicionesQuerySchema = z.object({
   anio: enteroDeQuery(AnioSchema, MENSAJE_ANIO).optional(),
   mes: enteroDeQuery(MesSchema, MENSAJE_MES).optional(),
   estado: FiltroEstadoRendiciones.optional(),
+  requisitoId: z
+    .string({ invalid_type_error: MENSAJE_REQUISITO_ID })
+    .uuid({ message: MENSAJE_REQUISITO_ID })
+    .optional(),
 });
 
 export type ListarRendicionesQuery = z.infer<typeof ListarRendicionesQuerySchema>;
