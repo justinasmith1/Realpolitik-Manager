@@ -5,6 +5,7 @@ import {
   CreateRequisitoClienteSchema,
   IndicacionesArmadoSchema,
   ListarClientesQuerySchema,
+  ObservacionesClienteSchema,
   ReemplazarContactosSchema,
   UpdateClienteSchema,
   UpdateContactoSchema,
@@ -33,6 +34,10 @@ import {
   guardarIndicacionesArmadoController,
   obtenerIndicacionesArmadoController,
 } from './indicaciones-armado.controller';
+import {
+  guardarObservacionesController,
+  obtenerObservacionesController,
+} from './observaciones.controller';
 import {
   actualizarRequisitoController,
   crearRequisitoController,
@@ -132,4 +137,17 @@ clientesRouter.put(
   '/:id/indicaciones-armado',
   validate({ params: ClienteIdParamsSchema, body: IndicacionesArmadoSchema }),
   guardarIndicacionesArmadoController,
+);
+
+// Observaciones internas de la ficha (HU2.10). Se pueden leer y guardar con el cliente en
+// cualquier estado.
+clientesRouter.get(
+  '/:id/observaciones',
+  validate({ params: ClienteIdParamsSchema }),
+  obtenerObservacionesController,
+);
+clientesRouter.put(
+  '/:id/observaciones',
+  validate({ params: ClienteIdParamsSchema, body: ObservacionesClienteSchema }),
+  guardarObservacionesController,
 );

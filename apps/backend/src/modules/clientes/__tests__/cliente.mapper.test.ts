@@ -26,6 +26,7 @@ const filaPublica: ClienteRow = {
   estado: 'ACTIVO',
   matrizConfigurada: false,
   indicacionesArmado: null,
+  observaciones: null,
   isDeleted: false,
   deletedAt: null,
   createdAt: creado,
@@ -84,6 +85,7 @@ describe('toClienteDto', () => {
       ...filaPublica,
       matrizConfigurada: false,
       indicacionesArmado: null,
+      observaciones: 'Nota interna',
       isDeleted: true,
       deletedAt: new Date('2026-10-05T00:00:00.000Z'),
     });
@@ -94,6 +96,7 @@ describe('toClienteDto', () => {
       'createdAt',
       'updatedAt',
       'indicacionesArmado',
+      'observaciones',
     ]) {
       expect(dto).not.toHaveProperty(campo);
     }
