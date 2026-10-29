@@ -201,3 +201,27 @@ describe('ObservacionesClientePanel: diseño', () => {
     expect(html).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|hsl\(/i);
   });
 });
+
+describe('ObservacionesClientePanel: ids generados', () => {
+  it('dos paneles en la misma página tienen títulos con ids distintos', async () => {
+    servirNota(null);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ObservacionesClientePanel cliente={CLIENTE} />
+        <ObservacionesClientePanel cliente={CLIENTE} />
+      </QueryClientProvider>,
+    );
+
+    const paneles = await screen.findAllByRole('region', { name: 'Observaciones internas' });
+    const ids = paneles.map((p) => p.getAttribute('aria-labelledby'));
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+    for (const [i, id] of ids.entries()) {
+      expect(within(paneles[i] as HTMLElement).getByRole('heading', { level: 2 })).toHaveAttribute(
+        'id',
+        id,
+      );
+    }
+  });
+});

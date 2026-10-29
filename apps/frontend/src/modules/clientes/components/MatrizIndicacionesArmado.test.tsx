@@ -132,3 +132,21 @@ describe('MatrizIndicacionesArmado (HU2.4)', () => {
     expect(obtener).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('MatrizIndicacionesArmado: ids generados', () => {
+  it('dos paneles en la misma página tienen títulos con ids distintos', async () => {
+    vi.spyOn(api, 'obtenerIndicacionesArmado').mockResolvedValue({ indicacionesArmado: null });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MatrizIndicacionesArmado cliente={cliente} />
+        <MatrizIndicacionesArmado cliente={cliente} />
+      </QueryClientProvider>,
+    );
+
+    const paneles = await screen.findAllByRole('region', { name: 'Indicaciones de armado' });
+    const ids = paneles.map((p) => p.getAttribute('aria-labelledby'));
+    expect(new Set(ids).size).toBe(2);
+    expect(ids).not.toContain('titulo-indicaciones-armado');
+  });
+});
