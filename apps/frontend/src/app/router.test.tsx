@@ -51,6 +51,37 @@ describe('router', () => {
     expect(screen.queryByRole('heading', { name: 'Página no encontrada' })).not.toBeInTheDocument();
   });
 
+  it('en /documentos la navegación secundaria marca Tipos de documento (HU2.8)', () => {
+    renderRoute('/documentos');
+
+    const secciones = screen.getByRole('navigation', { name: 'Secciones de Documentos' });
+    expect(within(secciones).getByRole('link', { name: 'Tipos de documento' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(within(secciones).getByRole('link', { name: 'Archivos' })).not.toHaveAttribute(
+      'aria-current',
+    );
+  });
+
+  it('abre el repositorio en /documentos/archivos, dentro de la sección Documentos', () => {
+    renderRoute('/documentos/archivos');
+
+    const main = screen.getByRole('main');
+    expect(within(main).getByRole('heading', { level: 1, name: 'Documentos' })).toBeInTheDocument();
+    const secciones = screen.getByRole('navigation', { name: 'Secciones de Documentos' });
+    expect(within(secciones).getByRole('link', { name: 'Archivos' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(
+      within(screen.getByRole('navigation', { name: 'Principal' })).getByRole('link', {
+        name: 'Documentos',
+      }),
+    ).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('heading', { name: 'Página no encontrada' })).not.toBeInTheDocument();
+  });
+
   describe('la ruta vieja /clientes/tipos-documento', () => {
     it('redirige a /documentos', async () => {
       const router = renderRoute('/clientes/tipos-documento');

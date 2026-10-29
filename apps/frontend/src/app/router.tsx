@@ -6,6 +6,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
 import { MatricesPage } from '@/modules/clientes/pages/MatricesPage';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
+import { ArchivosPage } from '@/modules/documentos/pages/ArchivosPage';
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
 import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
 
@@ -30,6 +31,12 @@ export const routes: RouteObject[] = [
       {
         path: 'documentos',
         element: <TiposDocumentoPage />,
+        handle: { title: 'Documentos' } satisfies AppRouteHandle,
+      },
+      // Repositorio de archivos (HU2.8): misma sección del Sidebar, con su navegación secundaria.
+      {
+        path: 'documentos/archivos',
+        element: <ArchivosPage />,
         handle: { title: 'Documentos' } satisfies AppRouteHandle,
       },
       // Ruta anterior del catálogo: se redirige para no romper enlaces guardados. Conserva la
