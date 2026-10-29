@@ -1,4 +1,4 @@
-// Endpoints de las observaciones internas de un cliente (HU2.10, contrato sección 4.9).
+// Endpoints de las observaciones internas de un cliente (HU2.10, contrato sección 4.4).
 // Conoce rutas, cuerpos y el formato de error. No produce texto de interfaz: eso lo deciden
 // los componentes.
 

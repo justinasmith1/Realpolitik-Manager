@@ -645,7 +645,7 @@ describe('NuevoClienteSheet: indicaciones de armado (HU2.4)', () => {
     typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
   const pedidosDeIndicaciones = () =>
     fetchMock.mock.calls.filter(([entrada]) => urlDe(entrada).endsWith('/indicaciones-armado'));
-  const indicaciones = () => screen.getByLabelText('Instrucciones para el legajo');
+  const indicaciones = () => screen.getByRole('textbox', { name: 'Indicaciones de armado' });
 
   /** El alta responde 201; el PUT de indicaciones, lo que se indique. */
   function servirAlta(respuestaIndicaciones: () => Response) {
@@ -783,7 +783,7 @@ describe('NuevoClienteSheet: observaciones internas (HU2.10)', () => {
     );
   const pedidosDeObservaciones = () => putsDe('/observaciones');
   const observaciones = () => screen.getByRole('textbox', { name: 'Observaciones internas' });
-  const indicaciones = () => screen.getByLabelText('Instrucciones para el legajo');
+  const indicaciones = () => screen.getByRole('textbox', { name: 'Indicaciones de armado' });
 
   interface Respuestas {
     observaciones?: () => Response | Promise<Response>;

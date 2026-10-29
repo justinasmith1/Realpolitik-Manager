@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
 import { ObservacionesSection } from '@/modules/clientes/components/ObservacionesSection';
+import { AVISO_SIN_CREDENCIALES } from '@/modules/clientes/components/textosFichaCliente';
 
 // Sección "Observaciones internas" del formulario del cliente (HU2.10). Es presentacional: el
 // texto y su validación los maneja `ClienteForm`.
@@ -39,13 +40,11 @@ describe('ObservacionesSection (HU2.10)', () => {
     expect(within(grupo).getByRole('textbox', { name: 'Observaciones internas' })).toBe(cuadro());
   });
 
-  it('avisa una sola vez, y más corto, que no se guarden contraseñas', () => {
+  it('avisa una sola vez que no se guarden contraseñas, con el mismo texto que las indicaciones', () => {
     renderSeccion();
 
-    expect(screen.getAllByText('No guardes contraseñas ni credenciales acá.')).toHaveLength(1);
-    expect(
-      screen.queryByText('No guardes contraseñas ni credenciales de portales en este campo.'),
-    ).not.toBeInTheDocument();
+    expect(screen.getAllByText(AVISO_SIN_CREDENCIALES)).toHaveLength(1);
+    expect(AVISO_SIN_CREDENCIALES).toBe('No guardes contraseñas ni credenciales acá.');
   });
 
   it('explica que es una bitácora de hechos puntuales y que no reemplaza a las indicaciones', () => {

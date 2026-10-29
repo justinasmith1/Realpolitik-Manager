@@ -1,4 +1,5 @@
 import type { Cliente } from '@realpolitik/shared';
+import { useId } from 'react';
 
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -38,14 +39,15 @@ export function ObservacionesClientePanel({
 }: ObservacionesClientePanelProps) {
   const { data, isLoading, isError, isFetching, refetch } = useObservacionesCliente(cliente.id);
   const contenido = data?.observaciones?.trim();
+  const idTitulo = useId();
 
   return (
     <section
-      aria-labelledby="titulo-observaciones-internas"
+      aria-labelledby={idTitulo}
       className="flex flex-col gap-3 rounded-panel border bg-panel p-5 shadow-xs"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="titulo-observaciones-internas" className="text-base font-semibold text-foreground">
+        <h2 id={idTitulo} className="text-base font-semibold text-foreground">
           {TEXTOS.titulo}
         </h2>
         {onEditarCliente !== undefined && (

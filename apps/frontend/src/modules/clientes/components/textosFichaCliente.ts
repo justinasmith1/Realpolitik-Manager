@@ -8,3 +8,6 @@ export const TEXTO_EDITAR_EN_LA_FICHA = 'Editar en la ficha del cliente';
 /** Nombre accesible del botón: el texto visible, seguido del contexto ("…: observaciones internas"). */
 export const nombreAccesibleEditarEnLaFicha = (contexto: string) =>
   `${TEXTO_EDITAR_EN_LA_FICHA}: ${contexto}`;
+
+/** La advertencia de cada nota del cliente (indicaciones de armado, observaciones internas). */
+export const AVISO_SIN_CREDENCIALES = 'No guardes contraseñas ni credenciales acá.';

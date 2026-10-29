@@ -123,6 +123,8 @@ interface ClienteFormProps {
   indicaciones?: IndicacionesDelCliente | undefined;
   /** Las observaciones guardadas, en una edición. Sin esto (alta) arrancan vacías y editables. */
   observaciones?: ObservacionesDelCliente | undefined;
+  /** El cuadro de las indicaciones, para llevarle el foco al abrir (ver `EditarClienteSheet`). */
+  indicacionesRef?: Ref<HTMLTextAreaElement> | undefined;
   /** El cuadro de las observaciones, para llevarle el foco al abrir (ver `EditarClienteSheet`). */
   observacionesRef?: Ref<HTMLTextAreaElement> | undefined;
 }
@@ -264,6 +266,7 @@ export function ClienteForm({
   soloConCambios = false,
   indicaciones,
   observaciones,
+  indicacionesRef,
   observacionesRef,
 }: ClienteFormProps) {
   const id = useId();
@@ -678,6 +681,7 @@ export function ClienteForm({
           estadoCliente={indicaciones?.estadoCliente}
           cargando={indicaciones?.cargando ?? false}
           errorAlCargar={indicaciones?.errorAlCargar ?? false}
+          cuadroRef={indicacionesRef}
         />
 
         <ObservacionesSection

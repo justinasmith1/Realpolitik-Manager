@@ -38,6 +38,7 @@ import { ClientesInactivosVacio } from '@/modules/clientes/components/ClientesIn
 import { ClientesLoadingState } from '@/modules/clientes/components/ClientesLoadingState';
 import { ClientesSinActivos } from '@/modules/clientes/components/ClientesSinActivos';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
+import type { EnlaceDeCliente } from '@/modules/clientes/components/ClienteTarjeta';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import { mensajeFalloCambioEstado } from '@/modules/clientes/components/erroresDeEnvio';
 import { GestionarContactosSheet } from '@/modules/clientes/components/GestionarContactosSheet';
@@ -199,8 +200,16 @@ export function ClientesPage() {
     setClienteAAdministrar(cliente);
   };
 
+  // La pantalla del cliente, con los filtros de la URL para que "Volver a clientes" los conserve.
+  // La usan el nombre de cada fila y "Ver requisitos" del menú ⋯.
+  const enlaceDe = (cliente: Cliente): EnlaceDeCliente => ({
+    to: `/clientes/${cliente.id}/matriz`,
+    state: stateDeListado(location.search),
+  });
+
   const verMatriz = (cliente: Cliente) => {
-    void navigate(`/clientes/${cliente.id}/matriz`, { state: stateDeListado(location.search) });
+    const { to, state } = enlaceDe(cliente);
+    void navigate(to, { state });
   };
 
   const alGuardarContactos = (cliente: Cliente) => {
@@ -318,6 +327,7 @@ export function ClientesPage() {
               onAdministrarContactos={abrirContactos}
               onEditar={abrirEdicion}
               onVerMatriz={verMatriz}
+              enlaceDe={enlaceDe}
               onDesactivar={(cliente) => setCambioAConfirmar({ cliente, accion: 'desactivar' })}
               onReactivar={(cliente) => setCambioAConfirmar({ cliente, accion: 'reactivar' })}
               idsCambiandoEstado={idsCambiandoEstado}
