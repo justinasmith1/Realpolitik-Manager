@@ -148,8 +148,33 @@ describe('ClientesPage: el nombre del cliente abre su pantalla', () => {
       'href',
       RUTA_MUNICIPAL,
     );
-    // Un solo enlace por fila: el resto de la fila lo cubre el mismo.
+    // Un solo enlace por fila: el de su nombre.
     expect(fila.getAllByRole('link')).toHaveLength(1);
+  });
+
+  it('el enlace se estira solo sobre la celda del nombre, no sobre el resto de la fila', async () => {
+    renderApp();
+
+    await screen.findByRole('table');
+    const enlace = enlaceDe('Municipalidad de Ejemplo');
+    const celdaNombre = screen.getByRole('rowheader', { name: /Municipalidad de Ejemplo/ });
+    const fila = enlace.closest('tr');
+    // El `after:absolute` del enlace toma como referencia la celda: la fila no está posicionada.
+    expect(enlace.parentElement).toBe(celdaNombre);
+    expect(celdaNombre).toHaveClass('relative', 'cursor-pointer');
+    expect(fila).not.toHaveClass('relative');
+    expect(fila).not.toHaveClass('cursor-pointer');
+
+    // El CUIT y el email quedan fuera del enlace y de su celda: se pueden seleccionar y copiar.
+    for (const dato of [municipal.cuit, municipal.emailContacto]) {
+      const celda = within(fila as HTMLElement)
+        .getByText(dato)
+        .closest('td');
+      expect(celda).not.toBeNull();
+      expect(enlace).not.toContainElement(celda);
+      expect(celdaNombre).not.toContainElement(celda);
+      expect(celda?.querySelector('a')).toBeNull();
+    }
   });
 
   it('tocar el nombre navega con los filtros de la URL en el state', async () => {

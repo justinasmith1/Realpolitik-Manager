@@ -99,7 +99,7 @@ export function ClientesTabla({
   enlaceDe,
 }: ClientesTablaProps & {
   /**
-   * Hace del nombre un enlace estirado sobre toda la fila (o la tarjeta). Sin esto, el nombre es
+   * Hace del nombre un enlace estirado sobre su celda (o la tarjeta). Sin esto, el nombre es
    * texto: la tabla no depende del router.
    */
   enlaceDe?: (cliente: Cliente) => EnlaceDeCliente;
@@ -185,13 +185,16 @@ export function ClientesTabla({
           {clientes.map((cliente) => {
             const enlace = enlaceDe?.(cliente);
             return (
-              // Con enlace, el nombre se estira sobre la fila (mismo patrón que `MatricesPage`): un
-              // solo enlace para el teclado y los lectores de pantalla. El menú ⋯ queda por encima.
-              <tr
-                key={cliente.id}
-                className={cn('group hover:bg-panel-alt', enlace && 'relative cursor-pointer')}
-              >
-                <th scope="row" className="py-3 pr-2.5 pl-4 text-left font-normal">
+              <tr key={cliente.id} className="group hover:bg-panel-alt">
+                {/* Con enlace, el nombre se estira solo sobre su celda (`relative`): el resto de la
+                    fila queda libre para seleccionar y copiar datos, y para los tooltips. */}
+                <th
+                  scope="row"
+                  className={cn(
+                    'py-3 pr-2.5 pl-4 text-left font-normal',
+                    enlace && 'relative cursor-pointer',
+                  )}
+                >
                   {enlace ? (
                     <Link
                       to={enlace.to}
@@ -217,8 +220,7 @@ export function ClientesTabla({
                 {columnasVisibles.map((id) => (
                   <Fragment key={id}>{celdas[id](cliente)}</Fragment>
                 ))}
-                {/* `sticky` ya la posiciona: con `z-10` queda encima del enlace estirado. */}
-                <td className={cn(claseAcciones, 'z-10 group-hover:bg-panel-alt')}>
+                <td className={cn(claseAcciones, 'group-hover:bg-panel-alt')}>
                   <div className="flex justify-end">
                     <ClienteAccionesMenu cliente={cliente} {...accionesDe(cliente)} />
                   </div>
