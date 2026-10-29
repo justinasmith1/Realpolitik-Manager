@@ -28,6 +28,7 @@
     "seed": "pnpm run db:seed"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1160.0",
     "@prisma/client": "^5.22.0",
     "@realpolitik/shared": "workspace:^",
     "cors": "^2.8.5",

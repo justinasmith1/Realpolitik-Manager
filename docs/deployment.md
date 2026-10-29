@@ -127,10 +127,17 @@ El backend se construye y arranca desde la raíz del repositorio (Root Directory
 | `DATABASE_URL`          | URL privada de PostgreSQL         | Referencia al servicio PostgreSQL del proyecto | **Sí**  |
 | `CORS_ORIGINS`          | Origen de producción del frontend | Manual                                         | No      |
 | `RAILPACK_NODE_VERSION` | `24`                              | Manual                                         | No      |
+| `ALMACENAMIENTO`        | `s3`                              | Manual                                         | No      |
+| `S3_ENDPOINT`           | Endpoint S3 del proveedor (HTTPS) | Manual                                         | No      |
+| `S3_REGION`             | Región del proveedor              | Manual                                         | No      |
+| `S3_BUCKET`             | Bucket **privado**                | Manual                                         | No      |
+| `S3_ACCESS_KEY_ID`      | Clave de acceso S3                | Manual                                         | **Sí**  |
+| `S3_SECRET_ACCESS_KEY`  | Clave secreta S3                  | Manual                                         | **Sí**  |
 
 - `NODE_ENV=production` hay que definirlo siempre en el proveedor: el servidor arranca igual sin ella y asume `development` (conveniente en local, engañoso en producción). Si se olvida, el servidor no avisa; la única pista es el arranque, que imprime el entorno (`Backend escuchando en … (development)`). Lo que cambia por no definirla es poco hoy (no se registran las consultas de Prisma, que solo se activan con `NODE_ENV=development` explícito), pero cualquier lógica futura que dependa de `production` quedaría apagada. Por eso las guardas de seguridad no dependen solo de esta variable (ver el seed, abajo).
 - `CORS_ORIGINS` es el origen exacto, `https://<host>` **sin barra final**. Se admiten varios, separados por comas. Si falta o es inválido, el servidor no arranca y el deploy falla el healthcheck. No se usa `*`.
 - Los previews de Vercel tienen un hostname distinto en cada deploy y **no** se agregan a `CORS_ORIGINS`.
+- Almacenamiento de documentos (HU2.8, [ADR-0004](adr/0004-reutilizacion-y-almacenamiento-documentos.md)): con `NODE_ENV=production`, el servidor **no arranca** sin `ALMACENAMIENTO=s3` y las cinco variables `S3_*` (endpoint HTTPS). Memoria y disco no se admiten en producción: se pierden con el contenedor. `S3_FORCE_PATH_STYLE` es opcional (`true` por defecto, lo que exige Supabase). Las claves `S3_*` no se comparten entre entornos y nunca van al frontend.
 - Usar la URL **privada** de la base (mismo proyecto de Railway). La URL pública (proxy TCP) factura tráfico de salida y expone la base fuera de la red privada: no se usa.
 
 ### Variable de Vercel
