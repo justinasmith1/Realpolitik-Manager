@@ -125,7 +125,7 @@ const putsDeObservaciones = () =>
   );
 
 describe('MatrizPage: observaciones internas', () => {
-  it('muestra la nota guardada del cliente, antes de las indicaciones de armado', async () => {
+  it('muestra la nota guardada del cliente, después de las indicaciones de armado (el orden de la hoja)', async () => {
     servir({ nota: 'Cambió el mail.' });
     renderMatriz();
 
@@ -133,8 +133,22 @@ describe('MatrizPage: observaciones internas', () => {
     expect(await within(observaciones).findByText('Cambió el mail.')).toBeInTheDocument();
     const indicaciones = await screen.findByRole('region', { name: 'Indicaciones de armado' });
     expect(
-      observaciones.compareDocumentPosition(indicaciones) & Node.DOCUMENT_POSITION_FOLLOWING,
+      indicaciones.compareDocumentPosition(observaciones) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it('cada panel tiene su propio título: los ids generados no se repiten', async () => {
+    servir({ nota: 'Cambió el mail.' });
+    renderMatriz();
+
+    const observaciones = await panel();
+    const indicaciones = await screen.findByRole('region', { name: 'Indicaciones de armado' });
+    const idObservaciones = observaciones.getAttribute('aria-labelledby');
+    const idIndicaciones = indicaciones.getAttribute('aria-labelledby');
+    expect(idObservaciones).toBeTruthy();
+    expect(idIndicaciones).toBeTruthy();
+    expect(idObservaciones).not.toBe(idIndicaciones);
+    expect(document.querySelectorAll(`[id="${idObservaciones}"]`)).toHaveLength(1);
   });
 
   it('el panel es de solo lectura: no hay cuadro de texto en la pantalla', async () => {
@@ -204,7 +218,7 @@ describe('MatrizPage: observaciones internas', () => {
       await user.click(await botonDeObservaciones());
       await hoja();
       // Las indicaciones quedan bloqueadas; las observaciones, no.
-      expect(screen.getByLabelText('Instrucciones para el legajo')).toBeDisabled();
+      expect(screen.getByRole('textbox', { name: 'Indicaciones de armado' })).toBeDisabled();
       expect(campoDeObservaciones()).toBeEnabled();
       await user.click(campoDeObservaciones());
       await user.paste('Pausó la pauta.');

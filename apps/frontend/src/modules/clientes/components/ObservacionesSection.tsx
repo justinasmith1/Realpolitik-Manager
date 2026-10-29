@@ -6,10 +6,10 @@ import type { Ref } from 'react';
 import { Alert } from '@/components/ui/alert';
 import { FormSection } from '@/components/ui/form-field';
 import { Textarea } from '@/components/ui/textarea';
+import { AVISO_SIN_CREDENCIALES } from '@/modules/clientes/components/textosFichaCliente';
 
 const TEXTOS = {
   titulo: 'Observaciones internas',
-  avisoCredenciales: 'No guardes contraseñas ni credenciales acá.',
   ayuda:
     'Bitácora de hechos puntuales de la cuenta (un cambio de mail, una pauta pausada). No reemplaza a las indicaciones de armado.',
   placeholder: 'Anotá acá un hecho puntual de la cuenta…',
@@ -59,7 +59,7 @@ export function ObservacionesSection({
   return (
     <FormSection title={TEXTOS.titulo}>
       <Alert variant="warning" id={`${id}-aviso`}>
-        {TEXTOS.avisoCredenciales}
+        {AVISO_SIN_CREDENCIALES}
       </Alert>
 
       {errorAlCargar && <Alert>{TEXTOS.errorAlCargar}</Alert>}

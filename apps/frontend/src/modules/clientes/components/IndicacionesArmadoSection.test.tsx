@@ -1,9 +1,10 @@
 import type { ClienteEstadoType } from '@realpolitik/shared';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
 import { IndicacionesArmadoSection } from '@/modules/clientes/components/IndicacionesArmadoSection';
+import { AVISO_SIN_CREDENCIALES } from '@/modules/clientes/components/textosFichaCliente';
 
 const ID = 'indicaciones';
 
@@ -28,15 +29,23 @@ function renderSeccion(opciones: Opciones = {}) {
   return { user: userEvent.setup() };
 }
 
-const textarea = () => screen.getByLabelText('Instrucciones para el legajo');
+const textarea = () => screen.getByRole('textbox', { name: 'Indicaciones de armado' });
 
 describe('IndicacionesArmadoSection (HU2.4)', () => {
-  it('avisa una sola vez que no se guarden contraseñas', () => {
+  it('el grupo y el cuadro de texto se llaman igual: "Indicaciones de armado"', () => {
     renderSeccion();
 
-    expect(
-      screen.getAllByText('No guardes contraseñas ni credenciales de portales en este campo.'),
-    ).toHaveLength(1);
+    const grupo = screen.getByRole('group', { name: 'Indicaciones de armado' });
+    expect(within(grupo).getByRole('textbox', { name: 'Indicaciones de armado' })).toBe(textarea());
+    expect(screen.queryByText(/instrucciones/i)).not.toBeInTheDocument();
+  });
+
+  it('avisa una sola vez que no se guarden contraseñas, con el mismo texto que las observaciones', () => {
+    renderSeccion();
+
+    expect(screen.getAllByText(AVISO_SIN_CREDENCIALES)).toHaveLength(1);
+    expect(AVISO_SIN_CREDENCIALES).toBe('No guardes contraseñas ni credenciales acá.');
+    expect(textarea()).toHaveAccessibleDescription(expect.stringContaining(AVISO_SIN_CREDENCIALES));
   });
 
   it('muestra un solo contador, que arranca en 0 y sigue lo que se escribe', async () => {

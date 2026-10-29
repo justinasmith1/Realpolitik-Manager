@@ -291,16 +291,17 @@ export function MatrizPage() {
         </Alert>
       )}
       {contenido}
-      {cliente !== undefined && (
-        <ObservacionesClientePanel
-          cliente={cliente}
-          onEditarCliente={() => setEdicionDeCliente({ enfocar: 'observaciones' })}
-        />
-      )}
+      {/* Las dos notas, en el mismo orden que la hoja "Editar cliente". */}
       {cliente !== undefined && (
         <MatrizIndicacionesArmado
           cliente={cliente}
           onEditarCliente={() => setEdicionDeCliente({})}
+        />
+      )}
+      {cliente !== undefined && (
+        <ObservacionesClientePanel
+          cliente={cliente}
+          onEditarCliente={() => setEdicionDeCliente({ enfocar: 'observaciones' })}
         />
       )}
       {cliente !== undefined && (

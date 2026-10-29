@@ -116,7 +116,7 @@ function renderEdicion(cliente: Cliente = aCliente(clienteJson)) {
 }
 
 const observaciones = () => screen.getByRole('textbox', { name: 'Observaciones internas' });
-const indicaciones = () => screen.getByLabelText('Instrucciones para el legajo');
+const indicaciones = () => screen.getByRole('textbox', { name: 'Indicaciones de armado' });
 const botonGuardar = () => screen.getByRole('button', { name: 'Guardar cambios' });
 
 async function reemplazar(user: UserEvent, campo: HTMLElement, texto: string) {

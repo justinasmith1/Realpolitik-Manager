@@ -6,6 +6,7 @@ import { Alert } from '@/components/ui/alert';
 import { FormSection } from '@/components/ui/form-field';
 import { Textarea } from '@/components/ui/textarea';
 import { etiquetasEstado } from '@/modules/clientes/clientes.etiquetas';
+import { AVISO_SIN_CREDENCIALES } from '@/modules/clientes/components/textosFichaCliente';
 
 export interface IndicacionesArmadoSectionProps {
   /** Id del textarea. De él salen los de la ayuda, el contador y el error. */
@@ -47,7 +48,7 @@ export function IndicacionesArmadoSection({
   return (
     <FormSection title="Indicaciones de armado">
       <Alert variant="warning" id={`${id}-aviso`}>
-        No guardes contraseñas ni credenciales de portales en este campo.
+        {AVISO_SIN_CREDENCIALES}
       </Alert>
 
       {clienteNoActivo && (
@@ -67,7 +68,7 @@ export function IndicacionesArmadoSection({
       <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-2">
           <label htmlFor={id} className="text-sm font-medium text-foreground">
-            Instrucciones para el legajo
+            Indicaciones de armado
           </label>
           <span
             id={`${id}-contador`}

@@ -581,7 +581,7 @@ describe('ClientesPage: alta de cliente', () => {
     await user.click(screen.getByRole('button', { name: 'Nuevo cliente' }));
     await completarAltaValida(user);
     const panel = within(panelDeAlta() as HTMLElement);
-    await user.click(panel.getByLabelText('Instrucciones para el legajo'));
+    await user.click(panel.getByRole('textbox', { name: 'Indicaciones de armado' }));
     await user.paste('Factura primero.');
     await user.click(screen.getByRole('button', { name: 'Registrar cliente' }));
 
@@ -617,7 +617,7 @@ describe('ClientesPage: alta de cliente', () => {
       await completarAltaValida(user);
       const panel = within(panelDeAlta() as HTMLElement);
       if (indicaciones !== undefined) {
-        await user.click(panel.getByLabelText('Instrucciones para el legajo'));
+        await user.click(panel.getByRole('textbox', { name: 'Indicaciones de armado' }));
         await user.paste(indicaciones);
       }
       if (observaciones !== undefined) {
