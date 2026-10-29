@@ -1,6 +1,7 @@
 import { INDICACIONES_ARMADO_MAX, type ClienteEstadoType } from '@realpolitik/shared';
 import { cn } from 'cn';
 import { CircleAlertIcon } from 'lucide-react';
+import type { Ref } from 'react';
 
 import { Alert } from '@/components/ui/alert';
 import { FormSection } from '@/components/ui/form-field';
@@ -21,6 +22,8 @@ export interface IndicacionesArmadoSectionProps {
   cargando?: boolean;
   /** No se pudieron leer las guardadas: no se edita, para no reemplazarlas sin haberlas visto. */
   errorAlCargar?: boolean;
+  /** El cuadro de texto, para que quien abre el formulario pueda llevarle el foco. */
+  cuadroRef?: Ref<HTMLTextAreaElement> | undefined;
 }
 
 /**
@@ -36,6 +39,7 @@ export function IndicacionesArmadoSection({
   estadoCliente,
   cargando = false,
   errorAlCargar = false,
+  cuadroRef,
 }: IndicacionesArmadoSectionProps) {
   const clienteNoActivo = estadoCliente !== undefined && estadoCliente !== 'ACTIVO';
   const soloLectura = clienteNoActivo || cargando || errorAlCargar;
@@ -83,6 +87,7 @@ export function IndicacionesArmadoSection({
         </div>
 
         <Textarea
+          ref={cuadroRef}
           id={id}
           value={valor}
           onChange={(evento) => onCambio(evento.target.value)}

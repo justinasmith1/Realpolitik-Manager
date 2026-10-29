@@ -53,8 +53,11 @@ interface EditarClienteSheetProps {
    * campo ya está cargado y se puede editar al abrir; si no, queda el foco habitual (un foco que
    * llegara después le quitaría al usuario lo que ya estuviera haciendo).
    */
-  enfocar?: 'observaciones' | undefined;
+  enfocar?: NotaAEnfocar | undefined;
 }
+
+/** Las notas del cliente que pueden recibir el foco al abrir la hoja. */
+export type NotaAEnfocar = 'indicaciones' | 'observaciones';
 
 /**
  * Panel lateral de la edición de cliente (HU1.7, HU2.4, HU2.10). Si el envío falla, queda abierto con
@@ -76,6 +79,7 @@ export function EditarClienteSheet({
   const guardadoIndicaciones = useGuardarIndicacionesArmado();
   const guardadoObservaciones = useGuardarObservacionesCliente();
   const exito = useExitoBreve();
+  const indicacionesRef = useRef<HTMLTextAreaElement>(null);
   const observacionesRef = useRef<HTMLTextAreaElement>(null);
   // Mientras el panel sale, sigue mostrando al último cliente (y su "Guardado"): quien lo usa
   // pasa `cliente` a null al cerrar, y sin esto el formulario desaparecería durante la salida.
@@ -91,9 +95,12 @@ export function EditarClienteSheet({
     [mostrado],
   );
 
-  /** El campo de observaciones si ya se puede editar; si no, el foco habitual (`true`). */
-  function enfocarObservacionesSiPuede() {
-    const campo = observacionesRef.current;
+  /**
+   * El campo de la nota pedida si ya se puede editar; si no, el foco habitual (`true`). Las
+   * indicaciones de un cliente que no está activo quedan deshabilitadas: ahí va el habitual.
+   */
+  function enfocarNotaSiPuede() {
+    const campo = enfocar === 'indicaciones' ? indicacionesRef.current : observacionesRef.current;
     return campo !== null && !campo.disabled ? campo : true;
   }
 
@@ -198,7 +205,7 @@ export function EditarClienteSheet({
     >
       <SheetContent
         className="data-[side=right]:w-full data-[side=right]:sm:max-w-lg"
-        {...(enfocar === 'observaciones' && { initialFocus: enfocarObservacionesSiPuede })}
+        {...(enfocar !== undefined && { initialFocus: enfocarNotaSiPuede })}
       >
         <SheetHeader>
           <SheetTitle>Editar cliente</SheetTitle>
@@ -221,6 +228,7 @@ export function EditarClienteSheet({
               cargando: consultaObservaciones.isPending,
               errorAlCargar: consultaObservaciones.isError,
             }}
+            indicacionesRef={indicacionesRef}
             observacionesRef={observacionesRef}
             onSubmit={guardar}
             onCancel={onClose}

@@ -16,7 +16,10 @@ import {
   TEXTO_VOLVER_A_CLIENTES,
   TEXTO_VOLVER_A_REQUISITOS,
 } from '@/modules/clientes/clientes.etiquetas';
-import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
+import {
+  EditarClienteSheet,
+  type NotaAEnfocar,
+} from '@/modules/clientes/components/EditarClienteSheet';
 import { mensajeFalloBaja } from '@/modules/clientes/components/erroresDeRequisito';
 import { MatrizEncabezado } from '@/modules/clientes/components/MatrizEncabezado';
 import {
@@ -69,7 +72,7 @@ export function MatrizPage() {
   // La hoja "Editar cliente": `null` cerrada; abierta, con el campo al que llevar el foco si se
   // abrió desde un panel que lo pide.
   const [edicionDeCliente, setEdicionDeCliente] = useState<{
-    enfocar?: 'observaciones';
+    enfocar?: NotaAEnfocar;
   } | null>(null);
   // Requisito recién agregado que se puede sumar a rendiciones abiertas (contrato 4.5).
   const [requisitoASumar, setRequisitoASumar] = useState<RequisitoCliente | null>(null);
@@ -295,7 +298,7 @@ export function MatrizPage() {
       {cliente !== undefined && (
         <MatrizIndicacionesArmado
           cliente={cliente}
-          onEditarCliente={() => setEdicionDeCliente({})}
+          onEditarCliente={() => setEdicionDeCliente({ enfocar: 'indicaciones' })}
         />
       )}
       {cliente !== undefined && (

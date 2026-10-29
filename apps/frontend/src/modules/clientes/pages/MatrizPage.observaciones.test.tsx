@@ -293,3 +293,54 @@ describe('MatrizPage: foco al abrir la hoja desde el panel de observaciones', ()
     expect(campoDeObservaciones()).not.toHaveFocus();
   });
 });
+
+describe('MatrizPage: foco al abrir la hoja desde el panel de indicaciones', () => {
+  const campoDeIndicaciones = () => screen.getByRole('textbox', { name: 'Indicaciones de armado' });
+  const esperarUnInstante = () =>
+    act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 100));
+    });
+
+  it('lleva el foco al campo de indicaciones y no lo pierde después', async () => {
+    servir();
+    const { user } = renderMatriz();
+    expect(await screen.findByText('Factura primero.')).toBeInTheDocument();
+
+    await user.click(await botonDeIndicaciones());
+    await hoja();
+
+    await waitFor(() => expect(campoDeIndicaciones()).toHaveFocus());
+    await esperarUnInstante();
+    expect(campoDeIndicaciones()).toHaveFocus();
+    expect(campoDeObservaciones()).not.toHaveFocus();
+  });
+
+  it.each(['INACTIVO', 'SUSPENDIDO'])(
+    'con el cliente %s las indicaciones no se editan: queda el foco habitual de la hoja',
+    async (estado) => {
+      servir({ estado });
+      const { user } = renderMatriz();
+      expect(await screen.findByText('Factura primero.')).toBeInTheDocument();
+
+      await user.click(await botonDeIndicaciones());
+      await hoja();
+      await esperarUnInstante();
+
+      expect(campoDeIndicaciones()).toBeDisabled();
+      expect(campoDeIndicaciones()).not.toHaveFocus();
+      expect(screen.getByRole('textbox', { name: 'Razón social' })).toHaveFocus();
+    },
+  );
+
+  it('desde el botón de las observaciones, el foco sigue yendo a las observaciones', async () => {
+    servir({ nota: 'Cambió el mail.' });
+    const { user } = renderMatriz();
+    await within(await panel()).findByText('Cambió el mail.');
+
+    await user.click(await botonDeObservaciones());
+    await hoja();
+
+    await waitFor(() => expect(campoDeObservaciones()).toHaveFocus());
+    expect(campoDeIndicaciones()).not.toHaveFocus();
+  });
+});
