@@ -471,3 +471,60 @@ function generarClaveDocumentoDe(valor: unknown) {
   expect(typeof valor).toBe('string');
   return valor as ReturnType<typeof generarClaveDocumento>;
 }
+
+describe('aplicaciones, reemplazo e historial (validación, sin base)', () => {
+  const ITEM = 'c1b2c3d4-e5f6-4789-8abc-000000000003';
+  const RENDICION = 'c1b2c3d4-e5f6-4789-8abc-000000000004';
+  const id = (n: number) => `d1b2c3d4-e5f6-4789-8abc-${String(n).padStart(12, '0')}`;
+
+  it('deshabilitados (producción sin protección): las rutas nuevas tampoco existen', async () => {
+    const sinDocumentos = createApp({ corsOrigins: ['http://localhost:5173'] });
+    const respuestas = await Promise.all([
+      request(sinDocumentos)
+        .post(`/documentos/${DOCUMENTO_ID}/aplicaciones`)
+        .send({ itemIds: [ITEM] }),
+      request(sinDocumentos)
+        .post(`/rendiciones/${RENDICION}/items/${ITEM}/reemplazo`)
+        .send({ documentoId: DOCUMENTO_ID, aplicacionVigenteId: id(1) }),
+      request(sinDocumentos).get(`/rendiciones/${RENDICION}/items/${ITEM}/aplicaciones`),
+    ]);
+    for (const res of respuestas) {
+      expect(res.status).toBe(404);
+      expect(error(res).code).toBe('NOT_FOUND');
+    }
+  });
+
+  it.each([
+    ['una lista vacía', { itemIds: [] }],
+    ['un ítem repetido', { itemIds: [ITEM, ITEM] }],
+    ['un id que no es UUID', { itemIds: ['x'] }],
+    ['más de 500 ítems', { itemIds: Array.from({ length: 501 }, (_, n) => id(n)) }],
+    ['sin el campo', {}],
+  ])('aplicar rechaza %s con 400, sin tocar la base', async (_caso, cuerpo) => {
+    const res = await request(app).post(`/documentos/${DOCUMENTO_ID}/aplicaciones`).send(cuerpo);
+    expect(res.status).toBe(400);
+    expect(error(res).details).toEqual([
+      expect.objectContaining({ campo: expect.stringMatching(/^itemIds/) as unknown }),
+    ]);
+    expect(prismaMock.documento.findUnique).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'un documento que no es UUID',
+      { documentoId: 'x', aplicacionVigenteId: id(1) },
+      'documentoId',
+    ],
+    ['sin la aplicación vigente esperada', { documentoId: DOCUMENTO_ID }, 'aplicacionVigenteId'],
+  ])('reemplazar rechaza %s con 400', async (_caso, cuerpo, campo) => {
+    const res = await request(app)
+      .post(`/rendiciones/${RENDICION}/items/${ITEM}/reemplazo`)
+      .send(cuerpo);
+    expect(res.status).toBe(400);
+    expect(error(res).details).toEqual([expect.objectContaining({ campo })]);
+  });
+
+  it('el historial rechaza ids que no son UUID', async () => {
+    expect((await request(app).get(`/rendiciones/x/items/${ITEM}/aplicaciones`)).status).toBe(400);
+  });
+});

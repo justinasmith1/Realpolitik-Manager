@@ -131,9 +131,9 @@ export type RendicionEstado = z.infer<typeof RendicionEstado>;
  * (ADR-0003). `canalEntrega` es el canal efectivo ya resuelto, nunca `null`. `completadoEn` es la
  * columna `completadoAt`.
  *
- * `documento` es el documento vigente del ítem (HU2.8, ADR-0004): `null` si no tiene. Por ahora
- * es opcional porque el backend todavía no lo devuelve; cuando lo haga, pasa a obligatorio (y
- * sigue admitiendo `null`).
+ * `documento` es el documento vigente del ítem (HU2.8, ADR-0004): `null` si no tiene. El backend
+ * ya lo manda siempre en el detalle; sigue opcional en el contrato hasta que el frontend lo use,
+ * y ahí pasa a obligatorio (y sigue admitiendo `null`).
  */
 export const ItemChecklistSchema = z.object({
   id: z.string().uuid(),

@@ -6,7 +6,10 @@ import { errorHandler } from './middleware/error-handler';
 import { notFoundHandler } from './middleware/not-found';
 import { clientesRouter } from './modules/clientes/clientes.routes';
 import { requisitosRouter } from './modules/clientes/requisitos.routes';
-import { crearDocumentosRouter } from './modules/documentos/documentos.routes';
+import {
+  crearDocumentosRouter,
+  documentosDeItemsRouter,
+} from './modules/documentos/documentos.routes';
 import {
   rendicionesDeClienteRouter,
   rendicionesRouter,
@@ -47,6 +50,7 @@ export function createApp({ corsOrigins, documentos }: AppConfig): Express {
   app.use('/tipos-documento', tiposDocumentoRouter);
   if (documentos) {
     app.use('/documentos', crearDocumentosRouter(documentos.almacenamiento));
+    app.use('/rendiciones', documentosDeItemsRouter);
   }
 
   // El orden importa: el 404 y el manejo de errores van después de todas las rutas.

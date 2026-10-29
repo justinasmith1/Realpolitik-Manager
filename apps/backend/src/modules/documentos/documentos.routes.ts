@@ -1,16 +1,24 @@
-import { CargarDocumentoSchema, ListarDocumentosQuerySchema } from '@realpolitik/shared';
+import {
+  AplicarDocumentoSchema,
+  CargarDocumentoSchema,
+  ListarDocumentosQuerySchema,
+  ReemplazarDocumentoDeItemSchema,
+} from '@realpolitik/shared';
 import { Router } from 'express';
 
 import type { AlmacenamientoDocumentos } from '../../lib/almacenamiento/almacenamiento';
 import { validate } from '../../middleware/validate';
-import { IdParamsSchema } from '../rendiciones/rendiciones.routes';
+import { IdParamsSchema, ItemDeRendicionParamsSchema } from '../rendiciones/rendiciones.routes';
 
 import {
+  aplicarDocumentoController,
   cargarDocumentoController,
   descargarArchivoController,
+  historialDeItemController,
   listarCandidatosController,
   listarDocumentosController,
   obtenerDocumentoController,
+  reemplazarDocumentoDeItemController,
 } from './documentos.controller';
 import { recibirArchivo } from './recibirArchivo';
 
@@ -37,6 +45,29 @@ export function crearDocumentosRouter(almacenamiento: AlmacenamientoDocumentos):
     descargarArchivoController(almacenamiento),
   );
   router.get('/:id/candidatos', validate({ params: IdParamsSchema }), listarCandidatosController);
+  router.post(
+    '/:id/aplicaciones',
+    validate({ params: IdParamsSchema, body: AplicarDocumentoSchema }),
+    aplicarDocumentoController,
+  );
 
   return router;
 }
+
+/**
+ * Reemplazo e historial del documento de un ítem (HU2.8, contrato 4.10). Cuelgan de la rendición,
+ * como la corrección del canal, pero se montan en `/rendiciones` SOLO con los documentos
+ * habilitados: en producción quedan deshabilitados igual que `/documentos`.
+ */
+export const documentosDeItemsRouter = Router();
+
+documentosDeItemsRouter.post(
+  '/:id/items/:itemId/reemplazo',
+  validate({ params: ItemDeRendicionParamsSchema, body: ReemplazarDocumentoDeItemSchema }),
+  reemplazarDocumentoDeItemController,
+);
+documentosDeItemsRouter.get(
+  '/:id/items/:itemId/aplicaciones',
+  validate({ params: ItemDeRendicionParamsSchema }),
+  historialDeItemController,
+);

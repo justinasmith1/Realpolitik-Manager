@@ -1,4 +1,8 @@
-import type { ItemChecklist as ItemChecklistRow, Rendicion as RendicionRow } from '@prisma/client';
+import type {
+  ItemChecklist as ItemChecklistRow,
+  Prisma,
+  Rendicion as RendicionRow,
+} from '@prisma/client';
 import {
   ItemChecklistSchema,
   RendicionDetalleSchema,
@@ -16,7 +20,27 @@ import {
 // `actualizadoEn`/`completadoEn`. Cada salida se valida con el schema de shared: un dato que no
 // cumple el contrato termina en un 500, no en un JSON inválido.
 
-export type RendicionConItems = RendicionRow & { items: ItemChecklistRow[] };
+/**
+ * La aplicación vigente de un ítem (HU2.8, ADR-0004) con los datos del archivo que se muestran.
+ * Nunca el hash ni la clave del almacenamiento. Como hay a lo sumo una vigente por ítem (índice
+ * único parcial), la lista tiene cero o un elemento.
+ */
+export const APLICACION_VIGENTE = {
+  where: { reemplazadaEn: null },
+  select: {
+    id: true,
+    documentoId: true,
+    aplicadaEn: true,
+    documento: { select: { nombreOriginal: true, tipoContenido: true, tamanioBytes: true } },
+  },
+} satisfies Prisma.ItemChecklist$aplicacionesArgs;
+
+type AplicacionVigenteRow = Prisma.AplicacionDocumentoGetPayload<typeof APLICACION_VIGENTE>;
+
+/** Un ítem y, si se cargó, su aplicación vigente. */
+export type ItemConDocumento = ItemChecklistRow & { aplicaciones?: AplicacionVigenteRow[] };
+
+export type RendicionConItems = RendicionRow & { items: ItemConDocumento[] };
 
 export interface ResumenDeAvance {
   totalItems: number;
@@ -35,7 +59,7 @@ const camposDeRendicion = (row: RendicionRow) => ({
   actualizadoEn: row.updatedAt,
 });
 
-const camposDeItem = (row: ItemChecklistRow) => ({
+const camposDeItem = (row: ItemConDocumento) => ({
   id: row.id,
   requisitoClienteId: row.requisitoClienteId,
   tipoDocumentoId: row.tipoDocumentoId,
@@ -48,7 +72,23 @@ const camposDeItem = (row: ItemChecklistRow) => ({
   completadoEn: row.completadoAt,
   creadoEn: row.createdAt,
   actualizadoEn: row.updatedAt,
+  // Solo si la consulta cargó las aplicaciones: el detalle siempre lo hace (`documento` es el
+  // vigente o `null`). `ItemChecklistSchema.documento` todavía es opcional en el contrato.
+  ...(row.aplicaciones !== undefined && { documento: documentoVigente(row.aplicaciones) }),
 });
+
+function documentoVigente(aplicaciones: readonly AplicacionVigenteRow[]) {
+  const [vigente] = aplicaciones;
+  if (vigente === undefined) return null;
+  return {
+    aplicacionId: vigente.id,
+    documentoId: vigente.documentoId,
+    nombreOriginal: vigente.documento.nombreOriginal,
+    tipoContenido: vigente.documento.tipoContenido,
+    tamanioBytes: vigente.documento.tamanioBytes,
+    aplicadaEn: vigente.aplicadaEn,
+  };
+}
 
 /** Rendición sin ítems: la respuesta de la anulación. */
 export function toRendicionDto(row: RendicionRow): Rendicion {
@@ -56,7 +96,7 @@ export function toRendicionDto(row: RendicionRow): Rendicion {
 }
 
 /** Ítem del checklist. */
-export function toItemChecklistDto(row: ItemChecklistRow): ItemChecklist {
+export function toItemChecklistDto(row: ItemConDocumento): ItemChecklist {
   return ItemChecklistSchema.parse(camposDeItem(row));
 }
 

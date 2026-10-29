@@ -1,11 +1,15 @@
 import { pipeline } from 'node:stream/promises';
 
 import type {
+  AplicarDocumentoSchema,
   CandidatoAplicacion,
   CargarDocumentoSchema,
   DocumentoConAplicaciones,
   DocumentoResumen,
+  HistorialDeItem,
   ListarDocumentosQuerySchema,
+  ReemplazarDocumentoDeItemSchema,
+  RendicionDetalle,
   ResultadoCargaDocumento,
 } from '@realpolitik/shared';
 import { CAMPO_ARCHIVO_DOCUMENTO } from '@realpolitik/shared';
@@ -14,8 +18,16 @@ import type { Request, Response } from 'express';
 import { validationError } from '../../errors/app-error';
 import type { AlmacenamientoDocumentos } from '../../lib/almacenamiento/almacenamiento';
 import type { ValidatedLocals } from '../../middleware/validate';
-import type { IdParamsSchema } from '../rendiciones/rendiciones.routes';
+import type {
+  IdParamsSchema,
+  ItemDeRendicionParamsSchema,
+} from '../rendiciones/rendiciones.routes';
 
+import {
+  aplicarDocumento,
+  historialDeItem,
+  reemplazarDocumentoDeItem,
+} from './aplicaciones.service';
 import {
   cargarDocumento,
   listarCandidatos,
@@ -99,4 +111,40 @@ export function descargarArchivoController(almacenamiento: AlmacenamientoDocumen
       }
     }
   };
+}
+
+// ─── Aplicaciones (bloque 3B) ─────────────────────────────────────────────────
+
+type AplicarDocumentoLocals = ValidatedLocals<{
+  params: typeof IdParamsSchema;
+  body: typeof AplicarDocumentoSchema;
+}>;
+type ItemLocals = ValidatedLocals<{ params: typeof ItemDeRendicionParamsSchema }>;
+type ReemplazarLocals = ValidatedLocals<{
+  params: typeof ItemDeRendicionParamsSchema;
+  body: typeof ReemplazarDocumentoDeItemSchema;
+}>;
+
+export async function aplicarDocumentoController(
+  _req: Request,
+  res: Response<DocumentoConAplicaciones, AplicarDocumentoLocals>,
+): Promise<void> {
+  const { params, body } = res.locals.validated;
+  res.status(200).json(await aplicarDocumento(params.id, body.itemIds));
+}
+
+export async function reemplazarDocumentoDeItemController(
+  _req: Request,
+  res: Response<RendicionDetalle, ReemplazarLocals>,
+): Promise<void> {
+  const { params, body } = res.locals.validated;
+  res.status(200).json(await reemplazarDocumentoDeItem(params.id, params.itemId, body));
+}
+
+export async function historialDeItemController(
+  _req: Request,
+  res: Response<HistorialDeItem, ItemLocals>,
+): Promise<void> {
+  const { params } = res.locals.validated;
+  res.status(200).json(await historialDeItem(params.id, params.itemId));
 }

@@ -19,6 +19,7 @@ import { conflict, notFound, type AppError } from '../../errors/app-error';
 import { prisma } from '../../lib/prisma';
 
 import {
+  APLICACION_VIGENTE,
   toRendicionDetalleDto,
   toRendicionDto,
   toRendicionResumenDto,
@@ -40,7 +41,10 @@ const INDICE_FACTURA_ACTIVA = 'uq_rendicion_factura_activa';
 /** Tope de reintentos ante una carrera (P2034, o un duplicado cuya fila ya no está). */
 const INTENTOS = 3;
 
-const CON_ITEMS = { items: true } satisfies Prisma.RendicionInclude;
+/** Los ítems, cada uno con su documento vigente (HU2.8). */
+const CON_ITEMS = {
+  items: { include: { aplicaciones: APLICACION_VIGENTE } },
+} satisfies Prisma.RendicionInclude;
 
 /**
  * Los ítems en el orden del checklist (`compararItemsDeChecklist` de shared, el mismo de
@@ -60,9 +64,18 @@ const esErrorConocido = (error: unknown): error is Prisma.PrismaClientKnownReque
 const esRegistroInexistente = (error: unknown): boolean =>
   esErrorConocido(error) && error.code === 'P2025';
 
-/** P2034: la transacción serializable chocó con otra escritura (o un deadlock). */
+/** SQLSTATE de PostgreSQL: falla de serialización y deadlock. */
+const CONFLICTOS_DE_POSTGRES: readonly unknown[] = ['40001', '40P01'];
+
+/**
+ * La transacción serializable chocó con otra escritura (o un deadlock). Prisma lo informa como
+ * P2034, salvo en una consulta en SQL (`$queryRaw`, p. ej. un `FOR SHARE`): ahí es P2010 con el
+ * SQLSTATE en `meta.code`. Es el mismo choque y se reintenta igual.
+ */
 const esConflictoDeEscritura = (error: unknown): boolean =>
-  esErrorConocido(error) && error.code === 'P2034';
+  esErrorConocido(error) &&
+  (error.code === 'P2034' ||
+    (error.code === 'P2010' && CONFLICTOS_DE_POSTGRES.includes(error.meta?.code)));
 
 /**
  * P2002 sobre el índice de la factura. Con un índice creado en SQL, Prisma informa el nombre del
@@ -136,7 +149,7 @@ async function exigirClienteActivo(tx: Prisma.TransactionClient, clienteId: stri
  * cuando la rendición se crea. Un P2034 se reintenta hasta `INTENTOS`. Un error de negocio no se
  * reintenta: se propaga y la transacción se revierte.
  */
-async function enTransaccionSerializable<T>(
+export async function enTransaccionSerializable<T>(
   trabajo: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   for (let intento = 1; ; intento += 1) {
