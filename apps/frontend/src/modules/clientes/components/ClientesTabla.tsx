@@ -1,5 +1,6 @@
 import type { Cliente } from '@realpolitik/shared';
 import { Fragment, type ReactElement } from 'react';
+import { Link } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 import { useIsCompactLayout } from '@/hooks/use-media-query';
@@ -10,7 +11,7 @@ import {
 } from '@/modules/clientes/clientes.columnas';
 import { CanalEntregaBadge } from '@/modules/clientes/components/CanalEntregaBadge';
 import { ClienteAccionesMenu } from '@/modules/clientes/components/ClienteAccionesMenu';
-import { ClienteTarjeta } from '@/modules/clientes/components/ClienteTarjeta';
+import { ClienteTarjeta, type EnlaceDeCliente } from '@/modules/clientes/components/ClienteTarjeta';
 import { EstadoBadge } from '@/modules/clientes/components/EstadoBadge';
 import { PeriodicidadTexto } from '@/modules/clientes/components/PeriodicidadTexto';
 import { SectorBadge } from '@/modules/clientes/components/SectorBadge';
@@ -95,7 +96,13 @@ export function ClientesTabla({
   onDesactivar,
   onReactivar,
   idsCambiandoEstado = [],
+  enlaceDe,
 }: ClientesTablaProps & {
+  /**
+   * Hace del nombre un enlace estirado sobre toda la fila (o la tarjeta). Sin esto, el nombre es
+   * texto: la tabla no depende del router.
+   */
+  enlaceDe?: (cliente: Cliente) => EnlaceDeCliente;
   onAdministrarContactos?: (cliente: Cliente) => void;
   onEditar?: (cliente: Cliente) => void;
   onVerMatriz?: (cliente: Cliente) => void;
@@ -137,7 +144,12 @@ export function ClientesTabla({
       <div className="@container">
         <ul aria-label="Clientes" className="grid gap-3 @2xl:grid-cols-2">
           {clientes.map((cliente) => (
-            <ClienteTarjeta key={cliente.id} cliente={cliente} acciones={accionesDe(cliente)} />
+            <ClienteTarjeta
+              key={cliente.id}
+              cliente={cliente}
+              acciones={accionesDe(cliente)}
+              enlace={enlaceDe?.(cliente)}
+            />
           ))}
         </ul>
       </div>
@@ -170,30 +182,50 @@ export function ClientesTabla({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {clientes.map((cliente) => (
-            <tr key={cliente.id} className="group hover:bg-panel-alt">
-              <th scope="row" className="py-3 pr-2.5 pl-4 text-left font-normal">
-                <span
-                  className="line-clamp-2 leading-snug font-medium break-words"
-                  title={cliente.razonSocial}
-                >
-                  {cliente.razonSocial}
-                </span>
-                <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-content-secondary">
-                  <span className="truncate">{cliente.denominacion}</span>
-                  {cliente.estado !== 'ACTIVO' && <EstadoBadge estado={cliente.estado} />}
-                </span>
-              </th>
-              {columnasVisibles.map((id) => (
-                <Fragment key={id}>{celdas[id](cliente)}</Fragment>
-              ))}
-              <td className={cn(claseAcciones, 'group-hover:bg-panel-alt')}>
-                <div className="flex justify-end">
-                  <ClienteAccionesMenu cliente={cliente} {...accionesDe(cliente)} />
-                </div>
-              </td>
-            </tr>
-          ))}
+          {clientes.map((cliente) => {
+            const enlace = enlaceDe?.(cliente);
+            return (
+              // Con enlace, el nombre se estira sobre la fila (mismo patrón que `MatricesPage`): un
+              // solo enlace para el teclado y los lectores de pantalla. El menú ⋯ queda por encima.
+              <tr
+                key={cliente.id}
+                className={cn('group hover:bg-panel-alt', enlace && 'relative cursor-pointer')}
+              >
+                <th scope="row" className="py-3 pr-2.5 pl-4 text-left font-normal">
+                  {enlace ? (
+                    <Link
+                      to={enlace.to}
+                      state={enlace.state}
+                      className="line-clamp-2 w-fit leading-snug font-medium break-words outline-none group-hover:text-brand-accent after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-3 focus-visible:after:ring-ring/30 focus-visible:after:ring-inset"
+                      title={cliente.razonSocial}
+                    >
+                      {cliente.razonSocial}
+                    </Link>
+                  ) : (
+                    <span
+                      className="line-clamp-2 leading-snug font-medium break-words"
+                      title={cliente.razonSocial}
+                    >
+                      {cliente.razonSocial}
+                    </span>
+                  )}
+                  <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-content-secondary">
+                    <span className="truncate">{cliente.denominacion}</span>
+                    {cliente.estado !== 'ACTIVO' && <EstadoBadge estado={cliente.estado} />}
+                  </span>
+                </th>
+                {columnasVisibles.map((id) => (
+                  <Fragment key={id}>{celdas[id](cliente)}</Fragment>
+                ))}
+                {/* `sticky` ya la posiciona: con `z-10` queda encima del enlace estirado. */}
+                <td className={cn(claseAcciones, 'z-10 group-hover:bg-panel-alt')}>
+                  <div className="flex justify-end">
+                    <ClienteAccionesMenu cliente={cliente} {...accionesDe(cliente)} />
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
