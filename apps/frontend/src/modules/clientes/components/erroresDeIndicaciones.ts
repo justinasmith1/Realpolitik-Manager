@@ -24,21 +24,3 @@ export function motivoFalloIndicaciones(fallo: FalloIndicaciones): string {
       return 'Probá de nuevo en unos segundos.';
   }
 }
-
-/**
- * Lo que va en el formulario cuando fallan las indicaciones: un texto inválido se marca en el
- * campo; el resto va al aviso general. `seGuardoElCliente` = el PATCH del mismo envío salió bien,
- * y hay que decirlo para que no se piense que se perdió todo.
- */
-export function erroresDeIndicacionesParaElFormulario(
-  fallo: FalloIndicaciones,
-  seGuardoElCliente: boolean,
-): { indicaciones?: string; general: string } {
-  const encabezado = seGuardoElCliente
-    ? 'Se guardaron los datos del cliente, pero no las indicaciones de armado.'
-    : 'No pudimos guardar las indicaciones de armado.';
-  if (fallo.tipo === 'datos-invalidos') {
-    return { indicaciones: motivoFalloIndicaciones(fallo), general: encabezado };
-  }
-  return { general: `${encabezado} ${motivoFalloIndicaciones(fallo)}` };
-}

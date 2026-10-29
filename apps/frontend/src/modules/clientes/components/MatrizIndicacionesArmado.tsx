@@ -3,7 +3,13 @@ import type { Cliente } from '@realpolitik/shared';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  nombreAccesibleEditarEnLaFicha,
+  TEXTO_EDITAR_EN_LA_FICHA,
+} from '@/modules/clientes/components/textosFichaCliente';
 import { useIndicacionesArmado } from '@/modules/clientes/hooks/useIndicacionesArmado';
+
+const CONTEXTO_DEL_BOTON = 'indicaciones de armado';
 
 export interface MatrizIndicacionesArmadoProps {
   cliente: Pick<Cliente, 'id'>;
@@ -39,9 +45,10 @@ export function MatrizIndicacionesArmado({
             variant="outline"
             size="sm"
             onClick={onEditarCliente}
+            aria-label={nombreAccesibleEditarEnLaFicha(CONTEXTO_DEL_BOTON)}
             className="text-xs font-medium"
           >
-            Editar en la ficha del cliente
+            {TEXTO_EDITAR_EN_LA_FICHA}
           </Button>
         )}
       </div>

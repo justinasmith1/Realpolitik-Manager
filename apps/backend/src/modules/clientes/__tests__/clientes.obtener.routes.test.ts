@@ -41,6 +41,7 @@ const fila: ClienteRow = {
   estado: 'ACTIVO',
   matrizConfigurada: false,
   indicacionesArmado: 'No sale en el DTO',
+  observaciones: 'Tampoco sale en el DTO',
   isDeleted: false,
   deletedAt: null,
   createdAt: AHORA,
@@ -115,6 +116,7 @@ describe('GET /clientes/:id', () => {
       'createdAt',
       'updatedAt',
       'indicacionesArmado',
+      'observaciones',
     ]) {
       expect(res.body).not.toHaveProperty(campo);
     }

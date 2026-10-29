@@ -129,6 +129,9 @@ function simularServidor(clientes: ClienteJson[] = catalogo) {
     if (url.includes('/indicaciones-armado')) {
       return Promise.resolve(json({ indicacionesArmado: null }));
     }
+    if (url.includes('/observaciones')) {
+      return Promise.resolve(json({ observaciones: null }));
+    }
     if (init?.method === 'POST') return Promise.resolve(respuesta201());
     return Promise.resolve(json(listadoSegunQuery(url, clientes)));
   });
@@ -588,6 +591,88 @@ describe('ClientesPage: alta de cliente', () => {
     );
   });
 
+  describe('si el cliente se crea pero alguna de sus notas no se guarda (HU2.4, HU2.10)', () => {
+    const REGISTRADO = 'Se registró el cliente Empresa de Ejemplo S.A. (CUIT 20-12345678-6)';
+    const FALLA = () => json({ error: { code: 'INTERNAL_ERROR', message: 'Error' } }, 500);
+
+    /** El POST sale bien; el PUT de cada nota responde lo que se indique (por defecto, 200). */
+    function servirAltaConNotas({
+      indicaciones = () => json({ indicacionesArmado: 'Factura primero.' }),
+      observaciones = () => json({ observaciones: 'Pausó la pauta.' }),
+    }: { indicaciones?: () => Response; observaciones?: () => Response } = {}) {
+      fetchMock.mockImplementation((entrada, init) => {
+        const url = urlDe(entrada);
+        if (url.includes('/indicaciones-armado')) return Promise.resolve(indicaciones());
+        if (url.includes('/observaciones')) return Promise.resolve(observaciones());
+        if (init?.method === 'POST') return Promise.resolve(respuesta201());
+        return Promise.resolve(json(listadoSegunQuery(url, [])));
+      });
+    }
+
+    async function registrarConNotas(
+      user: ReturnType<typeof userEvent.setup>,
+      { indicaciones, observaciones }: { indicaciones?: string; observaciones?: string },
+    ) {
+      await user.click(screen.getByRole('button', { name: 'Nuevo cliente' }));
+      await completarAltaValida(user);
+      const panel = within(panelDeAlta() as HTMLElement);
+      if (indicaciones !== undefined) {
+        await user.click(panel.getByLabelText('Instrucciones para el legajo'));
+        await user.paste(indicaciones);
+      }
+      if (observaciones !== undefined) {
+        await user.click(panel.getByRole('textbox', { name: 'Observaciones internas' }));
+        await user.paste(observaciones);
+      }
+      await user.click(screen.getByRole('button', { name: 'Registrar cliente' }));
+      await vi.waitFor(() => expect(panelDeAlta()).not.toBeInTheDocument());
+    }
+
+    it('con las dos notas guardadas, el aviso es el de un alta común', async () => {
+      servirAltaConNotas();
+      const { user } = renderPage();
+
+      await registrarConNotas(user, { indicaciones: 'Factura primero.', observaciones: 'Nota.' });
+
+      expect(screen.getByRole('status')).toHaveTextContent(`${REGISTRADO}.`);
+      expect(screen.getByRole('status')).not.toHaveTextContent('pero no pudimos');
+    });
+
+    it('si falla la observación, lo avisa y manda a "Editar", sin sugerir volver a crearlo', async () => {
+      servirAltaConNotas({ observaciones: FALLA });
+      const { user } = renderPage();
+
+      await registrarConNotas(user, { observaciones: 'Pausó la pauta.' });
+
+      expect(screen.getByRole('status')).toHaveTextContent(
+        `${REGISTRADO}, pero no pudimos guardar sus observaciones internas. Probá de nuevo en unos segundos. Podés cargarlas desde "Editar".`,
+      );
+    });
+
+    it('si falla la indicación y la observación se guardó, dice qué se guardó y qué no', async () => {
+      servirAltaConNotas({ indicaciones: FALLA });
+      const { user } = renderPage();
+
+      await registrarConNotas(user, { indicaciones: 'Factura primero.', observaciones: 'Nota.' });
+
+      expect(screen.getByRole('status')).toHaveTextContent(
+        `${REGISTRADO} y se guardaron sus observaciones internas, pero no pudimos guardar sus indicaciones de armado. Probá de nuevo en unos segundos. Podés cargarlas desde "Editar".`,
+      );
+    });
+
+    it('si fallan las dos, las nombra a las dos en un solo aviso', async () => {
+      servirAltaConNotas({ indicaciones: FALLA, observaciones: FALLA });
+      const { user } = renderPage();
+
+      await registrarConNotas(user, { indicaciones: 'Factura primero.', observaciones: 'Nota.' });
+
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      expect(screen.getByRole('status')).toHaveTextContent(
+        `${REGISTRADO}, pero no pudimos guardar sus indicaciones de armado ni sus observaciones internas.`,
+      );
+    });
+  });
+
   it('después del alta el listado se vuelve a pedir y muestra al cliente nuevo', async () => {
     const creado = {
       ...clientePrivado,
@@ -708,10 +793,12 @@ describe('ClientesPage: edición de cliente', () => {
     expect(panel.getByLabelText('Razón social')).toHaveValue('Zeta Producciones S.A.');
     expect(panel.getByLabelText('CUIT')).toHaveValue('20-12345678-6');
     expect(panel.getByLabelText('Sector')).toHaveTextContent(etiquetaDeOpcion('PRIVADO'));
-    // La ficha no se pide aparte (los datos salen del listado) y las indicaciones de armado se consultan al abrir.
+    // La ficha no se pide aparte (los datos salen del listado) y las indicaciones de armado y las
+    // observaciones internas se consultan al abrir.
     expect(urlsPedidas()).toEqual([
       'https://api.example/clientes',
       `https://api.example/clientes/${clientePrivado.id}/indicaciones-armado`,
+      `https://api.example/clientes/${clientePrivado.id}/observaciones`,
     ]);
   });
 

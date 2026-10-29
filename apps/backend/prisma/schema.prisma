@@ -123,6 +123,8 @@ model Cliente {
   matrizConfigurada  Boolean @default(false)
   /// Indicaciones de armado del legajo (HU2.4): texto libre, hasta 1000 caracteres.
   indicacionesArmado String? @db.VarChar(1000)
+  /// Observaciones internas de la ficha (HU2.10): una nota libre que se reemplaza al guardar, hasta 1000 caracteres.
+  observaciones      String? @db.VarChar(1000)
 
   // Categorización (ADR-0002 §2). shared + CHECK ck_cliente_sector_subtipo.
   sector   Sector

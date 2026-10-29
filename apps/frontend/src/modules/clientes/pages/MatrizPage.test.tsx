@@ -77,6 +77,7 @@ function servir(cliente: unknown, lista: unknown, indicaciones: string | null = 
     const path = new URL(urlDe(entrada)).pathname;
     if (path.endsWith('/indicaciones-armado'))
       return Promise.resolve(json({ indicacionesArmado: indicaciones }));
+    if (path.endsWith('/observaciones')) return Promise.resolve(json({ observaciones: null }));
     if (path.endsWith('/rendiciones')) return Promise.resolve(json([]));
     if (path.endsWith('/requisitos')) return Promise.resolve(json(lista));
     if (path === '/clientes') return Promise.resolve(json([cliente]));
@@ -246,6 +247,9 @@ describe('MatrizPage: cliente', () => {
       if (path.endsWith('/requisitos')) return Promise.resolve(json([]));
       if (path.endsWith('/indicaciones-armado')) {
         return Promise.resolve(json({ indicacionesArmado: null }));
+      }
+      if (path.endsWith('/observaciones')) {
+        return Promise.resolve(json({ observaciones: null }));
       }
       if (path.endsWith('/rendiciones')) return Promise.resolve(json([]));
       intentos += 1;
@@ -470,7 +474,9 @@ describe('MatrizPage: indicaciones de armado (HU2.4)', () => {
     expect(textoIndicaciones).toHaveTextContent(/Todo en un único PDF/);
 
     // Botón para editar en la ficha del cliente
-    const botonEditar = screen.getByRole('button', { name: 'Editar en la ficha del cliente' });
+    const botonEditar = screen.getByRole('button', {
+      name: 'Editar en la ficha del cliente: indicaciones de armado',
+    });
     expect(botonEditar).toBeInTheDocument();
 
     // Al hacer clic abre el panel lateral de edición

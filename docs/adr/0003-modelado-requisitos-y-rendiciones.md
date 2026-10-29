@@ -30,9 +30,10 @@ Restricciones heredadas de ADR-0002: UUID como clave, baja lógica (`isDeleted` 
 
 - **`TipoDocumento`**: catálogo. El nombre es único sin distinguir mayúsculas, acentos ni espacios repetidos, mediante la clave persistida `nombreNormalizado` (punto 8). Un tipo no se borra: se desactiva con `activo = false` y deja de ofrecerse al armar matrices.
 - **`RequisitoCliente`** (la matriz): cliente + tipo de documento, `cantidad` por período, `diasAproximados`, `canalEntrega` opcional y `nota`. Con baja lógica.
-- **`Cliente`** suma dos campos:
+- **`Cliente`** suma tres campos:
   - `matrizConfigurada` (default `false`): indica si el cliente ya tiene su matriz configurada, es decir, al menos un requisito activo. La mantiene el backend: pasa a `true` al haber un requisito activo y vuelve a `false` al dar de baja el último. No se edita a mano. Una matriz sin requisitos activos significa que todavía no se configuró: no existe la "matriz vacía a propósito".
   - `indicacionesArmado` (`VARCHAR(1000)`, opcional): indicaciones de armado del legajo.
+  - `observaciones` (`VARCHAR(1000)`, opcional): nota interna con hechos puntuales de la cuenta (HU2.10). Es una sola nota que se reemplaza al guardar, con la misma lógica que `indicacionesArmado`: un campo de `Cliente`, sin tabla aparte.
 - **`Rendicion`**: cliente + `anio` + `mes` + `numeroFactura` (número de factura, obligatorio). Un número de factura está en una sola rendición **activa** del cliente, sin importar el período: la unicidad es (cliente, `numeroFactura`) entre las activas. Un cliente puede tener varias rendiciones en el mismo mes, una por factura, y la misma factura en dos clientes distintos se acepta. La orden de compra se modela aparte en otra HU. Con baja lógica: una rendición abierta con un período o un número de factura mal cargados se anula (`isDeleted`) en vez de borrarse, porque tiene valor fiscal (corrección en HU2.5).
 - **`ItemChecklist`**: un documento a presentar en una rendición.
 
@@ -204,6 +205,7 @@ Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo a
 - **Rendición única por cliente + mes**: no alcanza; un cliente puede tener varias facturas en el mismo mes, cada una con su legajo. La unicidad es por número de factura.
 - **Referencia libre (factura u orden)**: un único campo `referencia` que admitiera el número de factura o el de la orden de compra, con unicidad por cliente + período + referencia. Descartada el 20/10/2026 (confirmado por el dueño): la orden de compra se repite entre meses y entre facturas del mismo mes, y puede no existir, así que no identifica una rendición. La factura sí: el campo pasa a ser `numeroFactura`, único por cliente entre las activas, y la orden de compra se modela aparte en otra HU.
 - **Tabla aparte para las indicaciones de armado**: es un único texto libre por cliente, sin historial ni estructura propia; una tabla agregaba un join sin beneficio. Queda como campo de `Cliente`.
+- **Tabla aparte o historial para las observaciones internas** (HU2.10): misma lógica que las indicaciones. Es una sola nota por cliente, que se reemplaza al guardar, sin historial ni estructura propia. Queda como campo de `Cliente` (`observaciones`).
 - **Tilde manual del checklist**: descartado el 19/10/2026. Un ítem se completa solo al aplicarle un documento (HU2.8), así el progreso siempre está respaldado por un archivo.
 - **Canales como array en `Cliente`**: dice por qué canales se manda, pero no qué documento va por cuál. El override por requisito sí lo dice, y `Cliente.canalEntrega` queda como un único canal por defecto (sin cambiar HU1.4).
 - **Snapshot del requisito como campo `Json`**: más simple de escribir, pero pierde tipado, no admite CHECK ni FK, y no se puede filtrar ni consultar con normalidad (ej. "ítems pendientes por canal"). Se usan columnas tipadas.

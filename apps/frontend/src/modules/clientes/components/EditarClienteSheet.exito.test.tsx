@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { DURACION_EXITO_MS } from '@/hooks/use-exito-breve';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import type * as HooksDeIndicaciones from '@/modules/clientes/hooks/useIndicacionesArmado';
+import type * as HooksDeObservaciones from '@/modules/clientes/hooks/useObservacionesCliente';
 import { avanzar, congelarTiempo, esperar } from '@/test/tiempo-congelado';
 
 // Feedback de la edición: Guardar cambios → Guardando… → Guardado (500 ms) → recién ahí sigue.
@@ -18,6 +19,14 @@ vi.mock('@/modules/clientes/hooks/useIndicacionesArmado', async (importOriginal)
   ...(await importOriginal<typeof HooksDeIndicaciones>()),
   useIndicacionesArmado: () => ({
     data: { indicacionesArmado: null },
+    isPending: false,
+    isError: false,
+  }),
+}));
+vi.mock('@/modules/clientes/hooks/useObservacionesCliente', async (importOriginal) => ({
+  ...(await importOriginal<typeof HooksDeObservaciones>()),
+  useObservacionesCliente: () => ({
+    data: { observaciones: null },
     isPending: false,
     isError: false,
   }),

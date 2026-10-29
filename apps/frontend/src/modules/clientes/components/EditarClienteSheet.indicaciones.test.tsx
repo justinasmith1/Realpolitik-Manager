@@ -76,6 +76,7 @@ function servir({
     if (url.endsWith('/indicaciones-armado')) {
       return metodo === 'PUT' ? Promise.resolve(put()) : get();
     }
+    if (url.endsWith('/observaciones')) return Promise.resolve(json({ observaciones: null }));
     return Promise.resolve(patch());
   });
 }

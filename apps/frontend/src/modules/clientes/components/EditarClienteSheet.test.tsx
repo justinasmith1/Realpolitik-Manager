@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import type * as HooksDeIndicaciones from '@/modules/clientes/hooks/useIndicacionesArmado';
+import type * as HooksDeObservaciones from '@/modules/clientes/hooks/useObservacionesCliente';
 import { elegirOpcion, etiquetaDeOpcion } from '@/test/select';
 
 // La pausa de éxito (500 ms) no es el tema de estos tests: se prueba en `*.exito.test.tsx`.
@@ -15,6 +16,14 @@ vi.mock('@/modules/clientes/hooks/useIndicacionesArmado', async (importOriginal)
   ...(await importOriginal<typeof HooksDeIndicaciones>()),
   useIndicacionesArmado: () => ({
     data: { indicacionesArmado: null },
+    isPending: false,
+    isError: false,
+  }),
+}));
+vi.mock('@/modules/clientes/hooks/useObservacionesCliente', async (importOriginal) => ({
+  ...(await importOriginal<typeof HooksDeObservaciones>()),
+  useObservacionesCliente: () => ({
+    data: { observaciones: null },
     isPending: false,
     isError: false,
   }),

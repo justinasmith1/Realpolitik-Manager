@@ -113,6 +113,16 @@ export type {
 } from './schemas/indicacionesArmado.schema.js';
 
 export {
+  ObservacionesClienteSchema,
+  ObservacionesClienteLecturaSchema,
+  OBSERVACIONES_CLIENTE_MAX,
+} from './schemas/observacionesCliente.schema.js';
+export type {
+  ObservacionesClienteDto,
+  ObservacionesClienteLecturaDto,
+} from './schemas/observacionesCliente.schema.js';
+
+export {
   MENSAJE_NUMERO_FACTURA_FORMATO,
   MENSAJE_NUMERO_FACTURA_OBLIGATORIO,
   NUMERO_FACTURA_EJEMPLO,
