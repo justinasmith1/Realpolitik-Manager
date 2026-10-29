@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CargarDocumentoSchema,
   DocumentoNuevoSchema,
+  DocumentoResumenSchema,
   DocumentoSchema,
   FORMATOS_DE_DOCUMENTO,
   ListarDocumentosQuerySchema,
+  MENSAJE_FORMATO_DOCUMENTO,
   NOMBRE_ORIGINAL_MAX,
+  ResultadoCargaDocumentoSchema,
   TAMANIO_MAXIMO_DOCUMENTO_BYTES,
   TipoContenidoDocumento,
 } from './documento.schema.js';
@@ -279,5 +283,80 @@ describe('ListarDocumentosQuerySchema', () => {
         expect.objectContaining({ path: [campo], message: mensaje }),
       ]);
     }
+  });
+});
+
+describe('CargarDocumentoSchema (campos del formulario de carga)', () => {
+  it('convierte el período del formulario (texto) a números', () => {
+    expect(
+      CargarDocumentoSchema.parse({ tipoDocumentoId: TIPO_ID, anio: '2026', mes: '10' }),
+    ).toEqual({ tipoDocumentoId: TIPO_ID, anio: 2026, mes: 10 });
+  });
+
+  it('ignora otros campos: el archivo y sus datos los lee el backend', () => {
+    expect(
+      CargarDocumentoSchema.parse({
+        tipoDocumentoId: TIPO_ID,
+        anio: '2026',
+        mes: '10',
+        tipoContenido: 'text/html',
+        sha256: 'x',
+      }),
+    ).toEqual({ tipoDocumentoId: TIPO_ID, anio: 2026, mes: 10 });
+  });
+
+  it.each([
+    ['sin tipo de documento', { anio: '2026', mes: '10' }, 'tipoDocumentoId'],
+    [
+      'un tipo que no es uuid',
+      { tipoDocumentoId: 'x', anio: '2026', mes: '10' },
+      'tipoDocumentoId',
+    ],
+    ['sin año', { tipoDocumentoId: TIPO_ID, mes: '10' }, 'anio'],
+    ['un mes 13', { tipoDocumentoId: TIPO_ID, anio: '2026', mes: '13' }, 'mes'],
+    ['un mes con espacios', { tipoDocumentoId: TIPO_ID, anio: '2026', mes: ' 10' }, 'mes'],
+  ])('rechaza %s', (_caso, campos, campo) => {
+    const r = CargarDocumentoSchema.safeParse(campos);
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues.map((issue) => issue.path.join('.'))).toEqual([campo]);
+  });
+});
+
+describe('Respuestas del repositorio', () => {
+  const leido = {
+    id: DOCUMENTO_ID,
+    tipoDocumento: { id: TIPO_ID, nombre: 'Constancia ARCA' },
+    anio: 2026,
+    mes: 10,
+    nombreOriginal: 'constancia.pdf',
+    tipoContenido: 'application/pdf',
+    tamanioBytes: 1024,
+    creadoEn: '2026-10-29T12:00:00.000Z',
+    actualizadoEn: '2026-10-29T12:00:00.000Z',
+  };
+
+  it('el resumen lleva la cantidad de aplicaciones vigentes', () => {
+    expect(
+      DocumentoResumenSchema.parse({ ...leido, aplicacionesVigentes: 3 }).aplicacionesVigentes,
+    ).toBe(3);
+    expect(DocumentoResumenSchema.safeParse({ ...leido, aplicacionesVigentes: -1 }).success).toBe(
+      false,
+    );
+    expect(DocumentoResumenSchema.safeParse(leido).success).toBe(false);
+  });
+
+  it('la carga devuelve el documento y los posibles duplicados (puede no haber)', () => {
+    const r = ResultadoCargaDocumentoSchema.parse({ documento: leido, posiblesDuplicados: [] });
+    expect(r.posiblesDuplicados).toEqual([]);
+    expect(
+      ResultadoCargaDocumentoSchema.parse({ documento: leido, posiblesDuplicados: [leido] })
+        .posiblesDuplicados,
+    ).toHaveLength(1);
+  });
+
+  it('el mensaje de formato no admitido es el mismo que usa el schema', () => {
+    const r = TipoContenidoDocumento.safeParse('text/html');
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.message).toBe(MENSAJE_FORMATO_DOCUMENTO);
   });
 });

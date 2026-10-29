@@ -38,13 +38,14 @@ Todos los errores responden con la misma forma:
 }
 ```
 
-| `code`              | Estado HTTP | Cuándo                                                                                                               | `details`                                                                                                                                                                                                                                                                 |
-| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VALIDATION_ERROR`  | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado                       | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`                                                                                                                                         |
-| `NOT_FOUND`         | 404         | El recurso pedido (cliente, contacto, tipo de documento, requisito, rendición o ítem) no existe, o la ruta no existe | No lleva                                                                                                                                                                                                                                                                  |
-| `CONFLICT`          | 409         | El pedido choca con datos existentes                                                                                 | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO`, `contactoExistente` para `EMAIL_DUPLICADO` o `tipoDocumentoExistente` para `TIPO_DOCUMENTO_DUPLICADO` (sección 4.1). Los motivos de requisitos y rendiciones están en la sección 4 |
-| `PAYLOAD_TOO_LARGE` | 413         | El cuerpo de la solicitud supera los 100 KB                                                                          | No lleva                                                                                                                                                                                                                                                                  |
-| `INTERNAL_ERROR`    | 500         | Error inesperado                                                                                                     | No lleva. Nunca expone detalles internos                                                                                                                                                                                                                                  |
+| `code`                | Estado HTTP | Cuándo                                                                                                               | `details`                                                                                                                                                                                                                                                                 |
+| --------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VALIDATION_ERROR`    | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado                       | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`                                                                                                                                         |
+| `NOT_FOUND`           | 404         | El recurso pedido (cliente, contacto, tipo de documento, requisito, rendición o ítem) no existe, o la ruta no existe | No lleva                                                                                                                                                                                                                                                                  |
+| `CONFLICT`            | 409         | El pedido choca con datos existentes                                                                                 | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO`, `contactoExistente` para `EMAIL_DUPLICADO` o `tipoDocumentoExistente` para `TIPO_DOCUMENTO_DUPLICADO` (sección 4.1). Los motivos de requisitos y rendiciones están en la sección 4 |
+| `PAYLOAD_TOO_LARGE`   | 413         | El cuerpo de la solicitud supera los 100 KB                                                                          | No lleva                                                                                                                                                                                                                                                                  |
+| `SERVICE_UNAVAILABLE` | 503         | Un servicio del que depende el pedido (el almacenamiento de documentos, 4.10) no respondió. Se puede reintentar      | No lleva                                                                                                                                                                                                                                                                  |
+| `INTERNAL_ERROR`      | 500         | Error inesperado                                                                                                     | No lleva. Nunca expone detalles internos                                                                                                                                                                                                                                  |
 
 > Los textos de `mensaje` pueden estar en inglés cuando no los define `@realpolitik/shared`
 > (por ejemplo, `Required`). El front debe apoyarse en `campo` y mostrar sus propios textos.
@@ -786,9 +787,64 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 
+### 4.10 Documentos (HU2.8)
+
+Un archivo se carga **una vez**, con su tipo de documento y su período, y después se aplica a ítems de rendiciones de varios clientes (ADR-0004). Esta sección cubre la carga, las consultas y los candidatos. Aplicar y reemplazar se documentan cuando se implementen. Los schemas están en `@realpolitik/shared` (`documento.schema.ts` y `aplicacionDocumento.schema.ts`).
+
+> **Deshabilitado en producción.** No hay autenticación: con `NODE_ENV=production`, `/documentos` no se monta (cualquier ruta responde `404 NOT_FOUND`) salvo `DOCUMENTOS_HABILITADOS=true`. Esa variable solo se define cuando hay una protección efectiva del lado del servidor o de la infraestructura. CORS no lo es. En desarrollo y en tests está habilitado. Ver [Despliegue](../deployment.md#variables-del-backend).
+
+| Método y ruta                    | Qué hace                                       | Respuesta OK                               |
+| -------------------------------- | ---------------------------------------------- | ------------------------------------------ |
+| `POST /documentos`               | Carga un documento (sin aplicarlo)             | `201` `ResultadoCargaDocumentoSchema`      |
+| `GET /documentos`                | Repositorio de un período                      | `200` lista de `DocumentoResumenSchema`    |
+| `GET /documentos/:id`            | Un documento y dónde está aplicado             | `200` `DocumentoConAplicacionesSchema`     |
+| `GET /documentos/:id/archivo`    | Descarga el archivo a través del backend       | `200` el contenido (no JSON)               |
+| `GET /documentos/:id/candidatos` | Ítems a los que se podría aplicar el documento | `200` lista de `CandidatoAplicacionSchema` |
+
+Ninguna respuesta incluye el hash, la clave del almacenamiento ni URLs del proveedor.
+
+#### `POST /documentos`
+
+- **Pedido:** `multipart/form-data` con el archivo en el campo `archivo` (uno solo) y los campos de texto `tipoDocumentoId`, `anio` y `mes` (`CargarDocumentoSchema`; el año y el mes, solo dígitos).
+- **Archivo:** PDF, JPG/JPEG, PNG o DOCX, de 1 byte a 10 MB. El formato se decide por el **contenido**: la firma de los primeros bytes y, en un DOCX, su estructura interna (`word/document.xml` y el tipo de contenido principal de Word en `[Content_Types].xml`). Un ZIP cualquiera, un `.xlsx` o un `.docm` no pasan. La extensión del nombre tiene que corresponder a ese formato. El MIME que declara el navegador también, aunque se acepta vacío o `application/octet-stream`. Se guarda el nombre sin carpetas.
+- **Tipo de documento:** tiene que existir (si no, `404`). Uno desactivado solo se acepta si todavía hay ítems pendientes de ese tipo en rendiciones activas del período; si no, `409` con `motivo: "TIPO_DOCUMENTO_INACTIVO"`.
+- **Contenido repetido:** no se rechaza. Los documentos ya cargados con el mismo contenido, tipo y período vuelven en `posiblesDuplicados`, del más viejo al más nuevo, para ofrecer reutilizarlos.
+- **Orden y consistencia:** se valida todo, se guarda el objeto en el almacenamiento y después se registra en la base. Si la base falla, el objeto se borra.
+
+| Error                     | Cuándo                                                                                                                                                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400 VALIDATION_ERROR`    | Falta el archivo, formato no admitido, extensión o MIME que no coinciden, archivo vacío, más de un archivo, formulario mal formado o campos inválidos (`campo`: `archivo`, `body`, `tipoDocumentoId`, `anio`, `mes`) |
+| `404 NOT_FOUND`           | El tipo de documento no existe                                                                                                                                                                                       |
+| `409 CONFLICT`            | `TIPO_DOCUMENTO_INACTIVO`                                                                                                                                                                                            |
+| `413 PAYLOAD_TOO_LARGE`   | El archivo supera los 10 MB                                                                                                                                                                                          |
+| `503 SERVICE_UNAVAILABLE` | El almacenamiento no respondió: no se registró nada y se puede reintentar                                                                                                                                            |
+
+#### `GET /documentos?anio=2026&mes=10[&tipoDocumentoId=…]`
+
+Los documentos del período (`anio` y `mes` obligatorios), del más nuevo al más viejo. `aplicacionesVigentes` cuenta las aplicaciones vigentes en rendiciones **activas**: las reemplazadas y las de rendiciones anuladas son historial y se ven en el detalle.
+
+#### `GET /documentos/:id`
+
+El documento con todas sus aplicaciones (`aplicaciones`), cada una con su `estado` (`VIGENTE` o `REEMPLAZADA`) y su `ubicacion`: cliente (con su estado), rendición (con `estado` `ACTIVA` o `ANULADA`) e ítem (el snapshot: nombre del tipo, ordinal). Primero las vigentes y después las reemplazadas, cada grupo de la más reciente a la más vieja. No incluye las de clientes dados de baja. `404` si el documento no existe.
+
+#### `GET /documentos/:id/archivo`
+
+El contenido, enviado como stream por el backend, con el `Content-Type` guardado y estas cabeceras:
+
+- `Content-Disposition: attachment`, con el nombre en ASCII (`filename`) y en UTF-8 (`filename*`), saneado;
+- `X-Content-Type-Options: nosniff`;
+- `Content-Security-Policy: default-src 'none'; sandbox`;
+- `Cache-Control: private, no-store`.
+
+Errores: `404` si el documento no existe y `503 SERVICE_UNAVAILABLE` si el almacenamiento no responde, ambos en JSON. Si el objeto falta en el almacenamiento es una inconsistencia: `500`.
+
+#### `GET /documentos/:id/candidatos`
+
+Los ítems a los que se podría aplicar el documento: **mismo `tipoDocumentoId`** que el del snapshot del ítem (no el de la matriz actual), **mismo año y mes**, rendición **activa** de un cliente no borrado e ítem **pendiente** (sin documento vigente). Incluye varias rendiciones del mismo cliente y clientes `INACTIVO` con rendiciones activas (`cliente.estado` lo indica). Cada candidato lleva el UUID del ítem y su ordinal (Print 2/5). Vienen ordenados para agrupar: por cliente, por rendición y, dentro de ella, en el orden del checklist. Hoy todos son `elegibilidad: "ELEGIBLE"`. El sistema solo sugiere: no elige ninguno. `404` si el documento no existe.
+
 ## 5. Fuera del alcance de este documento
 
-Autenticación y permisos, carga de documentos (HU2.8), vencimientos y despacho. Se documentan cuando se implementen.
+Autenticación y permisos, aplicar y reemplazar documentos (HU2.8, bloques siguientes), vencimientos y despacho. Se documentan cuando se implementen.
 
 ## 6. Cambios que este contrato exige
 

@@ -180,12 +180,21 @@ export {
   DocumentoNuevoSchema,
   DocumentoSchema,
   ListarDocumentosQuerySchema,
+  MENSAJE_FORMATO_DOCUMENTO,
+  MENSAJE_TAMANIO_DOCUMENTO,
+  CAMPO_ARCHIVO_DOCUMENTO,
+  CargarDocumentoSchema,
+  DocumentoResumenSchema,
+  ResultadoCargaDocumentoSchema,
 } from './schemas/documento.schema.js';
 export type {
   TipoContenidoDocumento as TipoContenidoDocumentoType,
   DocumentoNuevoDto,
   Documento,
   ListarDocumentosQuery,
+  CargarDocumentoDto,
+  DocumentoResumen,
+  ResultadoCargaDocumento,
 } from './schemas/documento.schema.js';
 export {
   EstadoAplicacion,

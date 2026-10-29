@@ -45,8 +45,9 @@ const EnvSchema = z.object({
     )
     .pipe(z.array(z.string().refine(isOrigin)).min(1)),
 
-  // Almacenamiento de documentos (HU2.8, ADR-0004). Las reglas por entorno están en
-  // `resolverAlmacenamiento`; acá solo la forma de cada variable.
+  // Documentos (HU2.8, ADR-0004). Las reglas por entorno están en `resolverDocumentos`; acá solo
+  // la forma de cada variable.
+  DOCUMENTOS_HABILITADOS: z.enum(['true', 'false']).optional(),
   ALMACENAMIENTO: z.enum(['memoria', 'disco', 's3']).optional(),
   ALMACENAMIENTO_DIRECTORIO: textoNoVacio.optional(),
   S3_ENDPOINT: z.string().refine(isHttpUrl).optional(),
@@ -57,7 +58,8 @@ const EnvSchema = z.object({
   S3_FORCE_PATH_STYLE: z.enum(['true', 'false']).optional(),
 });
 
-type VariablesDeAlmacenamiento =
+type VariablesDeDocumentos =
+  | 'DOCUMENTOS_HABILITADOS'
   | 'ALMACENAMIENTO'
   | 'ALMACENAMIENTO_DIRECTORIO'
   | 'S3_ENDPOINT'
@@ -68,11 +70,12 @@ type VariablesDeAlmacenamiento =
   | 'S3_FORCE_PATH_STYLE';
 
 /**
- * Las variables ya validadas. Las de almacenamiento no quedan sueltas (entre ellas está la clave
- * secreta del proveedor): se entregan resueltas en `almacenamiento`.
+ * Las variables ya validadas. Las de documentos no quedan sueltas (entre ellas está la clave
+ * secreta del proveedor): se entregan resueltas en `documentos`, que es `null` si los endpoints
+ * de documentos están deshabilitados.
  */
-export type Env = Omit<z.infer<typeof EnvSchema>, VariablesDeAlmacenamiento> & {
-  almacenamiento: ConfigAlmacenamiento;
+export type Env = Omit<z.infer<typeof EnvSchema>, VariablesDeDocumentos> & {
+  documentos: { almacenamiento: ConfigAlmacenamiento } | null;
 };
 
 export class EnvError extends Error {
@@ -87,7 +90,19 @@ type Resolucion =
   | { almacenamiento?: never; invalidas: string[] };
 
 /**
- * Qué almacenamiento usar:
+ * Si los endpoints de documentos (`/documentos`) se montan. Hoy no hay autenticación: en
+ * producción quedan DESHABILITADOS salvo `DOCUMENTOS_HABILITADOS=true`, que solo se define cuando
+ * hay una protección efectiva del lado del servidor o de la infraestructura (ADR-0004, Seguridad).
+ * Habilitados por defecto solo con `NODE_ENV` definido en `development` o `test`: sin `NODE_ENV`
+ * (un deploy que lo olvidó) también quedan deshabilitados.
+ */
+function documentosHabilitados(datos: z.infer<typeof EnvSchema>, nodeEnvDefinido: boolean) {
+  if (datos.DOCUMENTOS_HABILITADOS !== undefined) return datos.DOCUMENTOS_HABILITADOS === 'true';
+  return nodeEnvDefinido && datos.NODE_ENV !== 'production';
+}
+
+/**
+ * Qué almacenamiento usar (solo si los documentos están habilitados):
  * - `ALMACENAMIENTO` explícito, si está.
  * - Si no: memoria con `NODE_ENV=test`, y disco solo con `NODE_ENV=development` **definido**. Si
  *   `NODE_ENV` falta, el servidor asume development, pero eso también es lo que pasa en un deploy
@@ -176,16 +191,18 @@ export function loadEnv(
     throw new EnvError([...new Set(names)]);
   }
 
-  const resolucion = resolverAlmacenamiento(
-    result.data,
-    source.NODE_ENV !== undefined,
-    directorioBase,
-  );
-  if (resolucion.invalidas !== undefined) {
-    throw new EnvError(resolucion.invalidas);
+  const nodeEnvDefinido = source.NODE_ENV !== undefined;
+  let documentos: Env['documentos'] = null;
+  if (documentosHabilitados(result.data, nodeEnvDefinido)) {
+    const resolucion = resolverAlmacenamiento(result.data, nodeEnvDefinido, directorioBase);
+    if (resolucion.invalidas !== undefined) {
+      throw new EnvError(resolucion.invalidas);
+    }
+    documentos = { almacenamiento: resolucion.almacenamiento };
   }
 
   const {
+    DOCUMENTOS_HABILITADOS: _habilitados,
     ALMACENAMIENTO: _tipo,
     ALMACENAMIENTO_DIRECTORIO: _directorio,
     S3_ENDPOINT: _endpoint,
@@ -196,5 +213,5 @@ export function loadEnv(
     S3_FORCE_PATH_STYLE: _forcePathStyle,
     ...resto
   } = result.data;
-  return { ...resto, almacenamiento: resolucion.almacenamiento };
+  return { ...resto, documentos };
 }

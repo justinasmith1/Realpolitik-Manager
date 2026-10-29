@@ -58,6 +58,9 @@ function mensajeTipoContenido(): string {
   return `El formato del archivo no está admitido. Se aceptan ${lista}.`;
 }
 
+/** El mensaje de un formato no admitido, para quien valide el archivo fuera de este schema. */
+export const MENSAJE_FORMATO_DOCUMENTO = mensajeTipoContenido();
+
 // ─── Campos ───────────────────────────────────────────────────────────────────
 
 /** Largo de la columna `Documento.nombreOriginal`. */
@@ -85,7 +88,8 @@ export const NombreOriginalSchema = z
     message: 'El nombre del archivo no puede contener / ni \\.',
   });
 
-const MENSAJE_TAMANIO = `El archivo tiene que pesar más de 0 bytes y hasta ${TAMANIO_MAXIMO_DOCUMENTO_BYTES / (1024 * 1024)} MB.`;
+export const MENSAJE_TAMANIO_DOCUMENTO = `El archivo tiene que pesar más de 0 bytes y hasta ${TAMANIO_MAXIMO_DOCUMENTO_BYTES / (1024 * 1024)} MB.`;
+const MENSAJE_TAMANIO = MENSAJE_TAMANIO_DOCUMENTO;
 
 /** Tamaño en bytes: entero, mayor que 0 y hasta `TAMANIO_MAXIMO_DOCUMENTO_BYTES`. */
 export const TamanioDocumentoSchema = z
@@ -125,6 +129,23 @@ export const DocumentoNuevoSchema = z.object({
 
 export type DocumentoNuevoDto = z.infer<typeof DocumentoNuevoSchema>;
 
+/** Nombre del campo del formulario de carga que lleva el archivo. */
+export const CAMPO_ARCHIVO_DOCUMENTO = 'archivo';
+
+/**
+ * Los campos de texto del formulario de carga (`POST /documentos`, `multipart/form-data`), junto
+ * al archivo en el campo `CAMPO_ARCHIVO_DOCUMENTO`. En un formulario todo llega como texto: el
+ * año y el mes se aceptan solo como dígitos y se entregan como números, con los rangos de la
+ * rendición. Del archivo (nombre, formato, tamaño, hash) se ocupa el backend al leerlo.
+ */
+export const CargarDocumentoSchema = z.object({
+  tipoDocumentoId: TipoDocumentoIdSchema,
+  anio: enteroDeQuery(AnioSchema, MENSAJE_ANIO),
+  mes: enteroDeQuery(MesSchema, MENSAJE_MES),
+});
+
+export type CargarDocumentoDto = z.infer<typeof CargarDocumentoSchema>;
+
 // ─── Lectura ──────────────────────────────────────────────────────────────────
 
 /**
@@ -149,6 +170,29 @@ export const DocumentoSchema = z.object({
 });
 
 export type Documento = z.infer<typeof DocumentoSchema>;
+
+/**
+ * Un documento del repositorio por período, con cuántas aplicaciones VIGENTES tiene en
+ * rendiciones activas (dónde está en uso hoy). Las reemplazadas y las de rendiciones anuladas son
+ * historial: se ven en el detalle (`DocumentoConAplicacionesSchema`).
+ */
+export const DocumentoResumenSchema = DocumentoSchema.extend({
+  aplicacionesVigentes: z.number().int().min(0),
+});
+
+export type DocumentoResumen = z.infer<typeof DocumentoResumenSchema>;
+
+/**
+ * Respuesta de la carga: el documento creado y los documentos ya cargados con el MISMO contenido
+ * (mismo SHA-256), tipo y período, del más viejo al más nuevo. No es un error: es un aviso para
+ * ofrecer reutilizar el que ya existe. Una lista vacía es lo habitual.
+ */
+export const ResultadoCargaDocumentoSchema = z.object({
+  documento: DocumentoSchema,
+  posiblesDuplicados: z.array(DocumentoSchema),
+});
+
+export type ResultadoCargaDocumento = z.infer<typeof ResultadoCargaDocumentoSchema>;
 
 // ─── Consulta ─────────────────────────────────────────────────────────────────
 

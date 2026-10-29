@@ -1,5 +1,10 @@
 export type ErrorCode =
-  'VALIDATION_ERROR' | 'NOT_FOUND' | 'CONFLICT' | 'PAYLOAD_TOO_LARGE' | 'INTERNAL_ERROR';
+  | 'VALIDATION_ERROR'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'PAYLOAD_TOO_LARGE'
+  | 'SERVICE_UNAVAILABLE'
+  | 'INTERNAL_ERROR';
 
 export interface ValidationDetail {
   campo: string;
@@ -32,6 +37,17 @@ export const validationError = (details: ValidationDetail[]): AppError =>
 
 export const notFound = (message = 'Recurso no encontrado'): AppError =>
   new AppError('NOT_FOUND', 404, message);
+
+/** El cuerpo (o un archivo) supera el tope. Sin detalles: ni el límite ni el tamaño recibido. */
+export const payloadTooLarge = (message: string): AppError =>
+  new AppError('PAYLOAD_TOO_LARGE', 413, message);
+
+/**
+ * Un servicio del que depende el pedido (el almacenamiento de documentos) no respondió. Se puede
+ * reintentar. Nunca lleva detalles: ni endpoints, ni credenciales, ni rutas.
+ */
+export const serviceUnavailable = (message: string): AppError =>
+  new AppError('SERVICE_UNAVAILABLE', 503, message);
 
 export const conflict = (
   motivo: string,
