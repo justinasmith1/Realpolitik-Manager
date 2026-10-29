@@ -167,6 +167,55 @@ export {
 } from './schemas/listarRendicionesQuery.schema.js';
 export type { ListarRendicionesQuery } from './schemas/listarRendicionesQuery.schema.js';
 
+export { DocumentoDeItemSchema } from './schemas/documentoDeItem.schema.js';
+export type { DocumentoDeItem } from './schemas/documentoDeItem.schema.js';
+export {
+  TAMANIO_MAXIMO_DOCUMENTO_BYTES,
+  NOMBRE_ORIGINAL_MAX,
+  FORMATOS_DE_DOCUMENTO,
+  TipoContenidoDocumento,
+  NombreOriginalSchema,
+  TamanioDocumentoSchema,
+  Sha256Schema,
+  DocumentoNuevoSchema,
+  DocumentoSchema,
+  ListarDocumentosQuerySchema,
+} from './schemas/documento.schema.js';
+export type {
+  TipoContenidoDocumento as TipoContenidoDocumentoType,
+  DocumentoNuevoDto,
+  Documento,
+  ListarDocumentosQuery,
+} from './schemas/documento.schema.js';
+export {
+  EstadoAplicacion,
+  AplicacionDocumentoSchema,
+  UbicacionDeAplicacionSchema,
+  AplicacionUbicadaSchema,
+  DocumentoConAplicacionesSchema,
+  AplicacionConDocumentoSchema,
+  HistorialDeItemSchema,
+  ElegibilidadCandidato,
+  CandidatoAplicacionSchema,
+  MAX_ITEMS_A_APLICAR,
+  MENSAJE_ITEM_IDS,
+  AplicarDocumentoSchema,
+  ReemplazarDocumentoDeItemSchema,
+} from './schemas/aplicacionDocumento.schema.js';
+export type {
+  EstadoAplicacion as EstadoAplicacionType,
+  AplicacionDocumento,
+  UbicacionDeAplicacion,
+  AplicacionUbicada,
+  DocumentoConAplicaciones,
+  AplicacionConDocumento,
+  HistorialDeItem,
+  ElegibilidadCandidato as ElegibilidadCandidatoType,
+  CandidatoAplicacion,
+  AplicarDocumentoDto,
+  ReemplazarDocumentoDeItemDto,
+} from './schemas/aplicacionDocumento.schema.js';
+
 // ─── Utilidades ───────────────────────────────────────────────────────────────
 export { validateCuit } from './utils/validateCuit.js';
 export { cambiarSector } from './utils/cambiarSector.js';

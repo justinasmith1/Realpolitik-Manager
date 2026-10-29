@@ -5,11 +5,12 @@ import { AnioSchema, MENSAJE_ANIO, MENSAJE_MES, MesSchema } from './rendicion.sc
 /**
  * Un número entero de un query string. Llega como texto y se acepta solo si son dígitos puros:
  * `z.coerce.number()` también acepta `" 5 "`, `"1e1"` o `"0x10"`, y `''` pasaría a ser `0`.
- * Un texto que no cumple se informa con el mismo mensaje que un valor fuera de rango.
+ * Un texto que no cumple, o un parámetro obligatorio que falta, se informa con el mismo mensaje
+ * que un valor fuera de rango. Lo usa también el listado de documentos (HU2.8).
  */
-function enteroDeQuery(rango: z.ZodType<number>, mensaje: string) {
+export function enteroDeQuery(rango: z.ZodType<number>, mensaje: string) {
   return z
-    .string({ invalid_type_error: mensaje })
+    .string({ required_error: mensaje, invalid_type_error: mensaje })
     .regex(/^\d+$/, { message: mensaje })
     .transform(Number)
     .pipe(rango);
