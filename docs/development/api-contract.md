@@ -101,7 +101,7 @@ Reglas de los datos:
 - **Emisor habitual (`emisor`, HU2.9):** con qué emisor se factura al cliente: `PERSONA_FISICA` (el emisor persona física) o `SOCIEDAD` (el emisor persona jurídica). Cuál corresponde depende de lo que exige el organismo destinatario. Los valores son los tipos de emisor; el nombre de cada emisor que ve la persona vive en un solo lugar del frontend (`etiquetasEmisor`).
   - **Opcional.** Un cliente sin emisor se guarda igual: el emisor nunca bloquea el alta ni la edición. En la respuesta, un cliente sin emisor **no trae la clave** (como `telefono` o `portalUrl`), a diferencia de `periodicidad`, que viaja como `null`.
   - **Dato pendiente.** Un cliente sin emisor es un dato pendiente: la ficha del cliente y el formulario lo marcan con "Pendiente". Es un aviso, no un error; el listado no lo marca ni se filtra por emisor. Los clientes anteriores a HU2.9 quedan sin emisor.
-  - Es el emisor **habitual**: un cliente que recibe facturas de los dos emisores el mismo mes elige el emisor de cada una al abrir la rendición. El emisor de la rendición (que copia el del cliente al abrirla) y la unicidad del número de factura por emisor se documentan en la sección 4.5 cuando se implementen; hoy ese contrato no cambió.
+  - Es el emisor **habitual**: un cliente que recibe facturas de los dos emisores el mismo mes elige el emisor de cada una al abrir la rendición. El emisor de la rendición (que copia el del cliente al abrirla) y la unicidad del número de factura por emisor se documentan en la sección 4.5.
 - **Estado:** `ACTIVO`, `INACTIVO` o `SUSPENDIDO`. En este sprint ningún endpoint asigna `SUSPENDIDO`; queda reservado (por ejemplo, para clientes que pausan la publicidad en verano).
 - **Matriz configurada (`matrizConfigurada`):** booleano de solo lectura. `true` si el cliente tiene al menos un requisito activo; `false` si la matriz todavía no se configuró. Lo mantiene el backend. No se envía en el alta ni en la edición: si llega, se ignora. El alta responde `false`.
 - El resto de los campos (`ivaCondicion`, `telefono`, `emailsAdicionales`) se validan según el schema.
@@ -286,7 +286,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | --------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TIPO_DOCUMENTO_DUPLICADO`  | `tipoDocumentoExistente`                | Ya existe un tipo de documento con ese nombre, sin distinguir mayúsculas ni acentos                                                             |
 | `REQUISITO_DUPLICADO`       | `requisitoExistente`                    | El cliente ya tiene un requisito activo para ese tipo de documento                                                                              |
-| `RENDICION_DUPLICADA`       | `rendicionExistente`                    | Ese número de factura ya está en otra rendición activa del cliente, de cualquier mes y año                                                      |
+| `RENDICION_DUPLICADA`       | `rendicionExistente`                    | Ese número de factura ya existe para el mismo emisor en otra rendición activa, de cualquier mes, año y cliente                                  |
 | `MATRIZ_VACIA`              | No lleva                                | Se intenta abrir una rendición para un cliente sin requisitos activos                                                                           |
 | `RENDICION_ANULADA`         | `rendicionId` solo al propagar un canal | Se intenta agregar un requisito, corregir el canal de un ítem o propagar el canal de un requisito en una rendición anulada                      |
 | `REQUISITO_NO_EN_RENDICION` | `rendicionId`                           | Se intenta propagar el canal de un requisito a una rendición que no tiene ítems de ese requisito                                                |
@@ -580,7 +580,7 @@ Las **observaciones internas** (HU2.10) son una nota por cliente con hechos punt
 
 ### 4.5 Rendiciones
 
-Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de un cliente. Un cliente puede tener varias en el mismo mes, una por factura.
+Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y el emisor de esa factura (`emisor`) de un cliente. Un cliente puede tener varias en el mismo mes, una por factura, y recibir facturas de los dos emisores el mismo mes.
 
 > **Nota:** la orden de compra se modela aparte en otra HU.
 
@@ -591,6 +591,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
   "anio": 2026,
   "mes": 10,
   "numeroFactura": "B 00002-00001482",
+  "emisor": "SOCIEDAD",
   "estado": "ACTIVA",
   "anuladaEn": null,
   "creadoEn": "2026-10-20T12:00:00.000Z",
@@ -618,36 +619,40 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
 - **Mes (`mes`):** entero de 1 a 12.
 - **Período:** cualquier mes pasado es válido (desde enero de 2020) y, como máximo, el **mes siguiente al actual**. "El mes actual" se mide en horario de Buenos Aires (`America/Argentina/Buenos_Aires`), no en UTC, también en el front, para coincidir con el backend. El error se informa en el campo `mes`.
 - **Número de factura (`numeroFactura`):** obligatorio, con formato de factura argentina: letra `A`, `B` o `C`, punto de venta de 5 dígitos y número de comprobante de 8 dígitos. Se guarda y se devuelve en su **formato canónico** `B 00002-00001482`. Al escribir se normaliza antes de validar: la letra puede venir en minúscula, con o sin espacio; el guion puede tener espacios alrededor; y el punto de venta y el número se completan con ceros a la izquierda si vienen más cortos (`b 2-1482` se guarda como `B 00002-00001482`). Se normaliza porque la unicidad de la base compara el texto exacto: así dos escrituras del mismo comprobante son la misma factura. **Al leer no se valida el formato:** una rendición cargada antes con otro formato se sigue viendo tal cual.
-- **Unicidad:** un número de factura está en una sola rendición **activa** del cliente, sin importar el mes ni el año. La misma factura en dos clientes distintos se acepta. Una rendición anulada no impide volver a usar su número de factura.
+- **Emisor (`emisor`, HU2.9):** `PERSONA_FISICA` o `SOCIEDAD` (los mismos valores que `Cliente.emisor`). Es el emisor de **esta** factura y es una **foto**: se copia del cliente al abrir la rendición (o se elige otro en ese momento, para el cliente que recibe facturas de los dos emisores) y después no se edita. Cambiar o quitar el emisor del cliente no modifica una rendición ya abierta; si se cargó mal, se corrige anulándola, como el número y el período. Las rendiciones anteriores a HU2.9 no tienen emisor: devuelven `"emisor": null`. La clave siempre está presente en la respuesta (alta, detalle y listado).
+- **Unicidad (confirmada con el negocio el 30/10/2026):** cada emisor tiene su propia numeración, así que un número de factura está en una sola rendición **activa por emisor**, sin importar el mes ni el año **ni el cliente**: la misma factura del mismo emisor no puede estar en dos clientes. El mismo número con **distinto emisor** se acepta, también en el mismo cliente o en otro. Una rendición anulada libera el número. El número ya incluye la letra y el punto de venta (`B 00002-00001482`).
+  - **Rendiciones anteriores a HU2.9 (sin emisor):** conservan la regla anterior, un número de factura en una sola rendición activa **del cliente** (la misma factura en dos clientes distintos se acepta para ellas). No entran en la unicidad por emisor: una rendición nueva con emisor puede repetir el número de una anterior sin emisor, incluso del mismo cliente.
 - **Estado (`estado`, `anuladaEn`):** `ACTIVA` o `ANULADA`, derivado de la baja lógica; `anuladaEn` es la fecha de anulación (`deletedAt`) o `null`. El listado devuelve por defecto solo `ACTIVA` y muestra las anuladas solo si se piden con el filtro `estado`; el detalle devuelve también una anulada, que se conserva como historial.
 - **Ítems (`items`):** solo en el detalle y en la respuesta de alta. Cada ítem es un documento a presentar, ordenados por `nombreTipoDocumento` y luego por `ordinal`. `completadoEn` es la columna `completadoAt`, con el mismo criterio de nombres que `creadoEn`. El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
 
 #### `POST /clientes/:id/rendiciones`
 
-- **Pedido:** `{ "anio": 2026, "mes": 10, "numeroFactura": "B 00002-00001482" }`. Ningún otro dato: no hay decisiones de condicionales, todos los requisitos activos entran.
+- **Pedido:** `{ "anio": 2026, "mes": 10, "numeroFactura": "B 00002-00001482", "emisor": "SOCIEDAD" }`. El `emisor` es opcional: sin él se usa el emisor habitual del cliente (`emisor = pedido.emisor ?? cliente.emisor`). `null` no se acepta. Ningún otro dato: no hay decisiones de condicionales, todos los requisitos activos entran.
+- **Emisor de la factura:** si el pedido no lo trae y el cliente tampoco tiene emisor, no se abre la rendición: `400 VALIDATION_ERROR` con `details[].campo: "emisor"`. Se resuelve después de comprobar que el cliente existe y está activo, dentro de la misma transacción que lee al cliente. El front precarga el selector con el emisor del cliente, lo deja cambiar para esa rendición y, si el cliente no tiene, lo exige.
 - **Qué hace**, en una sola transacción:
-  1. Crea la rendición.
+  1. Crea la rendición, con su emisor (el del pedido o, si no vino, el del cliente).
   2. Por cada requisito **activo** de la matriz del cliente crea `cantidad` ítems, con `ordinal` de 1 a `cantidad` y `totalOrdinal` = `cantidad`. Entran también los requisitos cuyo tipo de documento está inactivo.
   3. Cada ítem copia: `tipoDocumentoId`, el nombre del tipo en ese momento (`nombreTipoDocumento`), el día de su ocurrencia (`diasAproximados[ordinal - 1]`, o `null` si el requisito no tenía días) y el canal efectivo (`requisito.canalEntrega ?? cliente.canalEntrega`, nunca `null`). Los ítems nacen con `completado: false`.
   4. No copia la nota del requisito, la descripción del tipo ni datos del cliente.
 - **Respuesta 201:** la rendición con su checklist (`items`).
 - **Errores:**
-  - `400 VALIDATION_ERROR`: falta `anio`, `mes` o `numeroFactura`; `anio` fuera de 2020 a 2100 o no entero; `mes` fuera de 1 a 12 o no entero; período posterior al mes siguiente al actual (el error cae en `mes`); `numeroFactura` vacío, de solo espacios o que, después de normalizarlo, no cumple el formato (sin letra, otra letra que A, B o C, punto de venta de más de 5 dígitos, número de más de 8, letras en los números o sin guion; el mensaje dice el formato esperado con el ejemplo `B 00002-00001482`); id que no es uuid.
+  - `400 VALIDATION_ERROR`: ni el pedido ni el cliente tienen `emisor`, o el `emisor` del pedido no es `PERSONA_FISICA` ni `SOCIEDAD` (o es `null`), en `details[].campo: "emisor"`; falta `anio`, `mes` o `numeroFactura`; `anio` fuera de 2020 a 2100 o no entero; `mes` fuera de 1 a 12 o no entero; período posterior al mes siguiente al actual (el error cae en `mes`); `numeroFactura` vacío, de solo espacios o que, después de normalizarlo, no cumple el formato (sin letra, otra letra que A, B o C, punto de venta de más de 5 dígitos, número de más de 8, letras en los números o sin guion; el mensaje dice el formato esperado con el ejemplo `B 00002-00001482`); id que no es uuid.
   - `404 NOT_FOUND`: el cliente no existe o está borrado.
   - `409 CONFLICT`:
     - `motivo: "CLIENTE_NO_ACTIVO"`: el cliente es `INACTIVO` o `SUSPENDIDO`.
     - `motivo: "MATRIZ_VACIA"`: el cliente no tiene requisitos activos. Todo cliente pide al menos la factura, así que una matriz vacía significa que falta configurarla.
-    - `motivo: "RENDICION_DUPLICADA"`: ese número de factura ya está en otra rendición activa del cliente, de cualquier mes y año. `rendicionExistente` dice en qué período está. También si dos pedidos con la misma factura llegan a la vez: el índice único de la base rechaza el segundo.
+    - `motivo: "RENDICION_DUPLICADA"`: ese número de factura ya existe para el mismo emisor en otra rendición activa, de cualquier mes y año y **de cualquier cliente**. `rendicionExistente` dice cuál es y en qué período está; incluye su `clienteId` porque puede ser de **otro** cliente, y el detalle de una rendición se consulta con la ruta de su propio cliente (`/clientes/:clienteId/rendiciones/:id`). Las rendiciones anuladas no cuentan. También si dos pedidos con la misma factura y el mismo emisor llegan a la vez, aunque sean de clientes distintos: el índice único de la base rechaza el segundo.
 
 ```json
 {
   "error": {
     "code": "CONFLICT",
-    "message": "Ese número de factura ya está en otra rendición del cliente",
+    "message": "Ese número de factura ya existe para este emisor",
     "details": {
       "motivo": "RENDICION_DUPLICADA",
       "rendicionExistente": {
         "id": "…",
+        "clienteId": "…",
         "anio": 2026,
         "mes": 9,
         "numeroFactura": "B 00002-00001482"
@@ -677,6 +682,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
     "anio": 2026,
     "mes": 10,
     "numeroFactura": "B 00002-00001482",
+    "emisor": "SOCIEDAD",
     "estado": "ACTIVA",
     "anuladaEn": null,
     "resumen": { "totalItems": 4, "completados": 1 },
@@ -690,7 +696,7 @@ Una rendición es un período (`anio`, `mes`) y una factura (`numeroFactura`) de
 
 #### `GET /rendiciones/:id`
 
-- **Respuesta 200:** la rendición con su checklist (`items`), también si está anulada (`"estado": "ANULADA"` y `anuladaEn`): el detalle se conserva como historial, en solo lectura.
+- **Respuesta 200:** la rendición con su checklist (`items`) y su `emisor` (`null` en las anteriores a HU2.9), también si está anulada (`"estado": "ANULADA"` y `anuladaEn`): el detalle se conserva como historial, en solo lectura.
 - **Errores:** `400 VALIDATION_ERROR` (id que no es uuid), `404 NOT_FOUND` (la rendición no existe o su cliente está borrado).
 
 #### `POST /rendiciones/:id/requisitos/:requisitoId`
@@ -774,7 +780,7 @@ Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo c
 #### `PATCH /rendiciones/:id/estado`
 
 - **Pedido:** `{ "estado": "ANULADA" }`. La anulación **no es reversible**: enviar `ACTIVA` es `400 VALIDATION_ERROR`. No se registra un motivo.
-- **Qué hace:** baja lógica: marca `isDeleted` y guarda `deletedAt`. No borra la rendición ni sus ítems, que conservan su valor fiscal. Desde ese momento no aparece en listados ni en el detalle, y su número de factura se puede usar en otra rendición.
+- **Qué hace:** baja lógica: marca `isDeleted` y guarda `deletedAt`. No borra la rendición ni sus ítems, que conservan su valor fiscal. Desde ese momento no aparece en listados ni en el detalle, y su número de factura se puede usar en otra rendición del mismo emisor, de este cliente o de otro.
 - **Idempotente:** anular una rendición ya anulada responde 200 con la rendición tal cual, **sin escribir** (`anuladaEn` no cambia), igual que pedir el estado que un cliente ya tiene.
 - **Cualquier estado del cliente:** se puede anular aunque el cliente esté `INACTIVO` o `SUSPENDIDO`: es la corrección de un error, no una operación nueva. No responde `CLIENTE_NO_ACTIVO`.
 - **Respuesta 200:** la rendición con `"estado": "ANULADA"` y `anuladaEn`, sin `items`.
@@ -807,7 +813,7 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 2. **Hecho.** `RequisitoClienteSchema`, `CreateRequisitoClienteSchema` y `UpdateRequisitoClienteSchema` (sin `tipoDocumentoId`, con la regla de días sobre el estado resultante).
 3. **Hecho.** `CargaMasivaRequisitoSchema` (pedido) y `ResultadoCargaMasivaSchema` (`creados`, `omitidos`).
 4. **Hecho.** `IndicacionesArmadoSchema`, que admite saltos de línea.
-5. **Hecho.** `RendicionSchema`, `RendicionDetalleSchema` (con `items`), `RendicionResumenSchema` (con `resumen`), `ItemChecklistSchema`, `CreateRendicionSchema` (`anio`, `mes`, `numeroFactura`), `ListarRendicionesQuerySchema` (`anio`, `mes`) y `ActualizarEstadoRendicionSchema` (solo `ANULADA`). Todos usan `numeroFactura`, no `referencia`.
+5. **Hecho.** `RendicionSchema`, `RendicionDetalleSchema` (con `items`), `RendicionResumenSchema` (con `resumen`), `ItemChecklistSchema`, `CreateRendicionSchema` (`anio`, `mes`, `numeroFactura` y `emisor` opcional, HU2.9; `RendicionSchema` suma `emisor`, que es `null` si no tiene), `ListarRendicionesQuerySchema` (`anio`, `mes`) y `ActualizarEstadoRendicionSchema` (solo `ANULADA`). Todos usan `numeroFactura`, no `referencia`.
 6. **Hecho.** Para `POST /rendiciones/:id/requisitos/:requisitoId` no hace falta schema de pedido (no lleva cuerpo): valida los dos uuid de la ruta y responde con `RendicionDetalleSchema`.
 7. **Hecho (HU2.2).** En `ClienteSchema`, el campo `matrizConfigurada`; en `ListarClientesQuerySchema`, el filtro `matrizConfigurada`. El backend lo expone en el DTO de cliente y filtra `GET /clientes`. No es editable en el alta ni en el `PATCH`.
 8. **Hecho.** `ActualizarCanalDeItemSchema` (corregir el canal de un ítem), `PropagarCanalDeRequisitoSchema` (pedido de la propagación) y `ResultadoPropagarCanalSchema` (su respuesta). Todos usan el enum `CanalEntrega` del cliente. `ListarRendicionesQuerySchema` suma `estado` y `requisitoId`.
@@ -931,6 +937,7 @@ Todos los puntos están implementados. Se conservan, con su numeración, como re
 8. **Hecho (HU1.5).** En el cliente: columnas para la periodicidad (`periodicidadTipo`, `periodicidadDiaLimite` y `periodicidadMesInicioCiclo`, las tres opcionales; sin periodicidad configurada quedan las tres en `null`).
 9. **Hecho.** Quitar `activo` del modelo de Cliente: `estado` es la única fuente de verdad del estado del cliente. `isDeleted` y `deletedAt` no forman parte de este contrato; se definen al ajustar el modelo de datos.
 10. **Hecho (HU1.3).** Crear el índice único de contactos con SQL a mano en la migración, porque Prisma no soporta índices parciales.
+11. **Hecho (HU2.9).** El emisor: `Cliente.emisor` (enum `Emisor`, opcional) y `Rendicion.emisor` (opcional, `NULL` en las anteriores). La unicidad del número de factura pasa de (cliente, número) a dos índices únicos parciales sobre las rendiciones activas, creados con SQL a mano: `uq_rendicion_emisor_factura_activa` por (emisor, número) para las que tienen emisor y `uq_rendicion_factura_activa_sin_emisor` por (cliente, número) para las que no. Detalle y consecuencias en el ADR-0003, punto 11.
 
 ## 7. Criterios de este borrador
 
