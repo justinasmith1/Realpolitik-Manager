@@ -41,6 +41,12 @@ enum CanalEntrega {
   WHATSAPP
 }
 
+/// Emisor con el que se factura (HU2.9): persona física o sociedad. Isomorfo con `Emisor` de shared.
+enum Emisor {
+  PERSONA_FISICA
+  SOCIEDAD
+}
+
 /// Periodicidad con la que se rinde al cliente (HU1.5).
 enum PeriodicidadTipo {
   MENSUAL
@@ -121,6 +127,10 @@ model Cliente {
   canalEntrega       CanalEntrega @default(CORREO)
   /// Número de WhatsApp normalizado a E.164 (+5493511234567). Obligatorio si canalEntrega = WHATSAPP.
   whatsappNumero     String?  @db.VarChar(16)
+
+  /// Emisor habitual del cliente (HU2.9). Null = pendiente de asignar: no bloquea nada. Sin valor
+  /// por defecto: las filas anteriores quedan sin emisor.
+  emisor             Emisor?
 
   // Periodicidad de rendición (HU1.5). Sin configurar = las tres columnas en null. "Las tres van
   // juntas", "diaLimite 1..28" y "mesInicioCiclo solo en BIMESTRAL": shared (PeriodicidadSchema)

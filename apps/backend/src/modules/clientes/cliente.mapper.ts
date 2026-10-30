@@ -25,6 +25,7 @@ export function toClienteDto(row: ClienteRow): Cliente {
     ...(row.portalUrl === null ? {} : { portalUrl: row.portalUrl }),
     canalEntrega: row.canalEntrega,
     ...(row.whatsappNumero === null ? {} : { whatsappNumero: row.whatsappNumero }),
+    ...(row.emisor === null ? {} : { emisor: row.emisor }),
     periodicidad: periodicidadDeFila(row),
     sector: row.sector,
     ...(row.subtipo === null ? {} : { subtipo: row.subtipo }),

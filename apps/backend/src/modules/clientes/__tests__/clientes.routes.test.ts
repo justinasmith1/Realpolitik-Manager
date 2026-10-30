@@ -50,6 +50,7 @@ function filaInsertada({ data }: { data: Prisma.ClienteCreateInput }): ClienteRo
     matrizConfigurada: false,
     indicacionesArmado: null,
     observaciones: null,
+    emisor: data.emisor ?? null,
     isDeleted: false,
     deletedAt: null,
     createdAt: AHORA,
@@ -143,6 +144,7 @@ describe('POST /clientes', () => {
           portalUrl: null,
           canalEntrega: 'CORREO',
           whatsappNumero: null,
+          emisor: null,
           periodicidadTipo: null,
           periodicidadDiaLimite: null,
           periodicidadMesInicioCiclo: null,
@@ -182,6 +184,36 @@ describe('POST /clientes', () => {
       expect(prismaMock.cliente.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ estado: 'ACTIVO' }) as unknown,
       });
+    });
+  });
+
+  describe('emisor (HU2.9)', () => {
+    it('sin emisor el cliente se crea igual: guarda null y la respuesta no lo trae', async () => {
+      const res = await postClientes(altaPrivada);
+
+      expect(res.status).toBe(201);
+      expect(res.body).not.toHaveProperty('emisor');
+      expect(prismaMock.cliente.create.mock.calls[0]?.[0].data).toHaveProperty('emisor', null);
+    });
+
+    it.each(['PERSONA_FISICA', 'SOCIEDAD'])(
+      'con emisor %s lo guarda y lo devuelve',
+      async (emisor) => {
+        const res = await postClientes({ ...altaPrivada, emisor });
+
+        expect(res.status).toBe(201);
+        expect(res.body).toMatchObject({ emisor });
+        expect(ClienteSchema.safeParse(res.body).success).toBe(true);
+        expect(prismaMock.cliente.create.mock.calls[0]?.[0].data).toHaveProperty('emisor', emisor);
+      },
+    );
+
+    it('rechaza un emisor desconocido y null con 400, sin tocar la base', async () => {
+      for (const emisor of ['OTRO', null]) {
+        const res = await postClientes({ ...altaPrivada, emisor });
+        expect(res.status).toBe(400);
+      }
+      expect(prismaMock.cliente.create).not.toHaveBeenCalled();
     });
   });
 

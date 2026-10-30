@@ -282,6 +282,7 @@ function datosDeAlta(input: CreateClienteDto): Prisma.ClienteCreateInput {
     portalUrl: input.portalUrl ?? null,
     canalEntrega: input.canalEntrega,
     whatsappNumero: input.whatsappNumero ?? null,
+    emisor: input.emisor ?? null,
     ...columnasDePeriodicidad(input.periodicidad),
     sector: input.sector,
     subtipo: input.sector === 'PUBLICO' ? input.subtipo : null,
@@ -315,6 +316,8 @@ function datosDeEdicion(input: UpdateClienteDto): Prisma.ClienteUpdateInput {
     ...(input.emailContacto !== undefined && { emailContacto: input.emailContacto }),
     ...(input.emailsAdicionales !== undefined && { emailsAdicionales: input.emailsAdicionales }),
     ...(input.telefono !== undefined && { telefono: input.telefono }),
+    // Ausente = no se toca; `null` = quitar el emisor; valor = asignarlo.
+    ...(input.emisor !== undefined && { emisor: input.emisor }),
     // Ausente = no se toca; `null` = borrar; objeto = reemplazar las tres columnas.
     ...(input.periodicidad !== undefined && columnasDePeriodicidad(input.periodicidad)),
     ...(input.sector !== undefined && {

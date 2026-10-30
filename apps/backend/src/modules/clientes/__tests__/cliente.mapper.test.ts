@@ -27,6 +27,7 @@ const filaPublica: ClienteRow = {
   matrizConfigurada: false,
   indicacionesArmado: null,
   observaciones: null,
+  emisor: null,
   isDeleted: false,
   deletedAt: null,
   createdAt: creado,
@@ -100,6 +101,14 @@ describe('toClienteDto', () => {
     ]) {
       expect(dto).not.toHaveProperty(campo);
     }
+  });
+
+  it('copia el emisor de la fila y lo omite si es null', () => {
+    expect(toClienteDto({ ...filaPublica, emisor: 'SOCIEDAD' }).emisor).toBe('SOCIEDAD');
+    expect(toClienteDto({ ...filaPrivada, emisor: 'PERSONA_FISICA' }).emisor).toBe(
+      'PERSONA_FISICA',
+    );
+    expect(toClienteDto({ ...filaPrivada, emisor: null })).not.toHaveProperty('emisor');
   });
 
   it('copia matrizConfigurada de la fila, en true o en false', () => {
