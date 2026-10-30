@@ -46,7 +46,7 @@ function renderPanel({ conMatriz = true }: { conMatriz?: boolean } = {}) {
     <QueryClientProvider client={queryClient}>
       <AbrirRendicionSheet
         abierto
-        cliente={{ id: CLIENTE_ID, denominacion: 'Muni Ejemplo' }}
+        cliente={{ id: CLIENTE_ID, denominacion: 'Muni Ejemplo', emisor: 'SOCIEDAD' }}
         {...props}
         onConfigurarMatriz={conMatriz ? props.onConfigurarMatriz : undefined}
       />
@@ -109,6 +109,14 @@ describe('AbrirRendicionSheet', () => {
     );
   });
 
+  it('la ayuda del número aclara que no se repite para el mismo emisor, aunque sea de otro cliente', () => {
+    renderPanel();
+
+    expect(campo('Número de factura')).toHaveAccessibleDescription(
+      expect.stringContaining('No puede repetirse para el mismo emisor'),
+    );
+  });
+
   it.each([
     ['sin letra', '00002-00001482'],
     ['con la letra D', 'D 00002-00001482'],
@@ -160,6 +168,7 @@ describe('AbrirRendicionSheet', () => {
       anio: 2026,
       mes: 11,
       numeroFactura: 'A 00001-00000001',
+      emisor: 'SOCIEDAD',
     });
     expect(onAbierta).toHaveBeenCalledWith(expect.objectContaining({ id: abierta.id }));
     expect(invalidar).toHaveBeenCalledWith({ queryKey: ['clientes', CLIENTE_ID, 'rendiciones'] });
@@ -169,7 +178,13 @@ describe('AbrirRendicionSheet', () => {
     fetchMock.mockResolvedValue(
       errorJson(409, 'CONFLICT', {
         motivo: 'RENDICION_DUPLICADA',
-        rendicionExistente: { id: OTRA_ID, anio: 2026, mes: 9, numeroFactura: 'A 00001-00000001' },
+        rendicionExistente: {
+          id: OTRA_ID,
+          clienteId: CLIENTE_ID,
+          anio: 2026,
+          mes: 9,
+          numeroFactura: 'A 00001-00000001',
+        },
       }),
     );
     const { user, onVerRendicion, onAbierta } = renderPanel();
@@ -177,13 +192,13 @@ describe('AbrirRendicionSheet', () => {
     await enviarFactura(user);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Ya hay una rendición abierta con la factura A 00001-00000001 (Septiembre 2026).',
+      'Ya hay una rendición abierta con la factura A 00001-00000001 (Septiembre 2026) para este emisor.',
     );
     expect(campo('Número de factura')).toHaveAccessibleDescription(
-      expect.stringContaining('Esa factura ya está en otra rendición del cliente.'),
+      expect.stringContaining('Ese número de factura ya existe para este emisor.'),
     );
     await user.click(screen.getByRole('button', { name: 'Ver rendición' }));
-    expect(onVerRendicion).toHaveBeenCalledWith(OTRA_ID);
+    expect(onVerRendicion).toHaveBeenCalledWith({ rendicionId: OTRA_ID, clienteId: CLIENTE_ID });
     expect(onAbierta).not.toHaveBeenCalled();
   });
 

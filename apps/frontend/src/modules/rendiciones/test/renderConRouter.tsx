@@ -8,11 +8,12 @@ import type { EstadoDeDetalle } from '@/modules/rendiciones/rendiciones.rutas';
 
 /** Página de detalle de mentira: deja ver a dónde se navegó y con qué aviso. */
 function DetalleDePrueba() {
-  const { rendicionId } = useParams();
+  const { id, rendicionId } = useParams();
   const estado = useLocation().state as EstadoDeDetalle | null;
   return (
     <div>
       <h1>Detalle {rendicionId}</h1>
+      <p>Cliente {id}</p>
       {estado?.aviso !== undefined && <p>{estado.aviso}</p>}
     </div>
   );

@@ -1,7 +1,9 @@
-import { RendicionResumenSchema } from '@realpolitik/shared';
+import { Emisor, RendicionResumenSchema } from '@realpolitik/shared';
 import { screen, waitFor, within } from '@testing-library/react';
 
+import { etiquetasEmisor } from '@/modules/clientes/clientes.etiquetas';
 import { RendicionCard } from '@/modules/rendiciones/components/RendicionCard';
+import { TEXTO_SIN_EMISOR } from '@/modules/rendiciones/rendiciones.etiquetas';
 import { renderEnMatriz } from '@/modules/rendiciones/test/renderConRouter';
 import {
   CLIENTE_ID,
@@ -47,6 +49,26 @@ function renderTarjeta(
 
 const botonAnular = () => screen.getByRole('button', { name: /^Anular la rendición de/ });
 const dialogo = () => screen.getByRole('alertdialog');
+
+describe('RendicionCard: emisor (HU2.9)', () => {
+  it.each(Emisor.options)('muestra el emisor %s con su etiqueta', (emisor) => {
+    renderTarjeta(undefined, { emisor });
+
+    expect(screen.getByRole('article', { name: 'Octubre 2026' })).toHaveTextContent(
+      `Emisor ${etiquetasEmisor[emisor]}`,
+    );
+  });
+
+  it('una rendición heredada, sin emisor, dice "Sin emisor" en tono neutro (no como error)', () => {
+    renderTarjeta(undefined, { emisor: null });
+
+    const tarjeta = screen.getByRole('article', { name: 'Octubre 2026' });
+    const sinEmisor = within(tarjeta).getByText(TEXTO_SIN_EMISOR);
+    expect(sinEmisor).toHaveClass('text-muted-foreground');
+    expect(sinEmisor).not.toHaveClass('text-warning');
+    expect(sinEmisor).not.toHaveClass('text-destructive');
+  });
+});
 
 describe('RendicionCard', () => {
   it('muestra el período, la factura y el avance "X de Y" sin abrirla', () => {

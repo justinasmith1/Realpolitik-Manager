@@ -1,11 +1,25 @@
-import type { MotivoNoEnviableType } from '@realpolitik/shared';
+import type { EmisorType, MotivoNoEnviableType } from '@realpolitik/shared';
 
-import { etiquetaDeMes } from '@/modules/clientes/clientes.etiquetas';
+import { etiquetaDeMes, etiquetasEmisor } from '@/modules/clientes/clientes.etiquetas';
 
 /** Período de una rendición como se lee en pantalla: "Octubre 2026". */
 export function etiquetaDePeriodo({ anio, mes }: { anio: number; mes: number }): string {
   return `${etiquetaDeMes(mes)} ${anio}`;
 }
+
+/** Una rendición anterior a HU2.9 no tiene emisor: se dice en tono neutro, no como un error. */
+export const TEXTO_SIN_EMISOR = 'Sin emisor';
+
+/** El emisor de una rendición como se lee en pantalla. Los nombres viven en `etiquetasEmisor`. */
+export const etiquetaDeEmisor = (emisor: EmisorType | null): string =>
+  emisor === null ? TEXTO_SIN_EMISOR : etiquetasEmisor[emisor];
+
+/** Debajo del selector de emisor de "Abrir rendición". */
+export const MENSAJE_EMISOR_OBLIGATORIO = 'Elegí el emisor de la factura.';
+export const AYUDA_EMISOR_DEL_CLIENTE =
+  'Es el emisor habitual del cliente. Cambialo solo si esta factura la emite el otro emisor.';
+export const AYUDA_EMISOR_SIN_HABITUAL =
+  'El cliente no tiene emisor habitual: elegí quién emite esta factura.';
 
 /** "1 documento" / "4 documentos". */
 export function cantidadDeDocumentos(cantidad: number): string {

@@ -1,6 +1,7 @@
 import {
   FiltroEstadoRendiciones,
   type ClienteEstadoType,
+  type EmisorType,
   type RendicionDetalle,
   type RendicionResumen,
 } from '@realpolitik/shared';
@@ -30,7 +31,13 @@ import { rutaDeRendicion, type EstadoDeDetalle } from '@/modules/rendiciones/ren
 type Variante = 'success' | 'destructive';
 
 interface RendicionesSectionProps {
-  cliente: { id: string; denominacion: string; estado: ClienteEstadoType };
+  cliente: {
+    id: string;
+    denominacion: string;
+    estado: ClienteEstadoType;
+    /** Precarga el emisor al abrir una rendición. */
+    emisor?: EmisorType | undefined;
+  };
   /** Avisa en la página el resultado de anular. */
   onAviso: (variante: Variante, texto: string) => void;
   /** Ir a configurar la matriz (cuando no tiene requisitos). Sin esto, no se ofrece. */
@@ -97,9 +104,10 @@ export function RendicionesSection({
     void navigate(rutaDeRendicion(cliente.id, rendicion.id), { state: estado });
   }
 
-  function verRendicion(rendicionId: string) {
+  // La existente puede ser de otro cliente: con la ruta del actual, su detalle daría 404.
+  function verRendicion({ rendicionId, clienteId }: { rendicionId: string; clienteId: string }) {
     setAbriendo(false);
-    void navigate(rutaDeRendicion(cliente.id, rendicionId));
+    void navigate(rutaDeRendicion(clienteId, rendicionId));
   }
 
   function configurarMatriz() {

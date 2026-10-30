@@ -1,6 +1,7 @@
 import {
   NUMERO_FACTURA_EJEMPLO,
   type CreateRendicionDto,
+  type EmisorType,
   type RendicionDetalle,
 } from '@realpolitik/shared';
 import { useId, useMemo, useState } from 'react';
@@ -25,6 +26,7 @@ import { interpretarFalloApertura } from '@/modules/rendiciones/api/rendiciones.
 import {
   abrirRendicionResolver,
   opcionesDeAnio,
+  opcionesDeEmisor,
   opcionesDeMes,
   ordenDeCampos,
   valoresInicialesAbrirRendicion,
@@ -37,22 +39,32 @@ import {
   type ErroresDeApertura,
 } from '@/modules/rendiciones/components/erroresDeRendicion';
 import { useAbrirRendicion } from '@/modules/rendiciones/hooks/useRendiciones';
+import {
+  AYUDA_EMISOR_DEL_CLIENTE,
+  AYUDA_EMISOR_SIN_HABITUAL,
+} from '@/modules/rendiciones/rendiciones.etiquetas';
 
 interface AbrirRendicionSheetProps {
   abierto: boolean;
   onAbiertoChange: (abierto: boolean) => void;
-  cliente: { id: string; denominacion: string };
+  /** `emisor` es el habitual del cliente: precarga el selector (vacío si no tiene). */
+  cliente: { id: string; denominacion: string; emisor?: EmisorType | undefined };
   /** Se llama con la rendición abierta. Quien abre el panel decide cómo seguir. */
   onAbierta: (rendicion: RendicionDetalle) => void;
-  /** Ir a la rendición que ya tiene la factura (cuando el alta responde que está repetida). */
-  onVerRendicion: (rendicionId: string) => void;
+  /**
+   * Ir a la rendición que ya tiene la factura (cuando el alta responde que está repetida). Puede
+   * ser de otro cliente: se informa el `clienteId` de la existente.
+   */
+  onVerRendicion: (existente: { rendicionId: string; clienteId: string }) => void;
   /** Ir a configurar la matriz. Sin esto (no se puede editar), no se ofrece. */
   onConfigurarMatriz?: (() => void) | undefined;
 }
 
 /**
- * Panel para abrir una rendición (HU2.5): período y número de factura. El checklist lo genera el
- * backend con todos los requisitos activos de la matriz. Si el alta falla, queda abierto con los
+ * Panel para abrir una rendición (HU2.5, HU2.9): período, emisor y número de factura. El emisor
+ * viene precargado con el habitual del cliente y se puede cambiar solo para esta rendición; si el
+ * cliente no tiene, hay que elegirlo. El checklist lo genera el backend con todos los requisitos
+ * activos de la matriz. Si el alta falla, queda abierto con los
  * datos y el motivo; si sale bien, el botón confirma un instante y recién entonces avisa.
  */
 export function AbrirRendicionSheet({
@@ -104,10 +116,12 @@ export function AbrirRendicionSheet({
           onCancel={() => onAbiertoChange(false)}
           exito={exito.activo}
           onAccion={(accion) => {
-            if (accion.tipo === 'ver-rendicion') onVerRendicion(accion.rendicionId);
-            else onConfigurarMatriz?.();
+            if (accion.tipo === 'ver-rendicion') {
+              onVerRendicion({ rendicionId: accion.rendicionId, clienteId: accion.clienteId });
+            } else onConfigurarMatriz?.();
           }}
           puedeConfigurarMatriz={onConfigurarMatriz !== undefined}
+          emisorDelCliente={cliente.emisor}
         />
       </SheetContent>
     </Sheet>
@@ -120,6 +134,7 @@ interface AbrirRendicionFormProps {
   exito: boolean;
   onAccion: (accion: AccionSugerida) => void;
   puedeConfigurarMatriz: boolean;
+  emisorDelCliente: EmisorType | undefined;
 }
 
 const TEXTO_DE_ACCION: Record<AccionSugerida['tipo'], string> = {
@@ -133,12 +148,16 @@ function AbrirRendicionForm({
   exito,
   onAccion,
   puedeConfigurarMatriz,
+  emisorDelCliente,
 }: AbrirRendicionFormProps) {
   const id = useId();
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const [accion, setAccion] = useState<AccionSugerida | null>(null);
   // Se calculan al abrir el panel: el mes actual no cambia mientras se completa.
-  const valoresIniciales = useMemo(() => valoresInicialesAbrirRendicion(), []);
+  const valoresIniciales = useMemo(
+    () => valoresInicialesAbrirRendicion(new Date(), emisorDelCliente),
+    [emisorDelCliente],
+  );
   const anios = useMemo(() => opcionesDeAnio(), []);
   const { control, register, handleSubmit, setError, formState } = useForm<
     AbrirRendicionFormValues,
@@ -177,7 +196,11 @@ function AbrirRendicionForm({
     (invalidos) => enfocarPrimerError(invalidos),
   );
 
-  const selectDe = (campo: 'mes' | 'anio', options: typeof opcionesDeMes) => (
+  const selectDe = (
+    campo: 'mes' | 'anio' | 'emisor',
+    options: typeof opcionesDeMes,
+    extra: { placeholder?: string; hint?: boolean } = {},
+  ) => (
     <Controller
       name={campo}
       control={control}
@@ -185,6 +208,7 @@ function AbrirRendicionForm({
         const { 'aria-invalid': invalido, ...descripcion } = describirCampo(
           idDe(campo),
           errors[campo],
+          { hint: extra.hint },
         );
         return (
           <Select
@@ -195,6 +219,7 @@ function AbrirRendicionForm({
             onBlur={field.onBlur}
             triggerRef={field.ref}
             options={options}
+            {...(extra.placeholder === undefined ? {} : { placeholder: extra.placeholder })}
           />
         );
       }}
@@ -232,9 +257,19 @@ function AbrirRendicionForm({
           </FormField>
         </div>
         <FormField
+          id={idDe('emisor')}
+          label="Emisor"
+          hint={
+            emisorDelCliente === undefined ? AYUDA_EMISOR_SIN_HABITUAL : AYUDA_EMISOR_DEL_CLIENTE
+          }
+          error={errors.emisor}
+        >
+          {selectDe('emisor', opcionesDeEmisor, { placeholder: 'Elegí el emisor', hint: true })}
+        </FormField>
+        <FormField
           id={idDe('numeroFactura')}
           label="Número de factura"
-          hint={`Formato: ${NUMERO_FACTURA_EJEMPLO} (letra, punto de venta y número; se completa con ceros). No puede estar en otra rendición abierta del cliente.`}
+          hint={`Formato: ${NUMERO_FACTURA_EJEMPLO} (letra, punto de venta y número; se completa con ceros). No puede repetirse para el mismo emisor en otra rendición abierta, de este cliente o de otro.`}
           error={errors.numeroFactura}
         >
           <Input
