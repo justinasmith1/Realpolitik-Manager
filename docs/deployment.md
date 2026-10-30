@@ -50,7 +50,7 @@ Pasos, en orden:
 2. `format:check`, `lint`, `typecheck`;
 3. tests de `shared` y tests **unitarios** del backend (sin base);
 4. `db:migrate:deploy` sobre la base vacía: aplica **todo** el historial de migraciones, CHECK incluidos. Si alguna falla, el CI falla;
-5. tests de **integración** del backend contra PostgreSQL (`test:integration`: todos los `*.integration.test.ts`);
+5. tests de **integración** del backend contra PostgreSQL (`test:integration`: todos los `*.integration.test.ts`, de a una suite: ver [Base de datos](development/database.md#tests-de-integración));
 6. tests del frontend;
 7. tests del frontend **contra la API real** (`test:api`): levanta el backend contra la misma base, espera `/health`, corre los `*.api.test.tsx` y apaga el backend aunque fallen;
 8. build de `frontend` y `backend`.
