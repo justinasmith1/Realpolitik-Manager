@@ -3,6 +3,7 @@ import type {
   ClienteEstadoType,
   ClienteSectorType,
   ClienteSubtipoPublicoType,
+  EmisorType,
   IvaCondicionType,
   PeriodicidadTipoType,
 } from '@realpolitik/shared';
@@ -34,6 +35,19 @@ export const etiquetasCanalEntrega: Record<CanalEntregaType, string> = {
   PORTAL_WEB: 'Portal web',
   WHATSAPP: 'WhatsApp',
 };
+
+// Lo que ve la persona es el nombre de cada emisor. Los códigos (`PERSONA_FISICA`, `SOCIEDAD`)
+// son el tipo de emisor y no cambian: este es el único lugar donde viven los nombres.
+export const etiquetasEmisor: Record<EmisorType, string> = {
+  PERSONA_FISICA: 'Santiago Sautel',
+  SOCIEDAD: 'Realpolitik',
+};
+
+/** Opción del selector de emisor que deja al cliente sin emisor asignado. */
+export const TEXTO_EMISOR_SIN_ASIGNAR = 'Sin asignar';
+
+/** Marcador de un cliente sin emisor: dato pendiente, no un error. */
+export const TEXTO_EMISOR_PENDIENTE = 'Pendiente';
 
 export const etiquetasPeriodicidad: Record<PeriodicidadTipoType, string> = {
   MENSUAL: 'Mensual',

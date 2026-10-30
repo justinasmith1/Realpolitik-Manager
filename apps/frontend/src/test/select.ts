@@ -3,11 +3,13 @@ import type { UserEvent } from '@testing-library/user-event';
 
 import {
   etiquetasCanalEntrega,
+  etiquetasEmisor,
   etiquetasIvaCondicion,
   etiquetasPeriodicidad,
   etiquetasSector,
   etiquetasSubtipo,
   nombresDeMes,
+  TEXTO_EMISOR_SIN_ASIGNAR,
 } from '@/modules/clientes/clientes.etiquetas';
 
 // Los tests piensan en valores del dominio ('PUBLICO', 'BIMESTRAL'); el select muestra etiquetas.
@@ -16,15 +18,16 @@ const etiquetaPorValor: Record<string, string> = {
   ...etiquetasSubtipo,
   ...etiquetasIvaCondicion,
   ...etiquetasCanalEntrega,
+  ...etiquetasEmisor,
   ...etiquetasPeriodicidad,
   ...Object.fromEntries(nombresDeMes.map((nombre, indice) => [String(indice + 1), nombre])),
   ACTIVO: 'Activos',
   INACTIVO: 'Inactivos',
 };
 
-// La opción de valor vacío se llama distinto según el select: "Sin configurar" (periodicidad) o
-// "Todos" (filtros).
-const etiquetasDeValorVacio = ['Sin configurar', 'Todos'];
+// La opción de valor vacío se llama distinto según el select: "Sin configurar" (periodicidad),
+// "Sin asignar" (emisor) o "Todos" (filtros).
+const etiquetasDeValorVacio = ['Sin configurar', TEXTO_EMISOR_SIN_ASIGNAR, 'Todos'];
 
 /**
  * Elige una opción de un `Select` como lo haría una persona: abre el popup y hace clic. Acepta

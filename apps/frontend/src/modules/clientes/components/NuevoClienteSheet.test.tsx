@@ -131,7 +131,7 @@ describe('NuevoClienteSheet', () => {
     expect(screen.queryByLabelText('Número de WhatsApp')).not.toBeInTheDocument();
     // Los cuatro campos de texto del alta, más las indicaciones de armado y las observaciones.
     expect(screen.getAllByRole('textbox')).toHaveLength(6);
-    expect(screen.getAllByRole('combobox')).toHaveLength(4);
+    expect(screen.getAllByRole('combobox')).toHaveLength(5);
     expect(screen.queryByLabelText(/teléfono|estado/i)).not.toBeInTheDocument();
   });
 
@@ -421,7 +421,11 @@ describe('NuevoClienteSheet: periodicidad', () => {
 
     expect(periodicidad()).toHaveTextContent('Sin configurar');
     expect(periodicidad()).not.toBeRequired();
-    expect(screen.getByText('Opcional')).toBeInTheDocument();
+    expect(
+      within(periodicidad().closest('[data-slot="form-field"]') as HTMLElement).getByText(
+        'Opcional',
+      ),
+    ).toBeInTheDocument();
     expect(periodicidad()).toHaveAccessibleDescription(
       'Cada cuánto se rinde. Podés configurarla más adelante.',
     );

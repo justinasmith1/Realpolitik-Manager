@@ -63,6 +63,8 @@ export function construirCambiosCliente(
   if (modificados.has('cuit')) cambios.cuit = datos.cuit;
   if (modificados.has('ivaCondicion')) cambios.ivaCondicion = datos.ivaCondicion;
   if (modificados.has('emailContacto')) cambios.emailContacto = datos.emailContacto;
+  // Sin emisor en el formulario ('Sin asignar') es `null`: quitarlo. Ausente = no se toca.
+  if (modificados.has('emisor')) cambios.emisor = datos.emisor ?? null;
 
   if (modificados.has('sector')) {
     cambios.sector = datos.sector;
