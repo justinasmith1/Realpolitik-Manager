@@ -26,6 +26,9 @@ Todo lo que se versiona es visible para cualquiera, incluido el historial. Por e
 - Las subidas de archivos futuras deberán controlar tipo, tamaño, autorización y lugar de almacenamiento.
 - Dependencias: toda dependencia nueva debe estar justificada y revisada. El lockfile (`pnpm-lock.yaml`) está versionado y se instala con `--frozen-lockfile`.
 - Override de seguridad (`pnpm.overrides` en el `package.json` raíz): `body-parser@>=2.0.0 <2.4.0` se fuerza a `>=2.4.0 <3` por [GHSA-27r3-jxmh-p828](https://github.com/advisories/GHSA-27r3-jxmh-p828) (DoS con un cuerpo comprimido). Lo trae `express@5.2.1` (`^2.2.1`) y `pnpm update` no lo actualiza solo. Se quita cuando la versión de Express que use el backend ya resuelva `body-parser >= 2.4.0` por sí misma.
+- Avisos abiertos, evaluados y aceptados por ahora (`pnpm audit --prod`, revisado el 29/10/2026 al cerrar HU2.8):
+  - `zod@3.25.76`, [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) (alta): validar un array **sin tope de largo** con muchos elementos inválidos acumula errores sin límite y puede agotar la memoria. Se corrige en `zod >= 4.6.6` (migración mayor, pendiente). Los arrays de entrada de HU2.8 (`itemIds` al aplicar y al preparar el envío) tienen `.max()`. Sin tope quedan `clientes` de la carga masiva (HU2.3) y `contactos` (HU1), acotados en la práctica por el límite de 100 KB del cuerpo JSON. Al migrar a Zod 4, o antes si se toca alguno de esos schemas, se les agrega un `.max()`.
+  - `qs@6.16.0`, [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw) (moderada): solo afecta a `qs.stringify` con `arrayFormat: 'comma'`. Lo trae `express@5.2.1` directo; el backend no usa `qs.stringify` (Express solo parsea). Se resuelve cuando Express dependa de `qs >= 6.16.1`.
 
 ## Entornos
 
