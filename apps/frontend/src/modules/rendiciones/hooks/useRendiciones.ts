@@ -13,6 +13,7 @@ import {
   corregirCanalDeItem,
   listarRendiciones,
   obtenerRendicion,
+  prepararEnvio,
   propagarCanalDeRequisito,
   rendicionesQueryKey,
 } from '@/modules/rendiciones/api/rendiciones.api';
@@ -148,6 +149,28 @@ export function usePropagarCanalDeRequisito() {
     }) => propagarCanalDeRequisito(clienteId, requisitoId, rendicionIds),
     retry: false,
     onSettled: (_resultado, _error, { clienteId }) =>
+      queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+  });
+}
+
+/**
+ * Prepara el envío de los ítems elegidos: el servidor confirma, con los datos de ahora, que se
+ * pueden enviar. Sin reintentos. Si falla, las rendiciones del cliente se vuelven a pedir: un 409
+ * significa que la rendición o algún ítem cambió desde que se eligieron.
+ */
+export function usePrepararEnvio() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      rendicionId,
+      itemIds,
+    }: {
+      clienteId: string;
+      rendicionId: string;
+      itemIds: readonly string[];
+    }) => prepararEnvio(rendicionId, itemIds),
+    retry: false,
+    onError: (_error, { clienteId }) =>
       queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
   });
 }

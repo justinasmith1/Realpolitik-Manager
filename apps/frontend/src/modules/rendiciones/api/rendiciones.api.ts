@@ -3,6 +3,8 @@
 
 import {
   ClienteEstado,
+  MotivoNoEnviable,
+  PreparacionEnvioSchema,
   RendicionDetalleSchema,
   RendicionResumenSchema,
   RendicionSchema,
@@ -11,6 +13,8 @@ import {
   type ClienteEstadoType,
   type CreateRendicionDto,
   type ListarRendicionesQuery,
+  type MotivoNoEnviableType,
+  type PreparacionEnvio,
   type Rendicion,
   type RendicionDetalle,
   type RendicionResumen,
@@ -330,6 +334,58 @@ export function interpretarFalloPropagacion(error: unknown): FalloPropagacion {
         return { tipo: 'rendicion-anulada', rendicionId };
       case 'REQUISITO_NO_EN_RENDICION':
         return { tipo: 'requisito-no-en-rendicion', rendicionId };
+    }
+  }
+  return { tipo: 'inesperado' };
+}
+
+// ─── Preparar el envío (HU2.5 con HU2.8) ──────────────────────────────────────────────────
+
+/**
+ * `POST /rendiciones/:id/preparar-envio`: el servidor comprueba, con los datos de ahora, que los
+ * ítems se pueden enviar (completados y con documento vigente, por un solo canal) y devuelve sus
+ * datos. No envía ni guarda nada.
+ */
+export async function prepararEnvio(
+  rendicionId: string,
+  itemIds: readonly string[],
+): Promise<PreparacionEnvio> {
+  const response = await http(
+    `/rendiciones/${encodeURIComponent(rendicionId)}/preparar-envio`,
+    pedidoJson('POST', { itemIds }),
+  );
+  return PreparacionEnvioSchema.parse(await response.json());
+}
+
+/**
+ * Por qué no se pudo preparar el envío. Los conflictos significan que algo cambió entre la
+ * selección y el envío: hay que volver a mirar la rendición.
+ */
+export type FalloPreparacionEnvio =
+  | { tipo: 'rendicion-anulada' }
+  | { tipo: 'item-no-enviable'; motivo: MotivoNoEnviableType; itemId: string | null }
+  | { tipo: 'canales-distintos' }
+  | { tipo: 'no-existe' }
+  | { tipo: 'inesperado' };
+
+/** Traduce el error de preparar el envío. Mismo criterio que `interpretarFalloAgregado`. */
+export function interpretarFalloPreparacionEnvio(error: unknown): FalloPreparacionEnvio {
+  const respuesta = respuestaDeError(error);
+  if (respuesta === null) {
+    return { tipo: 'inesperado' };
+  }
+  if (respuesta.status === 404 && respuesta.cuerpo?.code === 'NOT_FOUND') {
+    return { tipo: 'no-existe' };
+  }
+  const details = respuesta.cuerpo?.details;
+  if (respuesta.status === 409 && respuesta.cuerpo?.code === 'CONFLICT' && esObjeto(details)) {
+    if (details.motivo === 'RENDICION_ANULADA') return { tipo: 'rendicion-anulada' };
+    if (details.motivo === 'CANALES_DISTINTOS') return { tipo: 'canales-distintos' };
+    const motivo = MotivoNoEnviable.safeParse(details.motivo);
+    if (motivo.success) {
+      const itemId =
+        typeof details.itemId === 'string' && details.itemId !== '' ? details.itemId : null;
+      return { tipo: 'item-no-enviable', motivo: motivo.data, itemId };
     }
   }
   return { tipo: 'inesperado' };

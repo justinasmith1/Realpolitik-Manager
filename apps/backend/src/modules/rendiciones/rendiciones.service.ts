@@ -1,14 +1,18 @@
 import { Prisma } from '@prisma/client';
 import {
+  canalDeSeleccion,
   compararItemsDeChecklist,
   esChecklistError,
   FILTRO_ESTADO_POR_DEFECTO,
   generarChecklist,
+  motivoNoEnviable,
+  PreparacionEnvioSchema,
   type CanalEntregaType,
   type CreateRendicionDto,
   type FiltroEstadoRendiciones,
   type ItemChecklistNuevo,
   type ListarRendicionesQuery,
+  type PreparacionEnvio,
   type Rendicion,
   type RendicionDetalle,
   type RendicionResumen,
@@ -19,6 +23,8 @@ import { conflict, notFound, type AppError } from '../../errors/app-error';
 import { prisma } from '../../lib/prisma';
 
 import {
+  APLICACION_VIGENTE,
+  toItemChecklistDto,
   toRendicionDetalleDto,
   toRendicionDto,
   toRendicionResumenDto,
@@ -40,7 +46,10 @@ const INDICE_FACTURA_ACTIVA = 'uq_rendicion_factura_activa';
 /** Tope de reintentos ante una carrera (P2034, o un duplicado cuya fila ya no está). */
 const INTENTOS = 3;
 
-const CON_ITEMS = { items: true } satisfies Prisma.RendicionInclude;
+/** Los ítems, cada uno con su documento vigente (HU2.8). */
+const CON_ITEMS = {
+  items: { include: { aplicaciones: APLICACION_VIGENTE } },
+} satisfies Prisma.RendicionInclude;
 
 /**
  * Los ítems en el orden del checklist (`compararItemsDeChecklist` de shared, el mismo de
@@ -60,9 +69,18 @@ const esErrorConocido = (error: unknown): error is Prisma.PrismaClientKnownReque
 const esRegistroInexistente = (error: unknown): boolean =>
   esErrorConocido(error) && error.code === 'P2025';
 
-/** P2034: la transacción serializable chocó con otra escritura (o un deadlock). */
+/** SQLSTATE de PostgreSQL: falla de serialización y deadlock. */
+const CONFLICTOS_DE_POSTGRES: readonly unknown[] = ['40001', '40P01'];
+
+/**
+ * La transacción serializable chocó con otra escritura (o un deadlock). Prisma lo informa como
+ * P2034, salvo en una consulta en SQL (`$queryRaw`, p. ej. un `FOR SHARE`): ahí es P2010 con el
+ * SQLSTATE en `meta.code`. Es el mismo choque y se reintenta igual.
+ */
 const esConflictoDeEscritura = (error: unknown): boolean =>
-  esErrorConocido(error) && error.code === 'P2034';
+  esErrorConocido(error) &&
+  (error.code === 'P2034' ||
+    (error.code === 'P2010' && CONFLICTOS_DE_POSTGRES.includes(error.meta?.code)));
 
 /**
  * P2002 sobre el índice de la factura. Con un índice creado en SQL, Prisma informa el nombre del
@@ -136,7 +154,7 @@ async function exigirClienteActivo(tx: Prisma.TransactionClient, clienteId: stri
  * cuando la rendición se crea. Un P2034 se reintenta hasta `INTENTOS`. Un error de negocio no se
  * reintenta: se propaga y la transacción se revierte.
  */
-async function enTransaccionSerializable<T>(
+export async function enTransaccionSerializable<T>(
   trabajo: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   for (let intento = 1; ; intento += 1) {
@@ -582,4 +600,84 @@ export async function propagarCanalDeRequisito(
     }
     return { canalEntrega, rendiciones: resultados };
   });
+}
+
+// ─── Preparar el envío (HU2.5 con HU2.8) ──────────────────────────────────────────────────
+
+/**
+ * Comprueba que los ítems elegidos se pueden enviar y devuelve sus datos (contrato 4.5). No envía
+ * nada ni guarda nada: el envío lo hace la operadora por el canal. Valida con los datos de ahora,
+ * no con lo que mostraba la pantalla: un pedido armado a mano no puede incluir un ítem que no se
+ * puede enviar.
+ *
+ * - La rendición tiene que existir (si no, o si su cliente se borró, 404) y estar activa (409
+ *   `RENDICION_ANULADA`).
+ * - Cada ítem tiene que ser de esta rendición (si no, 404), estar completado (409
+ *   `ITEM_PENDIENTE`) y tener una aplicación documental vigente (409
+ *   `ITEM_SIN_DOCUMENTO_VIGENTE`): no alcanza con `completado`. El 409 lleva el `itemId` del
+ *   primero que no cumple, en el orden pedido. La regla es `motivoNoEnviable` de shared, la misma
+ *   que usa el checklist.
+ * - Como en HU2.5, un envío va por un solo canal (409 `CANALES_DISTINTOS`, con los canales).
+ *
+ * Se lee en una transacción de solo lectura con una foto consistente (REPEATABLE READ): la
+ * rendición, los ítems y sus aplicaciones vigentes son del mismo momento.
+ */
+export async function prepararEnvio(
+  rendicionId: string,
+  itemIds: readonly string[],
+): Promise<PreparacionEnvio> {
+  return prisma.$transaction(
+    async (tx) => {
+      const rendicion = await tx.rendicion.findFirst({
+        where: { id: rendicionId, cliente: { isDeleted: false } },
+        select: { id: true, isDeleted: true },
+      });
+      if (rendicion === null) {
+        throw notFound('Rendición no encontrada');
+      }
+      if (rendicion.isDeleted) {
+        throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
+      }
+
+      // Un ítem de otra rendición no existe para esta.
+      const filas = await tx.itemChecklist.findMany({
+        where: { id: { in: [...itemIds] }, rendicionId },
+        include: { aplicaciones: APLICACION_VIGENTE },
+      });
+      const porId = new Map(filas.map((fila) => [fila.id, toItemChecklistDto(fila)]));
+      const items = itemIds.map((id) => porId.get(id));
+      if (items.some((item) => item === undefined)) {
+        throw notFound('Ítem no encontrado');
+      }
+
+      const elegidos = items.filter((item) => item !== undefined);
+      for (const item of elegidos) {
+        const motivo = motivoNoEnviable(item);
+        if (motivo !== null) {
+          throw conflict(
+            motivo,
+            { itemId: item.id },
+            motivo === 'ITEM_PENDIENTE'
+              ? 'El ítem todavía no tiene un documento'
+              : 'El ítem no tiene un documento vigente',
+          );
+        }
+      }
+      const canal = canalDeSeleccion(elegidos);
+      if (canal.tipo !== 'un-canal') {
+        throw conflict(
+          'CANALES_DISTINTOS',
+          { canales: canal.tipo === 'mezclados' ? canal.canales : [] },
+          'Los ítems se envían por canales distintos',
+        );
+      }
+
+      return PreparacionEnvioSchema.parse({
+        rendicionId,
+        canal: canal.canal,
+        items: [...elegidos].sort(compararItemsDeChecklist),
+      });
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+  );
 }

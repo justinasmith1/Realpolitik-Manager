@@ -50,7 +50,7 @@ Pasos, en orden:
 2. `format:check`, `lint`, `typecheck`;
 3. tests de `shared` y tests **unitarios** del backend (sin base);
 4. `db:migrate:deploy` sobre la base vacía: aplica **todo** el historial de migraciones, CHECK incluidos. Si alguna falla, el CI falla;
-5. tests de **integración** del backend contra PostgreSQL (`test:integration`: todos los `*.integration.test.ts`);
+5. tests de **integración** del backend contra PostgreSQL (`test:integration`: todos los `*.integration.test.ts`, de a una suite: ver [Base de datos](development/database.md#tests-de-integración));
 6. tests del frontend;
 7. tests del frontend **contra la API real** (`test:api`): levanta el backend contra la misma base, espera `/health`, corre los `*.api.test.tsx` y apaga el backend aunque fallen;
 8. build de `frontend` y `backend`.
@@ -120,17 +120,25 @@ El backend se construye y arranca desde la raíz del repositorio (Root Directory
 
 ### Variables del backend
 
-| Variable                | Valor                             | Origen en Railway                              | Secreto |
-| ----------------------- | --------------------------------- | ---------------------------------------------- | ------- |
-| `NODE_ENV`              | `production`                      | Manual                                         | No      |
-| `PORT`                  | (lo define Railway)               | Automática: no se configura a mano             | No      |
-| `DATABASE_URL`          | URL privada de PostgreSQL         | Referencia al servicio PostgreSQL del proyecto | **Sí**  |
-| `CORS_ORIGINS`          | Origen de producción del frontend | Manual                                         | No      |
-| `RAILPACK_NODE_VERSION` | `24`                              | Manual                                         | No      |
+| Variable                 | Valor                             | Origen en Railway                              | Secreto |
+| ------------------------ | --------------------------------- | ---------------------------------------------- | ------- |
+| `NODE_ENV`               | `production`                      | Manual                                         | No      |
+| `PORT`                   | (lo define Railway)               | Automática: no se configura a mano             | No      |
+| `DATABASE_URL`           | URL privada de PostgreSQL         | Referencia al servicio PostgreSQL del proyecto | **Sí**  |
+| `CORS_ORIGINS`           | Origen de producción del frontend | Manual                                         | No      |
+| `RAILPACK_NODE_VERSION`  | `24`                              | Manual                                         | No      |
+| `DOCUMENTOS_HABILITADOS` | Sin definir (deshabilitados)      | Manual, solo con protección efectiva           | No      |
+| `ALMACENAMIENTO`         | `s3`                              | Manual                                         | No      |
+| `S3_ENDPOINT`            | Endpoint S3 del proveedor (HTTPS) | Manual                                         | No      |
+| `S3_REGION`              | Región del proveedor              | Manual                                         | No      |
+| `S3_BUCKET`              | Bucket **privado**                | Manual                                         | No      |
+| `S3_ACCESS_KEY_ID`       | Clave de acceso S3                | Manual                                         | **Sí**  |
+| `S3_SECRET_ACCESS_KEY`   | Clave secreta S3                  | Manual                                         | **Sí**  |
 
 - `NODE_ENV=production` hay que definirlo siempre en el proveedor: el servidor arranca igual sin ella y asume `development` (conveniente en local, engañoso en producción). Si se olvida, el servidor no avisa; la única pista es el arranque, que imprime el entorno (`Backend escuchando en … (development)`). Lo que cambia por no definirla es poco hoy (no se registran las consultas de Prisma, que solo se activan con `NODE_ENV=development` explícito), pero cualquier lógica futura que dependa de `production` quedaría apagada. Por eso las guardas de seguridad no dependen solo de esta variable (ver el seed, abajo).
 - `CORS_ORIGINS` es el origen exacto, `https://<host>` **sin barra final**. Se admiten varios, separados por comas. Si falta o es inválido, el servidor no arranca y el deploy falla el healthcheck. No se usa `*`.
 - Los previews de Vercel tienen un hostname distinto en cada deploy y **no** se agregan a `CORS_ORIGINS`.
+- Documentos (HU2.8, [ADR-0004](adr/0004-reutilizacion-y-almacenamiento-documentos.md)): en producción los endpoints `/documentos` están **deshabilitados** (no se montan: responden 404) mientras `DOCUMENTOS_HABILITADOS` no valga `true`. No hay autenticación: solo se habilitan cuando una protección efectiva del lado del servidor o de la infraestructura impida el acceso público (CORS no lo es). Deshabilitados, no hace falta ninguna variable de almacenamiento. Habilitados, el servidor **no arranca** sin `ALMACENAMIENTO=s3` y las cinco variables `S3_*` (endpoint HTTPS). Memoria y disco no se admiten en producción: se pierden con el contenedor. `S3_FORCE_PATH_STYLE` es opcional (`true` por defecto, lo que exige Supabase). Las claves `S3_*` no se comparten entre entornos y nunca van al frontend.
 - Usar la URL **privada** de la base (mismo proyecto de Railway). La URL pública (proxy TCP) factura tráfico de salida y expone la base fuera de la red privada: no se usa.
 
 ### Variable de Vercel

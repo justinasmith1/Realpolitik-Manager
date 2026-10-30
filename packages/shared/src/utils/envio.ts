@@ -1,10 +1,27 @@
 import type { CanalEntrega, Cliente } from '../schemas/cliente.schema.js';
 import { CanalEntrega as CanalEntregaSchema } from '../schemas/cliente.schema.js';
 import type { Contacto } from '../schemas/contacto.schema.js';
+import type { DocumentoDeItem } from '../schemas/documentoDeItem.schema.js';
+import type { MotivoNoEnviable } from '../schemas/envio.schema.js';
 
 // Envío de los documentos de una rendición (HU2.5). Funciones puras: no leen la base ni envían
 // nada. El canal de cada ítem ya viene resuelto (`requisito.canalEntrega ?? cliente.canalEntrega`)
 // desde la apertura: acá no se vuelve a resolver.
+
+/**
+ * Por qué un ítem no se puede enviar, o `null` si se puede (HU2.8): tiene que estar completado y
+ * tener un documento vigente. Un `documento` que no se conoce (`undefined`) cuenta como que no
+ * tiene: nunca se supone uno. La rendición tiene que estar activa: eso se comprueba aparte, para
+ * toda la selección. La usan el checklist (qué se puede elegir) y el backend (lo que se acepta).
+ */
+export function motivoNoEnviable(item: {
+  completado: boolean;
+  documento?: DocumentoDeItem | null | undefined;
+}): MotivoNoEnviable | null {
+  if (!item.completado) return 'ITEM_PENDIENTE';
+  if (item.documento === null || item.documento === undefined) return 'ITEM_SIN_DOCUMENTO_VIGENTE';
+  return null;
+}
 
 /** Cómo se envía una selección de ítems. */
 export type CanalDeSeleccion =

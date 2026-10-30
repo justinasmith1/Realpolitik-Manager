@@ -55,15 +55,33 @@ const clienteJson = {
 const id = (n: number) => `f1a2b3c4-d5e6-4789-8abc-def01234567${n}`;
 const PRINT = id(1);
 
-/** Factura por correo y Print 1 de 2 por portal (el canal equivocado que se va a corregir). */
+/** Completado con su documento vigente: se puede elegir para enviar (HU2.8). */
+const reunido = (n: number) => ({
+  completado: true,
+  completadoEn: FECHA,
+  documento: {
+    aplicacionId: `a0a0a0a0-0000-4000-8000-00000000000${n}`,
+    documentoId: `d0d0d0d0-0000-4000-8000-00000000000${n}`,
+    nombreOriginal: `documento-${n}.pdf`,
+    tipoContenido: 'application/pdf',
+    tamanioBytes: 2048,
+    aplicadaEn: FECHA,
+  },
+});
+
+/**
+ * Factura por correo y Print 1 de 2 por portal (el canal equivocado que se va a corregir). Los dos
+ * tienen documento: desde HU2.8 solo esos se eligen para enviar, y un test combina las dos cosas.
+ */
 const itemsIniciales = () => [
-  itemJson({ id: id(0) }),
+  itemJson({ id: id(0), ...reunido(0) }),
   itemJson({
     id: PRINT,
     nombreTipoDocumento: 'Print',
     ordinal: 1,
     totalOrdinal: 2,
     canalEntrega: 'PORTAL_WEB',
+    ...reunido(1),
   }),
 ];
 

@@ -1,5 +1,6 @@
 import { createApp } from './app';
 import { EnvError, loadEnv } from './config/env';
+import { crearAlmacenamiento } from './lib/almacenamiento/crearAlmacenamiento';
 
 function readEnv(): ReturnType<typeof loadEnv> {
   try {
@@ -14,9 +15,17 @@ function readEnv(): ReturnType<typeof loadEnv> {
 }
 
 const env = readEnv();
-const app = createApp({ corsOrigins: env.CORS_ORIGINS });
+const app = createApp({
+  corsOrigins: env.CORS_ORIGINS,
+  documentos: env.documentos && {
+    almacenamiento: crearAlmacenamiento(env.documentos.almacenamiento),
+  },
+});
 
 app.listen(env.PORT, () => {
   // process.stdout.write evita la regla no-console y no suma una librería de logs.
-  process.stdout.write(`Backend escuchando en http://localhost:${env.PORT} (${env.NODE_ENV})\n`);
+  const documentos = env.documentos?.almacenamiento.tipo ?? 'deshabilitados';
+  process.stdout.write(
+    `Backend escuchando en http://localhost:${env.PORT} (${env.NODE_ENV}, documentos: ${documentos})\n`,
+  );
 });

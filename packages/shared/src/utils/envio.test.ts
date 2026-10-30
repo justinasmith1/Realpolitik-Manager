@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canalDeSeleccion, destinatariosDeCorreo } from './envio.js';
+import { canalDeSeleccion, destinatariosDeCorreo, motivoNoEnviable } from './envio.js';
 
 describe('canalDeSeleccion', () => {
   it('sin ítems, la selección está vacía', () => {
@@ -65,5 +65,31 @@ describe('destinatariosDeCorreo', () => {
         [contacto('rendiciones@cliente.example', true)],
       ),
     ).toEqual([{ email: 'Rendiciones@Cliente.example', nombre: 'Ana', area: 'Compras' }]);
+  });
+});
+
+describe('motivoNoEnviable', () => {
+  const documento = {
+    aplicacionId: 'b1c2d3e4-f5a6-4789-8abc-000000000001',
+    documentoId: 'b1c2d3e4-f5a6-4789-8abc-000000000002',
+    nombreOriginal: 'print.pdf',
+    tipoContenido: 'application/pdf',
+    tamanioBytes: 10,
+    aplicadaEn: new Date('2026-10-01T12:00:00.000Z'),
+  };
+
+  it('un ítem completado con documento vigente se puede enviar', () => {
+    expect(motivoNoEnviable({ completado: true, documento })).toBeNull();
+  });
+
+  it('un ítem pendiente no se puede enviar', () => {
+    expect(motivoNoEnviable({ completado: false, documento: null })).toBe('ITEM_PENDIENTE');
+  });
+
+  it('no alcanza con completado: sin documento vigente (o sin saberlo) no se envía', () => {
+    expect(motivoNoEnviable({ completado: true, documento: null })).toBe(
+      'ITEM_SIN_DOCUMENTO_VIGENTE',
+    );
+    expect(motivoNoEnviable({ completado: true })).toBe('ITEM_SIN_DOCUMENTO_VIGENTE');
   });
 });

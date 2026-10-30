@@ -21,6 +21,11 @@ out/
 !.env.example
 
 # ──────────────────────────────────────────────
+# Almacenamiento local de documentos (desarrollo, HU2.8): archivos subidos, nunca se versionan
+# ──────────────────────────────────────────────
+.almacenamiento-local/
+
+# ──────────────────────────────────────────────
 # Logs
 # ──────────────────────────────────────────────
 logs/

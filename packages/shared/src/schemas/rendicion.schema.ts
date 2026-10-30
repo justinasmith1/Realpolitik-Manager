@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ANIO_MAX, ANIO_MIN, periodoMuyFuturo } from '../utils/periodo.js';
 
 import { CanalEntrega } from './cliente.schema.js';
+import { DocumentoDeItemSchema } from './documentoDeItem.schema.js';
 
 /** Ejemplo del formato canónico del número de factura, para la ayuda y los errores. */
 export const NUMERO_FACTURA_EJEMPLO = 'B 00002-00001482';
@@ -129,6 +130,10 @@ export type RendicionEstado = z.infer<typeof RendicionEstado>;
  * Un documento a presentar en una rendición: una foto del requisito tomada al abrirla
  * (ADR-0003). `canalEntrega` es el canal efectivo ya resuelto, nunca `null`. `completadoEn` es la
  * columna `completadoAt`.
+ *
+ * `documento` es el documento vigente del ítem (HU2.8, ADR-0004): `null` si no tiene. El backend
+ * ya lo manda siempre en el detalle; sigue opcional en el contrato hasta que el frontend lo use,
+ * y ahí pasa a obligatorio (y sigue admitiendo `null`).
  */
 export const ItemChecklistSchema = z.object({
   id: z.string().uuid(),
@@ -143,6 +148,7 @@ export const ItemChecklistSchema = z.object({
   completadoEn: z.coerce.date().nullable(),
   creadoEn: z.coerce.date(),
   actualizadoEn: z.coerce.date(),
+  documento: DocumentoDeItemSchema.nullable().optional(),
 });
 
 export type ItemChecklist = z.infer<typeof ItemChecklistSchema>;

@@ -167,6 +167,64 @@ export {
 } from './schemas/listarRendicionesQuery.schema.js';
 export type { ListarRendicionesQuery } from './schemas/listarRendicionesQuery.schema.js';
 
+export { DocumentoDeItemSchema } from './schemas/documentoDeItem.schema.js';
+export type { DocumentoDeItem } from './schemas/documentoDeItem.schema.js';
+export {
+  TAMANIO_MAXIMO_DOCUMENTO_BYTES,
+  NOMBRE_ORIGINAL_MAX,
+  FORMATOS_DE_DOCUMENTO,
+  TipoContenidoDocumento,
+  NombreOriginalSchema,
+  TamanioDocumentoSchema,
+  Sha256Schema,
+  DocumentoNuevoSchema,
+  DocumentoSchema,
+  ListarDocumentosQuerySchema,
+  MENSAJE_FORMATO_DOCUMENTO,
+  MENSAJE_TAMANIO_DOCUMENTO,
+  CAMPO_ARCHIVO_DOCUMENTO,
+  CargarDocumentoSchema,
+  DocumentoResumenSchema,
+  ResultadoCargaDocumentoSchema,
+} from './schemas/documento.schema.js';
+export type {
+  TipoContenidoDocumento as TipoContenidoDocumentoType,
+  DocumentoNuevoDto,
+  Documento,
+  ListarDocumentosQuery,
+  CargarDocumentoDto,
+  DocumentoResumen,
+  ResultadoCargaDocumento,
+} from './schemas/documento.schema.js';
+export {
+  EstadoAplicacion,
+  AplicacionDocumentoSchema,
+  UbicacionDeAplicacionSchema,
+  AplicacionUbicadaSchema,
+  DocumentoConAplicacionesSchema,
+  AplicacionConDocumentoSchema,
+  HistorialDeItemSchema,
+  ElegibilidadCandidato,
+  CandidatoAplicacionSchema,
+  MAX_ITEMS_A_APLICAR,
+  MENSAJE_ITEM_IDS,
+  AplicarDocumentoSchema,
+  ReemplazarDocumentoDeItemSchema,
+} from './schemas/aplicacionDocumento.schema.js';
+export type {
+  EstadoAplicacion as EstadoAplicacionType,
+  AplicacionDocumento,
+  UbicacionDeAplicacion,
+  AplicacionUbicada,
+  DocumentoConAplicaciones,
+  AplicacionConDocumento,
+  HistorialDeItem,
+  ElegibilidadCandidato as ElegibilidadCandidatoType,
+  CandidatoAplicacion,
+  AplicarDocumentoDto,
+  ReemplazarDocumentoDeItemDto,
+} from './schemas/aplicacionDocumento.schema.js';
+
 // ─── Utilidades ───────────────────────────────────────────────────────────────
 export { validateCuit } from './utils/validateCuit.js';
 export { cambiarSector } from './utils/cambiarSector.js';
@@ -193,7 +251,22 @@ export type {
   CodigoErrorChecklist,
   Faltantes,
 } from './utils/checklist.js';
-export { canalDeSeleccion, destinatariosDeCorreo } from './utils/envio.js';
+export {
+  MAX_ITEMS_A_ENVIAR,
+  MENSAJE_ITEMS_A_ENVIAR,
+  ItemEnviableSchema,
+  MotivoNoEnviable,
+  PrepararEnvioSchema,
+  PreparacionEnvioSchema,
+} from './schemas/envio.schema.js';
+export type {
+  ItemEnviable,
+  MotivoNoEnviable as MotivoNoEnviableType,
+  PrepararEnvioDto,
+  PreparacionEnvio,
+} from './schemas/envio.schema.js';
+
+export { canalDeSeleccion, destinatariosDeCorreo, motivoNoEnviable } from './utils/envio.js';
 export type { CanalDeSeleccion, DestinatarioDeCorreo } from './utils/envio.js';
 export { ANIO_MIN, ANIO_MAX, mesActual, periodoMuyFuturo } from './utils/periodo.js';
 export type { Periodo } from './utils/periodo.js';

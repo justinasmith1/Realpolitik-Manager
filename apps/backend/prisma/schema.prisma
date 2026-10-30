@@ -84,6 +84,19 @@ enum PeriodicidadTipo {
 // uq_rendicion_periodo_activa por los de arriba.
 // HU2.1: la migración `20261021120000_hu2_1_tipo_documento_nombre_normalizado` agrega
 // `TipoDocumento.nombreNormalizado` (único) y quita la unicidad exacta de `nombre`.
+//
+// Documentos y sus aplicaciones (HU2.8, ADR-0004): CHECK e índice parcial en la migración
+// `20261029120000_hu2_8_documentos_aplicaciones`.
+//   ck_documento_mes                  mes 1..12 y anio 2020..2100 (como ck_rendicion_mes)
+//   ck_documento_tamanio_positivo     tamanioBytes > 0
+//   ck_documento_sha256_formato       64 caracteres hexadecimales en minúscula
+//   ck_documento_nombre_original_no_vacio nombreOriginal con algún carácter que no sea espacio
+//   ck_documento_tipo_contenido_formato tipoContenido con forma de MIME (tipo/subtipo, minúsculas)
+//   ck_documento_clave_no_vacia       claveAlmacenamiento con algún carácter que no sea espacio
+//   ck_aplicacion_fechas_coherentes   reemplazadaEn NULL o posterior o igual a aplicadaEn
+//   ck_aplicacion_no_se_reemplaza_a_si_misma reemplazaAId distinto de id
+//   uq_aplicacion_documento_item_vigente índice único PARCIAL: una sola aplicación vigente por
+//                                     ítem (WHERE "reemplazadaEn" IS NULL)
 
 model Cliente {
   id            String  @id @default(uuid()) @db.Uuid
@@ -193,6 +206,7 @@ model TipoDocumento {
 
   requisitos   RequisitoCliente[]
   items        ItemChecklist[]
+  documentos   Documento[]
 }
 
 // ─── Modelo RequisitoCliente (matriz) ─────────────────────────────────────────
@@ -292,5 +306,99 @@ model ItemChecklist {
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
+  /// Documentos aplicados a este ítem (HU2.8): la vigente y las reemplazadas, como historial.
+  aplicaciones         AplicacionDocumento[]
+
   @@unique([rendicionId, requisitoClienteId, ordinal])
+  // Lo exige la FK compuesta de `AplicacionDocumento` (ADR-0004): el documento aplicado tiene
+  // que ser del mismo tipo que el ítem. `id` ya es único, así que nunca rechaza una fila.
+  @@unique([id, tipoDocumentoId])
+}
+
+// ─── Modelo Documento ─────────────────────────────────────────────────────────
+
+/// Un archivo cargado una sola vez, con su tipo y su período (HU2.8, ADR-0004). Se aplica a
+/// ítems de rendiciones con `AplicacionDocumento`, sin copiarlo por cliente. El contenido no está
+/// en la base: vive en el almacenamiento de objetos, bajo `claveAlmacenamiento`. Por ahora no se
+/// borra (la retención no está definida).
+model Documento {
+  id String @id @default(uuid()) @db.Uuid
+
+  tipoDocumentoId String        @db.Uuid
+  tipoDocumento   TipoDocumento @relation(fields: [tipoDocumentoId], references: [id], onDelete: Restrict)
+
+  // Período del documento. CHECK ck_documento_mes (mismo rango que la rendición).
+  anio Int @db.SmallInt
+  mes  Int @db.SmallInt
+
+  /// Nombre del archivo tal como llegó. Dato no confiable: solo se muestra (escapado) y nunca
+  /// forma parte de la clave ni de una ruta. CHECK ck_documento_nombre_original_no_vacio.
+  nombreOriginal      String @db.VarChar(255)
+  /// MIME del contenido validado por el backend (no el que declara el navegador).
+  /// CHECK ck_documento_tipo_contenido_formato; la lista de formatos admitidos vive en shared.
+  tipoContenido       String @db.VarChar(255)
+  /// CHECK ck_documento_tamanio_positivo. El tope (10 MB) lo valida shared, no la base.
+  tamanioBytes        Int
+  /// SHA-256 del contenido, en hexadecimal en minúscula. No es único: sirve para avisar de un
+  /// posible duplicado, no para impedirlo. CHECK ck_documento_sha256_formato.
+  sha256              String @db.Char(64)
+  /// Clave opaca del objeto en el almacenamiento. Sin bucket, URL ni proveedor: cambiar de
+  /// proveedor no cambia este valor. CHECK ck_documento_clave_no_vacia.
+  claveAlmacenamiento String @unique @db.VarChar(255)
+
+  // Auditoría. `createdAt` es la fecha de carga.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  aplicaciones AplicacionDocumento[]
+
+  // Lo exige la FK compuesta de `AplicacionDocumento`. `id` ya es único.
+  @@unique([id, tipoDocumentoId])
+  // Repositorio por período (y tipo).
+  @@index([anio, mes, tipoDocumentoId])
+  // Aviso de posible duplicado.
+  @@index([sha256])
+}
+
+// ─── Modelo AplicacionDocumento ───────────────────────────────────────────────
+
+/// Un documento aplicado a un ítem del checklist (HU2.8, ADR-0004). Es historial: una aplicación
+/// no se borra. Al reemplazar, la anterior recibe `reemplazadaEn` y la nueva la apunta con
+/// `reemplazaAId`. Una sola vigente por ítem: índice único parcial
+/// uq_aplicacion_documento_item_vigente, en SQL. Un mismo documento puede estar vigente en
+/// muchos ítems, también de la misma rendición.
+model AplicacionDocumento {
+  id String @id @default(uuid()) @db.Uuid
+
+  documentoId     String        @db.Uuid
+  itemChecklistId String        @db.Uuid
+  /// Tipo del documento y del ítem, que tienen que coincidir: lo garantizan las dos FK compuestas
+  /// de abajo, que usan esta misma columna. No se edita.
+  tipoDocumentoId String        @db.Uuid
+  documento       Documento     @relation(fields: [documentoId, tipoDocumentoId], references: [id, tipoDocumentoId], onDelete: Restrict)
+  itemChecklist   ItemChecklist @relation(fields: [itemChecklistId, tipoDocumentoId], references: [id, tipoDocumentoId], onDelete: Restrict)
+
+  aplicadaEn     DateTime             @default(now())
+  /// Null = vigente. CHECK ck_aplicacion_fechas_coherentes.
+  reemplazadaEn  DateTime?
+  /// La aplicación anterior, si esta la reemplazó. Única: una aplicación se reemplaza una sola
+  /// vez. La FK compuesta (con `itemChecklistId`) obliga a que sea del MISMO ítem: un reemplazo
+  /// nunca encadena aplicaciones de ítems distintos. CHECK ck_aplicacion_no_se_reemplaza_a_si_misma.
+  reemplazaAId   String?              @unique @db.Uuid
+  reemplazaA     AplicacionDocumento? @relation("ReemplazoDeAplicacion", fields: [reemplazaAId, itemChecklistId], references: [id, itemChecklistId], onDelete: Restrict)
+  reemplazadaPor AplicacionDocumento? @relation("ReemplazoDeAplicacion")
+
+  // Auditoría
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Dónde está aplicado un documento.
+  @@index([documentoId])
+  // Historial de un ítem (el índice parcial solo cubre las vigentes).
+  @@index([itemChecklistId])
+  // Destino de la FK compuesta del reemplazo. `id` ya es único.
+  @@unique([id, itemChecklistId])
+  // Prisma exige que los campos de una relación 1 a 1 sean únicos en conjunto. Es redundante con
+  // el @unique de `reemplazaAId`, que deja la regla escrita sin tener que deducirla de la FK.
+  @@unique([reemplazaAId, itemChecklistId])
 }

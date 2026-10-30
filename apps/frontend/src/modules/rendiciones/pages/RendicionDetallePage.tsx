@@ -1,6 +1,7 @@
 import {
   calcularFaltantes,
   canalDeSeleccion,
+  motivoNoEnviable,
   type ItemChecklist,
   type Cliente,
   type RendicionDetalle,
@@ -13,6 +14,7 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { LoadingButton } from '@/components/ui/loading-button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { enfocarYMostrar } from '@/lib/focus';
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
@@ -20,15 +22,31 @@ import { etiquetasCanalEntrega } from '@/modules/clientes/clientes.etiquetas';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import { MatrizIndicacionesArmado } from '@/modules/clientes/components/MatrizIndicacionesArmado';
 import { useCliente } from '@/modules/clientes/hooks/useCliente';
-import { esRendicionInexistente } from '@/modules/rendiciones/api/rendiciones.api';
+import {
+  ElegirDocumentoDeItemSheet,
+  type PedidoDeDocumento,
+} from '@/modules/documentos/components/ElegirDocumentoDeItemSheet';
+import { mensajeFalloDescarga } from '@/modules/documentos/components/erroresDeDocumentos';
+import { HistorialDeItemSheet } from '@/modules/documentos/components/HistorialDeItemSheet';
+import { useDescargas } from '@/modules/documentos/hooks/useDocumentos';
+import {
+  esRendicionInexistente,
+  interpretarFalloPreparacionEnvio,
+} from '@/modules/rendiciones/api/rendiciones.api';
 import { CambiarCanalDialog } from '@/modules/rendiciones/components/CambiarCanalDialog';
 import { EnvioDialog, type Envio } from '@/modules/rendiciones/components/EnvioDialog';
-import { ItemChecklistFila } from '@/modules/rendiciones/components/ItemChecklistFila';
-import { useRendicion } from '@/modules/rendiciones/hooks/useRendiciones';
+import { mensajeFalloPreparacionEnvio } from '@/modules/rendiciones/components/erroresDeRendicion';
+import {
+  ItemChecklistFila,
+  type AccionesDeDocumento,
+} from '@/modules/rendiciones/components/ItemChecklistFila';
+import { usePrepararEnvio, useRendicion } from '@/modules/rendiciones/hooks/useRendiciones';
 import {
   avanceDelChecklist,
   checklistCompleto,
   etiquetaDePeriodo,
+  motivoParaNoEnviar,
+  nombreDeItem,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 import { rutaDeMatriz, type EstadoDeDetalle } from '@/modules/rendiciones/rendiciones.rutas';
 
@@ -44,7 +62,11 @@ const formatoDeFecha = new Intl.DateTimeFormat('es-AR', {
  * cliente al costado. Una rendición anulada se ve igual, como historial, con su aviso.
  *
  * Los ítems se eligen para enviarlos por su canal (ya resuelto en cada ítem al abrir la
- * rendición). Una anulada no se envía: no tiene casillas ni botón.
+ * rendición). Solo se marcan los completados con un documento vigente (HU2.8); el servidor lo
+ * vuelve a comprobar al preparar el envío. Una anulada no se envía: no tiene casillas ni botón.
+ *
+ * Cada ítem muestra su documento vigente (HU2.8): se descarga y se consulta su historial; en una
+ * activa, a un pendiente se le asocia uno ya cargado y el vigente se puede reemplazar.
  */
 export function RendicionDetallePage() {
   const { id, rendicionId } = useParams();
@@ -164,17 +186,40 @@ function DetalleDeRendicion({
   const [avisoDeMezcla, setAvisoDeMezcla] = useState(false);
   const [envio, setEnvio] = useState<Envio | null>(null);
   const [itemACorregir, setItemACorregir] = useState<ItemChecklist | null>(null);
-  const [avisoDeCanal, setAvisoDeCanal] = useState<string | null>(null);
+  // El resultado de la última acción sobre un ítem (canal o documento).
+  const [avisoDelChecklist, setAvisoDelChecklist] = useState<{
+    variant: 'success' | 'warning' | 'destructive';
+    texto: string;
+  } | null>(null);
+  const preparacion = usePrepararEnvio();
+  const [pedidoDeDocumento, setPedidoDeDocumento] = useState<PedidoDeDocumento | null>(null);
+  const [historialDe, setHistorialDe] = useState<string | null>(null);
+  const { idsDescargando, descargar } = useDescargas((documento) =>
+    setAvisoDelChecklist({
+      variant: 'destructive',
+      texto: mensajeFalloDescarga(documento.nombreOriginal),
+    }),
+  );
   const [editandoCliente, setEditandoCliente] = useState(false);
   const avance = calcularFaltantes(rendicion.items);
   const anulada = rendicion.estado === 'ANULADA';
   const completo = checklistCompleto(avance);
   const visibles = soloFaltantes ? avance.faltantes : rendicion.items;
-  const elegidos = rendicion.items.filter((item) => seleccion.has(item.id));
+  // Solo cuentan los que se pueden enviar con los datos de ahora: si un ítem marcado deja de
+  // poder enviarse (se refrescó la rendición), sale solo de la selección.
+  const elegidos = rendicion.items.filter(
+    (item) => seleccion.has(item.id) && motivoNoEnviable(item) === null,
+  );
   const canalDeElegidos = canalDeSeleccion(elegidos);
   const canalesMezclados =
     avisoDeMezcla && canalDeElegidos.tipo === 'mezclados' ? canalDeElegidos.canales : null;
   const denominacion = cliente?.denominacion;
+
+  /** Por qué no se puede marcar el ítem para enviarlo, o `null` si se puede. */
+  function textoNoEnviable(item: ItemChecklist): string | null {
+    const motivo = motivoNoEnviable(item);
+    return motivo === null ? null : motivoParaNoEnviar[motivo];
+  }
 
   function alternar(itemId: string, marcado: boolean) {
     setAvisoDeMezcla(false);
@@ -186,10 +231,56 @@ function DetalleDeRendicion({
     });
   }
 
-  function enviar() {
-    if (canalDeElegidos.tipo === 'mezclados') setAvisoDeMezcla(true);
-    else if (canalDeElegidos.tipo === 'un-canal') {
-      setEnvio({ canal: canalDeElegidos.canal, items: elegidos });
+  /**
+   * El documento de un ítem: se descarga y se consulta su historial siempre (también en una
+   * anulada, como historial); se asocia o reemplaza solo en una rendición activa.
+   */
+  function accionesDeDocumento(item: ItemChecklist): AccionesDeDocumento {
+    const vigente = item.documento ?? null;
+    const abrir = (modo: PedidoDeDocumento['modo']) => () => {
+      setAvisoDelChecklist(null);
+      setPedidoDeDocumento({ modo, itemId: item.id });
+    };
+    return {
+      ...(!anulada && { onAsociar: abrir('asociar'), onReemplazar: abrir('reemplazar') }),
+      onVerHistorial: () => setHistorialDe(item.id),
+      onDescargar: () => {
+        if (vigente !== null) {
+          void descargar({ id: vigente.documentoId, nombreOriginal: vigente.nombreOriginal });
+        }
+      },
+      descargando: vigente !== null && idsDescargando.includes(vigente.documentoId),
+    };
+  }
+
+  /**
+   * Los canales mezclados se avisan sin ir al servidor (como siempre). Si no, el servidor
+   * confirma con los datos de ahora que los ítems se pueden enviar, y el diálogo muestra lo que
+   * él devolvió. Si algo cambió en el medio (409), la rendición ya se volvió a pedir: se avisa.
+   */
+  async function enviar() {
+    if (canalDeElegidos.tipo === 'mezclados') {
+      setAvisoDeMezcla(true);
+      return;
+    }
+    if (canalDeElegidos.tipo !== 'un-canal' || preparacion.isPending) return;
+    setAvisoDelChecklist(null);
+    try {
+      const preparado = await preparacion.mutateAsync({
+        clienteId: rendicion.clienteId,
+        rendicionId: rendicion.id,
+        itemIds: elegidos.map((item) => item.id),
+      });
+      setEnvio({ canal: preparado.canal, items: preparado.items });
+    } catch (fallo) {
+      const nombres = new Map(rendicion.items.map((item) => [item.id, nombreDeItem(item)]));
+      setAvisoDelChecklist({
+        variant: 'warning',
+        texto: mensajeFalloPreparacionEnvio(
+          interpretarFalloPreparacionEnvio(fallo),
+          (itemId) => nombres.get(itemId) ?? null,
+        ),
+      });
     }
   }
 
@@ -250,15 +341,17 @@ function DetalleDeRendicion({
                 </label>
               </div>
               {!anulada && (
-                <Button
+                <LoadingButton
                   ref={enviarRef}
                   type="button"
                   size="sm"
-                  onClick={enviar}
+                  loading={preparacion.isPending}
+                  loadingText="Preparando…"
+                  onClick={() => void enviar()}
                   disabled={elegidos.length === 0}
                 >
                   Enviar ({elegidos.length})
-                </Button>
+                </LoadingButton>
               )}
             </div>
           </div>
@@ -269,9 +362,9 @@ function DetalleDeRendicion({
               en envíos distintos.
             </Alert>
           )}
-          {avisoDeCanal !== null && (
-            <Alert variant="success" onCerrar={() => setAvisoDeCanal(null)}>
-              {avisoDeCanal}
+          {avisoDelChecklist !== null && (
+            <Alert variant={avisoDelChecklist.variant} onCerrar={() => setAvisoDelChecklist(null)}>
+              {avisoDelChecklist.texto}
             </Alert>
           )}
           {visibles.length === 0 ? (
@@ -290,11 +383,15 @@ function DetalleDeRendicion({
                     seleccion: {
                       marcado: seleccion.has(item.id),
                       onCambio: (marcado: boolean) => alternar(item.id, marcado),
+                      noEnviable: textoNoEnviable(item),
                     },
                     onCambiarCanal: () => {
-                      setAvisoDeCanal(null);
+                      setAvisoDelChecklist(null);
                       setItemACorregir(item);
                     },
+                  })}
+                  {...(item.documento !== undefined && {
+                    documento: accionesDeDocumento(item),
                   })}
                 />
               ))}
@@ -313,8 +410,22 @@ function DetalleDeRendicion({
         onCerrar={() => setItemACorregir(null)}
         onCambiado={(texto) => {
           setItemACorregir(null);
-          setAvisoDeCanal(texto);
+          setAvisoDelChecklist({ variant: 'success', texto });
         }}
+      />
+      <ElegirDocumentoDeItemSheet
+        pedido={pedidoDeDocumento}
+        rendicion={rendicion}
+        onCerrar={() => setPedidoDeDocumento(null)}
+        onListo={(texto) => {
+          setPedidoDeDocumento(null);
+          setAvisoDelChecklist({ variant: 'success', texto });
+        }}
+      />
+      <HistorialDeItemSheet
+        itemId={historialDe}
+        rendicion={rendicion}
+        onCerrar={() => setHistorialDe(null)}
       />
       <EnvioDialog
         envio={envio}

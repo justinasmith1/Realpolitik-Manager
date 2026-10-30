@@ -38,13 +38,14 @@ Todos los errores responden con la misma forma:
 }
 ```
 
-| `code`              | Estado HTTP | Cuándo                                                                                                               | `details`                                                                                                                                                                                                                                                                 |
-| ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VALIDATION_ERROR`  | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado                       | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`                                                                                                                                         |
-| `NOT_FOUND`         | 404         | El recurso pedido (cliente, contacto, tipo de documento, requisito, rendición o ítem) no existe, o la ruta no existe | No lleva                                                                                                                                                                                                                                                                  |
-| `CONFLICT`          | 409         | El pedido choca con datos existentes                                                                                 | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO`, `contactoExistente` para `EMAIL_DUPLICADO` o `tipoDocumentoExistente` para `TIPO_DOCUMENTO_DUPLICADO` (sección 4.1). Los motivos de requisitos y rendiciones están en la sección 4 |
-| `PAYLOAD_TOO_LARGE` | 413         | El cuerpo de la solicitud supera los 100 KB                                                                          | No lleva                                                                                                                                                                                                                                                                  |
-| `INTERNAL_ERROR`    | 500         | Error inesperado                                                                                                     | No lleva. Nunca expone detalles internos                                                                                                                                                                                                                                  |
+| `code`                | Estado HTTP | Cuándo                                                                                                               | `details`                                                                                                                                                                                                                                                                 |
+| --------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VALIDATION_ERROR`    | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado                       | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`                                                                                                                                         |
+| `NOT_FOUND`           | 404         | El recurso pedido (cliente, contacto, tipo de documento, requisito, rendición o ítem) no existe, o la ruta no existe | No lleva                                                                                                                                                                                                                                                                  |
+| `CONFLICT`            | 409         | El pedido choca con datos existentes                                                                                 | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO`, `contactoExistente` para `EMAIL_DUPLICADO` o `tipoDocumentoExistente` para `TIPO_DOCUMENTO_DUPLICADO` (sección 4.1). Los motivos de requisitos y rendiciones están en la sección 4 |
+| `PAYLOAD_TOO_LARGE`   | 413         | El cuerpo de la solicitud supera los 100 KB                                                                          | No lleva                                                                                                                                                                                                                                                                  |
+| `SERVICE_UNAVAILABLE` | 503         | Un servicio del que depende el pedido (el almacenamiento de documentos, 4.10) no respondió. Se puede reintentar      | No lleva                                                                                                                                                                                                                                                                  |
+| `INTERNAL_ERROR`      | 500         | Error inesperado                                                                                                     | No lleva. Nunca expone detalles internos                                                                                                                                                                                                                                  |
 
 > Los textos de `mensaje` pueden estar en inglés cuando no los define `@realpolitik/shared`
 > (por ejemplo, `Required`). El front debe apoyarse en `campo` y mostrar sus propios textos.
@@ -261,7 +262,7 @@ Reglas que valen para toda la sección (además de las de la sección 1):
 - **Cliente borrado:** igual que en clientes y contactos, un cliente con baja lógica (`isDeleted`) se trata como inexistente. Todas las rutas `/clientes/:id/...` responden `404 NOT_FOUND`.
 - **Cliente no activo:** solo un cliente `ACTIVO` puede tener su matriz editada (alta, modificación o baja de requisitos), sus indicaciones de armado editadas, rendiciones nuevas o requisitos agregados a una rendición abierta. `INACTIVO` y `SUSPENDIDO` se tratan igual (un cliente que dejó de operar temporalmente y puede volver): esas operaciones responden `409 CONFLICT` con `motivo: "CLIENTE_NO_ACTIVO"`, y primero hay que reactivarlo. Las lecturas (`GET`) responden igual para cualquier estado. La anulación de una rendición tampoco se restringe, en ningún estado: es la corrección de un error, no una operación nueva. **Excepción:** las observaciones internas (HU2.10) se leen y se guardan con el cliente en cualquier estado, porque son una nota interna y no generan operaciones (ver 4.4).
 - **Ids de la ruta:** `:id` y `:requisitoId` se validan. Uno que no es un uuid responde `400 VALIDATION_ERROR`.
-- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay seis excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), `POST /rendiciones/:id/requisitos/:requisitoId`, `PATCH /rendiciones/:id/items/:itemId/canal` y `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
+- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay siete excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), `POST /rendiciones/:id/requisitos/:requisitoId`, `PATCH /rendiciones/:id/items/:itemId/canal`, `POST /rendiciones/:id/preparar-envio` y `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
 - **Fechas:** como en clientes y contactos, la API devuelve `creadoEn` y `actualizadoEn`; las columnas `createdAt` y `updatedAt` se traducen en el backend. `isDeleted` y `deletedAt` no se exponen.
 - **Sin requisitos condicionales:** ningún pedido lleva decisiones del tipo "este período aplica / no aplica". Todo requisito activo entra siempre en el checklist.
 - **La factura es un requisito más:** no es implícita. Todo cliente pide al menos la factura, que figura en su matriz como requisito del tipo "Factura".
@@ -314,6 +315,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | Rendiciones | `GET /rendiciones/:id`                                      | Trae una rendición con su checklist                                     | 200         |
 | Rendiciones | `POST /rendiciones/:id/requisitos/:requisitoId`             | Agrega a una rendición activa los ítems de un requisito nuevo           | 200         |
 | Rendiciones | `PATCH /rendiciones/:id/items/:itemId/canal`                | Corrige el canal de un ítem de una rendición activa                     | 200         |
+| HU2.5       | `POST /rendiciones/:id/preparar-envio`                      | Valida los ítems elegidos para enviar y devuelve sus datos (no envía)   | 200         |
 | Rendiciones | `POST /clientes/:id/requisitos/:requisitoId/propagar-canal` | Pasa el canal actual de un requisito a sus ítems en rendiciones activas | 200         |
 | HU2.5       | `PATCH /rendiciones/:id/estado`                             | Anula una rendición (baja lógica, no reversible)                        | 200         |
 | Clientes    | `GET /clientes` (extensión)                                 | Agrega `matrizConfigurada` y un filtro por ese campo                    | 200         |
@@ -713,6 +715,23 @@ Para cuando un requisito tenía un canal equivocado: los ítems guardan el canal
   - `409 CONFLICT` con `motivo: "RENDICION_ANULADA"`: la rendición está anulada.
 - **Cómo lo usa el front:** desde el detalle de una rendición activa, ítem por ítem, con confirmación. En una anulada no se ofrece.
 
+#### `POST /rendiciones/:id/preparar-envio`
+
+Prepara el envío de los ítems elegidos (HU2.5 con HU2.8). **No envía nada ni guarda nada**: comprueba con los datos de ahora que los ítems se pueden enviar y devuelve sus datos, para que la operadora los mande por el canal. No cambia el estado de la rendición ni de los ítems.
+
+- **Pedido:** `{ "itemIds": ["uuid", …] }`: al menos uno, sin repetir, hasta 500 (`PrepararEnvioSchema` de `@realpolitik/shared`).
+- **Qué valida:** la rendición está activa; cada ítem es de esta rendición, está completado **y tiene una aplicación documental vigente** (no alcanza con `completado`: un ítem completado sin aplicación, por ejemplo un dato anterior a HU2.8, no se envía). Es la regla `motivoNoEnviable` de shared, la misma que usa el checklist para habilitar la casilla. Como en HU2.5, todos los ítems van por el mismo canal. Lee con una foto consistente (transacción `REPEATABLE READ` de solo lectura).
+- **Respuesta 200:** `{ rendicionId, canal, items }` (`PreparacionEnvioSchema`): el canal único de la selección y los ítems en el orden del checklist, cada uno con `completado: true` y su `documento` vigente (`ItemEnviableSchema`, una especialización de `ItemChecklistSchema`: en el checklist general `documento` sigue opcional).
+- **Errores:**
+  - `400 VALIDATION_ERROR`: id de la rendición que no es uuid; `itemIds` ausente, vacío, con repetidos o con ids inválidos.
+  - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado; un ítem no existe o es de otra rendición.
+  - `409 CONFLICT`, sin escribir nada:
+    - `motivo: "RENDICION_ANULADA"`: la rendición está anulada.
+    - `motivo: "ITEM_PENDIENTE"`, con `itemId`: el primer ítem (en el orden pedido) que no está completado.
+    - `motivo: "ITEM_SIN_DOCUMENTO_VIGENTE"`, con `itemId`: el primer ítem completado sin aplicación vigente.
+    - `motivo: "CANALES_DISTINTOS"`, con `canales`: los ítems se envían por canales distintos.
+- **Cómo lo usa el front:** al tocar «Enviar» en el detalle de una rendición activa. Solo se pueden marcar los ítems que se pueden enviar; si el servidor responde 409 (algo cambió entre la selección y el envío), se vuelve a pedir la rendición y se avisa.
+
 #### `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`
 
 Para cuando cambia el canal de un requisito (por ejemplo, Print pasa de WhatsApp a Portal web) y el cliente ya tiene rendiciones abiertas con ese documento: en vez de corregir cada ítem de cada rendición, se pasan al canal nuevo todos los ítems del requisito en las rendiciones elegidas. Ver [ADR-0003](../adr/0003-modelado-requisitos-y-rendiciones.md), punto 10.
@@ -786,9 +805,102 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 
+### 4.10 Documentos (HU2.8)
+
+Un archivo se carga **una vez**, con su tipo de documento y su período, y después se aplica a ítems de rendiciones de varios clientes (ADR-0004). Esta sección cubre la carga, las consultas, los candidatos, la aplicación a varios ítems, el reemplazo y el historial. Los schemas están en `@realpolitik/shared` (`documento.schema.ts` y `aplicacionDocumento.schema.ts`).
+
+> **Deshabilitado en producción.** No hay autenticación: con `NODE_ENV=production`, `/documentos` (y el reemplazo y el historial, que cuelgan de `/rendiciones`) no se monta (cualquier ruta responde `404 NOT_FOUND`) salvo `DOCUMENTOS_HABILITADOS=true`. Esa variable solo se define cuando hay una protección efectiva del lado del servidor o de la infraestructura. CORS no lo es. En desarrollo y en tests está habilitado. Ver [Despliegue](../deployment.md#variables-del-backend).
+
+| Método y ruta                                     | Qué hace                                               | Respuesta OK                               |
+| ------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| `POST /documentos`                                | Carga un documento (sin aplicarlo)                     | `201` `ResultadoCargaDocumentoSchema`      |
+| `GET /documentos`                                 | Repositorio de un período                              | `200` lista de `DocumentoResumenSchema`    |
+| `GET /documentos/:id`                             | Un documento y dónde está aplicado                     | `200` `DocumentoConAplicacionesSchema`     |
+| `GET /documentos/:id/archivo`                     | Descarga el archivo a través del backend               | `200` el contenido (no JSON)               |
+| `GET /documentos/:id/candidatos`                  | Ítems a los que se podría aplicar el documento         | `200` lista de `CandidatoAplicacionSchema` |
+| `POST /documentos/:id/aplicaciones`               | Aplica el documento a los ítems elegidos (todo o nada) | `200` `DocumentoConAplicacionesSchema`     |
+| `POST /rendiciones/:id/items/:itemId/reemplazo`   | Reemplaza el documento vigente de un ítem              | `200` `RendicionDetalleSchema`             |
+| `GET /rendiciones/:id/items/:itemId/aplicaciones` | Historial de documentos de un ítem                     | `200` `HistorialDeItemSchema`              |
+
+Ninguna respuesta incluye el hash, la clave del almacenamiento ni URLs del proveedor.
+
+#### `POST /documentos`
+
+- **Pedido:** `multipart/form-data` con el archivo en el campo `archivo` (uno solo) y los campos de texto `tipoDocumentoId`, `anio` y `mes` (`CargarDocumentoSchema`; el año y el mes, solo dígitos).
+- **Archivo:** PDF, JPG/JPEG, PNG o DOCX, de 1 byte a 10 MB. El formato se decide por el **contenido**: la firma de los primeros bytes y, en un DOCX, su estructura interna (`word/document.xml` y el tipo de contenido principal de Word en `[Content_Types].xml`). Un ZIP cualquiera, un `.xlsx` o un `.docm` no pasan. La extensión del nombre tiene que corresponder a ese formato. El MIME que declara el navegador también, aunque se acepta vacío o `application/octet-stream`. Se guarda el nombre sin carpetas.
+- **Tipo de documento:** tiene que existir (si no, `404`). Uno desactivado solo se acepta si todavía hay ítems pendientes de ese tipo en rendiciones activas del período; si no, `409` con `motivo: "TIPO_DOCUMENTO_INACTIVO"`.
+- **Contenido repetido:** no se rechaza. Los documentos ya cargados con el mismo contenido, tipo y período vuelven en `posiblesDuplicados`, del más viejo al más nuevo, para ofrecer reutilizarlos.
+- **Orden y consistencia:** se valida todo, se guarda el objeto en el almacenamiento y después se registra en la base. Si la base falla, el objeto se borra.
+
+| Error                     | Cuándo                                                                                                                                                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400 VALIDATION_ERROR`    | Falta el archivo, formato no admitido, extensión o MIME que no coinciden, archivo vacío, más de un archivo, formulario mal formado o campos inválidos (`campo`: `archivo`, `body`, `tipoDocumentoId`, `anio`, `mes`) |
+| `404 NOT_FOUND`           | El tipo de documento no existe                                                                                                                                                                                       |
+| `409 CONFLICT`            | `TIPO_DOCUMENTO_INACTIVO`                                                                                                                                                                                            |
+| `413 PAYLOAD_TOO_LARGE`   | El archivo supera los 10 MB                                                                                                                                                                                          |
+| `503 SERVICE_UNAVAILABLE` | El almacenamiento no respondió: no se registró nada y se puede reintentar                                                                                                                                            |
+
+#### `GET /documentos?anio=2026&mes=10[&tipoDocumentoId=…]`
+
+Los documentos del período (`anio` y `mes` obligatorios), del más nuevo al más viejo. `aplicacionesVigentes` cuenta las aplicaciones vigentes en rendiciones **activas**: las reemplazadas y las de rendiciones anuladas son historial y se ven en el detalle.
+
+#### `GET /documentos/:id`
+
+El documento con todas sus aplicaciones (`aplicaciones`), cada una con su `estado` (`VIGENTE` o `REEMPLAZADA`) y su `ubicacion`: cliente (con su estado), rendición (con `estado` `ACTIVA` o `ANULADA`) e ítem (el snapshot: nombre del tipo, ordinal). Primero las vigentes y después las reemplazadas, cada grupo de la más reciente a la más vieja. No incluye las de clientes dados de baja. `404` si el documento no existe.
+
+#### `GET /documentos/:id/archivo`
+
+El contenido, enviado como stream por el backend, con el `Content-Type` guardado y estas cabeceras:
+
+- `Content-Disposition: attachment`, con el nombre en ASCII (`filename`) y en UTF-8 (`filename*`), saneado;
+- `X-Content-Type-Options: nosniff`;
+- `Content-Security-Policy: default-src 'none'; sandbox`;
+- `Cache-Control: private, no-store`.
+
+Errores: `404` si el documento no existe y `503 SERVICE_UNAVAILABLE` si el almacenamiento no responde, ambos en JSON. Si el objeto falta en el almacenamiento es una inconsistencia: `500`.
+
+#### `GET /documentos/:id/candidatos`
+
+Los ítems a los que se podría aplicar el documento: **mismo `tipoDocumentoId`** que el del snapshot del ítem (no el de la matriz actual), **mismo año y mes**, rendición **activa** de un cliente no borrado e ítem **pendiente** (sin documento vigente). Incluye varias rendiciones del mismo cliente y clientes `INACTIVO` con rendiciones activas (`cliente.estado` lo indica). Cada candidato lleva el UUID del ítem y su ordinal (Print 2/5). Vienen ordenados para agrupar: por cliente, por rendición y, dentro de ella, en el orden del checklist. Hoy todos son `elegibilidad: "ELEGIBLE"`. El sistema solo sugiere: no elige ninguno. `404` si el documento no existe.
+
+#### `POST /documentos/:id/aplicaciones`
+
+- **Pedido:** `{ "itemIds": [...] }` (`AplicarDocumentoSchema`): de 1 a 500 UUID, sin repetir. La operadora los elige: nada se aplica solo.
+- **Reglas:** cada ítem tiene que ser del mismo tipo que el documento (el del snapshot del ítem), de una rendición **activa** del mismo período, de un cliente no borrado (un cliente `INACTIVO` con la rendición activa se admite) y estar **pendiente**. Se puede aplicar a varios ítems de la misma rendición.
+- **Todo o nada**, en una transacción serializable: si un ítem no cumple, no se aplica a ninguno. Cada ítem recibe una aplicación vigente y queda `completado` (con `completadoEn`), en la misma transacción. Las rendiciones involucradas se bloquean contra una anulación simultánea.
+- **Concurrencia:** si dos pedidos aplican documentos al mismo ítem a la vez, uno gana y el otro responde `409 ITEM_NO_PENDIENTE`, sin aplicaciones parciales.
+
+| Error          | Cuándo                                                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400`          | `itemIds` vacío, con repetidos, con un id inválido o con más de 500                                                                                     |
+| `404`          | El documento, o algún ítem (o su cliente), no existe                                                                                                    |
+| `409 CONFLICT` | `RENDICION_ANULADA`, `TIPO_DOCUMENTO_DISTINTO`, `PERIODO_DISTINTO` o `ITEM_NO_PENDIENTE`, con el `itemId` del primero que no cumple, en el orden pedido |
+
+#### `POST /rendiciones/:id/items/:itemId/reemplazo`
+
+- **Pedido:** `{ "documentoId": "…", "aplicacionVigenteId": "…" }` (`ReemplazarDocumentoDeItemSchema`). `aplicacionVigenteId` es la aplicación que la operadora vio como vigente (concurrencia optimista).
+- **Reglas:** el ítem es de esa rendición, la rendición está activa, el documento nuevo es del mismo tipo y período, y es otro que el vigente.
+- **Efecto, atómico:** la aplicación anterior recibe `reemplazadaEn` y se crea una nueva con `reemplazaAId`. El ítem sigue completado, con su fecha original. Las aplicaciones del documento anterior en otros ítems no cambian.
+- **Respuesta:** la rendición con su checklist, como la corrección del canal.
+
+| Error          | Cuándo                                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `404`          | La rendición, el ítem (en esa rendición) o el documento no existen                                                                                                       |
+| `409 CONFLICT` | `APLICACION_DESACTUALIZADA` (con la `aplicacionVigenteId` actual, o `null`), `DOCUMENTO_YA_VIGENTE`, `RENDICION_ANULADA`, `TIPO_DOCUMENTO_DISTINTO` o `PERIODO_DISTINTO` |
+
+Dos reemplazos simultáneos de la misma aplicación: uno gana y el otro responde `409 APLICACION_DESACTUALIZADA`.
+
+#### `GET /rendiciones/:id/items/:itemId/aplicaciones`
+
+Todas las aplicaciones del ítem, de la más reciente a la más vieja, cada una con su `estado`, `reemplazaAId` y su documento (`DocumentoSchema`). También de una rendición anulada: es historial. `404` si el ítem no es de esa rendición.
+
+#### El documento vigente en el checklist
+
+En el detalle de una rendición (y en toda respuesta que lleve sus ítems), cada ítem trae `documento`: su documento vigente (`aplicacionId`, `documentoId`, `nombreOriginal`, `tipoContenido`, `tamanioBytes`, `aplicadaEn`) o `null` si no tiene. En `ItemChecklistSchema` el campo todavía es opcional, para no romper al frontend: el backend siempre lo manda.
+
 ## 5. Fuera del alcance de este documento
 
-Autenticación y permisos, carga de documentos (HU2.8), vencimientos y despacho. Se documentan cuando se implementen.
+Autenticación y permisos, eliminación de documentos, vencimientos y despacho. Se documentan cuando se implementen.
 
 ## 6. Cambios que este contrato exige
 

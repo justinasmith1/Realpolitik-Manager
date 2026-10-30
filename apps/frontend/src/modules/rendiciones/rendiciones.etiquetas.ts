@@ -1,3 +1,5 @@
+import type { MotivoNoEnviableType } from '@realpolitik/shared';
+
 import { etiquetaDeMes } from '@/modules/clientes/clientes.etiquetas';
 
 /** Período de una rendición como se lee en pantalla: "Octubre 2026". */
@@ -58,3 +60,9 @@ export function numeroDeWhatsappLegible(numero: string): string {
     : [movilArgentino.slice(0, 3), movilArgentino.slice(3, 6), movilArgentino.slice(6)];
   return `+54 9 ${grupos.join(' ')}`;
 }
+
+/** Por qué no se puede marcar un ítem para enviarlo (`motivoNoEnviable` de shared). */
+export const motivoParaNoEnviar: Record<MotivoNoEnviableType, string> = {
+  ITEM_PENDIENTE: 'Para enviarlo, asociale un documento.',
+  ITEM_SIN_DOCUMENTO_VIGENTE: 'Figura reunido, pero no tiene un documento vigente: no se envía.',
+};

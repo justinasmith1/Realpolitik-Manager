@@ -3,6 +3,7 @@ import {
   ActualizarEstadoRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
+  PrepararEnvioSchema,
   PropagarCanalDeRequisitoSchema,
 } from '@realpolitik/shared';
 import { Router } from 'express';
@@ -18,6 +19,7 @@ import {
   corregirCanalDeItemController,
   listarRendicionesController,
   obtenerRendicionController,
+  prepararEnvioController,
   propagarCanalDeRequisitoController,
 } from './rendiciones.controller';
 
@@ -74,6 +76,13 @@ export const ItemDeRendicionParamsSchema = z.object({
   id: z.string().uuid({ message: 'El ID debe ser un UUID válido.' }),
   itemId: z.string().uuid({ message: 'El ID del ítem debe ser un UUID válido.' }),
 });
+
+// Preparar el envío de los ítems elegidos: solo valida y devuelve sus datos (contrato 4.5).
+rendicionesRouter.post(
+  '/:id/preparar-envio',
+  validate({ params: IdParamsSchema, body: PrepararEnvioSchema }),
+  prepararEnvioController,
+);
 
 // Corregir el canal de un ítem de una rendición activa (contrato 4.5).
 rendicionesRouter.patch(

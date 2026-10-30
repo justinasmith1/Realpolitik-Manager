@@ -2,6 +2,7 @@ import type { TipoDocumento } from '@realpolitik/shared';
 import { PlusIcon } from 'lucide-react';
 import { useId, useRef, useState, type ReactNode } from 'react';
 
+import { DocumentosNav } from '@/components/layout/DocumentosNav';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -197,6 +198,8 @@ export function TiposDocumentoPage() {
           Nuevo tipo
         </Button>
       </div>
+
+      <DocumentosNav />
 
       {aviso !== null && (
         <Alert

@@ -32,11 +32,12 @@ Secuencial, con cuatro dígitos y nombre descriptivo: `NNNN-titulo-en-kebab-case
 
 ## Índice
 
-| ADR                                               | Título                                        | Estado   |
-| ------------------------------------------------- | --------------------------------------------- | -------- |
-| [0001](0001-monorepo-pnpm-typescript.md)          | Monorepo con pnpm workspaces y TypeScript     | Accepted |
-| [0002](0002-modelado-datos.md)                    | Estrategia de modelado de datos para clientes | Proposed |
-| [0003](0003-modelado-requisitos-y-rendiciones.md) | Modelado de requisitos y rendiciones          | Proposed |
+| ADR                                                       | Título                                        | Estado   |
+| --------------------------------------------------------- | --------------------------------------------- | -------- |
+| [0001](0001-monorepo-pnpm-typescript.md)                  | Monorepo con pnpm workspaces y TypeScript     | Accepted |
+| [0002](0002-modelado-datos.md)                            | Estrategia de modelado de datos para clientes | Proposed |
+| [0003](0003-modelado-requisitos-y-rendiciones.md)         | Modelado de requisitos y rendiciones          | Proposed |
+| [0004](0004-reutilizacion-y-almacenamiento-documentos.md) | Reutilización y almacenamiento de documentos  | Proposed |
 
 ## Decisiones todavía abiertas
 
@@ -46,7 +47,7 @@ Se listan sin resolverlas ni crear ADR todavía:
 - hosting del frontend;
 - hosting del backend;
 - hosting de PostgreSQL;
-- almacenamiento de archivos;
+- almacenamiento de archivos (propuesta en [ADR-0004](0004-reutilizacion-y-almacenamiento-documentos.md), pendiente de aprobación);
 - autenticación;
 - proveedor de correo;
 - estrategia de backup y auditoría;
