@@ -9,6 +9,8 @@ import { ApiClientError } from '@/lib/http';
 import {
   interpretarFalloAplicacion,
   interpretarFalloCarga,
+  interpretarFalloReemplazo,
+  sinDocumentosHabilitados,
 } from '@/modules/documentos/api/documentos.api';
 import {
   agruparCandidatos,
@@ -143,5 +145,38 @@ describe('interpretarFalloAplicacion', () => {
     });
     expect(interpretarFalloAplicacion(http(404))).toEqual({ tipo: 'no-existe' });
     expect(interpretarFalloAplicacion(http(500))).toEqual({ tipo: 'inesperado' });
+  });
+});
+
+describe('interpretarFalloReemplazo', () => {
+  it('distingue el vigente desactualizado, el mismo documento y los rechazos', () => {
+    expect(interpretarFalloReemplazo(http(409, { motivo: 'APLICACION_DESACTUALIZADA' }))).toEqual({
+      tipo: 'desactualizada',
+    });
+    expect(interpretarFalloReemplazo(http(409, { motivo: 'DOCUMENTO_YA_VIGENTE' }))).toEqual({
+      tipo: 'ya-vigente',
+    });
+    expect(interpretarFalloReemplazo(http(409, { motivo: 'RENDICION_ANULADA' }))).toEqual({
+      tipo: 'rechazado',
+      motivo: 'RENDICION_ANULADA',
+    });
+    expect(interpretarFalloReemplazo(http(409, { motivo: 'ITEM_NO_PENDIENTE' }))).toEqual({
+      tipo: 'inesperado',
+    });
+    expect(interpretarFalloReemplazo(http(404))).toEqual({ tipo: 'no-existe' });
+    expect(
+      interpretarFalloReemplazo(new ApiClientError({ kind: 'network', message: 'sin red' })),
+    ).toEqual({ tipo: 'conexion' });
+    expect(interpretarFalloReemplazo(http(500))).toEqual({ tipo: 'inesperado' });
+  });
+});
+
+describe('sinDocumentosHabilitados', () => {
+  it('solo un 404 del listado significa que el backend no tiene documentos', () => {
+    expect(sinDocumentosHabilitados(http(404))).toBe(true);
+    expect(sinDocumentosHabilitados(http(500))).toBe(false);
+    expect(
+      sinDocumentosHabilitados(new ApiClientError({ kind: 'network', message: 'sin red' })),
+    ).toBe(false);
   });
 });

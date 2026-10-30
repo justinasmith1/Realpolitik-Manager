@@ -1,6 +1,7 @@
 import type {
   FalloDeAplicacion,
   FalloDeCarga,
+  FalloDeReemplazo,
   MotivoDeRechazoDeAplicacion,
 } from '@/modules/documentos/api/documentos.api';
 
@@ -56,5 +57,49 @@ export function mensajeFalloAplicacion(
       return 'No pudimos conectarnos con el servidor. No se aplicó a ninguno: probá de nuevo.';
     case 'inesperado':
       return 'No se pudo aplicar el documento. No se aplicó a ninguno: probá de nuevo.';
+  }
+}
+
+export const mensajeFalloDescarga = (nombreOriginal: string): string =>
+  `No se pudo descargar ${nombreOriginal}. Probá de nuevo.`;
+
+// Desde el detalle de una rendición se trabaja con un solo ítem: los textos hablan de "este ítem".
+const rechazoDeUnItem: Record<MotivoDeRechazoDeAplicacion, string> = {
+  ITEM_NO_PENDIENTE:
+    'Este ítem ya tiene un documento: lo asociaron mientras tanto. Actualizamos el checklist.',
+  RENDICION_ANULADA: 'La rendición se anuló: ya no se puede modificar.',
+  TIPO_DOCUMENTO_DISTINTO: 'Ese documento ya no corresponde a este ítem. Elegí otro.',
+  PERIODO_DISTINTO: 'Ese documento ya no corresponde a este ítem. Elegí otro.',
+};
+
+/** El fallo de asociar un documento a un ítem desde el detalle de su rendición. */
+export function mensajeFalloAsociacion(fallo: FalloDeAplicacion): string {
+  switch (fallo.tipo) {
+    case 'rechazado':
+      return rechazoDeUnItem[fallo.motivo];
+    case 'no-existe':
+      return 'El documento o el ítem ya no existe. Actualizamos la información.';
+    case 'conexion':
+      return 'No pudimos conectarnos con el servidor. No se asoció: probá de nuevo.';
+    case 'inesperado':
+      return 'No se pudo asociar el documento. Probá de nuevo.';
+  }
+}
+
+/** El fallo de reemplazar el documento de un ítem. */
+export function mensajeFalloReemplazo(fallo: FalloDeReemplazo): string {
+  switch (fallo.tipo) {
+    case 'desactualizada':
+      return 'El documento de este ítem cambió mientras tanto. Actualizamos la información: revisá cuál es el actual y volvé a elegir.';
+    case 'ya-vigente':
+      return 'Ese documento ya es el actual del ítem. Elegí otro.';
+    case 'rechazado':
+      return rechazoDeUnItem[fallo.motivo];
+    case 'no-existe':
+      return 'El documento o el ítem ya no existe. Actualizamos la información.';
+    case 'conexion':
+      return 'No pudimos conectarnos con el servidor. No se reemplazó: probá de nuevo.';
+    case 'inesperado':
+      return 'No se pudo reemplazar el documento. Probá de nuevo.';
   }
 }

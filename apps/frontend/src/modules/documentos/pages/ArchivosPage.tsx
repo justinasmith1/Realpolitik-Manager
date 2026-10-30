@@ -22,9 +22,9 @@ import {
 import { ArchivosErrorState } from '@/modules/documentos/components/ArchivosErrorState';
 import { ArchivosListado } from '@/modules/documentos/components/ArchivosListado';
 import { DocumentoDetalleSheet } from '@/modules/documentos/components/DocumentoDetalleSheet';
-import { descargarDocumento } from '@/modules/documentos/descargarDocumento';
+import { mensajeFalloDescarga } from '@/modules/documentos/components/erroresDeDocumentos';
 import { resumenDeSeleccion } from '@/modules/documentos/documentos.etiquetas';
-import { useDocumentos } from '@/modules/documentos/hooks/useDocumentos';
+import { useDescargas, useDocumentos } from '@/modules/documentos/hooks/useDocumentos';
 import { useFiltrosArchivos } from '@/modules/documentos/hooks/useFiltrosArchivos';
 import {
   opcionesDeAnio,
@@ -84,7 +84,9 @@ export function ArchivosPage() {
     abierto: false,
     documento: null,
   });
-  const [idsDescargando, setIdsDescargando] = useState<readonly string[]>([]);
+  const { idsDescargando, descargar } = useDescargas((documento) =>
+    avisar('destructive', mensajeFalloDescarga(documento.nombreOriginal)),
+  );
 
   const abrirAsistente = (documento: Documento | null) => {
     limpiar();
@@ -107,18 +109,6 @@ export function ArchivosPage() {
         'success',
         `Se guardó ${resultado.documento.nombreOriginal} en el repositorio, sin aplicar. Podés aplicarlo cuando quieras.`,
       );
-    }
-  };
-
-  const descargar = async (documento: { id: string; nombreOriginal: string }) => {
-    if (idsDescargando.includes(documento.id)) return;
-    setIdsDescargando((previos) => [...previos, documento.id]);
-    try {
-      await descargarDocumento(documento);
-    } catch {
-      avisar('destructive', `No se pudo descargar ${documento.nombreOriginal}. Probá de nuevo.`);
-    } finally {
-      setIdsDescargando((previos) => previos.filter((id) => id !== documento.id));
     }
   };
 

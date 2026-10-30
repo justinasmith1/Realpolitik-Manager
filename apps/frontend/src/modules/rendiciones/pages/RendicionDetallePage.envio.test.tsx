@@ -6,6 +6,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
 import {
   CLIENTE_ID,
+  errorJson,
   itemJson,
   json,
   RENDICION_ID,
@@ -13,8 +14,14 @@ import {
   urlDe,
 } from '@/modules/rendiciones/test/rendiciones.fixtures';
 
-// Envío por selección (HU2.5): elegir ítems y ver los datos para mandarlos por su canal. El
-// sistema todavía no envía nada: ningún paso de estos hace un pedido que no sea de lectura.
+// Envío por selección (HU2.5 con HU2.8): elegir ítems y ver los datos para mandarlos por su canal.
+// El sistema todavía no envía nada: el único pedido que no es de lectura es la preparación
+// (`POST /rendiciones/:id/preparar-envio`), que solo valida y no guarda nada.
+//
+// Cambio intencional (HU2.8, bloque 5): antes se podía elegir cualquier ítem, también uno
+// pendiente, y "Enviar" contaba "reunidos o pendientes". Ahora solo se eligen los completados con
+// un documento vigente: lo que se envía es el documento, y tiene que existir. Por eso los ítems
+// del escenario tienen documento, y los pendientes o completados sin documento se prueban aparte.
 
 vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
 
@@ -66,36 +73,82 @@ const CONTACTOS = [contactoJson(1, 'Ana', true), contactoJson(2, 'Beto', false)]
 
 const id = (n: number) => `f1a2b3c4-d5e6-4789-8abc-def01234567${n}`;
 
-/** Factura (correo, reunida), Print 1 de 2 (portal, día 15, pendiente), Print 2 de 2 (correo). */
-const ITEMS = [
-  itemJson({ id: id(0), completado: true, completadoEn: '2026-10-16T12:00:00.000Z' }),
+const documentoJson = (n: number) => ({
+  aplicacionId: `a0a0a0a0-0000-4000-8000-00000000000${n}`,
+  documentoId: `d0d0d0d0-0000-4000-8000-00000000000${n}`,
+  nombreOriginal: `documento-${n}.pdf`,
+  tipoContenido: 'application/pdf',
+  tamanioBytes: 2048,
+  aplicadaEn: '2026-10-16T12:00:00.000Z',
+});
+
+/** Un ítem completado con su documento vigente: se puede enviar. */
+const conDocumento = (n: number, extra: Record<string, unknown> = {}) =>
   itemJson({
-    id: id(1),
+    id: id(n),
+    completado: true,
+    completadoEn: '2026-10-16T12:00:00.000Z',
+    documento: documentoJson(n),
+    ...extra,
+  });
+
+/**
+ * Con documento: Factura (correo), Print 1 de 2 (portal, día 15), Print 2 de 2 (correo) y Remito
+ * (WhatsApp). Sin poder enviarse: Nota de crédito (pendiente) y Constancia (figura reunida pero
+ * sin aplicación vigente, como un dato anterior a HU2.8).
+ */
+const itemsIniciales = () => [
+  conDocumento(0),
+  conDocumento(1, {
     nombreTipoDocumento: 'Print',
     ordinal: 1,
     totalOrdinal: 2,
     diaAproximado: 15,
     canalEntrega: 'PORTAL_WEB',
   }),
-  itemJson({ id: id(2), nombreTipoDocumento: 'Print', ordinal: 2, totalOrdinal: 2 }),
-  itemJson({ id: id(3), nombreTipoDocumento: 'Remito', canalEntrega: 'WHATSAPP' }),
+  conDocumento(2, { nombreTipoDocumento: 'Print', ordinal: 2, totalOrdinal: 2 }),
+  conDocumento(3, { nombreTipoDocumento: 'Remito', canalEntrega: 'WHATSAPP' }),
+  itemJson({ id: id(4), nombreTipoDocumento: 'Nota de crédito', documento: null }),
+  itemJson({
+    id: id(5),
+    nombreTipoDocumento: 'Constancia',
+    completado: true,
+    completadoEn: '2026-10-16T12:00:00.000Z',
+    documento: null,
+  }),
 ];
 
+/**
+ * Servidor de mentira. La preparación devuelve los ítems pedidos, como el backend cuando todos se
+ * pueden enviar; `preparacion` reemplaza esa respuesta. Devuelve el estado: un test lo puede
+ * cambiar para simular lo que pasó mientras tanto.
+ */
 function servir({
   cliente = clienteJson(),
   rendicion = rendicionJson(),
-}: { cliente?: unknown; rendicion?: unknown } = {}) {
-  fetchMock.mockImplementation((entrada) => {
+  preparacion,
+}: { cliente?: unknown; rendicion?: unknown; preparacion?: () => Response } = {}) {
+  const estado = { rendicion, items: itemsIniciales() };
+  fetchMock.mockImplementation((entrada, init) => {
     const path = new URL(urlDe(entrada)).pathname;
     if (path.endsWith('/indicaciones-armado')) {
       return Promise.resolve(json({ indicacionesArmado: null }));
     }
     if (path.endsWith('/contactos')) return Promise.resolve(json(CONTACTOS));
+    if (path.endsWith('/preparar-envio') && init?.method === 'POST') {
+      if (preparacion !== undefined) return Promise.resolve(preparacion());
+      const { itemIds } = JSON.parse(init.body as string) as { itemIds: string[] };
+      const items = estado.items.filter((item) => itemIds.includes(item.id));
+      return Promise.resolve(
+        json({ rendicionId: RENDICION_ID, canal: items[0]?.canalEntrega, items }),
+      );
+    }
     if (path.startsWith('/rendiciones/')) {
-      return Promise.resolve(json({ ...(rendicion as object), items: ITEMS }));
+      return Promise.resolve(json({ ...(estado.rendicion as object), items: estado.items }));
     }
     return Promise.resolve(json(cliente));
   });
+  return estado;
 }
 
 function renderDetalle() {
@@ -126,12 +179,21 @@ async function enviar(user: ReturnType<typeof userEvent.setup>, ...items: string
 const dialogo = (canal: string) =>
   screen.findByRole('alertdialog', { name: `Enviar por ${canal}` });
 
-/** Pedidos que no son de lectura: el envío no debe hacer ninguno. */
+/** Pedidos que no son de lectura, salvo la preparación (que solo valida): no debe haber ninguno. */
 const escrituras = () =>
-  fetchMock.mock.calls.filter(([, init]) => (init?.method ?? 'GET') !== 'GET');
+  fetchMock.mock.calls.filter(
+    ([entrada, init]) =>
+      (init?.method ?? 'GET') !== 'GET' &&
+      !new URL(urlDe(entrada)).pathname.endsWith('/preparar-envio'),
+  );
+
+const preparaciones = () =>
+  fetchMock.mock.calls.filter(([entrada]) =>
+    new URL(urlDe(entrada)).pathname.endsWith('/preparar-envio'),
+  );
 
 describe('RendicionDetallePage: envío por selección', () => {
-  it('"Enviar" cuenta los elegidos, reunidos o pendientes, y sin ninguno está deshabilitado', async () => {
+  it('"Enviar" cuenta los elegidos con documento vigente, y sin ninguno está deshabilitado', async () => {
     servir();
     const { user } = renderDetalle();
     await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
@@ -142,6 +204,88 @@ describe('RendicionDetallePage: envío por selección', () => {
     await user.click(casilla('Print 2 de 2'));
 
     expect(screen.getByRole('button', { name: 'Enviar (2)' })).toBeEnabled();
+  });
+
+  it('un ítem pendiente no se puede elegir y dice por qué', async () => {
+    servir();
+    const { user } = renderDetalle();
+    await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
+
+    expect(casilla('Nota de crédito')).toHaveAttribute('aria-disabled', 'true');
+    expect(casilla('Nota de crédito')).toHaveAccessibleDescription(
+      'Para enviarlo, asociale un documento.',
+    );
+    await user.click(casilla('Nota de crédito'));
+    expect(casilla('Nota de crédito')).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Enviar (0)' })).toBeDisabled();
+  });
+
+  it('no alcanza con estar completado: sin documento vigente no se puede elegir', async () => {
+    servir();
+    renderDetalle();
+    await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
+
+    expect(casilla('Constancia')).toHaveAttribute('aria-disabled', 'true');
+    expect(casilla('Constancia')).toHaveAccessibleDescription(
+      'Figura reunido, pero no tiene un documento vigente: no se envía.',
+    );
+    // Los que tienen documento sí se eligen, y no llevan explicación.
+    expect(casilla('Factura')).not.toHaveAttribute('aria-disabled');
+    expect(casilla('Factura')).not.toHaveAccessibleDescription();
+  });
+
+  it('el servidor confirma la selección y el diálogo muestra lo que devolvió', async () => {
+    servir();
+    const { user } = renderDetalle();
+
+    await enviar(user, 'Factura', 'Print 2 de 2');
+
+    const ventana = within(await dialogo('Correo'));
+    expect(ventana.getByText('Factura')).toBeInTheDocument();
+    const [[, init]] = preparaciones() as [[Parameters<typeof fetch>[0], RequestInit]];
+    expect(JSON.parse(init.body as string)).toEqual({ itemIds: [id(0), id(2)] });
+  });
+
+  it('si un ítem dejó de poder enviarse entre la selección y el envío, refresca y no abre nada', async () => {
+    const estado = servir({
+      preparacion: () =>
+        errorJson(409, 'CONFLICT', { motivo: 'ITEM_SIN_DOCUMENTO_VIGENTE', itemId: id(2) }),
+    });
+    const { user } = renderDetalle();
+    await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
+    await user.click(casilla('Factura'));
+    await user.click(casilla('Print 2 de 2'));
+    // Mientras tanto, Print 2 de 2 quedó sin documento vigente (un dato que cambió en la base).
+    const print2 = estado.items[2];
+    if (print2 !== undefined) Object.assign(print2, { documento: null });
+
+    await user.click(screen.getByRole('button', { name: 'Enviar (2)' }));
+
+    expect(
+      await screen.findByText(
+        'Print 2 de 2 no tiene un documento vigente: no se puede enviar. Actualizamos el checklist: revisá la selección.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(casilla('Print 2 de 2')).toHaveAttribute('aria-disabled', 'true'));
+    expect(casilla('Factura')).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Enviar (1)' })).toBeEnabled();
+  });
+
+  it('si la rendición se anuló entre la selección y el envío, lo avisa y la muestra anulada', async () => {
+    const estado = servir({
+      preparacion: () => errorJson(409, 'CONFLICT', { motivo: 'RENDICION_ANULADA' }),
+    });
+    const { user } = renderDetalle();
+    await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
+    await user.click(casilla('Factura'));
+    estado.rendicion = rendicionJson({ estado: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' });
+
+    await user.click(screen.getByRole('button', { name: 'Enviar (1)' }));
+
+    expect(await screen.findByText(/Se conserva como historial/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Enviar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('con canales mezclados avisa, no abre nada y conserva la selección', async () => {
@@ -160,6 +304,8 @@ describe('RendicionDetallePage: envío por selección', () => {
     expect(casilla('Print 1 de 2')).toBeChecked();
     expect(casilla('Remito')).toBeChecked();
     expect(screen.getByRole('button', { name: 'Enviar (3)' })).toBeEnabled();
+    // Los canales mezclados se avisan sin ir al servidor.
+    expect(preparaciones()).toEqual([]);
   });
 
   describe('por correo', () => {

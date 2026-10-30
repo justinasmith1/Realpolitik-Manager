@@ -16,6 +16,21 @@ function leer(campo: Campo, valores: string[]): number | string | undefined {
   return resultado.success ? resultado.data : undefined;
 }
 
+/** El repositorio con un período y, si se pasa, un tipo ya elegidos (los lee `useFiltrosArchivos`). */
+export function rutaDeArchivos({
+  anio,
+  mes,
+  tipoDocumentoId,
+}: {
+  anio: number;
+  mes: number;
+  tipoDocumentoId?: string;
+}): string {
+  const params = new URLSearchParams({ anio: String(anio), mes: String(mes) });
+  if (tipoDocumentoId !== undefined) params.set('tipo', tipoDocumentoId);
+  return `/documentos/archivos?${params.toString()}`;
+}
+
 /**
  * Período y tipo del repositorio de archivos, guardados en la URL
  * (`/documentos/archivos?anio=2026&mes=10&tipo=…`): se pueden compartir, sobreviven a una recarga

@@ -8,6 +8,7 @@ import type {
   FalloAnulacion,
   FalloApertura,
   FalloCorreccionDeCanal,
+  FalloPreparacionEnvio,
   FalloPropagacion,
 } from '@/modules/rendiciones/api/rendiciones.api';
 import type { CampoAbrirRendicion } from '@/modules/rendiciones/components/abrirRendicionForm.validation';
@@ -137,4 +138,31 @@ export function mensajeFalloPropagacion(
     }
   })();
   return `El requisito quedó guardado, pero no se actualizó ninguna rendición: ${motivo}`;
+}
+
+/**
+ * Por qué no se preparó el envío: se avisa en el checklist, que ya se volvió a pedir. `describir`
+ * nombra el ítem del conflicto si sigue en la rendición.
+ */
+export function mensajeFalloPreparacionEnvio(
+  fallo: FalloPreparacionEnvio,
+  describir: (itemId: string) => string | null,
+): string {
+  switch (fallo.tipo) {
+    case 'rendicion-anulada':
+      return 'La rendición se anuló: ya no se puede enviar.';
+    case 'item-no-enviable': {
+      const item = fallo.itemId === null ? null : describir(fallo.itemId);
+      const quien = item === null ? 'Un ítem elegido' : item;
+      return fallo.motivo === 'ITEM_PENDIENTE'
+        ? `${quien} ya no tiene documento: no se puede enviar. Actualizamos el checklist: revisá la selección.`
+        : `${quien} no tiene un documento vigente: no se puede enviar. Actualizamos el checklist: revisá la selección.`;
+    }
+    case 'canales-distintos':
+      return 'Los ítems elegidos se envían por canales distintos. Actualizamos el checklist: separalos en envíos distintos.';
+    case 'no-existe':
+      return 'La rendición o algún ítem ya no existe. Volvé a cargar la página.';
+    case 'inesperado':
+      return 'No pudimos preparar el envío. Probá de nuevo en unos segundos.';
+  }
 }

@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
 import {
   aplicarDocumento,
@@ -6,12 +7,17 @@ import {
   cargarDocumento,
   detalleDocumentoQueryKey,
   documentosQueryKey,
+  historialDeItemQueryKey,
   listaDocumentosQueryKey,
   listarCandidatos,
   listarDocumentos,
   obtenerDocumento,
+  obtenerHistorialDeItem,
+  reemplazarDocumentoDeItem,
   type FiltrosDocumentos,
+  type ItemDeRendicion,
 } from '@/modules/documentos/api/documentos.api';
+import { descargarDocumento } from '@/modules/documentos/descargarDocumento';
 import { rendicionesQueryKey } from '@/modules/rendiciones/api/rendiciones.api';
 
 /**
@@ -79,4 +85,60 @@ export function useAplicarDocumento() {
         ),
       ]),
   });
+}
+
+/** Historial de documentos de un ítem. Sin ítem, no pide nada. */
+export function useHistorialDeItem(item: ItemDeRendicion | null) {
+  return useQuery({
+    queryKey: historialDeItemQueryKey(item ?? { clienteId: '', rendicionId: '', itemId: '' }),
+    queryFn: ({ signal }) =>
+      obtenerHistorialDeItem(item?.rendicionId ?? '', item?.itemId ?? '', signal),
+    enabled: item !== null,
+  });
+}
+
+export interface ReemplazoPedido extends ItemDeRendicion {
+  documentoId: string;
+  /** La aplicación que la operadora vio como vigente. */
+  aplicacionVigenteId: string;
+}
+
+/**
+ * Reemplaza el documento vigente de un ítem. Sin reintentos. Salga bien o mal, se vuelven a pedir
+ * los documentos (cambian sus aplicaciones vigentes) y las rendiciones del cliente, con el
+ * detalle y el historial: un 409 significa que el ítem cambió y hay que mostrar el vigente de
+ * ahora. La mutación termina recién cuando eso se volvió a pedir.
+ */
+export function useReemplazarDocumentoDeItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rendicionId, itemId, documentoId, aplicacionVigenteId }: ReemplazoPedido) =>
+      reemplazarDocumentoDeItem(rendicionId, itemId, { documentoId, aplicacionVigenteId }),
+    retry: false,
+    onSettled: (_data, _error, { clienteId }) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: documentosQueryKey }),
+        queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+      ]),
+  });
+}
+
+/**
+ * Descargas a través del backend, con los documentos que están descargándose (sus botones
+ * muestran la espera) y sin repetir una que ya está en curso. `onFallo` decide cómo avisarlo.
+ */
+export function useDescargas(onFallo: (documento: { id: string; nombreOriginal: string }) => void) {
+  const [idsDescargando, setIdsDescargando] = useState<readonly string[]>([]);
+  const descargar = async (documento: { id: string; nombreOriginal: string }) => {
+    if (idsDescargando.includes(documento.id)) return;
+    setIdsDescargando((previos) => [...previos, documento.id]);
+    try {
+      await descargarDocumento(documento);
+    } catch {
+      onFallo(documento);
+    } finally {
+      setIdsDescargando((previos) => previos.filter((id) => id !== documento.id));
+    }
+  };
+  return { idsDescargando, descargar };
 }

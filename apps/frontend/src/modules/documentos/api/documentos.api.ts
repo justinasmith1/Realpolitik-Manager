@@ -7,10 +7,15 @@ import {
   CandidatoAplicacionSchema,
   DocumentoConAplicacionesSchema,
   DocumentoResumenSchema,
+  HistorialDeItemSchema,
+  RendicionDetalleSchema,
   ResultadoCargaDocumentoSchema,
   type CandidatoAplicacion,
   type DocumentoConAplicaciones,
   type DocumentoResumen,
+  type HistorialDeItem,
+  type ReemplazarDocumentoDeItemDto,
+  type RendicionDetalle,
   type ResultadoCargaDocumento,
 } from '@realpolitik/shared';
 
@@ -21,6 +26,7 @@ import {
   mensajeDelServidor,
 } from '@/lib/errores-api';
 import { ApiClientError, http } from '@/lib/http';
+import { rendicionesQueryKey } from '@/modules/rendiciones/api/rendiciones.api';
 
 /** Prefijo de todas las queries de documentos: el repositorio, los detalles y los candidatos. */
 export const documentosQueryKey = ['documentos'] as const;
@@ -44,6 +50,20 @@ export const detalleDocumentoQueryKey = (id: string) =>
 
 export const candidatosQueryKey = (id: string) =>
   [...documentosQueryKey, 'candidatos', id] as const;
+
+/** Un ítem de una rendición, con el cliente de la rendición. */
+export interface ItemDeRendicion {
+  clienteId: string;
+  rendicionId: string;
+  itemId: string;
+}
+
+/**
+ * Historial de un ítem. Cuelga de las rendiciones del cliente: se refresca con ellas (al aplicar,
+ * reemplazar o anular).
+ */
+export const historialDeItemQueryKey = ({ clienteId, rendicionId, itemId }: ItemDeRendicion) =>
+  [...rendicionesQueryKey(clienteId), 'historial', rendicionId, itemId] as const;
 
 const conSenal = (signal?: AbortSignal) => (signal ? { signal } : {});
 
@@ -113,6 +133,37 @@ export async function aplicarDocumento(
     body: JSON.stringify({ itemIds }),
   });
   return DocumentoConAplicacionesSchema.parse(await response.json());
+}
+
+const rutaDeItem = (rendicionId: string, itemId: string) =>
+  `/rendiciones/${encodeURIComponent(rendicionId)}/items/${encodeURIComponent(itemId)}`;
+
+/**
+ * `POST /rendiciones/:id/items/:itemId/reemplazo`: cambia el documento vigente de ese ítem, y solo
+ * de ese. Lleva la aplicación que se vio como vigente: si cambió en el medio, 409. Responde la
+ * rendición con su checklist.
+ */
+export async function reemplazarDocumentoDeItem(
+  rendicionId: string,
+  itemId: string,
+  { documentoId, aplicacionVigenteId }: ReemplazarDocumentoDeItemDto,
+): Promise<RendicionDetalle> {
+  const response = await http(`${rutaDeItem(rendicionId, itemId)}/reemplazo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentoId, aplicacionVigenteId }),
+  });
+  return RendicionDetalleSchema.parse(await response.json());
+}
+
+/** `GET /rendiciones/:id/items/:itemId/aplicaciones`: de la más reciente a la más vieja. */
+export async function obtenerHistorialDeItem(
+  rendicionId: string,
+  itemId: string,
+  signal?: AbortSignal,
+): Promise<HistorialDeItem> {
+  const response = await http(`${rutaDeItem(rendicionId, itemId)}/aplicaciones`, conSenal(signal));
+  return HistorialDeItemSchema.parse(await response.json());
 }
 
 /** `GET /documentos/:id/archivo`: el contenido, siempre a través del backend. */
@@ -193,6 +244,43 @@ export function interpretarFalloAplicacion(error: unknown): FalloDeAplicacion {
       const itemId =
         esObjeto(details) && typeof details.itemId === 'string' ? details.itemId : null;
       return { tipo: 'rechazado', motivo, itemId };
+    }
+  }
+  return { tipo: 'inesperado' };
+}
+
+/**
+ * Un 404 al listar documentos. El listado no tiene ese error (un período inválido es un 400): es
+ * que el backend no tiene los documentos habilitados (en producción, por ahora).
+ */
+export const sinDocumentosHabilitados = (error: unknown): boolean => esFalloHttp(error, 404);
+
+/** Por qué falló un reemplazo. */
+export type FalloDeReemplazo =
+  /** Otro cambió el documento del ítem en el medio: hay que volver a mirarlo. */
+  | { tipo: 'desactualizada' }
+  /** El documento elegido ya es el vigente del ítem. */
+  | { tipo: 'ya-vigente' }
+  | { tipo: 'rechazado'; motivo: Exclude<MotivoDeRechazoDeAplicacion, 'ITEM_NO_PENDIENTE'> }
+  /** El documento, la rendición o el ítem ya no existe. */
+  | { tipo: 'no-existe' }
+  | { tipo: 'conexion' }
+  | { tipo: 'inesperado' };
+
+export function interpretarFalloReemplazo(error: unknown): FalloDeReemplazo {
+  if (error instanceof ApiClientError && error.kind === 'network') return { tipo: 'conexion' };
+  if (esFalloHttp(error, 404)) return { tipo: 'no-existe' };
+  if (esFalloHttp(error, 409)) {
+    const motivo = motivoDe(leerCuerpoDeError(error.payload)?.details);
+    switch (motivo) {
+      case 'APLICACION_DESACTUALIZADA':
+        return { tipo: 'desactualizada' };
+      case 'DOCUMENTO_YA_VIGENTE':
+        return { tipo: 'ya-vigente' };
+      case 'RENDICION_ANULADA':
+      case 'TIPO_DOCUMENTO_DISTINTO':
+      case 'PERIODO_DISTINTO':
+        return { tipo: 'rechazado', motivo };
     }
   }
   return { tipo: 'inesperado' };
