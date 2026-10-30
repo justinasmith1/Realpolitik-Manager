@@ -80,3 +80,25 @@ export const motivoParaNoEnviar: Record<MotivoNoEnviableType, string> = {
   ITEM_PENDIENTE: 'Para enviarlo, asociale un documento.',
   ITEM_SIN_DOCUMENTO_VIGENTE: 'Figura reunido, pero no tiene un documento vigente: no se envía.',
 };
+
+// ─── Orden de compra (HU2.11) ─────────────────────────────────────────────────
+
+/** Una OC sin cargar: se dice en tono neutro, no como un error. */
+export const TEXTO_OC_NO_ASIGNADA = 'No asignada';
+export const TEXTO_MONTO_SIN_CARGAR = '-';
+
+const formatoDeMoneda = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+/** Un monto como moneda ("$ 1.250.000"), o un guion si no se cargó. */
+export function etiquetaDeMonto(monto: number | null): string {
+  return monto === null ? TEXTO_MONTO_SIN_CARGAR : formatoDeMoneda.format(monto);
+}
+
+/** El número de OC como se lee en pantalla, o "No asignada" si no se cargó. */
+export const etiquetaDeNumeroOc = (numeroOc: string | null): string =>
+  numeroOc ?? TEXTO_OC_NO_ASIGNADA;

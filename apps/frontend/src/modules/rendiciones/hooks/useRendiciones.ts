@@ -1,4 +1,5 @@
 import type {
+  ActualizarRendicionDto,
   CanalEntregaType,
   CreateRendicionDto,
   ListarRendicionesQuery,
@@ -8,11 +9,13 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/r
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
 import {
   abrirRendicion,
+  actualizarOcDeRendicion,
   agregarRequisitoARendicion,
   anularRendicion,
   corregirCanalDeItem,
   listarRendiciones,
   obtenerRendicion,
+  obtenerUltimaOc,
   prepararEnvio,
   propagarCanalDeRequisito,
   rendicionesQueryKey,
@@ -172,5 +175,47 @@ export function usePrepararEnvio() {
     retry: false,
     onError: (_error, { clienteId }) =>
       queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+  });
+}
+
+// ─── Orden de compra (HU2.11) ─────────────────────────────────────────────────────────────
+
+/**
+ * La OC sugerida: la de la última rendición del cliente que tenga una (`null` si ninguna). Con
+ * `enabled: false` no consulta: solo se pide cuando el formulario de la OC está vacío. Cuelga de la
+ * key de rendiciones del cliente, así guardar una OC la refresca.
+ */
+export function useUltimaOc(clienteId: string, { enabled }: { enabled: boolean }) {
+  return useQuery({
+    queryKey: [...rendicionesQueryKey(clienteId), 'ultima-oc'],
+    queryFn: ({ signal }) => obtenerUltimaOc(clienteId, signal),
+    enabled: enabled && esIdDeRuta(clienteId),
+    // Es una sugerencia: no se reintenta ni se reutiliza una vieja.
+    retry: false,
+    staleTime: 0,
+  });
+}
+
+/**
+ * Guarda los datos de la OC de una rendición. Sin reintentos. Si sale bien, el detalle queda con la
+ * rendición que devolvió el servidor (la cabecera se actualiza sin otro pedido) y el resto de las
+ * consultas del cliente (listado, última OC) se vuelven a pedir.
+ */
+export function useActualizarOcDeRendicion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      rendicionId,
+      datos,
+    }: {
+      clienteId: string;
+      rendicionId: string;
+      datos: ActualizarRendicionDto;
+    }) => actualizarOcDeRendicion(rendicionId, datos),
+    retry: false,
+    onSuccess: (detalle, { clienteId, rendicionId }) => {
+      queryClient.setQueryData(detalleQueryKey(clienteId, rendicionId), detalle);
+      void queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) });
+    },
   });
 }

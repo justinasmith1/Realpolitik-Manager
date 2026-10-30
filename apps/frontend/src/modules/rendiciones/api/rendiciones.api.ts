@@ -9,7 +9,9 @@ import {
   RendicionResumenSchema,
   RendicionSchema,
   ResultadoPropagarCanalSchema,
+  UltimaOcSchema,
   type CanalEntregaType,
+  type ActualizarRendicionDto,
   type ClienteEstadoType,
   type CreateRendicionDto,
   type ListarRendicionesQuery,
@@ -19,6 +21,7 @@ import {
   type RendicionDetalle,
   type RendicionResumen,
   type ResultadoPropagarCanal,
+  type UltimaOc,
 } from '@realpolitik/shared';
 
 import {
@@ -404,6 +407,60 @@ export function interpretarFalloPreparacionEnvio(error: unknown): FalloPreparaci
         typeof details.itemId === 'string' && details.itemId !== '' ? details.itemId : null;
       return { tipo: 'item-no-enviable', motivo: motivo.data, itemId };
     }
+  }
+  return { tipo: 'inesperado' };
+}
+
+// ─── Orden de compra (HU2.11) ─────────────────────────────────────────────────────────────
+
+/** `PATCH /rendiciones/:id`: edita los datos de la OC (`null` borra un dato). */
+export async function actualizarOcDeRendicion(
+  rendicionId: string,
+  datos: ActualizarRendicionDto,
+): Promise<RendicionDetalle> {
+  const response = await http(
+    `/rendiciones/${encodeURIComponent(rendicionId)}`,
+    pedidoJson('PATCH', { ...datos }),
+  );
+  return RendicionDetalleSchema.parse(await response.json());
+}
+
+/**
+ * `GET /clientes/:id/ultima-oc`: la OC de la última rendición del cliente que tenga una, o `null`
+ * si ninguna la tiene.
+ */
+export async function obtenerUltimaOc(clienteId: string, signal?: AbortSignal): Promise<UltimaOc> {
+  const response = await http(
+    `/clientes/${encodeURIComponent(clienteId)}/ultima-oc`,
+    signal ? { signal } : {},
+  );
+  return UltimaOcSchema.parse(await response.json());
+}
+
+/** Por qué no se pudo guardar la OC, en términos del dominio. */
+export type FalloActualizacionOc =
+  | { tipo: 'datos-invalidos'; detalles: DetalleInvalido[] }
+  | { tipo: 'oc-de-otro-cliente' }
+  | { tipo: 'rendicion-anulada' }
+  | { tipo: 'no-existe' }
+  | { tipo: 'inesperado' };
+
+/** Traduce el error de guardar la OC. Mismo criterio que `interpretarFalloAgregado`. */
+export function interpretarFalloActualizacionOc(error: unknown): FalloActualizacionOc {
+  const respuesta = respuestaDeError(error);
+  if (respuesta === null) {
+    return { tipo: 'inesperado' };
+  }
+  if (respuesta.status === 400 && respuesta.cuerpo?.code === 'VALIDATION_ERROR') {
+    return { tipo: 'datos-invalidos', detalles: leerDetallesInvalidos(respuesta.cuerpo.details) };
+  }
+  if (respuesta.status === 404 && respuesta.cuerpo?.code === 'NOT_FOUND') {
+    return { tipo: 'no-existe' };
+  }
+  const details = respuesta.cuerpo?.details;
+  if (respuesta.status === 409 && respuesta.cuerpo?.code === 'CONFLICT' && esObjeto(details)) {
+    if (details.motivo === 'OC_DE_OTRO_CLIENTE') return { tipo: 'oc-de-otro-cliente' };
+    if (details.motivo === 'RENDICION_ANULADA') return { tipo: 'rendicion-anulada' };
   }
   return { tipo: 'inesperado' };
 }
