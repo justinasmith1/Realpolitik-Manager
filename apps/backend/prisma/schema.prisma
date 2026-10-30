@@ -281,6 +281,14 @@ model Rendicion {
   /// que siguen con la regla de unicidad por cliente.
   emisor      Emisor?
 
+  // Orden de compra (HU2.11). Los tres datos son opcionales y de la rendición, no del cliente.
+  // El número puede repetirse entre rendiciones del MISMO cliente (otros meses u otras facturas),
+  // pero no entre clientes: esa regla la valida el servicio (no es un índice único).
+  // CHECK ck_rendicion_numero_oc_no_vacio y ck_rendicion_montos_oc_no_negativos, en SQL.
+  numeroOc      String?  @db.VarChar(100)
+  montoMensual  Decimal? @db.Decimal(14, 2)
+  montoTotal    Decimal? @db.Decimal(14, 2)
+
   // Baja lógica (anular una rendición mal cargada, HU2.5). CHECK ck_rendicion_baja_logica:
   // isDeleted ⇔ deletedAt. La unicidad del número de factura (en cualquier período) vale solo
   // entre las activas: con emisor, (emisor, numeroFactura) entre todos los clientes
@@ -294,6 +302,10 @@ model Rendicion {
   updatedAt   DateTime @updatedAt
 
   items       ItemChecklist[]
+
+  /// Última OC del cliente (GET /clientes/:id/ultima-oc) y chequeo de OC repetida entre clientes.
+  @@index([clienteId, numeroOc])
+  @@index([numeroOc])
 }
 
 // ─── Modelo ItemChecklist ─────────────────────────────────────────────────────
