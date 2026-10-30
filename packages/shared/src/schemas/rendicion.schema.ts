@@ -73,10 +73,46 @@ export const MesSchema = z
   .min(1, { message: MENSAJE_MES })
   .max(12, { message: MENSAJE_MES });
 
+// ─── Orden de compra (HU2.11) ─────────────────────────────────────────────────
+// Los tres datos son opcionales y pertenecen a la rendición, no al cliente. El período no se pide:
+// se hereda de la rendición.
+
+export const NUMERO_OC_MAX = 100;
+/** Tope de `DECIMAL(14,2)`: 12 dígitos enteros y 2 decimales. */
+export const MONTO_OC_MAX = 999_999_999_999.99;
+
+export const MENSAJE_NUMERO_OC = `El número de OC debe tener entre 1 y ${NUMERO_OC_MAX} caracteres.`;
+export const MENSAJE_MONTO_OC =
+  'El monto debe ser un número mayor o igual a 0, con hasta 2 decimales.';
+
+/** Número de OC: texto recortado y no vacío. No tiene formato propio. */
+export const NumeroOcSchema = z
+  .string({ invalid_type_error: MENSAJE_NUMERO_OC })
+  .trim()
+  .min(1, { message: MENSAJE_NUMERO_OC })
+  .max(NUMERO_OC_MAX, { message: MENSAJE_NUMERO_OC });
+
+/** Monto de la OC: no negativo, hasta 2 decimales y dentro del rango de la columna. */
+export const MontoOcSchema = z
+  .number({ invalid_type_error: MENSAJE_MONTO_OC })
+  .finite({ message: MENSAJE_MONTO_OC })
+  .min(0, { message: MENSAJE_MONTO_OC })
+  .max(MONTO_OC_MAX, { message: MENSAJE_MONTO_OC })
+  .refine((monto) => Math.abs(Math.round(monto * 100) - monto * 100) < 1e-6, {
+    message: MENSAJE_MONTO_OC,
+  });
+
+/** Los tres datos de la OC, todos opcionales. */
+const DatosOcCreacionShape = {
+  numeroOc: NumeroOcSchema.optional(),
+  montoMensual: MontoOcSchema.optional(),
+  montoTotal: MontoOcSchema.optional(),
+};
+
 /**
  * Cuerpo de `POST /clientes/:id/rendiciones`: `anio`, `mes`, `numeroFactura` y, opcional, el
- * `emisor` (HU2.9). Ningún otro dato: no hay decisiones de condicionales, todos los requisitos
- * activos entran en el checklist.
+ * `emisor` (HU2.9) y los datos de la OC (HU2.11). Ningún otro dato: no hay decisiones de
+ * condicionales, todos los requisitos activos entran en el checklist.
  *
  * El período puede ser cualquier mes pasado y, como máximo, el mes siguiente al actual (horario de
  * Buenos Aires). Si no, el error cae en `mes`. Es una regla de escritura que depende del reloj:
@@ -93,6 +129,7 @@ export const CreateRendicionSchema = z
      * cliente, y si el cliente tampoco tiene, responde 400 en `emisor`. `null` no se acepta.
      */
     emisor: Emisor.optional(),
+    ...DatosOcCreacionShape,
   })
   .superRefine((datos, ctx) => {
     if (!AnioSchema.safeParse(datos.anio).success || !MesSchema.safeParse(datos.mes).success) {
@@ -122,6 +159,42 @@ export const ActualizarEstadoRendicionSchema = z.object({
 });
 
 export type ActualizarEstadoRendicionDto = z.infer<typeof ActualizarEstadoRendicionSchema>;
+
+export const MENSAJE_ACTUALIZAR_OC_VACIO = 'Indicá al menos un dato de la OC para actualizar.';
+
+/**
+ * Cuerpo de `PATCH /rendiciones/:id` (HU2.11): edita los datos de la OC. Cada campo es opcional:
+ * ausente no se toca, `null` lo borra. Tiene que venir al menos uno.
+ */
+export const ActualizarRendicionSchema = z
+  .object({
+    numeroOc: NumeroOcSchema.nullable().optional(),
+    montoMensual: MontoOcSchema.nullable().optional(),
+    montoTotal: MontoOcSchema.nullable().optional(),
+  })
+  .refine(
+    (datos) =>
+      datos.numeroOc !== undefined ||
+      datos.montoMensual !== undefined ||
+      datos.montoTotal !== undefined,
+    { message: MENSAJE_ACTUALIZAR_OC_VACIO },
+  );
+
+export type ActualizarRendicionDto = z.infer<typeof ActualizarRendicionSchema>;
+
+/**
+ * Respuesta de `GET /clientes/:id/ultima-oc`: los datos de la OC de la rendición más reciente del
+ * cliente que tenga número de OC, o `null` si ninguna lo tiene.
+ */
+export const UltimaOcSchema = z
+  .object({
+    numeroOc: z.string(),
+    montoMensual: z.number().nullable(),
+    montoTotal: z.number().nullable(),
+  })
+  .nullable();
+
+export type UltimaOc = z.infer<typeof UltimaOcSchema>;
 
 // ─── Entidades de lectura ─────────────────────────────────────────────────────
 // Son lo que devuelve la API: validan la forma, sin reglas de escritura (el período, las
@@ -172,6 +245,10 @@ export const RendicionSchema = z.object({
    * (como `estado` en el cliente): un registro anterior no rompe el listado.
    */
   emisor: Emisor.nullable().default(null),
+  /** Orden de compra (HU2.11). `null` si no se cargó; una clave ausente también es `null`. */
+  numeroOc: z.string().nullable().default(null),
+  montoMensual: z.number().nullable().default(null),
+  montoTotal: z.number().nullable().default(null),
   estado: RendicionEstado,
   anuladaEn: z.coerce.date().nullable(),
   creadoEn: z.coerce.date(),
