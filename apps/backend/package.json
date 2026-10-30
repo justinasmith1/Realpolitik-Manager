@@ -33,7 +33,7 @@
     "@realpolitik/shared": "workspace:^",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "multer": "~2.4.0",
+    "multer": "~2.5.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

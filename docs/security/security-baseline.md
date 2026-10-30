@@ -25,6 +25,7 @@ Todo lo que se versiona es visible para cualquiera, incluido el historial. Por e
 - Principio de mínimo privilegio para usuarios, roles, credenciales y accesos.
 - Las subidas de archivos futuras deberán controlar tipo, tamaño, autorización y lugar de almacenamiento.
 - Dependencias: toda dependencia nueva debe estar justificada y revisada. El lockfile (`pnpm-lock.yaml`) está versionado y se instala con `--frozen-lockfile`.
+- Override de seguridad (`pnpm.overrides` en el `package.json` raíz): `body-parser@>=2.0.0 <2.4.0` se fuerza a `>=2.4.0 <3` por [GHSA-27r3-jxmh-p828](https://github.com/advisories/GHSA-27r3-jxmh-p828) (DoS con un cuerpo comprimido). Lo trae `express@5.2.1` (`^2.2.1`) y `pnpm update` no lo actualiza solo. Se quita cuando la versión de Express que use el backend ya resuelva `body-parser >= 2.4.0` por sí misma.
 
 ## Entornos
 

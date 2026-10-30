@@ -789,17 +789,20 @@ Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, 
 
 ### 4.10 Documentos (HU2.8)
 
-Un archivo se carga **una vez**, con su tipo de documento y su período, y después se aplica a ítems de rendiciones de varios clientes (ADR-0004). Esta sección cubre la carga, las consultas y los candidatos. Aplicar y reemplazar se documentan cuando se implementen. Los schemas están en `@realpolitik/shared` (`documento.schema.ts` y `aplicacionDocumento.schema.ts`).
+Un archivo se carga **una vez**, con su tipo de documento y su período, y después se aplica a ítems de rendiciones de varios clientes (ADR-0004). Esta sección cubre la carga, las consultas, los candidatos, la aplicación a varios ítems, el reemplazo y el historial. Los schemas están en `@realpolitik/shared` (`documento.schema.ts` y `aplicacionDocumento.schema.ts`).
 
-> **Deshabilitado en producción.** No hay autenticación: con `NODE_ENV=production`, `/documentos` no se monta (cualquier ruta responde `404 NOT_FOUND`) salvo `DOCUMENTOS_HABILITADOS=true`. Esa variable solo se define cuando hay una protección efectiva del lado del servidor o de la infraestructura. CORS no lo es. En desarrollo y en tests está habilitado. Ver [Despliegue](../deployment.md#variables-del-backend).
+> **Deshabilitado en producción.** No hay autenticación: con `NODE_ENV=production`, `/documentos` (y el reemplazo y el historial, que cuelgan de `/rendiciones`) no se monta (cualquier ruta responde `404 NOT_FOUND`) salvo `DOCUMENTOS_HABILITADOS=true`. Esa variable solo se define cuando hay una protección efectiva del lado del servidor o de la infraestructura. CORS no lo es. En desarrollo y en tests está habilitado. Ver [Despliegue](../deployment.md#variables-del-backend).
 
-| Método y ruta                    | Qué hace                                       | Respuesta OK                               |
-| -------------------------------- | ---------------------------------------------- | ------------------------------------------ |
-| `POST /documentos`               | Carga un documento (sin aplicarlo)             | `201` `ResultadoCargaDocumentoSchema`      |
-| `GET /documentos`                | Repositorio de un período                      | `200` lista de `DocumentoResumenSchema`    |
-| `GET /documentos/:id`            | Un documento y dónde está aplicado             | `200` `DocumentoConAplicacionesSchema`     |
-| `GET /documentos/:id/archivo`    | Descarga el archivo a través del backend       | `200` el contenido (no JSON)               |
-| `GET /documentos/:id/candidatos` | Ítems a los que se podría aplicar el documento | `200` lista de `CandidatoAplicacionSchema` |
+| Método y ruta                                     | Qué hace                                               | Respuesta OK                               |
+| ------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| `POST /documentos`                                | Carga un documento (sin aplicarlo)                     | `201` `ResultadoCargaDocumentoSchema`      |
+| `GET /documentos`                                 | Repositorio de un período                              | `200` lista de `DocumentoResumenSchema`    |
+| `GET /documentos/:id`                             | Un documento y dónde está aplicado                     | `200` `DocumentoConAplicacionesSchema`     |
+| `GET /documentos/:id/archivo`                     | Descarga el archivo a través del backend               | `200` el contenido (no JSON)               |
+| `GET /documentos/:id/candidatos`                  | Ítems a los que se podría aplicar el documento         | `200` lista de `CandidatoAplicacionSchema` |
+| `POST /documentos/:id/aplicaciones`               | Aplica el documento a los ítems elegidos (todo o nada) | `200` `DocumentoConAplicacionesSchema`     |
+| `POST /rendiciones/:id/items/:itemId/reemplazo`   | Reemplaza el documento vigente de un ítem              | `200` `RendicionDetalleSchema`             |
+| `GET /rendiciones/:id/items/:itemId/aplicaciones` | Historial de documentos de un ítem                     | `200` `HistorialDeItemSchema`              |
 
 Ninguna respuesta incluye el hash, la clave del almacenamiento ni URLs del proveedor.
 
@@ -842,9 +845,44 @@ Errores: `404` si el documento no existe y `503 SERVICE_UNAVAILABLE` si el almac
 
 Los ítems a los que se podría aplicar el documento: **mismo `tipoDocumentoId`** que el del snapshot del ítem (no el de la matriz actual), **mismo año y mes**, rendición **activa** de un cliente no borrado e ítem **pendiente** (sin documento vigente). Incluye varias rendiciones del mismo cliente y clientes `INACTIVO` con rendiciones activas (`cliente.estado` lo indica). Cada candidato lleva el UUID del ítem y su ordinal (Print 2/5). Vienen ordenados para agrupar: por cliente, por rendición y, dentro de ella, en el orden del checklist. Hoy todos son `elegibilidad: "ELEGIBLE"`. El sistema solo sugiere: no elige ninguno. `404` si el documento no existe.
 
+#### `POST /documentos/:id/aplicaciones`
+
+- **Pedido:** `{ "itemIds": [...] }` (`AplicarDocumentoSchema`): de 1 a 500 UUID, sin repetir. La operadora los elige: nada se aplica solo.
+- **Reglas:** cada ítem tiene que ser del mismo tipo que el documento (el del snapshot del ítem), de una rendición **activa** del mismo período, de un cliente no borrado (un cliente `INACTIVO` con la rendición activa se admite) y estar **pendiente**. Se puede aplicar a varios ítems de la misma rendición.
+- **Todo o nada**, en una transacción serializable: si un ítem no cumple, no se aplica a ninguno. Cada ítem recibe una aplicación vigente y queda `completado` (con `completadoEn`), en la misma transacción. Las rendiciones involucradas se bloquean contra una anulación simultánea.
+- **Concurrencia:** si dos pedidos aplican documentos al mismo ítem a la vez, uno gana y el otro responde `409 ITEM_NO_PENDIENTE`, sin aplicaciones parciales.
+
+| Error          | Cuándo                                                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400`          | `itemIds` vacío, con repetidos, con un id inválido o con más de 500                                                                                     |
+| `404`          | El documento, o algún ítem (o su cliente), no existe                                                                                                    |
+| `409 CONFLICT` | `RENDICION_ANULADA`, `TIPO_DOCUMENTO_DISTINTO`, `PERIODO_DISTINTO` o `ITEM_NO_PENDIENTE`, con el `itemId` del primero que no cumple, en el orden pedido |
+
+#### `POST /rendiciones/:id/items/:itemId/reemplazo`
+
+- **Pedido:** `{ "documentoId": "…", "aplicacionVigenteId": "…" }` (`ReemplazarDocumentoDeItemSchema`). `aplicacionVigenteId` es la aplicación que la operadora vio como vigente (concurrencia optimista).
+- **Reglas:** el ítem es de esa rendición, la rendición está activa, el documento nuevo es del mismo tipo y período, y es otro que el vigente.
+- **Efecto, atómico:** la aplicación anterior recibe `reemplazadaEn` y se crea una nueva con `reemplazaAId`. El ítem sigue completado, con su fecha original. Las aplicaciones del documento anterior en otros ítems no cambian.
+- **Respuesta:** la rendición con su checklist, como la corrección del canal.
+
+| Error          | Cuándo                                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `404`          | La rendición, el ítem (en esa rendición) o el documento no existen                                                                                                       |
+| `409 CONFLICT` | `APLICACION_DESACTUALIZADA` (con la `aplicacionVigenteId` actual, o `null`), `DOCUMENTO_YA_VIGENTE`, `RENDICION_ANULADA`, `TIPO_DOCUMENTO_DISTINTO` o `PERIODO_DISTINTO` |
+
+Dos reemplazos simultáneos de la misma aplicación: uno gana y el otro responde `409 APLICACION_DESACTUALIZADA`.
+
+#### `GET /rendiciones/:id/items/:itemId/aplicaciones`
+
+Todas las aplicaciones del ítem, de la más reciente a la más vieja, cada una con su `estado`, `reemplazaAId` y su documento (`DocumentoSchema`). También de una rendición anulada: es historial. `404` si el ítem no es de esa rendición.
+
+#### El documento vigente en el checklist
+
+En el detalle de una rendición (y en toda respuesta que lleve sus ítems), cada ítem trae `documento`: su documento vigente (`aplicacionId`, `documentoId`, `nombreOriginal`, `tipoContenido`, `tamanioBytes`, `aplicadaEn`) o `null` si no tiene. En `ItemChecklistSchema` el campo todavía es opcional, para no romper al frontend: el backend siempre lo manda.
+
 ## 5. Fuera del alcance de este documento
 
-Autenticación y permisos, aplicar y reemplazar documentos (HU2.8, bloques siguientes), vencimientos y despacho. Se documentan cuando se implementen.
+Autenticación y permisos, eliminación de documentos, vencimientos y despacho. Se documentan cuando se implementen.
 
 ## 6. Cambios que este contrato exige
 
