@@ -1,6 +1,7 @@
 import type {
   ActualizarCanalDeItemSchema,
   ActualizarEstadoRendicionSchema,
+  ActualizarRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
   PreparacionEnvio,
@@ -10,6 +11,7 @@ import type {
   RendicionDetalle,
   RendicionResumen,
   ResultadoPropagarCanal,
+  UltimaOc,
 } from '@realpolitik/shared';
 import type { Request, Response } from 'express';
 
@@ -23,11 +25,13 @@ import type {
 } from './rendiciones.routes';
 import {
   abrirRendicion,
+  actualizarRendicion,
   agregarRequisitoARendicion,
   anularRendicion,
   corregirCanalDeItem,
   listarRendiciones,
   obtenerRendicion,
+  obtenerUltimaOc,
   prepararEnvio,
   propagarCanalDeRequisito,
 } from './rendiciones.service';
@@ -78,6 +82,28 @@ export async function anularRendicionController(
 ): Promise<void> {
   const rendicion = await anularRendicion(res.locals.validated.params.id);
   res.status(200).json(rendicion);
+}
+
+type ActualizarRendicionLocals = ValidatedLocals<{
+  params: typeof IdParamsSchema;
+  body: typeof ActualizarRendicionSchema;
+}>;
+
+export async function actualizarRendicionController(
+  _req: Request,
+  res: Response<RendicionDetalle, ActualizarRendicionLocals>,
+): Promise<void> {
+  const { params, body } = res.locals.validated;
+  const rendicion = await actualizarRendicion(params.id, body);
+  res.status(200).json(rendicion);
+}
+
+export async function obtenerUltimaOcController(
+  _req: Request,
+  res: Response<UltimaOc, ObtenerRendicionLocals>,
+): Promise<void> {
+  const ultimaOc = await obtenerUltimaOc(res.locals.validated.params.id);
+  res.status(200).json(ultimaOc);
 }
 
 type AgregarRequisitoLocals = ValidatedLocals<{ params: typeof RequisitoDeRendicionParamsSchema }>;

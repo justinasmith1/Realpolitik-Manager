@@ -1,6 +1,7 @@
 import {
   ActualizarCanalDeItemSchema,
   ActualizarEstadoRendicionSchema,
+  ActualizarRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
   PrepararEnvioSchema,
@@ -14,11 +15,13 @@ import { RequisitoParamsSchema } from '../clientes/clientes.routes';
 
 import {
   abrirRendicionController,
+  actualizarRendicionController,
   agregarRequisitoARendicionController,
   anularRendicionController,
   corregirCanalDeItemController,
   listarRendicionesController,
   obtenerRendicionController,
+  obtenerUltimaOcController,
   prepararEnvioController,
   propagarCanalDeRequisitoController,
 } from './rendiciones.controller';
@@ -43,6 +46,12 @@ rendicionesDeClienteRouter.get(
   validate({ params: IdParamsSchema, query: ListarRendicionesQuerySchema }),
   listarRendicionesController,
 );
+// Sugerencia de OC: la de la última rendición del cliente que tenga una (HU2.11).
+rendicionesDeClienteRouter.get(
+  '/:id/ultima-oc',
+  validate({ params: IdParamsSchema }),
+  obtenerUltimaOcController,
+);
 // Pasar el canal actual de un requisito a sus ítems en rendiciones abiertas (contrato 4.5).
 rendicionesDeClienteRouter.post(
   '/:id/requisitos/:requisitoId/propagar-canal',
@@ -54,6 +63,12 @@ rendicionesDeClienteRouter.post(
 export const rendicionesRouter = Router();
 
 rendicionesRouter.get('/:id', validate({ params: IdParamsSchema }), obtenerRendicionController);
+// Editar los datos de la OC (HU2.11).
+rendicionesRouter.patch(
+  '/:id',
+  validate({ params: IdParamsSchema, body: ActualizarRendicionSchema }),
+  actualizarRendicionController,
+);
 rendicionesRouter.patch(
   '/:id/estado',
   validate({ params: IdParamsSchema, body: ActualizarEstadoRendicionSchema }),
