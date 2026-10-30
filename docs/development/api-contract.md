@@ -68,6 +68,7 @@ Todos los errores responden con la misma forma:
   "canalEntrega": "CORREO",
   "portalUrl": null,
   "whatsappNumero": null,
+  "emisor": "SOCIEDAD",
   "periodicidad": { "tipo": "MENSUAL", "diaLimite": 10, "mesInicioCiclo": null },
   "estado": "ACTIVO",
   "matrizConfigurada": false,
@@ -97,6 +98,10 @@ Reglas de los datos:
   - La respuesta se valida con el mismo schema: un `portalUrl` guardado antes de estas reglas (con otro protocolo o con credenciales) hace que las respuestas que incluyen a ese cliente fallen con `500` hasta que se corrija el dato en la base.
 - **Periodicidad (`periodicidad`):** `tipo` es `MENSUAL`, `BIMESTRAL` o `POR_CAMPANIA`. `diaLimite` es un entero de 1 a 28. `mesInicioCiclo` es un entero de 1 a 12, obligatorio si el tipo es `BIMESTRAL`, y debe ser `null` en los demás.
   - Un cliente sin periodicidad configurada la devuelve como `"periodicidad": null`. La clave siempre está presente en la respuesta.
+- **Emisor habitual (`emisor`, HU2.9):** con qué emisor se factura al cliente: `PERSONA_FISICA` (el emisor persona física) o `SOCIEDAD` (el emisor persona jurídica). Cuál corresponde depende de lo que exige el organismo destinatario. Los valores son los tipos de emisor; el nombre de cada emisor que ve la persona vive en un solo lugar del frontend (`etiquetasEmisor`).
+  - **Opcional.** Un cliente sin emisor se guarda igual: el emisor nunca bloquea el alta ni la edición. En la respuesta, un cliente sin emisor **no trae la clave** (como `telefono` o `portalUrl`), a diferencia de `periodicidad`, que viaja como `null`.
+  - **Dato pendiente.** Un cliente sin emisor es un dato pendiente: la ficha del cliente y el formulario lo marcan con "Pendiente". Es un aviso, no un error; el listado no lo marca ni se filtra por emisor. Los clientes anteriores a HU2.9 quedan sin emisor.
+  - Es el emisor **habitual**: un cliente que recibe facturas de los dos emisores el mismo mes elige el emisor de cada una al abrir la rendición. El emisor de la rendición (que copia el del cliente al abrirla) y la unicidad del número de factura por emisor se documentan en la sección 4.5 cuando se implementen; hoy ese contrato no cambió.
 - **Estado:** `ACTIVO`, `INACTIVO` o `SUSPENDIDO`. En este sprint ningún endpoint asigna `SUSPENDIDO`; queda reservado (por ejemplo, para clientes que pausan la publicidad en verano).
 - **Matriz configurada (`matrizConfigurada`):** booleano de solo lectura. `true` si el cliente tiene al menos un requisito activo; `false` si la matriz todavía no se configuró. Lo mantiene el backend. No se envía en el alta ni en la edición: si llega, se ignora. El alta responde `false`.
 - El resto de los campos (`ivaCondicion`, `telefono`, `emailsAdicionales`) se validan según el schema.
@@ -115,10 +120,10 @@ Reglas de los datos:
 
 ### `POST /clientes` (HU1.1, HU1.2, HU1.4, HU1.5)
 
-- **Pedido:** los campos del cliente, sin `id`, `estado`, `matrizConfigurada`, `creadoEn` ni `actualizadoEn`. La periodicidad es opcional al crear: si no se envía, el cliente queda sin periodicidad (`"periodicidad": null` en la respuesta). En el alta no se acepta `"periodicidad": null`; para no configurarla se omite la clave. `canalEntrega` toma `CORREO` por defecto. Si se envía `PORTAL_WEB` es obligatoria la `portalUrl`; si se envía `WHATSAPP` es obligatorio `whatsappNumero`. Si llega `matrizConfigurada`, se ignora.
+- **Pedido:** los campos del cliente, sin `id`, `estado`, `matrizConfigurada`, `creadoEn` ni `actualizadoEn`. La periodicidad es opcional al crear: si no se envía, el cliente queda sin periodicidad (`"periodicidad": null` en la respuesta). En el alta no se acepta `"periodicidad": null`; para no configurarla se omite la clave. `canalEntrega` toma `CORREO` por defecto. Si se envía `PORTAL_WEB` es obligatoria la `portalUrl`; si se envía `WHATSAPP` es obligatorio `whatsappNumero`. Si llega `matrizConfigurada`, se ignora. El `emisor` es opcional: se omite la clave para no asignarlo, y `null` no se acepta en el alta (no hay nada que quitar).
 - **Respuesta 201:** el cliente creado, con `estado` `ACTIVO` y `matrizConfigurada` `false`.
 - **Errores:**
-  - `400 VALIDATION_ERROR`: falta la razón social, la denominación (o supera los 60 caracteres), el CUIT, el sector, el email de rendición o la condición de IVA; CUIT con dígito verificador incorrecto; subtipo ausente en un cliente público; día límite fuera de 1 a 28 o no entero; periodicidad bimestral sin mes de inicio, o con mes fuera de 1 a 12; mes de inicio distinto de `null` en una periodicidad mensual o por campaña; canal `PORTAL_WEB` sin `portalUrl` válida; canal `WHATSAPP` sin `whatsappNumero` válido; canal `CORREO` sin emails de contacto; un texto que supera el largo de su columna (razón social, denominación, emails, teléfono, `portalUrl`) o que tiene caracteres de control; `portalUrl` con un protocolo distinto de `http`/`https` o con usuario y contraseña; emails adicionales repetidos o iguales al email de rendición.
+  - `400 VALIDATION_ERROR`: falta la razón social, la denominación (o supera los 60 caracteres), el CUIT, el sector, el email de rendición o la condición de IVA; CUIT con dígito verificador incorrecto; subtipo ausente en un cliente público; día límite fuera de 1 a 28 o no entero; periodicidad bimestral sin mes de inicio, o con mes fuera de 1 a 12; mes de inicio distinto de `null` en una periodicidad mensual o por campaña; canal `PORTAL_WEB` sin `portalUrl` válida; canal `WHATSAPP` sin `whatsappNumero` válido; canal `CORREO` sin emails de contacto; un texto que supera el largo de su columna (razón social, denominación, emails, teléfono, `portalUrl`) o que tiene caracteres de control; `portalUrl` con un protocolo distinto de `http`/`https` o con usuario y contraseña; emails adicionales repetidos o iguales al email de rendición; `emisor` con un valor que no es `PERSONA_FISICA` ni `SOCIEDAD`, o `null` (el error cae en `details[].campo: "emisor"`).
   - `409 CONFLICT`: ya existe un cliente con ese CUIT, **activo o inactivo**. Se devuelve cuál es, porque HU1.1 pide mostrarlo:
 
 ```json
@@ -163,6 +168,11 @@ Reglas de los datos:
   - Sin la clave `periodicidad`, se conserva la que tenga el cliente.
   - Con un objeto, se configura o se reemplaza completa (`tipo`, `diaLimite` y `mesInicioCiclo`), con las mismas reglas que en el alta.
   - Con `"periodicidad": null`, se borra: el cliente queda sin periodicidad configurada.
+- **Emisor (HU2.9):** tiene tres estados, como la periodicidad:
+  - Sin la clave `emisor`, se conserva el que tenga el cliente.
+  - Con `"PERSONA_FISICA"` o `"SOCIEDAD"`, se asigna o se reemplaza.
+  - Con `"emisor": null`, se quita: el cliente queda sin emisor (pendiente) y la respuesta no trae la clave.
+  - Cualquier otro valor es `400 VALIDATION_ERROR` con `details[].campo: "emisor"`, y no modifica nada.
 - **Cambio de sector:**
   - De `PUBLICO` a `PRIVADO`: el subtipo anterior se descarta.
   - De `PRIVADO` a `PUBLICO`: hay que enviar el `subtipo` en el mismo pedido.
@@ -176,10 +186,10 @@ Reglas de los datos:
 - **Campos que no se envían:** `telefono` y `emailsAdicionales` se conservan si el pedido no los trae.
 - **Respuesta 200:** el cliente actualizado.
 - **Errores:**
-  - `400 VALIDATION_ERROR`: pedido sin campos, CUIT inválido, sector y subtipo inconsistentes, canal y datos de entrega inconsistentes, periodicidad inválida, o cualquiera de los datos inválidos del alta (largos, caracteres de control, `portalUrl`, emails repetidos).
+  - `400 VALIDATION_ERROR`: pedido sin campos, CUIT inválido, sector y subtipo inconsistentes, canal y datos de entrega inconsistentes, periodicidad inválida, `emisor` desconocido, o cualquiera de los datos inválidos del alta (largos, caracteres de control, `portalUrl`, emails repetidos).
   - `404 NOT_FOUND`.
   - `409 CONFLICT`: el CUIT nuevo pertenece **a otro** cliente. Mismo `details` que en `POST`. El CUIT del propio cliente no cuenta como duplicado.
-- **Cómo lo usa el front:** envía **solo los campos que la persona modificó** respecto de los datos con los que abrió la edición, con los grupos que la API exige juntos (sector `PUBLICO` con su `subtipo`, el canal nuevo con su dato de entrega, la periodicidad completa o `null`). Así, si otra persona cambió un campo distinto mientras tanto, ese cambio no se pisa. Sin cambios, no envía nada: "Guardar cambios" queda deshabilitado.
+- **Cómo lo usa el front:** envía **solo los campos que la persona modificó** respecto de los datos con los que abrió la edición, con los grupos que la API exige juntos (sector `PUBLICO` con su `subtipo`, el canal nuevo con su dato de entrega, la periodicidad completa o `null`). El emisor viaja solo si se modificó: "Sin asignar" sobre un emisor existente es `null`. Así, si otra persona cambió un campo distinto mientras tanto, ese cambio no se pisa. Sin cambios, no envía nada: "Guardar cambios" queda deshabilitado.
 - **Valores idénticos:** el contrato no define un "sin cambios" para este endpoint. Un `PATCH` que envía valores iguales a los guardados responde 200 igual y puede actualizar `actualizadoEn`. El front evita mandar un pedido sin cambios, pero la API no lo garantiza. A diferencia de `PATCH /clientes/:id/estado`, que sí responde 200 sin escribir cuando el estado no cambia.
 - **Concurrencia:** no hay control de versión. Dos ediciones del **mismo** campo se resuelven por la última que llega (_last write wins_). Ver la sección 7.
 

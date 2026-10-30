@@ -6,7 +6,7 @@ Accepted
 
 ## Fecha
 
-2026-10-20 (actualizada el 2026-10-21 con la unicidad del nombre del tipo de documento, HU2.1: ver punto 8; y el 2026-10-27 con la corrección del canal de un ítem, punto 9, y las reglas confirmadas con el negocio)
+2026-10-20 (actualizada el 2026-10-21 con la unicidad del nombre del tipo de documento, HU2.1: ver punto 8; el 2026-10-27 con la corrección del canal de un ítem, punto 9, y las reglas confirmadas con el negocio; y el 2026-10-30 con el emisor del cliente, HU2.9: ver punto 11)
 
 ## Contexto
 
@@ -182,6 +182,26 @@ No borra filas ni cambia ids: las FK de requisitos e ítems no se tocan.
 - El canal no viaja en el pedido: el backend lo resuelve con el requisito y el cliente, como al abrir una rendición.
 - La corrección ítem por ítem del punto 9 sigue existiendo para los casos puntuales.
 
+### 11. Emisor del cliente (HU2.9, 30/10/2026)
+
+Se factura con dos emisores: una persona física y una persona jurídica (sociedad). Cuál se usa depende de lo que exige el organismo destinatario. Este punto cubre lo implementado hasta ahora, el emisor **habitual del cliente**; la parte de la rendición, más abajo, todavía no.
+
+**Decisión (implementada).**
+
+- `Cliente.emisor` es un enum de PostgreSQL `Emisor` con dos valores, `PERSONA_FISICA` y `SOCIEDAD`, declarado en `schema.prisma` e isomorfo con `Emisor` de `@realpolitik/shared`. La columna es opcional y sin valor por defecto: las filas existentes quedan en `NULL` (sin emisor). La migración es `20261030120000_hu2_9_emisor_cliente`.
+- **Enum y no tabla de emisores.** Son dos valores fijos y de negocio, y el repositorio ya usa enums isomorfos con shared (ADR-0002). Una tabla agregaría una clave foránea, un seed y una pantalla de administración sin beneficio. Si apareciera un tercer emisor, alcanza con agregar el valor al enum (`ALTER TYPE … ADD VALUE`) y su etiqueta.
+- **Códigos y etiquetas.** Los códigos del enum (`PERSONA_FISICA`, `SOCIEDAD`) son los tipos de emisor y es lo que viaja por la API y se guarda en la base. Lo que ve la persona es el nombre de cada emisor, definido en un solo lugar del frontend, `etiquetasEmisor` en `clientes.etiquetas.ts`; ningún otro archivo repite esos textos.
+- **Va en el DTO de Cliente**, no en un endpoint propio como las indicaciones y las observaciones: es un dato fiscal corto, como el canal o la condición de IVA, y el listado y la ficha lo necesitan. Opcional en lectura y en el alta; en la edición, `null` lo quita.
+- **Opcional y nunca bloquea.** Un cliente sin emisor es un dato pendiente: la ficha y el formulario lo marcan con "Pendiente", con el patrón de punto y texto con tokens de diseño. El listado no lo marca y no hay filtro por emisor.
+
+**Regla confirmada con el negocio (30/10/2026), todavía NO implementada.** La implementación de esta parte es el bloque de la rendición de HU2.9; hasta entonces rige lo de los puntos 1 y 5, y el "A resolver" de Consecuencias sigue abierto.
+
+- Cada emisor tiene su propia numeración de facturas.
+- El número de factura no se repite para el mismo emisor entre las rendiciones activas, aunque sean de clientes distintos: la unicidad pasa de (cliente, `numeroFactura`) a (`emisor`, `numeroFactura`). Las rendiciones anuladas siguen liberando el número, con el mismo predicado del índice actual (`"isDeleted" = false`). El número ya incluye la letra y el punto de venta (`B 00002-00001482`).
+- La misma factura en dos clientes **dejará de aceptarse** cuando el emisor esté modelado; mismo número con distinto emisor se acepta, también entre clientes.
+- `Rendicion.emisor` es una foto: se copia del cliente al abrirla, se puede elegir otro en ese momento (un cliente puede recibir facturas de los dos emisores el mismo mes) y después no se edita; se corrige anulando, como el número y el período. Si el cliente no tiene emisor, hay que elegir uno para abrir la rendición.
+- Las rendiciones existentes quedan sin emisor (`NULL`) y conservan la regla vieja, única por cliente, con un segundo índice parcial. Como `Cliente.emisor` nace vacío no hay nada que copiar, y la migración no puede abortar por eso.
+
 ### Reglas de negocio adicionales (T2.2)
 
 Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo anterior:
@@ -216,6 +236,7 @@ Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo a
   - **`citext`**: solo ignora mayúsculas, no acentos, y es otra extensión.
   - **Validar solo en la aplicación**: carrera entre altas simultáneas y nada protege lo que no pasa por la API.
   - **Guardar el nombre ya normalizado en `nombre`**: se pierde cómo lo escribió la administradora ("Constancia ARCA" se mostraría "constancia arca").
+- **Tabla de emisores** (HU2.9): descartada por lo del punto 11. Dos valores fijos no justifican una tabla con su clave foránea, su seed y su administración; si hiciera falta un tercero, se agrega al enum.
 - **Factura implícita / matriz vacía a propósito**: la idea era que la factura acompañara siempre a la rendición sin figurar en la matriz, y que `matrizConfigurada = true` con la matriz vacía marcara a un cliente que se rinde solo con la factura. Descartada el 20/10/2026: todo cliente pide al menos la factura, así que conviene tratarla como un requisito más (con su cantidad, días y canal, y como ítem del checklist). Así, una matriz sin requisitos activos solo puede significar que falta configurarla, y `matrizConfigurada` se deduce de los requisitos en vez de cargarse a mano.
 
 ## Consecuencias
