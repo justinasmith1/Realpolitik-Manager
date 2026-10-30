@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { Emisor } from './cliente.schema.js';
 import {
   ActualizarEstadoRendicionSchema,
   CreateRendicionSchema,
@@ -119,6 +120,26 @@ describe('CreateRendicionSchema', () => {
       clienteId: CLIENTE_ID,
     });
     expect(Object.keys(r).sort()).toEqual(['anio', 'mes', 'numeroFactura']);
+  });
+
+  describe('emisor (HU2.9)', () => {
+    it('sin emisor el pedido es válido y no lo agrega: lo completa el servidor con el del cliente', () => {
+      conFecha(AHORA);
+      expect(CreateRendicionSchema.parse(pedido)).not.toHaveProperty('emisor');
+    });
+
+    it.each(Emisor.options)('acepta el emisor %s', (emisor) => {
+      conFecha(AHORA);
+      expect(CreateRendicionSchema.parse({ ...pedido, emisor })).toEqual({ ...pedido, emisor });
+    });
+
+    it('rechaza un emisor desconocido y null, cada uno en el path `emisor`', () => {
+      conFecha(AHORA);
+      for (const emisor of ['OTRO', null, '']) {
+        const e = errores(CreateRendicionSchema.safeParse({ ...pedido, emisor }));
+        expect(e.map((x) => x.path)).toEqual([['emisor']]);
+      }
+    });
   });
 
   it('exige anio, mes y numeroFactura, cada uno en su path', () => {
@@ -363,6 +384,37 @@ describe('entidades de lectura', () => {
 
     it('rechaza un estado desconocido', () => {
       expect(RendicionSchema.safeParse({ ...rendicion, estado: 'BORRADA' }).success).toBe(false);
+    });
+
+    describe('emisor (HU2.9)', () => {
+      it.each(Emisor.options)('lee el emisor %s', (emisor) => {
+        expect(RendicionSchema.parse({ ...rendicion, emisor }).emisor).toBe(emisor);
+      });
+
+      it('una rendición sin emisor lo devuelve como null', () => {
+        expect(RendicionSchema.parse({ ...rendicion, emisor: null }).emisor).toBeNull();
+      });
+
+      it('una rendición anterior a HU2.9, que no trae la clave, se lee con emisor null', () => {
+        expect(RendicionSchema.parse(rendicion).emisor).toBeNull();
+      });
+
+      it('rechaza un emisor desconocido', () => {
+        expect(RendicionSchema.safeParse({ ...rendicion, emisor: 'OTRO' }).success).toBe(false);
+      });
+
+      it('el detalle y el resumen lo heredan', () => {
+        expect(
+          RendicionDetalleSchema.parse({ ...rendicion, emisor: 'SOCIEDAD', items: [] }).emisor,
+        ).toBe('SOCIEDAD');
+        expect(
+          RendicionResumenSchema.parse({
+            ...rendicion,
+            emisor: 'PERSONA_FISICA',
+            resumen: { totalItems: 0, completados: 0 },
+          }).emisor,
+        ).toBe('PERSONA_FISICA');
+      });
     });
 
     it('anuladaEn es obligatorio (puede ser null)', () => {
