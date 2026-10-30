@@ -2,6 +2,7 @@ import type { ClienteEstadoType } from '@realpolitik/shared';
 import { screen, waitFor } from '@testing-library/react';
 
 import { RendicionesSection } from '@/modules/rendiciones/components/RendicionesSection';
+import { rutaDeRendicion } from '@/modules/rendiciones/rendiciones.rutas';
 import { renderEnMatriz } from '@/modules/rendiciones/test/renderConRouter';
 import {
   CLIENTE_ID,
@@ -41,7 +42,7 @@ function renderSeccion(estado: ClienteEstadoType = 'ACTIVO', entrada = MATRIZ) {
   const onAviso = vi.fn();
   const resultado = renderEnMatriz(
     <RendicionesSection
-      cliente={{ id: CLIENTE_ID, denominacion: 'Muni Ejemplo', estado }}
+      cliente={{ id: CLIENTE_ID, denominacion: 'Muni Ejemplo', estado, emisor: 'SOCIEDAD' }}
       onAviso={onAviso}
     />,
     entrada,
@@ -64,6 +65,55 @@ const pedidosDelListado = () =>
   fetchMock.mock.calls
     .filter(([, init]) => (init?.method ?? 'GET') === 'GET')
     .map(([entrada]) => urlDe(entrada));
+
+describe('RendicionesSection: "Ver rendición" de un 409 (HU2.9)', () => {
+  const OTRO_CLIENTE_ID = 'a1b2c3d4-e5f6-4789-abcd-ef0123456700';
+
+  it('navega a la rendición existente por la ruta de SU cliente, no del actual (daría 404)', async () => {
+    fetchMock.mockImplementation((entrada, init) => {
+      if ((init?.method ?? 'GET') === 'POST') {
+        return Promise.resolve(
+          errorJson(409, 'CONFLICT', {
+            motivo: 'RENDICION_DUPLICADA',
+            rendicionExistente: {
+              id: OTRA_ID,
+              clienteId: OTRO_CLIENTE_ID,
+              anio: 2026,
+              mes: 9,
+              numeroFactura: 'A 00001-00000001',
+            },
+          }),
+        );
+      }
+      return Promise.resolve(json([]));
+    });
+    const { user, router } = renderEnMatriz(
+      <RendicionesSection
+        cliente={{
+          id: CLIENTE_ID,
+          denominacion: 'Muni Ejemplo',
+          estado: 'ACTIVO',
+          emisor: 'SOCIEDAD',
+        }}
+        onAviso={vi.fn()}
+      />,
+      MATRIZ,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Abrir rendición' }));
+    await user.type(screen.getByLabelText('Número de factura'), 'a 1-1');
+    await user.click(
+      screen.getAllByRole('button', { name: 'Abrir rendición' }).at(-1) as HTMLElement,
+    );
+    await user.click(await screen.findByRole('button', { name: 'Ver rendición' }));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(rutaDeRendicion(OTRO_CLIENTE_ID, OTRA_ID)),
+    );
+    expect(router.state.location.pathname).not.toBe(rutaDeRendicion(CLIENTE_ID, OTRA_ID));
+    expect(await screen.findByText(`Cliente ${OTRO_CLIENTE_ID}`)).toBeInTheDocument();
+  });
+});
 
 describe('RendicionesSection', () => {
   it('mientras carga muestra un esqueleto', async () => {
@@ -166,6 +216,7 @@ describe('RendicionesSection', () => {
               motivo: 'RENDICION_DUPLICADA',
               rendicionExistente: {
                 id: OTRA_ID,
+                clienteId: CLIENTE_ID,
                 anio: 2026,
                 mes: 9,
                 numeroFactura: 'A 00001-00000002',

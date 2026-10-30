@@ -70,6 +70,36 @@ describe('construirCambiosCliente', () => {
     ).toEqual({});
   });
 
+  describe('emisor', () => {
+    const inicialConEmisor: ClienteFormValues = { ...inicialSinPeriodicidad, emisor: 'SOCIEDAD' };
+
+    it('un emisor asignado viaja solo', () => {
+      expect(
+        construirCambiosCliente(
+          { ...publico, emisor: 'PERSONA_FISICA' },
+          modificados('emisor'),
+          inicialSinPeriodicidad,
+        ),
+      ).toEqual({ emisor: 'PERSONA_FISICA' });
+    });
+
+    it('"Sin asignar" sobre un emisor existente es null: quita el emisor', () => {
+      expect(construirCambiosCliente(publico, modificados('emisor'), inicialConEmisor)).toEqual({
+        emisor: null,
+      });
+    });
+
+    it('si el emisor no se modificó, no viaja aunque el cliente tenga uno', () => {
+      expect(
+        construirCambiosCliente(
+          { ...publico, emisor: 'SOCIEDAD' },
+          modificados('razonSocial'),
+          inicialConEmisor,
+        ),
+      ).not.toHaveProperty('emisor');
+    });
+  });
+
   it('periodicidad: "Sin configurar" sobre una existente es null; sobre ninguna, no viaja', () => {
     expect(
       construirCambiosCliente(publico, modificados('periodicidadTipo'), inicialConPeriodicidad),

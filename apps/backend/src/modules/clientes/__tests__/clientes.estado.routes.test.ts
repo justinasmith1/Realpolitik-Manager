@@ -51,6 +51,7 @@ const filaActiva: ClienteRow = {
   matrizConfigurada: false,
   indicacionesArmado: null,
   observaciones: null,
+  emisor: null,
   isDeleted: false,
   deletedAt: null,
   createdAt: AHORA,

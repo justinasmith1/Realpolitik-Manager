@@ -3,7 +3,9 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { etiquetasEmisor } from '@/modules/clientes/clientes.etiquetas';
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
+import { TEXTO_SIN_EMISOR } from '@/modules/rendiciones/rendiciones.etiquetas';
 import {
   CLIENTE_ID,
   errorJson,
@@ -100,6 +102,48 @@ function renderDetalle(ruta = `/clientes/${CLIENTE_ID}/rendiciones/${RENDICION_I
 
 const filas = () =>
   within(screen.getByRole('region', { name: 'Checklist' })).getAllByRole('listitem');
+
+describe('RendicionDetallePage: emisor (HU2.9)', () => {
+  const OTRO_CLIENTE = 'a1b2c3d4-e5f6-4789-abcd-ef0123456700';
+
+  it('muestra el emisor de la rendición con su etiqueta', async () => {
+    servir(() => json({ ...rendicionJson({ emisor: 'PERSONA_FISICA' }), items: ITEMS }));
+    renderDetalle();
+
+    await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
+    const termino = screen.getByText('Emisor', { selector: 'dt' });
+    expect(within(termino.parentElement as HTMLElement).getByRole('definition')).toHaveTextContent(
+      etiquetasEmisor.PERSONA_FISICA,
+    );
+  });
+
+  it('una rendición heredada, sin emisor, dice "Sin emisor" en tono neutro', async () => {
+    servir(() => json({ ...rendicionJson({ emisor: null }), items: ITEMS }));
+    renderDetalle();
+
+    await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
+    const sinEmisor = screen.getByText(TEXTO_SIN_EMISOR);
+    expect(sinEmisor).toHaveClass('text-muted-foreground');
+    expect(sinEmisor).not.toHaveClass('text-warning');
+  });
+
+  it('la rendición de OTRO cliente se abre en la ruta de su propio cliente: no da 404', async () => {
+    servir(() => json({ ...rendicionJson({ clienteId: OTRO_CLIENTE }), items: ITEMS }));
+    renderDetalle(`/clientes/${OTRO_CLIENTE}/rendiciones/${RENDICION_ID}`);
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('La rendición no existe')).not.toBeInTheDocument();
+  });
+
+  it('en cambio, con la ruta del cliente equivocado (el que abría) sí da "no existe"', async () => {
+    servir(() => json({ ...rendicionJson({ clienteId: OTRO_CLIENTE }), items: ITEMS }));
+    renderDetalle(`/clientes/${CLIENTE_ID}/rendiciones/${RENDICION_ID}`);
+
+    expect(await screen.findByText('La rendición no existe')).toBeInTheDocument();
+  });
+});
 
 describe('RendicionDetallePage', () => {
   it('muestra cliente, período, factura, estado y avance', async () => {

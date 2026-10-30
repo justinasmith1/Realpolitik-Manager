@@ -3,7 +3,9 @@ import { CircleAlertIcon, PlusIcon } from 'lucide-react';
 import type { Ref } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { etiquetasEmisor } from '@/modules/clientes/clientes.etiquetas';
 import { CanalEntregaBadge } from '@/modules/clientes/components/CanalEntregaBadge';
+import { EmisorPendiente } from '@/modules/clientes/components/EmisorPendiente';
 import { EstadoBadge } from '@/modules/clientes/components/EstadoBadge';
 import { PeriodicidadTexto } from '@/modules/clientes/components/PeriodicidadTexto';
 import { SectorBadge } from '@/modules/clientes/components/SectorBadge';
@@ -69,6 +71,16 @@ export function MatrizEncabezado({
           <dt className="text-content-secondary">Canal habitual</dt>
           <dd>
             <CanalEntregaBadge canal={cliente.canalEntrega} />
+          </dd>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <dt className="text-content-secondary">Emisor</dt>
+          <dd>
+            {cliente.emisor === undefined ? (
+              <EmisorPendiente />
+            ) : (
+              <span className="font-medium">{etiquetasEmisor[cliente.emisor]}</span>
+            )}
           </dd>
         </div>
         {cliente.periodicidad !== null && (

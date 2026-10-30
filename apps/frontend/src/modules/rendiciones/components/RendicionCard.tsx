@@ -26,7 +26,9 @@ import { useAnularRendicion } from '@/modules/rendiciones/hooks/useRendiciones';
 import {
   avanceDelChecklist,
   checklistCompleto,
+  etiquetaDeEmisor,
   etiquetaDePeriodo,
+  TEXTO_SIN_EMISOR,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 import { rutaDeRendicion } from '@/modules/rendiciones/rendiciones.rutas';
 
@@ -108,6 +110,13 @@ export function RendicionCard({ rendicion, onAnulada, onYaNoExiste }: RendicionC
         </h3>
         <p className="text-sm text-content-secondary">
           Factura <span className="font-mono text-foreground">{rendicion.numeroFactura}</span>
+          <span aria-hidden="true"> · </span>
+          Emisor{' '}
+          {rendicion.emisor === null ? (
+            <span className="text-muted-foreground">{TEXTO_SIN_EMISOR}</span>
+          ) : (
+            <span className="text-foreground">{etiquetaDeEmisor(rendicion.emisor)}</span>
+          )}
         </p>
         <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {anulada && <Badge tone="muted">Anulada</Badge>}

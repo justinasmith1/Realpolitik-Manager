@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { ANIO_MAX, ANIO_MIN, periodoMuyFuturo } from '../utils/periodo.js';
 
-import { CanalEntrega } from './cliente.schema.js';
+import { CanalEntrega, Emisor } from './cliente.schema.js';
 import { DocumentoDeItemSchema } from './documentoDeItem.schema.js';
 
 /** Ejemplo del formato canónico del número de factura, para la ayuda y los errores. */
@@ -33,7 +33,7 @@ export function normalizarNumeroFactura(valor: string): string | null {
 
 /**
  * Número de factura al escribir (alta de una rendición), ya en su formato canónico. Se normaliza
- * antes de validar: la unicidad de la base (cliente + número, entre las rendiciones activas)
+ * antes de validar: la unicidad de la base (emisor + número, entre las rendiciones activas)
  * compara el texto exacto, así que dos escrituras del mismo comprobante tienen que dar el mismo
  * valor. La lectura (`RendicionSchema`) no valida el formato: las rendiciones cargadas antes con
  * otro formato se siguen viendo.
@@ -74,8 +74,9 @@ export const MesSchema = z
   .max(12, { message: MENSAJE_MES });
 
 /**
- * Cuerpo de `POST /clientes/:id/rendiciones`: `anio`, `mes` y `numeroFactura`. Ningún otro dato:
- * no hay decisiones de condicionales, todos los requisitos activos entran en el checklist.
+ * Cuerpo de `POST /clientes/:id/rendiciones`: `anio`, `mes`, `numeroFactura` y, opcional, el
+ * `emisor` (HU2.9). Ningún otro dato: no hay decisiones de condicionales, todos los requisitos
+ * activos entran en el checklist.
  *
  * El período puede ser cualquier mes pasado y, como máximo, el mes siguiente al actual (horario de
  * Buenos Aires). Si no, el error cae en `mes`. Es una regla de escritura que depende del reloj:
@@ -87,6 +88,11 @@ export const CreateRendicionSchema = z
     anio: AnioSchema,
     mes: MesSchema,
     numeroFactura: NumeroFacturaSchema,
+    /**
+     * Emisor de la factura (HU2.9). Opcional: sin él, el servidor usa el emisor habitual del
+     * cliente, y si el cliente tampoco tiene, responde 400 en `emisor`. `null` no se acepta.
+     */
+    emisor: Emisor.optional(),
   })
   .superRefine((datos, ctx) => {
     if (!AnioSchema.safeParse(datos.anio).success || !MesSchema.safeParse(datos.mes).success) {
@@ -160,6 +166,12 @@ export const RendicionSchema = z.object({
   anio: z.number().int(),
   mes: z.number().int(),
   numeroFactura: z.string(),
+  /**
+   * Emisor de la factura (HU2.9): una foto tomada al abrir la rendición. `null` en las
+   * rendiciones anteriores a HU2.9, que no tienen emisor. Al leer, una clave ausente es `null`
+   * (como `estado` en el cliente): un registro anterior no rompe el listado.
+   */
+  emisor: Emisor.nullable().default(null),
   estado: RendicionEstado,
   anuladaEn: z.coerce.date().nullable(),
   creadoEn: z.coerce.date(),

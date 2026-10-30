@@ -63,6 +63,7 @@ const filaGuardada: ClienteRow = {
   matrizConfigurada: false,
   indicacionesArmado: null,
   observaciones: null,
+  emisor: null,
   isDeleted: false,
   deletedAt: null,
   createdAt: AHORA,
@@ -343,6 +344,47 @@ describe('PATCH /clientes/:id', () => {
       const res = await patchCliente(ID, { portalUrl: 'https://nuevo.ejemplo.gob.ar' });
 
       expect(res.status).toBe(400);
+      expect(prismaMock.cliente.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('emisor (HU2.9)', () => {
+    it.each(['PERSONA_FISICA', 'SOCIEDAD'])(
+      'asignar %s lo escribe, no toca nada más y lo devuelve',
+      async (emisor) => {
+        const res = await patchCliente(ID, { emisor });
+
+        expect(res.status).toBe(200);
+        expect(dataEnviada()).toEqual({ emisor });
+        expect(res.body).toMatchObject({ emisor });
+        expect(ClienteSchema.safeParse(res.body).success).toBe(true);
+      },
+    );
+
+    it('emisor: null lo quita y la respuesta no lo trae', async () => {
+      prismaMock.cliente.update.mockImplementation(({ data }) =>
+        Promise.resolve(filaActualizada(data, { ...filaGuardada, emisor: 'SOCIEDAD' })),
+      );
+
+      const res = await patchCliente(ID, { emisor: null });
+
+      expect(res.status).toBe(200);
+      expect(dataEnviada()).toEqual({ emisor: null });
+      expect(res.body).not.toHaveProperty('emisor');
+    });
+
+    it('ausente conserva el existente: no envía la columna', async () => {
+      const res = await patchCliente(ID, { razonSocial: 'Otra S.A.' });
+
+      expect(res.status).toBe(200);
+      expect(dataEnviada()).not.toHaveProperty('emisor');
+    });
+
+    it('un emisor desconocido es 400 con el campo, sin escribir', async () => {
+      const res = await patchCliente(ID, { emisor: 'OTRO' });
+
+      expect(res.status).toBe(400);
+      expect(detalleDeValidacion(res)).toEqual(['emisor']);
       expect(prismaMock.cliente.update).not.toHaveBeenCalled();
     });
   });

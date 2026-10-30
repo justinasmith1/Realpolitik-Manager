@@ -41,6 +41,12 @@ enum CanalEntrega {
   WHATSAPP
 }
 
+/// Emisor con el que se factura (HU2.9): persona física o sociedad. Isomorfo con `Emisor` de shared.
+enum Emisor {
+  PERSONA_FISICA
+  SOCIEDAD
+}
+
 /// Periodicidad con la que se rinde al cliente (HU1.5).
 enum PeriodicidadTipo {
   MENSUAL
@@ -76,14 +82,23 @@ enum PeriodicidadTipo {
 //   ck_item_dia_rango                 diaAproximado NULL o entre 1 y 31
 //   uq_requisito_cliente_tipo_activo  índice único PARCIAL: un solo requisito activo por
 //                                     cliente + tipo de documento (WHERE "isDeleted" = false)
-//   uq_rendicion_factura_activa       índice único PARCIAL: un número de factura en una sola
-//                                     rendición activa del cliente, en cualquier período
-//                                     (WHERE "isDeleted" = false)
+//   uq_rendicion_factura_activa       (reemplazado en HU2.9, ver abajo) índice único PARCIAL: un
+//                                     número de factura en una sola rendición activa del cliente
 // T2.1b: la migración `20261020151824_t2_1b_rendicion_numero_factura` renombra la columna
 // `referencia` a `numeroFactura` y reemplaza ck_rendicion_referencia_no_vacia y
 // uq_rendicion_periodo_activa por los de arriba.
 // HU2.1: la migración `20261021120000_hu2_1_tipo_documento_nombre_normalizado` agrega
 // `TipoDocumento.nombreNormalizado` (único) y quita la unicidad exacta de `nombre`.
+//
+// Emisor de la rendición (HU2.9, ADR-0003 punto 11): la migración
+// `20261030130000_hu2_9_emisor_rendicion` agrega `Rendicion.emisor` y reemplaza
+// uq_rendicion_factura_activa por dos índices únicos PARCIALES, ambos sobre las rendiciones
+// activas (WHERE "isDeleted" = false, el mismo predicado de antes):
+//   uq_rendicion_emisor_factura_activa     (emisor, numeroFactura) entre las que tienen emisor,
+//                                          aunque sean de clientes distintos (AND "emisor" IS NOT NULL)
+//   uq_rendicion_factura_activa_sin_emisor (clienteId, numeroFactura) entre las que no tienen
+//                                          emisor: la regla anterior, para las rendiciones
+//                                          existentes (AND "emisor" IS NULL)
 //
 // Documentos y sus aplicaciones (HU2.8, ADR-0004): CHECK e índice parcial en la migración
 // `20261029120000_hu2_8_documentos_aplicaciones`.
@@ -121,6 +136,10 @@ model Cliente {
   canalEntrega       CanalEntrega @default(CORREO)
   /// Número de WhatsApp normalizado a E.164 (+5493511234567). Obligatorio si canalEntrega = WHATSAPP.
   whatsappNumero     String?  @db.VarChar(16)
+
+  /// Emisor habitual del cliente (HU2.9). Null = pendiente de asignar: no bloquea nada. Sin valor
+  /// por defecto: las filas anteriores quedan sin emisor.
+  emisor             Emisor?
 
   // Periodicidad de rendición (HU1.5). Sin configurar = las tres columnas en null. "Las tres van
   // juntas", "diaLimite 1..28" y "mesInicioCiclo solo en BIMESTRAL": shared (PeriodicidadSchema)
@@ -245,7 +264,7 @@ model RequisitoCliente {
 // ─── Modelo Rendicion ─────────────────────────────────────────────────────────
 
 /// Una rendición del cliente para un período y una factura (T2.1, T2.1b). Puede haber varias
-/// por cliente y mes, una por factura.
+/// por cliente y mes, una por factura. El número de factura es único por emisor (HU2.9).
 model Rendicion {
   id          String   @id @default(uuid()) @db.Uuid
 
@@ -257,10 +276,16 @@ model Rendicion {
   mes         Int      @db.SmallInt
   /// Número de factura. CHECK ck_rendicion_numero_factura_no_vacio.
   numeroFactura String @db.VarChar(100)
+  /// Emisor de esta factura (HU2.9). Es una foto: se copia del cliente al abrir la rendición (o se
+  /// elige otro en ese momento) y no se edita. Null solo en las rendiciones anteriores a HU2.9,
+  /// que siguen con la regla de unicidad por cliente.
+  emisor      Emisor?
 
   // Baja lógica (anular una rendición mal cargada, HU2.5). CHECK ck_rendicion_baja_logica:
-  // isDeleted ⇔ deletedAt. La unicidad cliente + numeroFactura (en cualquier período) vale solo
-  // entre las activas: índice parcial uq_rendicion_factura_activa, en SQL.
+  // isDeleted ⇔ deletedAt. La unicidad del número de factura (en cualquier período) vale solo
+  // entre las activas: con emisor, (emisor, numeroFactura) entre todos los clientes
+  // (uq_rendicion_emisor_factura_activa); sin emisor, (clienteId, numeroFactura)
+  // (uq_rendicion_factura_activa_sin_emisor). Índices parciales, en SQL.
   isDeleted   Boolean   @default(false)
   deletedAt   DateTime?
 

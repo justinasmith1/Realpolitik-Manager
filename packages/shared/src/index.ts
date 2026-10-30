@@ -9,6 +9,7 @@ export {
   ClienteSector,
   ClienteSubtipoPublico,
   CanalEntrega,
+  Emisor,
   PeriodicidadTipo,
   PeriodicidadSchema,
   CuitSchema,
@@ -54,6 +55,7 @@ export type {
   ClienteSector as ClienteSectorType,
   ClienteSubtipoPublico as ClienteSubtipoPublicoType,
   CanalEntrega as CanalEntregaType,
+  Emisor as EmisorType,
   PeriodicidadTipo as PeriodicidadTipoType,
 } from './schemas/cliente.schema.js';
 

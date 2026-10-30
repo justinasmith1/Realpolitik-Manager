@@ -81,7 +81,12 @@ export async function abrirRendicion(
 ): Promise<RendicionDetalle> {
   const response = await http(
     rutaDeRendicionesDe(clienteId),
-    pedidoJson('POST', { anio: datos.anio, mes: datos.mes, numeroFactura: datos.numeroFactura }),
+    pedidoJson('POST', {
+      anio: datos.anio,
+      mes: datos.mes,
+      numeroFactura: datos.numeroFactura,
+      ...(datos.emisor === undefined ? {} : { emisor: datos.emisor }),
+    }),
   );
   return RendicionDetalleSchema.parse(await response.json());
 }
@@ -95,9 +100,13 @@ export async function anularRendicion(rendicionId: string): Promise<Rendicion> {
   return RendicionSchema.parse(await response.json());
 }
 
-/** La rendición activa que ya tiene esa factura, tal como la informa el `409`. */
+/**
+ * La rendición activa que ya tiene esa factura para ese emisor, tal como la informa el `409`. Puede
+ * ser de OTRO cliente: `clienteId` es el de la existente y arma el enlace a su detalle.
+ */
 export interface RendicionExistente {
   id: string;
+  clienteId: string;
   anio: number;
   mes: number;
   numeroFactura: string;
@@ -130,13 +139,21 @@ function leerRendicionExistente(valor: unknown): RendicionExistente | null {
     !esObjeto(valor) ||
     typeof valor.id !== 'string' ||
     valor.id === '' ||
+    typeof valor.clienteId !== 'string' ||
+    valor.clienteId === '' ||
     !esEntero(valor.anio) ||
     !esEntero(valor.mes) ||
     typeof valor.numeroFactura !== 'string'
   ) {
     return null;
   }
-  return { id: valor.id, anio: valor.anio, mes: valor.mes, numeroFactura: valor.numeroFactura };
+  return {
+    id: valor.id,
+    clienteId: valor.clienteId,
+    anio: valor.anio,
+    mes: valor.mes,
+    numeroFactura: valor.numeroFactura,
+  };
 }
 
 function leerEstadoCliente(valor: unknown): ClienteEstadoType | null {

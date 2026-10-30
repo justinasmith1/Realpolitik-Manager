@@ -169,6 +169,7 @@ describe.skipIf(url === undefined)('preparar el envío contra PostgreSQL', () =>
         emailContacto: 'rendiciones@ejemplo.example',
         sector: 'PRIVADO',
         canalEntrega: 'CORREO',
+        emisor: 'SOCIEDAD',
         matrizConfigurada: true,
       },
     });

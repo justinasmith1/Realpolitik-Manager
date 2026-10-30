@@ -21,6 +21,7 @@ import {
   type ClienteSectorType,
   type ClienteSubtipoPublicoType,
   type CreateClienteDto,
+  type EmisorType,
   type IvaCondicionType,
   type PeriodicidadTipoType,
 } from '@realpolitik/shared';
@@ -36,6 +37,8 @@ export interface ClienteFormValues {
   sector: ClienteSectorType | '';
   subtipo: ClienteSubtipoPublicoType | '';
   ivaCondicion: IvaCondicionType | '';
+  /** '' = sin asignar: el emisor es opcional. */
+  emisor: EmisorType | '';
   emailContacto: string;
   canalEntrega: CanalEntregaType;
   portalUrl: string;
@@ -62,6 +65,7 @@ export const valoresInicialesClienteForm: ClienteFormValues = {
   sector: '',
   subtipo: '',
   ivaCondicion: '',
+  emisor: '',
   emailContacto: '',
   canalEntrega: 'CORREO',
   portalUrl: '',
@@ -81,6 +85,7 @@ export function clienteAValoresForm(cliente: Cliente): ClienteFormValues {
     sector: cliente.sector,
     subtipo: cliente.sector === 'PUBLICO' ? cliente.subtipo : '',
     ivaCondicion: cliente.ivaCondicion,
+    emisor: cliente.emisor ?? '',
     emailContacto: cliente.emailContacto,
     canalEntrega: cliente.canalEntrega,
     portalUrl: cliente.portalUrl ?? '',
@@ -93,8 +98,8 @@ export function clienteAValoresForm(cliente: Cliente): ClienteFormValues {
   };
 }
 
-/** Campos que pueden ser obligatorios. El tipo de periodicidad nunca lo es. */
-type CampoObligatorio = Exclude<CampoClienteForm, 'periodicidadTipo'>;
+/** Campos que pueden ser obligatorios. El tipo de periodicidad y el emisor nunca lo son. */
+type CampoObligatorio = Exclude<CampoClienteForm, 'periodicidadTipo' | 'emisor'>;
 
 const mensajesCampoVacio: Record<CampoObligatorio, string> = {
   razonSocial: 'Ingresá la razón social.',
@@ -183,6 +188,7 @@ function aCandidato(valores: ClienteFormValues): Record<string, unknown> {
     sector,
     ...(sector === 'PUBLICO' && valores.subtipo !== '' ? { subtipo: valores.subtipo } : {}),
     ...(valores.ivaCondicion === '' ? {} : { ivaCondicion: valores.ivaCondicion }),
+    ...(valores.emisor === '' ? {} : { emisor: valores.emisor }),
     emailContacto: valores.emailContacto.trim(),
     canalEntrega: valores.canalEntrega,
     ...(valores.canalEntrega === 'PORTAL_WEB' && valores.portalUrl.trim() !== ''
@@ -207,6 +213,8 @@ function aNuevoCliente(datos: CreateClienteDto): NuevoCliente {
     ivaCondicion: datos.ivaCondicion,
     emailContacto: datos.emailContacto,
     canalEntrega: datos.canalEntrega,
+    // Sin emisor, la clave no se envía: `null` solo existe en la edición (quitarlo).
+    ...(datos.emisor === undefined ? {} : { emisor: datos.emisor }),
     ...(datos.portalUrl === undefined ? {} : { portalUrl: datos.portalUrl }),
     ...(datos.whatsappNumero === undefined ? {} : { whatsappNumero: datos.whatsappNumero }),
     // Shared ya dejó solo `tipo`, `diaLimite` y `mesInicioCiclo`, con números de verdad.

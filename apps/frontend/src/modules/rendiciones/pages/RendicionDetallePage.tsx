@@ -44,6 +44,7 @@ import { usePrepararEnvio, useRendicion } from '@/modules/rendiciones/hooks/useR
 import {
   avanceDelChecklist,
   checklistCompleto,
+  etiquetaDeEmisor,
   etiquetaDePeriodo,
   motivoParaNoEnviar,
   nombreDeItem,
@@ -297,6 +298,12 @@ function DetalleDeRendicion({
           <div className="flex gap-1.5">
             <dt className="text-content-secondary">Factura</dt>
             <dd className="font-mono text-foreground">{rendicion.numeroFactura}</dd>
+          </div>
+          <div className="flex gap-1.5">
+            <dt className="text-content-secondary">Emisor</dt>
+            <dd className={rendicion.emisor === null ? 'text-muted-foreground' : 'text-foreground'}>
+              {etiquetaDeEmisor(rendicion.emisor)}
+            </dd>
           </div>
           <div className="flex items-center gap-1.5">
             <dt className="text-content-secondary">Estado</dt>

@@ -6,7 +6,7 @@ Accepted
 
 ## Fecha
 
-2026-10-20 (actualizada el 2026-10-21 con la unicidad del nombre del tipo de documento, HU2.1: ver punto 8; y el 2026-10-27 con la corrección del canal de un ítem, punto 9, y las reglas confirmadas con el negocio)
+2026-10-20 (actualizada el 2026-10-21 con la unicidad del nombre del tipo de documento, HU2.1: ver punto 8; el 2026-10-27 con la corrección del canal de un ítem, punto 9, y las reglas confirmadas con el negocio; y el 2026-10-30 con el emisor del cliente y de la rendición, y la unicidad del número de factura por emisor, HU2.9: ver punto 11)
 
 ## Contexto
 
@@ -34,7 +34,7 @@ Restricciones heredadas de ADR-0002: UUID como clave, baja lógica (`isDeleted` 
   - `matrizConfigurada` (default `false`): indica si el cliente ya tiene su matriz configurada, es decir, al menos un requisito activo. La mantiene el backend: pasa a `true` al haber un requisito activo y vuelve a `false` al dar de baja el último. No se edita a mano. Una matriz sin requisitos activos significa que todavía no se configuró: no existe la "matriz vacía a propósito".
   - `indicacionesArmado` (`VARCHAR(1000)`, opcional): indicaciones de armado del legajo.
   - `observaciones` (`VARCHAR(1000)`, opcional): nota interna con hechos puntuales de la cuenta (HU2.10). Es una sola nota que se reemplaza al guardar, con la misma lógica que `indicacionesArmado`: un campo de `Cliente`, sin tabla aparte.
-- **`Rendicion`**: cliente + `anio` + `mes` + `numeroFactura` (número de factura, obligatorio). Un número de factura está en una sola rendición **activa** del cliente, sin importar el período: la unicidad es (cliente, `numeroFactura`) entre las activas. Un cliente puede tener varias rendiciones en el mismo mes, una por factura, y la misma factura en dos clientes distintos se acepta. La orden de compra se modela aparte en otra HU. Con baja lógica: una rendición abierta con un período o un número de factura mal cargados se anula (`isDeleted`) en vez de borrarse, porque tiene valor fiscal (corrección en HU2.5).
+- **`Rendicion`**: cliente + `anio` + `mes` + `numeroFactura` (número de factura, obligatorio). Un número de factura está en una sola rendición **activa por emisor**, sin importar el período ni el cliente: desde HU2.9 la unicidad es (`emisor`, `numeroFactura`) entre las activas, incluso entre clientes distintos (punto 11; antes era (cliente, `numeroFactura`)). Un cliente puede tener varias rendiciones en el mismo mes, una por factura, y recibir facturas de los dos emisores. `Rendicion.emisor` es una foto tomada al abrirla; es `NULL` en las anteriores a HU2.9, que conservan la regla por cliente. La orden de compra se modela aparte en otra HU. Con baja lógica: una rendición abierta con un período o un número de factura mal cargados se anula (`isDeleted`) en vez de borrarse, porque tiene valor fiscal (corrección en HU2.5).
 - **`ItemChecklist`**: un documento a presentar en una rendición.
 
 ### 2. El checklist es una foto (snapshot)
@@ -77,7 +77,7 @@ Detalle técnico: Prisma crea las listas (`Int[]`) **sin** `NOT NULL`, y en SQL 
 
 ### 5. Unicidad con baja lógica: índices únicos parciales
 
-Un cliente no puede tener dos requisitos **activos** del mismo tipo, pero un requisito dado de baja no debe impedir volver a agregarlo. Lo mismo con las rendiciones: un número de factura no puede estar en dos rendiciones activas del cliente, pero una rendición anulada no debe impedir volver a usarlo en otra bien cargada. Se resuelve con índices únicos parciales, creados a mano en la migración:
+Un cliente no puede tener dos requisitos **activos** del mismo tipo, pero un requisito dado de baja no debe impedir volver a agregarlo. Lo mismo con las rendiciones: un número de factura no puede estar en dos rendiciones activas, pero una rendición anulada no debe impedir volver a usarlo en otra bien cargada. Se resuelve con índices únicos parciales, creados a mano en la migración (el de la factura, tal como se creó en T2.1b; **HU2.9 lo reemplazó por dos**, ver punto 11):
 
 ```sql
 CREATE UNIQUE INDEX "uq_requisito_cliente_tipo_activo"
@@ -182,6 +182,51 @@ No borra filas ni cambia ids: las FK de requisitos e ítems no se tocan.
 - El canal no viaja en el pedido: el backend lo resuelve con el requisito y el cliente, como al abrir una rendición.
 - La corrección ítem por ítem del punto 9 sigue existiendo para los casos puntuales.
 
+### 11. Emisor del cliente (HU2.9, 30/10/2026)
+
+Se factura con dos emisores: una persona física y una persona jurídica (sociedad). Cuál se usa depende de lo que exige el organismo destinatario. Este punto cubre el emisor **habitual del cliente** y el emisor de **cada rendición**, con la unicidad del número de factura por emisor.
+
+**Decisión (implementada).**
+
+- `Cliente.emisor` es un enum de PostgreSQL `Emisor` con dos valores, `PERSONA_FISICA` y `SOCIEDAD`, declarado en `schema.prisma` e isomorfo con `Emisor` de `@realpolitik/shared`. La columna es opcional y sin valor por defecto: las filas existentes quedan en `NULL` (sin emisor). La migración es `20261030120000_hu2_9_emisor_cliente`.
+- **Enum y no tabla de emisores.** Son dos valores fijos y de negocio, y el repositorio ya usa enums isomorfos con shared (ADR-0002). Una tabla agregaría una clave foránea, un seed y una pantalla de administración sin beneficio. Si apareciera un tercer emisor, alcanza con agregar el valor al enum (`ALTER TYPE … ADD VALUE`) y su etiqueta.
+- **Códigos y etiquetas.** Los códigos del enum (`PERSONA_FISICA`, `SOCIEDAD`) son los tipos de emisor y es lo que viaja por la API y se guarda en la base. Lo que ve la persona es el nombre de cada emisor, definido en un solo lugar del frontend, `etiquetasEmisor` en `clientes.etiquetas.ts`; ningún otro archivo repite esos textos.
+- **Va en el DTO de Cliente**, no en un endpoint propio como las indicaciones y las observaciones: es un dato fiscal corto, como el canal o la condición de IVA, y el listado y la ficha lo necesitan. Opcional en lectura y en el alta; en la edición, `null` lo quita.
+- **Opcional y nunca bloquea.** Un cliente sin emisor es un dato pendiente: la ficha y el formulario lo marcan con "Pendiente", con el patrón de punto y texto con tokens de diseño. El listado no lo marca y no hay filtro por emisor.
+
+**Regla confirmada con el negocio (30/10/2026), implementada en el bloque de la rendición de HU2.9.** Reemplaza lo que decía el "A resolver" de Consecuencias (la unicidad por cliente y la numeración propia de cada razón social).
+
+- Cada emisor tiene su propia numeración de facturas.
+- El número de factura no se repite para el mismo emisor entre las rendiciones activas, aunque sean de clientes distintos: la unicidad pasa de (cliente, `numeroFactura`) a (`emisor`, `numeroFactura`). Las rendiciones anuladas siguen liberando el número, con el mismo predicado del índice actual (`"isDeleted" = false`). El número ya incluye la letra y el punto de venta (`B 00002-00001482`).
+- La misma factura del mismo emisor **ya no se acepta en dos clientes**; el mismo número con distinto emisor se acepta, también entre clientes.
+- `Rendicion.emisor` es una foto: se copia del cliente al abrirla, se puede elegir otro en ese momento (un cliente puede recibir facturas de los dos emisores el mismo mes) y después no se edita; se corrige anulando, como el número y el período. Si el cliente no tiene emisor, hay que elegir uno para abrir la rendición.
+- Las rendiciones existentes quedan sin emisor (`NULL`) y conservan la regla vieja, única por cliente, con un segundo índice parcial. Como `Cliente.emisor` nace vacío no hay nada que copiar, y la migración no puede abortar por eso.
+
+**Decisión (rendición, implementada).**
+
+- **Base.** `Rendicion.emisor Emisor?`, migración `20261030130000_hu2_9_emisor_rendicion`, escrita a mano porque Prisma no declara índices parciales. Las filas existentes quedan en `NULL` (sin valor por defecto ni backfill: copiar el emisor habitual del cliente sería adivinar un dato fiscal, justo el caso de un cliente que recibe de los dos emisores). Reemplaza `uq_rendicion_factura_activa` por dos índices con el mismo predicado de baja lógica (`"isDeleted" = false`):
+
+```sql
+CREATE UNIQUE INDEX "uq_rendicion_factura_activa_sin_emisor"
+  ON "Rendicion"("clienteId", "numeroFactura")
+  WHERE "isDeleted" = false AND "emisor" IS NULL;
+
+CREATE UNIQUE INDEX "uq_rendicion_emisor_factura_activa"
+  ON "Rendicion"("emisor", "numeroFactura")
+  WHERE "isDeleted" = false AND "emisor" IS NOT NULL;
+```
+
+- **La migración no puede abortar por datos existentes:** la columna es `NULL` en todas las filas, `..._sin_emisor` cubre las mismas filas y columnas que el índice anterior (que ya las garantizaba únicas) y `..._emisor_factura` empieza sin ninguna fila que lo cubra. Se verificó con datos heredados (la misma factura activa en dos clientes y anuladas repetidas) y con `prisma migrate diff` vacío contra el schema.
+- **Servicio.** `emisor = pedido.emisor ?? cliente.emisor`, resuelto dentro de la transacción del alta; si no hay ninguno, `400` con `campo: 'emisor'`. Toda rendición nueva nace con emisor, así que solo puede chocar con el índice por emisor. No hay verificación previa: se inserta y, si el índice rechaza la fila, se responde `409 RENDICION_DUPLICADA` con la existente, buscada por (emisor, número) entre las activas de **todos** los clientes. `details.rendicionExistente` incluye el `clienteId` porque puede ser de otro cliente. No se busca entre las heredadas sin emisor: con una heredada la alta no choca (no comparten índice) y buscarlas podría llevar a la rendición equivocada.
+- **Foto.** El emisor de la rendición no se vuelve a leer del cliente: cambiar o quitar el emisor del cliente no modifica una rendición abierta, y la rendición no se edita (se corrige anulando).
+- **Frontend.** "Abrir rendición" tiene un selector de emisor, precargado con el del cliente y editable para esa rendición; si el cliente no tiene, arranca vacío y es obligatorio. "Ver rendición" del 409 navega con el `clienteId` de la existente. Las rendiciones heredadas muestran "Sin emisor" en tono neutro.
+
+**Consecuencias de la migración.**
+
+- **(a)** Una rendición heredada sin emisor y una nueva con emisor pueden repetir el número de factura en el mismo cliente sin que los índices lo detecten: cada una cae en un índice distinto. Es lo que resulta de que las existentes mantengan la regla vieja. Hoy solo hay datos de prueba, así que no se asigna un emisor a las heredadas.
+- **(b)** `uq_rendicion_factura_activa_sin_emisor` queda sin uso cuando no queden rendiciones heredadas activas, y se puede quitar entonces (con una migración que lo elimine).
+- **(c)** Con índices parciales creados en SQL, Prisma informa como `meta.target` del P2002 las **columnas** del índice (`['emisor', 'numeroFactura']` o `['clienteId', 'numeroFactura']`) y no su nombre. Se verificó contra PostgreSQL 16, también dentro de una transacción serializable y con altas concurrentes. Por eso `esFacturaDuplicada` acepta ambas formas (columnas y nombres de los dos índices), y hay un test de integración que provoca cada violación y comprueba lo que informa Prisma.
+
 ### Reglas de negocio adicionales (T2.2)
 
 Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo anterior:
@@ -203,7 +248,7 @@ Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo a
 
 - **Requisitos condicionales** (obligatorio / condicional, con una decisión por período): descartados en la validación con la administradora el 18/10/2026. Todo requisito de la matriz entra siempre en el checklist.
 - **Rendición única por cliente + mes**: no alcanza; un cliente puede tener varias facturas en el mismo mes, cada una con su legajo. La unicidad es por número de factura.
-- **Referencia libre (factura u orden)**: un único campo `referencia` que admitiera el número de factura o el de la orden de compra, con unicidad por cliente + período + referencia. Descartada el 20/10/2026 (confirmado por el dueño): la orden de compra se repite entre meses y entre facturas del mismo mes, y puede no existir, así que no identifica una rendición. La factura sí: el campo pasa a ser `numeroFactura`, único por cliente entre las activas, y la orden de compra se modela aparte en otra HU.
+- **Referencia libre (factura u orden)**: un único campo `referencia` que admitiera el número de factura o el de la orden de compra, con unicidad por cliente + período + referencia. Descartada el 20/10/2026 (confirmado por el dueño): la orden de compra se repite entre meses y entre facturas del mismo mes, y puede no existir, así que no identifica una rendición. La factura sí: el campo pasa a ser `numeroFactura`, único por cliente entre las activas (desde HU2.9, por emisor: punto 11), y la orden de compra se modela aparte en otra HU.
 - **Tabla aparte para las indicaciones de armado**: es un único texto libre por cliente, sin historial ni estructura propia; una tabla agregaba un join sin beneficio. Queda como campo de `Cliente`.
 - **Tabla aparte o historial para las observaciones internas** (HU2.10): misma lógica que las indicaciones. Es una sola nota por cliente, que se reemplaza al guardar, sin historial ni estructura propia. Queda como campo de `Cliente` (`observaciones`).
 - **Tilde manual del checklist**: descartado el 19/10/2026. Un ítem se completa solo al aplicarle un documento (HU2.8), así el progreso siempre está respaldado por un archivo.
@@ -216,6 +261,7 @@ Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo a
   - **`citext`**: solo ignora mayúsculas, no acentos, y es otra extensión.
   - **Validar solo en la aplicación**: carrera entre altas simultáneas y nada protege lo que no pasa por la API.
   - **Guardar el nombre ya normalizado en `nombre`**: se pierde cómo lo escribió la administradora ("Constancia ARCA" se mostraría "constancia arca").
+- **Tabla de emisores** (HU2.9): descartada por lo del punto 11. Dos valores fijos no justifican una tabla con su clave foránea, su seed y su administración; si hiciera falta un tercero, se agrega al enum.
 - **Factura implícita / matriz vacía a propósito**: la idea era que la factura acompañara siempre a la rendición sin figurar en la matriz, y que `matrizConfigurada = true` con la matriz vacía marcara a un cliente que se rinde solo con la factura. Descartada el 20/10/2026: todo cliente pide al menos la factura, así que conviene tratarla como un requisito más (con su cantidad, días y canal, y como ítem del checklist). Así, una matriz sin requisitos activos solo puede significar que falta configurarla, y `matrizConfigurada` se deduce de los requisitos en vez de cargarse a mano.
 
 ## Consecuencias
@@ -229,8 +275,7 @@ Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo a
 - **A resolver**:
   - T2.2 tiene que implementar la generación del checklist con exactamente estas reglas de copia y resolución de canal.
   - Las consultas de rendiciones tienen que filtrar `isDeleted = false`. El endpoint o botón para anular una rendición lo define T2.3 / HU2.5.
-  - La unicidad de `numeroFactura` es por cliente, no global, porque facturan dos razones sociales, cada una con su numeración propia.
-  - Un mismo cliente puede recibir facturas de las dos razones sociales emisoras, cada una con su numeración; cuando se modele el emisor (HU2.9–2.12), la unicidad pasa a (emisor, numeroFactura).
+  - Hecho (HU2.9, confirmado con el negocio el 30/10/2026): la unicidad de `numeroFactura` ya no es por cliente sino por emisor, (`emisor`, `numeroFactura`) entre las rendiciones activas e incluso entre clientes, porque cada emisor tiene su propia numeración. Un mismo cliente puede recibir facturas de los dos emisores: cada rendición guarda el suyo. Las rendiciones anteriores, sin emisor, conservan la regla por cliente. Ver el punto 11, con las consecuencias de la migración.
   - El seed actual borra todos los clientes con `deleteMany`. Con `Rendicion → Cliente` en `Restrict`, ese borrado va a fallar en cuanto la base de desarrollo tenga rendiciones. Se decidió dejarlo así (frenar es más seguro que borrar rendiciones en silencio) y revisarlo cuando existan.
   - Si en algún momento cambia la estrategia de índices de Prisma (por ejemplo, una versión que soporte índices parciales en el schema), conviene declarar `uq_requisito_cliente_tipo_activo` también ahí.
   - Hecho (HU2.1): los endpoints de tipos de documento calculan `nombreNormalizado` en cada alta y edición, traducen el `P2002` sobre `nombreNormalizado` en un conflicto, y el contrato de API (4.1) quedó actualizado.

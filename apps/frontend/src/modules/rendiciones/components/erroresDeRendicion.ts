@@ -16,7 +16,10 @@ import { etiquetaDePeriodo } from '@/modules/rendiciones/rendiciones.etiquetas';
 
 /** Lo que se puede hacer a partir del error, además de leerlo. */
 export type AccionSugerida =
-  { tipo: 'ver-rendicion'; rendicionId: string } | { tipo: 'configurar-matriz' };
+  { tipo: 'ver-rendicion'; rendicionId: string; clienteId: string } | { tipo: 'configurar-matriz' };
+
+/** La factura ya está para ese emisor: el número no se repite entre rendiciones activas. */
+const MENSAJE_FACTURA_REPETIDA = 'Ese número de factura ya existe para este emisor.';
 
 export interface ErroresDeApertura {
   campos?: Partial<Record<CampoAbrirRendicion, string>>;
@@ -28,7 +31,7 @@ const MENSAJE_INESPERADO = 'No pudimos abrir la rendición. Probá de nuevo en u
 const MENSAJE_DATO_INVALIDO = 'Revisá este dato.';
 
 const esCampo = (campo: string): campo is CampoAbrirRendicion =>
-  campo === 'mes' || campo === 'anio' || campo === 'numeroFactura';
+  campo === 'mes' || campo === 'anio' || campo === 'emisor' || campo === 'numeroFactura';
 
 /** Errores del formulario de apertura para cada fallo. */
 export function erroresDeApertura(fallo: FalloApertura): ErroresDeApertura {
@@ -36,12 +39,17 @@ export function erroresDeApertura(fallo: FalloApertura): ErroresDeApertura {
     case 'rendicion-duplicada': {
       const existente = fallo.rendicionExistente;
       if (existente === null) {
-        return { campos: { numeroFactura: 'Esa factura ya está en otra rendición del cliente.' } };
+        return { campos: { numeroFactura: MENSAJE_FACTURA_REPETIDA } };
       }
       return {
-        campos: { numeroFactura: 'Esa factura ya está en otra rendición del cliente.' },
-        general: `Ya hay una rendición abierta con la factura ${existente.numeroFactura} (${etiquetaDePeriodo(existente)}).`,
-        accion: { tipo: 'ver-rendicion', rendicionId: existente.id },
+        campos: { numeroFactura: MENSAJE_FACTURA_REPETIDA },
+        general: `Ya hay una rendición abierta con la factura ${existente.numeroFactura} (${etiquetaDePeriodo(existente)}) para este emisor.`,
+        // El enlace usa el cliente de la existente: puede ser otro, y con el actual daría 404.
+        accion: {
+          tipo: 'ver-rendicion',
+          rendicionId: existente.id,
+          clienteId: existente.clienteId,
+        },
       };
     }
     case 'matriz-vacia':

@@ -65,6 +65,7 @@ async function clienteConFactura() {
       emailContacto: 'rendiciones@ejemplo.example',
       sector: 'PRIVADO',
       canalEntrega: 'CORREO',
+      emisor: 'SOCIEDAD',
     },
   });
   clientesCreados.push(cliente.id);

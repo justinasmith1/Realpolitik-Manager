@@ -7,6 +7,7 @@ import {
   ClienteSubtipoPublico,
   CreateClienteSchema,
   CuitSchema,
+  Emisor,
   IvaCondicion,
   PeriodicidadSchema,
   PeriodicidadTipo,
@@ -1285,5 +1286,89 @@ describe('ActualizarEstadoClienteSchema', () => {
     });
     expect(resultado.success).toBe(true);
     if (resultado.success) expect(resultado.data).toEqual({ estado: 'INACTIVO' });
+  });
+});
+
+// ─── Emisor del cliente (HU2.9) ───────────────────────────────────────────────────────
+
+describe('Emisor del cliente (HU2.9)', () => {
+  const altaPrivado = {
+    razonSocial: clientePrivado.razonSocial,
+    denominacion: clientePrivado.denominacion,
+    cuit: clientePrivado.cuit,
+    ivaCondicion: clientePrivado.ivaCondicion,
+    emailContacto: clientePrivado.emailContacto,
+    sector: clientePrivado.sector,
+  };
+
+  it('Emisor admite persona física y sociedad, y nada más', () => {
+    expect(Emisor.options).toEqual(['PERSONA_FISICA', 'SOCIEDAD']);
+    expect(Emisor.safeParse('OTRO').success).toBe(false);
+  });
+
+  describe('ClienteSchema (lectura)', () => {
+    it.each(Emisor.options)('devuelve el emisor %s', (emisor) => {
+      const resultado = ClienteSchema.safeParse({ ...clientePrivado, emisor });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data.emisor).toBe(emisor);
+    });
+
+    it('un cliente sin emisor es válido: el campo queda ausente', () => {
+      const resultado = ClienteSchema.safeParse(clientePrivado);
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data).not.toHaveProperty('emisor');
+    });
+
+    it('rechaza un emisor desconocido', () => {
+      const resultado = ClienteSchema.safeParse({ ...clientePrivado, emisor: 'OTRO' });
+      expect(resultado.success).toBe(false);
+    });
+  });
+
+  describe('CreateClienteSchema', () => {
+    it('acepta el alta sin emisor y no lo agrega', () => {
+      const resultado = CreateClienteSchema.safeParse(altaPrivado);
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data).not.toHaveProperty('emisor');
+    });
+
+    it.each(Emisor.options)('acepta el alta con emisor %s', (emisor) => {
+      const resultado = CreateClienteSchema.safeParse({ ...altaPrivado, emisor });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data.emisor).toBe(emisor);
+    });
+
+    it('rechaza un emisor desconocido y null (en el alta no hay nada que quitar)', () => {
+      for (const emisor of ['OTRO', null]) {
+        const resultado = CreateClienteSchema.safeParse({ ...altaPrivado, emisor });
+        expect(resultado.success).toBe(false);
+        expect(resultado.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['emisor']);
+      }
+    });
+  });
+
+  describe('UpdateClienteSchema', () => {
+    it.each(Emisor.options)('acepta emisor %s como único cambio', (emisor) => {
+      const resultado = UpdateClienteSchema.safeParse({ emisor });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data).toEqual({ emisor });
+    });
+
+    it('acepta emisor: null como único cambio y lo conserva (quitar el emisor)', () => {
+      const resultado = UpdateClienteSchema.safeParse({ emisor: null });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data).toEqual({ emisor: null });
+    });
+
+    it('sin emisor no agrega ninguno: ausente significa no modificar', () => {
+      const resultado = UpdateClienteSchema.safeParse({ razonSocial: 'Otra S.A.' });
+      expect(resultado.success).toBe(true);
+      if (resultado.success) expect(resultado.data).not.toHaveProperty('emisor');
+    });
+
+    it('rechaza un emisor desconocido', () => {
+      const resultado = UpdateClienteSchema.safeParse({ emisor: 'OTRO' });
+      expect(resultado.success).toBe(false);
+    });
   });
 });

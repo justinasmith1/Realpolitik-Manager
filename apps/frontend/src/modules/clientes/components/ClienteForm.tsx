@@ -2,6 +2,7 @@ import {
   CanalEntrega,
   ClienteSector,
   ClienteSubtipoPublico,
+  Emisor,
   INDICACIONES_ARMADO_MAX,
   IndicacionesArmadoSchema,
   IvaCondicion,
@@ -23,10 +24,12 @@ import { enfocarYMostrar } from '@/lib/focus';
 import type { NuevoCliente } from '@/modules/clientes/api/clientes.api';
 import {
   etiquetasCanalEntrega,
+  etiquetasEmisor,
   etiquetasIvaCondicion,
   etiquetasPeriodicidad,
   etiquetasSector,
   etiquetasSubtipo,
+  TEXTO_EMISOR_SIN_ASIGNAR,
   nombresDeMes,
 } from '@/modules/clientes/clientes.etiquetas';
 import {
@@ -39,6 +42,7 @@ import {
   type CampoClienteForm,
   type ClienteFormValues,
 } from '@/modules/clientes/components/clienteForm.validation';
+import { EmisorPendiente } from '@/modules/clientes/components/EmisorPendiente';
 import { IndicacionesArmadoSection } from '@/modules/clientes/components/IndicacionesArmadoSection';
 import { ObservacionesSection } from '@/modules/clientes/components/ObservacionesSection';
 
@@ -146,6 +150,10 @@ const opcionesCanal: SelectOption[] = CanalEntrega.options.map((valor) => ({
   value: valor,
   label: etiquetasCanalEntrega[valor],
 }));
+const opcionesEmisor: SelectOption[] = [
+  { value: '', label: TEXTO_EMISOR_SIN_ASIGNAR },
+  ...Emisor.options.map((valor) => ({ value: valor, label: etiquetasEmisor[valor] })),
+];
 const opcionesPeriodicidad: SelectOption[] = [
   { value: '', label: 'Sin configurar' },
   ...PeriodicidadTipo.options.map((valor) => ({
@@ -166,6 +174,7 @@ const ordenDeCampos: readonly CampoClienteForm[] = [
   'sector',
   'subtipo',
   'ivaCondicion',
+  'emisor',
   'emailContacto',
   'canalEntrega',
   'portalUrl',
@@ -187,6 +196,7 @@ interface SelectCampoProps {
     | 'sector'
     | 'subtipo'
     | 'ivaCondicion'
+    | 'emisor'
     | 'canalEntrega'
     | 'periodicidadTipo'
     | 'periodicidadMesInicioCiclo'
@@ -345,6 +355,7 @@ export function ClienteForm({
     (submitCount > 0 || superaLimiteObservaciones ? errorObservacionesSchema : null);
   const sector = useWatch({ control, name: 'sector' });
   const canalEntrega = useWatch({ control, name: 'canalEntrega' });
+  const emisor = useWatch({ control, name: 'emisor' });
   const periodicidadTipo = useWatch({ control, name: 'periodicidadTipo' });
 
   const idDe = (campo: CampoClienteForm) => `${id}-${campo}`;
@@ -523,6 +534,29 @@ export function ClienteForm({
               options={opcionesIva}
               placeholder="Elegí la condición"
             />
+          </FormField>
+
+          <FormField
+            id={idDe('emisor')}
+            label="Emisor"
+            hint="Emisor habitual con el que se factura. Se puede asignar más tarde."
+            error={errors.emisor}
+            optional
+          >
+            <SelectCampo
+              nombre="emisor"
+              control={control}
+              id={idDe('emisor')}
+              error={errors.emisor}
+              options={opcionesEmisor}
+              hint
+              required={false}
+            />
+            {emisor === '' && (
+              <div>
+                <EmisorPendiente />
+              </div>
+            )}
           </FormField>
         </FormSection>
 

@@ -84,6 +84,7 @@ async function rendicionAbierta(factura: string) {
       emailContacto: 'rendiciones@ejemplo.example',
       sector: 'PRIVADO',
       canalEntrega: 'CORREO',
+      emisor: 'SOCIEDAD',
     },
   });
   clientesCreados.push(cliente.id);

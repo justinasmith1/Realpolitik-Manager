@@ -42,6 +42,7 @@ const fila: ClienteRow = {
   matrizConfigurada: false,
   indicacionesArmado: 'No sale en el DTO',
   observaciones: 'Tampoco sale en el DTO',
+  emisor: null,
   isDeleted: false,
   deletedAt: null,
   createdAt: AHORA,
