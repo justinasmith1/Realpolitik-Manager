@@ -60,6 +60,18 @@ export const CanalEntrega = z.enum(['CORREO', 'PORTAL_WEB', 'WHATSAPP']);
 
 export type CanalEntrega = z.infer<typeof CanalEntrega>;
 
+/**
+ * Emisor con el que se factura a un cliente (HU2.9). Son dos razones sociales, una persona
+ * física y una persona jurídica; cuál se usa depende de lo que exige el organismo destinatario.
+ * Los códigos son de dominio: los textos visibles viven en el frontend.
+ *
+ * - PERSONA_FISICA → factura la persona física
+ * - SOCIEDAD       → factura la persona jurídica (sociedad)
+ */
+export const Emisor = z.enum(['PERSONA_FISICA', 'SOCIEDAD']);
+
+export type Emisor = z.infer<typeof Emisor>;
+
 // ─── WhatsApp ─────────────────────────────────────────────────────────────────────────
 
 /**
@@ -300,6 +312,12 @@ const ClienteCamposBase = z.object({
 
   /** Número de WhatsApp en E.164. Obligatorio si el canal es WHATSAPP. */
   whatsappNumero: WhatsappNumeroSchema.optional(),
+
+  /**
+   * Emisor habitual del cliente (HU2.9). Opcional: sin emisor, el cliente está pendiente de
+   * asignación y no se bloquea. El de cada factura se define al abrir la rendición.
+   */
+  emisor: Emisor.optional(),
 
   /**
    * Periodicidad de rendición: un objeto válido o `null` si todavía no se configuró.
@@ -585,6 +603,7 @@ const CAMPOS_EDITABLES = {
   portalUrl: true,
   canalEntrega: true,
   whatsappNumero: true,
+  emisor: true,
 } as const;
 
 /**
@@ -602,12 +621,14 @@ const CAMPOS_EDITABLES = {
  *
  * `periodicidad` tiene tres estados: ausente = no modificar, objeto = configurar o reemplazar,
  * `null` = eliminar la configuración. Sin default, para que ausente no se confunda con `null`.
+ * `emisor` tiene los mismos tres estados: valor = asignar, `null` = quitar el emisor.
  */
 export const UpdateClienteSchema = ClienteCamposBase.pick(CAMPOS_EDITABLES)
   .extend({
     sector: ClienteSector,
     subtipo: ClienteSubtipoPublico,
     periodicidad: PeriodicidadSchema.nullable(),
+    emisor: Emisor.nullable(),
   })
   .partial()
   .superRefine((datos, ctx) => {
