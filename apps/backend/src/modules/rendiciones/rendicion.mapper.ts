@@ -53,6 +53,7 @@ const camposDeRendicion = (row: RendicionRow) => ({
   anio: row.anio,
   mes: row.mes,
   numeroFactura: row.numeroFactura,
+  emisor: row.emisor,
   estado: row.isDeleted ? 'ANULADA' : 'ACTIVA',
   anuladaEn: row.isDeleted ? row.deletedAt : null,
   creadoEn: row.createdAt,

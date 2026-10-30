@@ -9,6 +9,7 @@ import {
   PreparacionEnvioSchema,
   type CanalEntregaType,
   type CreateRendicionDto,
+  type EmisorType,
   type FiltroEstadoRendiciones,
   type ItemChecklistNuevo,
   type ListarRendicionesQuery,
@@ -19,7 +20,7 @@ import {
   type ResultadoPropagarCanal,
 } from '@realpolitik/shared';
 
-import { conflict, notFound, type AppError } from '../../errors/app-error';
+import { conflict, notFound, validationError, type AppError } from '../../errors/app-error';
 import { prisma } from '../../lib/prisma';
 
 import {
@@ -40,8 +41,13 @@ import {
  * a leer de la matriz. El envío por canal no es parte de esta historia.
  */
 
-/** Índice único parcial: un número de factura en una sola rendición activa del cliente. */
-const INDICE_FACTURA_ACTIVA = 'uq_rendicion_factura_activa';
+/**
+ * Los dos índices únicos parciales de la factura (HU2.9), ambos sobre las rendiciones activas:
+ * `(emisor, numeroFactura)` entre las que tienen emisor, de cualquier cliente, y
+ * `(clienteId, numeroFactura)` entre las que no (las anteriores a HU2.9).
+ */
+const INDICE_FACTURA_POR_EMISOR = 'uq_rendicion_emisor_factura_activa';
+const INDICE_FACTURA_SIN_EMISOR = 'uq_rendicion_factura_activa_sin_emisor';
 
 /** Tope de reintentos ante una carrera (P2034, o un duplicado cuya fila ya no está). */
 const INTENTOS = 3;
@@ -83,24 +89,30 @@ const esConflictoDeEscritura = (error: unknown): boolean =>
     (error.code === 'P2010' && CONFLICTOS_DE_POSTGRES.includes(error.meta?.code)));
 
 /**
- * P2002 sobre el índice de la factura. Con un índice creado en SQL, Prisma informa el nombre del
- * índice o sus columnas, según la versión: se aceptan las dos formas. Otro P2002 no es este
- * conflicto y sigue siendo un 500.
+ * P2002 sobre alguno de los dos índices de la factura. Con índices creados en SQL, Prisma no los
+ * declara: verificado contra PostgreSQL, informa en `meta.target` las COLUMNAS del índice
+ * (`['emisor', 'numeroFactura']` o `['clienteId', 'numeroFactura']`), también dentro de una
+ * transacción serializable. Se aceptan además los nombres de los índices, por si otra versión de
+ * Prisma informa el índice en lugar de las columnas. Otro P2002 no es este conflicto y sigue
+ * siendo un 500.
  */
-function esFacturaDuplicada(error: unknown): boolean {
+export function esFacturaDuplicada(error: unknown): boolean {
   if (!esErrorConocido(error) || error.code !== 'P2002') return false;
   const target = error.meta?.target;
-  if (typeof target === 'string') return target.includes(INDICE_FACTURA_ACTIVA);
+  const nombres = [INDICE_FACTURA_POR_EMISOR, INDICE_FACTURA_SIN_EMISOR];
+  if (typeof target === 'string') return nombres.some((nombre) => target.includes(nombre));
   if (!Array.isArray(target)) return false;
   const campos = target.filter((campo): campo is string => typeof campo === 'string');
   return (
-    campos.includes(INDICE_FACTURA_ACTIVA) ||
-    (campos.includes('clienteId') && campos.includes('numeroFactura'))
+    nombres.some((nombre) => campos.includes(nombre)) ||
+    (campos.includes('numeroFactura') &&
+      (campos.includes('emisor') || campos.includes('clienteId')))
   );
 }
 
 function rendicionDuplicada(existente: {
   id: string;
+  clienteId: string;
   anio: number;
   mes: number;
   numeroFactura: string;
@@ -108,14 +120,17 @@ function rendicionDuplicada(existente: {
   return conflict(
     'RENDICION_DUPLICADA',
     {
+      // El `clienteId` lleva a la existente aunque sea de otro cliente: el número es único por
+      // emisor en todo el sistema.
       rendicionExistente: {
         id: existente.id,
+        clienteId: existente.clienteId,
         anio: existente.anio,
         mes: existente.mes,
         numeroFactura: existente.numeroFactura,
       },
     },
-    'Ese número de factura ya está en otra rendición del cliente',
+    'Ese número de factura ya existe para este emisor',
   );
 }
 
@@ -133,12 +148,13 @@ async function exigirClienteVigente(clienteId: string): Promise<void> {
 /**
  * Para abrir una rendición el cliente tiene que existir y estar ACTIVO (409 `CLIENTE_NO_ACTIVO`
  * con su estado, como en la matriz). Devuelve el canal por defecto, que completa el de los
- * requisitos sin canal propio. La lectura va dentro de la transacción del alta.
+ * requisitos sin canal propio, y el emisor habitual. La lectura va dentro de la transacción del
+ * alta.
  */
 async function exigirClienteActivo(tx: Prisma.TransactionClient, clienteId: string) {
   const cliente = await tx.cliente.findFirst({
     where: { id: clienteId, isDeleted: false },
-    select: { id: true, estado: true, canalEntrega: true },
+    select: { id: true, estado: true, canalEntrega: true, emisor: true },
   });
   if (cliente === null) {
     throw notFound('Cliente no encontrado');
@@ -147,6 +163,27 @@ async function exigirClienteActivo(tx: Prisma.TransactionClient, clienteId: stri
     throw conflict('CLIENTE_NO_ACTIVO', { estado: cliente.estado }, 'El cliente no está activo');
   }
   return cliente;
+}
+
+/**
+ * El emisor de la factura (HU2.9): el del pedido o, si no vino, el habitual del cliente. Es una
+ * foto: se copia a la rendición y después no se vuelve a leer del cliente. Sin ninguno de los dos
+ * no se puede abrir: la numeración es por emisor.
+ */
+function emisorDeLaRendicion(
+  pedido: EmisorType | undefined,
+  habitualDelCliente: EmisorType | null,
+): EmisorType {
+  const emisor = pedido ?? habitualDelCliente;
+  if (emisor === null) {
+    throw validationError([
+      {
+        campo: 'emisor',
+        mensaje: 'Elegí el emisor de la factura: el cliente no tiene uno asignado.',
+      },
+    ]);
+  }
+  return emisor;
 }
 
 /**
@@ -208,8 +245,11 @@ async function insertarRendicion(
   tx: Prisma.TransactionClient,
   clienteId: string,
   input: CreateRendicionDto,
+  alResolverEmisor: (emisor: EmisorType) => void,
 ): Promise<RendicionDetalle> {
   const cliente = await exigirClienteActivo(tx, clienteId);
+  const emisor = emisorDeLaRendicion(input.emisor, cliente.emisor);
+  alResolverEmisor(emisor);
 
   const requisitos = await tx.requisitoCliente.findMany({
     where: { clienteId, isDeleted: false },
@@ -223,6 +263,7 @@ async function insertarRendicion(
       anio: input.anio,
       mes: input.mes,
       numeroFactura: input.numeroFactura,
+      emisor,
       items: { createMany: { data: items } },
     },
     include: CON_ITEMS,
@@ -233,24 +274,44 @@ async function insertarRendicion(
 /**
  * Abre una rendición y genera su checklist con todos los requisitos activos (contrato 4.5).
  *
+ * El emisor es el del pedido o, si no vino, el del cliente (HU2.9). El número de factura no se
+ * repite para el mismo emisor entre las rendiciones activas, aunque sean de clientes distintos.
+ *
  * No consulta antes si la factura ya está en otra rendición activa: dos altas simultáneas
- * pasarían esa consulta. Se inserta y, si el índice parcial rechaza la fila, se responde 409 con
- * la rendición que la tiene. Si esa fila ya no está (la anularon en el medio), se reintenta.
+ * pasarían esa consulta. Se inserta y, si un índice parcial rechaza la fila, se responde 409 con
+ * la rendición que la tiene (de este cliente o de otro). Si esa fila ya no está (la anularon en
+ * el medio), se reintenta.
  */
 export async function abrirRendicion(
   clienteId: string,
   input: CreateRendicionDto,
 ): Promise<RendicionDetalle> {
+  // El emisor se resuelve dentro de la transacción (con el cliente que ve esa lectura); se guarda
+  // acá para buscar la rendición que tiene la factura si el alta choca.
+  let emisor: EmisorType | undefined;
   for (let intento = 1; ; intento += 1) {
+    emisor = undefined;
     try {
-      return await enTransaccionSerializable((tx) => insertarRendicion(tx, clienteId, input));
+      return await enTransaccionSerializable((tx) =>
+        insertarRendicion(tx, clienteId, input, (resuelto) => {
+          emisor = resuelto;
+        }),
+      );
     } catch (error) {
       if (!esFacturaDuplicada(error) && !esConflictoDeEscritura(error)) {
         throw error;
       }
+      // Sin emisor resuelto el alta ni llegó a insertar: no puede haber un duplicado que buscar.
+      if (emisor === undefined) {
+        throw error;
+      }
+      // Una alta siempre lleva emisor, así que solo puede chocar con el índice por emisor:
+      // (emisor, número) entre las activas, de cualquier cliente. No se busca entre las heredadas
+      // sin emisor (la regla vieja, por cliente): una del mismo cliente llevaría a la rendición
+      // equivocada, y con una heredada la alta no choca (no comparten índice).
       const existente = await prisma.rendicion.findFirst({
-        where: { clienteId, numeroFactura: input.numeroFactura, isDeleted: false },
-        select: { id: true, anio: true, mes: true, numeroFactura: true },
+        where: { isDeleted: false, numeroFactura: input.numeroFactura, emisor },
+        select: { id: true, clienteId: true, anio: true, mes: true, numeroFactura: true },
       });
       if (existente !== null) {
         throw rendicionDuplicada(existente);

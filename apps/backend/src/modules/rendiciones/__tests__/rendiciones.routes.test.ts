@@ -34,6 +34,7 @@ vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
 const CLIENTE = 'a1b2c3d4-e5f6-4789-abcd-ef0123456789';
+const OTRO_CLIENTE = 'a1b2c3d4-e5f6-4789-abcd-ef0123456700';
 const RENDICION = 'e1f2a3b4-c5d6-4789-8abc-def012345678';
 const OTRA = 'e1f2a3b4-c5d6-4789-8abc-def012345699';
 const REQ_PRINT = 'd1e2f3a4-b5c6-4789-8abc-def012345678';
@@ -50,6 +51,7 @@ const CAMPOS_DE_RENDICION = [
   'anuladaEn',
   'clienteId',
   'creadoEn',
+  'emisor',
   'estado',
   'id',
   'mes',
@@ -105,6 +107,7 @@ const clienteDe = (extra: Record<string, unknown> = {}) => ({
   id: CLIENTE,
   estado: 'ACTIVO',
   canalEntrega: 'CORREO',
+  emisor: 'SOCIEDAD',
   ...extra,
 });
 
@@ -157,6 +160,7 @@ beforeEach(() => {
       Promise.resolve(
         filaRendicion({
           numeroFactura: args.data.numeroFactura,
+          emisor: args.data.emisor,
           items: args.data.items.createMany.data.map((item, indice) => ({
             id: `f1a2b3c4-d5e6-4789-8abc-def01234567${indice}`,
             rendicionId: RENDICION,
@@ -350,46 +354,182 @@ describe('POST /clientes/:id/rendiciones', () => {
     expect(transaccion.rendicion.create).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['el nombre del índice', 'uq_rendicion_factura_activa'],
-    ['sus columnas', ['clienteId', 'numeroFactura']],
-  ])(
-    '409 RENDICION_DUPLICADA si el índice de la factura rechaza la fila (P2002 con %s)',
-    async (_caso, target) => {
-      transaccion.rendicion.create.mockRejectedValue(errorPrisma('P2002', { target }));
+  describe('emisor (HU2.9)', () => {
+    it('sin emisor en el pedido, copia el del cliente', async () => {
+      transaccion.cliente.findFirst.mockResolvedValue(clienteDe({ emisor: 'PERSONA_FISICA' }));
+
+      const res = await abrir(pedido);
+
+      expect(res.status).toBe(201);
+      expect(datosCreados()).toMatchObject({ emisor: 'PERSONA_FISICA' });
+      expect(res.body).toMatchObject({ emisor: 'PERSONA_FISICA' });
+    });
+
+    it('el emisor del pedido prevalece sobre el del cliente', async () => {
+      transaccion.cliente.findFirst.mockResolvedValue(clienteDe({ emisor: 'SOCIEDAD' }));
+
+      const res = await abrir({ ...pedido, emisor: 'PERSONA_FISICA' });
+
+      expect(res.status).toBe(201);
+      expect(datosCreados()).toMatchObject({ emisor: 'PERSONA_FISICA' });
+    });
+
+    it('si el cliente tiene emisor, el pedido puede omitirlo y no se escribe null', async () => {
+      await abrir(pedido);
+
+      expect(datosCreados()).toMatchObject({ emisor: 'SOCIEDAD' });
+    });
+
+    it('lee el emisor del cliente dentro de la transacción del alta', async () => {
+      await abrir(pedido);
+
+      expect(transaccion.cliente.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({ emisor: true }) as unknown,
+        }),
+      );
+    });
+
+    it('400 en `emisor` si ni el pedido ni el cliente lo tienen, sin crear nada', async () => {
+      transaccion.cliente.findFirst.mockResolvedValue(clienteDe({ emisor: null }));
+
+      const res = await abrir(pedido);
+
+      expect(res.status).toBe(400);
+      expect(error(res).code).toBe('VALIDATION_ERROR');
+      expect(campos(res)).toEqual(['emisor']);
+      expect(transaccion.rendicion.create).not.toHaveBeenCalled();
+    });
+
+    it('con un cliente sin emisor, elegirlo en el pedido alcanza', async () => {
+      transaccion.cliente.findFirst.mockResolvedValue(clienteDe({ emisor: null }));
+
+      const res = await abrir({ ...pedido, emisor: 'SOCIEDAD' });
+
+      expect(res.status).toBe(201);
+      expect(datosCreados()).toMatchObject({ emisor: 'SOCIEDAD' });
+    });
+
+    it('un emisor desconocido o null en el pedido es 400 en `emisor`, sin tocar la base', async () => {
+      for (const emisor of ['OTRO', null]) {
+        const res = await abrir({ ...pedido, emisor });
+        expect(res.status).toBe(400);
+        expect(campos(res)).toEqual(['emisor']);
+      }
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('un cliente inactivo sigue siendo 409 CLIENTE_NO_ACTIVO antes de pedir el emisor', async () => {
+      transaccion.cliente.findFirst.mockResolvedValue(
+        clienteDe({ estado: 'INACTIVO', emisor: null }),
+      );
+
+      const res = await abrir(pedido);
+
+      expect(res.status).toBe(409);
+      expect(error(res).details).toMatchObject({ motivo: 'CLIENTE_NO_ACTIVO' });
+    });
+  });
+
+  describe('factura duplicada para el mismo emisor (HU2.9)', () => {
+    // Lo que informa Prisma de verdad (verificado contra PostgreSQL 16, también dentro de una
+    // transacción serializable): `meta.target` son las COLUMNAS del índice, no su nombre. Los
+    // nombres se aceptan igual por si otra versión de Prisma informa el índice.
+    it.each([
+      ['las columnas que informa Prisma (emisor)', ['emisor', 'numeroFactura']],
+      ['el nombre del índice por emisor', 'uq_rendicion_emisor_factura_activa'],
+    ])(
+      '409 RENDICION_DUPLICADA con la rendición existente y su clienteId (P2002 con %s)',
+      async (_caso, target) => {
+        transaccion.rendicion.create.mockRejectedValue(errorPrisma('P2002', { target }));
+        prismaMock.rendicion.findFirst.mockResolvedValue({
+          id: OTRA,
+          clienteId: OTRO_CLIENTE,
+          anio: 2026,
+          mes: 9,
+          numeroFactura: 'B 00002-00001482',
+        });
+
+        const res = await abrir(pedido);
+
+        expect(res.status).toBe(409);
+        expect(error(res).details).toEqual({
+          motivo: 'RENDICION_DUPLICADA',
+          rendicionExistente: {
+            id: OTRA,
+            clienteId: OTRO_CLIENTE,
+            anio: 2026,
+            mes: 9,
+            numeroFactura: 'B 00002-00001482',
+          },
+        });
+      },
+    );
+
+    it('busca la existente por (emisor, número) entre todos los clientes, sin mirar a las heredadas sin emisor', async () => {
+      transaccion.rendicion.create.mockRejectedValue(
+        errorPrisma('P2002', { target: ['emisor', 'numeroFactura'] }),
+      );
       prismaMock.rendicion.findFirst.mockResolvedValue({
         id: OTRA,
+        clienteId: OTRO_CLIENTE,
         anio: 2026,
         mes: 9,
         numeroFactura: 'B 00002-00001482',
       });
 
-      const res = await abrir(pedido);
+      await abrir(pedido);
 
-      expect(res.status).toBe(409);
-      expect(error(res).details).toEqual({
-        motivo: 'RENDICION_DUPLICADA',
-        rendicionExistente: { id: OTRA, anio: 2026, mes: 9, numeroFactura: 'B 00002-00001482' },
-      });
-      // Se busca la existente por el valor canónico, no por lo que se escribió.
+      // El valor canónico, no lo que se escribió; sin filtrar por el cliente que abre. Una alta
+      // siempre lleva emisor, así que solo puede chocar con el índice por emisor: buscar también
+      // una heredada (`emisor: null`) del mismo cliente podría llevar a la rendición equivocada.
       expect(prismaMock.rendicion.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { clienteId: CLIENTE, numeroFactura: 'B 00002-00001482', isDeleted: false },
+          where: { isDeleted: false, numeroFactura: 'B 00002-00001482', emisor: 'SOCIEDAD' },
         }),
       );
-    },
-  );
+    });
 
-  it('si la rendición que tenía la factura ya no está, reintenta el alta', async () => {
-    transaccion.rendicion.create.mockRejectedValueOnce(
-      errorPrisma('P2002', { target: 'uq_rendicion_factura_activa' }),
-    );
-    prismaMock.rendicion.findFirst.mockResolvedValue(null);
+    it('el emisor que se busca es el que resolvió el alta (el del pedido, no el del cliente)', async () => {
+      transaccion.rendicion.create.mockRejectedValue(
+        errorPrisma('P2002', { target: ['emisor', 'numeroFactura'] }),
+      );
+      prismaMock.rendicion.findFirst.mockResolvedValue({
+        id: OTRA,
+        clienteId: OTRO_CLIENTE,
+        anio: 2026,
+        mes: 9,
+        numeroFactura: 'B 00002-00001482',
+      });
 
-    const res = await abrir(pedido);
+      await abrir({ ...pedido, emisor: 'PERSONA_FISICA' });
 
-    expect(res.status).toBe(201);
-    expect(transaccion.rendicion.create).toHaveBeenCalledTimes(2);
+      expect(prismaMock.rendicion.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ emisor: 'PERSONA_FISICA' }) as unknown,
+        }),
+      );
+    });
+
+    it('si la rendición que tenía la factura ya no está, reintenta el alta', async () => {
+      transaccion.rendicion.create.mockRejectedValueOnce(
+        errorPrisma('P2002', { target: ['emisor', 'numeroFactura'] }),
+      );
+      prismaMock.rendicion.findFirst.mockResolvedValue(null);
+
+      const res = await abrir(pedido);
+
+      expect(res.status).toBe(201);
+      expect(transaccion.rendicion.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('el mismo número con otro emisor no es duplicado: se abre', async () => {
+      // El índice solo rechaza (emisor, número) repetidos; con otro emisor la base acepta.
+      const res = await abrir({ ...pedido, emisor: 'PERSONA_FISICA' });
+
+      expect(res.status).toBe(201);
+      expect(prismaMock.rendicion.findFirst).not.toHaveBeenCalled();
+    });
   });
 
   it('un P2002 de otro índice no es RENDICION_DUPLICADA: sigue siendo 500', async () => {

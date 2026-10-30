@@ -14,7 +14,11 @@
 import { randomBytes, randomInt } from 'node:crypto';
 
 import type { PrismaClient } from '@prisma/client';
-import { mesActual, normalizarNombreTipoDocumento as normalizar } from '@realpolitik/shared';
+import {
+  mesActual,
+  normalizarNombreTipoDocumento as normalizar,
+  validateCuit,
+} from '@realpolitik/shared';
 import type { Express } from 'express';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -60,10 +64,26 @@ afterAll(async () => {
   }
 });
 
-/** CUIT único. La base no valida el dígito verificador. El prefijo 38 no lo usa otra suite. */
-const cuitDePrueba = () => `38-${String(randomInt(1e8)).padStart(8, '0')}-${randomInt(10)}`;
+/**
+ * CUIT único y VÁLIDO (prefijo y dígito verificador): los tests de HU2.9 editan al cliente por la
+ * API (`PATCH /clientes/:id`), y esa respuesta pasa por `ClienteSchema`, que rechaza un CUIT
+ * inválido con un 500. La base no lo exige, pero el mapper sí. El prefijo 24 no lo usa otra suite.
+ */
+function cuitDePrueba(): string {
+  for (;;) {
+    const cuerpo = String(randomInt(1e8)).padStart(8, '0');
+    for (let verificador = 0; verificador <= 9; verificador += 1) {
+      if (validateCuit(`24${cuerpo}${verificador}`)) return `24-${cuerpo}-${verificador}`;
+    }
+  }
+}
 
-async function crearCliente(estado: 'ACTIVO' | 'INACTIVO' = 'ACTIVO') {
+type EmisorDePrueba = 'PERSONA_FISICA' | 'SOCIEDAD';
+
+async function crearCliente(
+  estado: 'ACTIVO' | 'INACTIVO' = 'ACTIVO',
+  emisor: EmisorDePrueba | null = 'SOCIEDAD',
+) {
   const cliente = await prisma.cliente.create({
     data: {
       razonSocial: `${MARCA} cliente`,
@@ -73,6 +93,7 @@ async function crearCliente(estado: 'ACTIVO' | 'INACTIVO' = 'ACTIVO') {
       emailContacto: 'rendiciones@ejemplo.example',
       sector: 'PRIVADO',
       canalEntrega: 'CORREO',
+      emisor,
       estado,
     },
   });
@@ -97,8 +118,8 @@ async function crearRequisito(
 }
 
 /** Cliente activo con Factura x1 (canal propio) y Print x2 (con días, sin canal propio). */
-async function clienteConMatriz() {
-  const cliente = await crearCliente();
+async function clienteConMatriz(emisor: EmisorDePrueba | null = 'SOCIEDAD') {
+  const cliente = await crearCliente('ACTIVO', emisor);
   await crearRequisito(cliente.id, 'Factura', {
     cantidad: 1,
     diasAproximados: [],
@@ -112,10 +133,15 @@ async function clienteConMatriz() {
   return cliente;
 }
 
-const abrir = (clienteId: string, numeroFactura: string, periodo = PERIODO) =>
+const abrir = (
+  clienteId: string,
+  numeroFactura: string,
+  periodo = PERIODO,
+  emisor?: EmisorDePrueba,
+) =>
   request(app)
     .post(`/clientes/${clienteId}/rendiciones`)
-    .send({ ...periodo, numeroFactura });
+    .send({ ...periodo, numeroFactura, ...(emisor === undefined ? {} : { emisor }) });
 const anular = (id: string) =>
   request(app).patch(`/rendiciones/${id}/estado`).send({ estado: 'ANULADA' });
 
@@ -129,6 +155,8 @@ interface ItemJson {
 }
 interface RendicionJson {
   id: string;
+  clienteId: string;
+  emisor: EmisorDePrueba | null;
   numeroFactura: string;
   estado: string;
   anuladaEn: string | null;
@@ -203,18 +231,199 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
       motivo: 'RENDICION_DUPLICADA',
       rendicionExistente: {
         id: cuerpo(primera).id,
+        clienteId: cliente.id,
         ...PERIODO,
         numeroFactura: 'B 00002-00000002',
       },
     });
   });
 
-  it('la misma factura en otro cliente se acepta', async () => {
-    const uno = await clienteConMatriz();
-    const otro = await clienteConMatriz();
+  describe('emisor y unicidad por emisor (HU2.9)', () => {
+    it('la misma factura con el mismo emisor en OTRO cliente es 409, con la existente y su clienteId', async () => {
+      const uno = await clienteConMatriz();
+      const otro = await clienteConMatriz();
+      const primera = await abrir(uno.id, 'B 00007-00000001');
 
-    expect((await abrir(uno.id, 'A 00001-00000003')).status).toBe(201);
-    expect((await abrir(otro.id, 'A 00001-00000003')).status).toBe(201);
+      const res = await abrir(otro.id, 'b 7-1');
+
+      expect(res.status, JSON.stringify(res.body)).toBe(409);
+      expect(detalles(res)).toEqual({
+        motivo: 'RENDICION_DUPLICADA',
+        rendicionExistente: {
+          id: cuerpo(primera).id,
+          clienteId: uno.id,
+          ...PERIODO,
+          numeroFactura: 'B 00007-00000001',
+        },
+      });
+      expect(await prisma.rendicion.count({ where: { clienteId: otro.id } })).toBe(0);
+    });
+
+    it('el enlace "Ver rendición" del 409 funciona: la existente, de otro cliente, se puede leer por su id', async () => {
+      const uno = await clienteConMatriz();
+      const otro = await clienteConMatriz();
+      await abrir(uno.id, 'B 00007-00000002');
+      const conflicto = await abrir(otro.id, 'B 00007-00000002');
+      const existente = (
+        detalles(conflicto) as { rendicionExistente: { id: string; clienteId: string } }
+      ).rendicionExistente;
+
+      const detalle = await request(app).get(`/rendiciones/${existente.id}`);
+
+      expect(detalle.status).toBe(200);
+      expect(cuerpo(detalle)).toMatchObject({
+        id: existente.id,
+        clienteId: existente.clienteId,
+        numeroFactura: 'B 00007-00000002',
+      });
+      expect(existente.clienteId).toBe(uno.id);
+    });
+
+    it('el mismo número con distinto emisor se acepta en el mismo cliente', async () => {
+      const cliente = await clienteConMatriz('SOCIEDAD');
+      await abrir(cliente.id, 'B 00007-00000003');
+
+      const otroEmisor = await abrir(cliente.id, 'B 00007-00000003', PERIODO, 'PERSONA_FISICA');
+
+      expect(otroEmisor.status, JSON.stringify(otroEmisor.body)).toBe(201);
+      expect(cuerpo(otroEmisor).emisor).toBe('PERSONA_FISICA');
+    });
+
+    it('el mismo número con distinto emisor se acepta en otro cliente', async () => {
+      const uno = await clienteConMatriz('SOCIEDAD');
+      const otro = await clienteConMatriz('SOCIEDAD');
+      await abrir(uno.id, 'B 00007-00000004');
+
+      const otroEmisor = await abrir(otro.id, 'B 00007-00000004', PERIODO, 'PERSONA_FISICA');
+
+      expect(otroEmisor.status, JSON.stringify(otroEmisor.body)).toBe(201);
+    });
+
+    it('un número igual al de una rendición heredada SIN emisor del mismo cliente se acepta: no hay choque', async () => {
+      const cliente = await clienteConMatriz('SOCIEDAD');
+      await prisma.rendicion.create({
+        data: {
+          clienteId: cliente.id,
+          ...PERIODO,
+          numeroFactura: 'B 00007-00000011',
+          emisor: null,
+        },
+      });
+
+      const res = await abrir(cliente.id, 'B 00007-00000011');
+
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      expect(cuerpo(res).emisor).toBe('SOCIEDAD');
+    });
+
+    it('el 409 lleva a la rendición que chocó por emisor, no a una heredada del mismo cliente', async () => {
+      const a = await clienteConMatriz('SOCIEDAD');
+      const b = await clienteConMatriz('SOCIEDAD');
+      // A tiene una heredada con el número N; B ya tiene (SOCIEDAD, N).
+      await prisma.rendicion.create({
+        data: { clienteId: a.id, ...PERIODO, numeroFactura: 'B 00007-00000012', emisor: null },
+      });
+      const deB = await abrir(b.id, 'B 00007-00000012');
+
+      const res = await abrir(a.id, 'B 00007-00000012');
+
+      expect(res.status, JSON.stringify(res.body)).toBe(409);
+      expect(detalles(res)).toMatchObject({
+        rendicionExistente: { id: cuerpo(deB).id, clienteId: b.id },
+      });
+    });
+
+    it('una rendición anulada libera el número, también para otro cliente', async () => {
+      const uno = await clienteConMatriz();
+      const otro = await clienteConMatriz();
+      const primera = cuerpo(await abrir(uno.id, 'B 00007-00000005'));
+      expect((await abrir(otro.id, 'B 00007-00000005')).status).toBe(409);
+
+      await anular(primera.id);
+
+      expect((await abrir(otro.id, 'B 00007-00000005')).status).toBe(201);
+    });
+
+    it('con dos altas simultáneas de la misma factura y emisor en clientes distintos se crea una sola', async () => {
+      const uno = await clienteConMatriz();
+      const otro = await clienteConMatriz();
+
+      const respuestas = await Promise.all([
+        abrir(uno.id, 'B 00007-00000006'),
+        abrir(otro.id, 'b 7-6'),
+      ]);
+
+      expect(respuestas.map((res) => res.status).sort()).toEqual([201, 409]);
+      expect(
+        await prisma.rendicion.count({
+          where: { numeroFactura: 'B 00007-00000006', emisor: 'SOCIEDAD', isDeleted: false },
+        }),
+      ).toBe(1);
+      const rechazada = respuestas.find((res) => res.status === 409);
+      expect(detalles(rechazada as request.Response)).toMatchObject({
+        motivo: 'RENDICION_DUPLICADA',
+        rendicionExistente: { numeroFactura: 'B 00007-00000006' },
+      });
+    });
+
+    it('copia el emisor del cliente al abrir y lo devuelve en el alta, el detalle y el listado', async () => {
+      const cliente = await clienteConMatriz('PERSONA_FISICA');
+
+      const alta = await abrir(cliente.id, 'B 00007-00000007');
+      const detalle = await request(app).get(`/rendiciones/${cuerpo(alta).id}`);
+      const lista = await request(app).get(`/clientes/${cliente.id}/rendiciones`);
+
+      expect(alta.status, JSON.stringify(alta.body)).toBe(201);
+      expect(cuerpo(alta).emisor).toBe('PERSONA_FISICA');
+      expect(cuerpo(detalle).emisor).toBe('PERSONA_FISICA');
+      expect((lista.body as RendicionJson[]).map((r) => r.emisor)).toEqual(['PERSONA_FISICA']);
+      const fila = await prisma.rendicion.findUniqueOrThrow({ where: { id: cuerpo(alta).id } });
+      expect(fila.emisor).toBe('PERSONA_FISICA');
+    });
+
+    it('el emisor del pedido prevalece sobre el del cliente, que no cambia', async () => {
+      const cliente = await clienteConMatriz('SOCIEDAD');
+
+      const alta = await abrir(cliente.id, 'B 00007-00000008', PERIODO, 'PERSONA_FISICA');
+
+      expect(cuerpo(alta).emisor).toBe('PERSONA_FISICA');
+      const fila = await prisma.cliente.findUniqueOrThrow({ where: { id: cliente.id } });
+      expect(fila.emisor).toBe('SOCIEDAD');
+    });
+
+    it('un cliente sin emisor: sin emisor en el pedido es 400 en `emisor` y no crea nada; eligiéndolo se abre', async () => {
+      const cliente = await clienteConMatriz(null);
+
+      const sin = await abrir(cliente.id, 'B 00007-00000009');
+      const con = await abrir(cliente.id, 'B 00007-00000009', PERIODO, 'SOCIEDAD');
+
+      expect(sin.status).toBe(400);
+      expect((sin.body as { error: { details: { campo: string }[] } }).error.details).toEqual([
+        expect.objectContaining({ campo: 'emisor' }),
+      ]);
+      expect(con.status, JSON.stringify(con.body)).toBe(201);
+      expect(cuerpo(con).emisor).toBe('SOCIEDAD');
+      expect(await prisma.rendicion.count({ where: { clienteId: cliente.id } })).toBe(1);
+    });
+
+    it('cambiar el emisor del cliente no modifica una rendición ya abierta, ni su detalle ni su listado', async () => {
+      const cliente = await clienteConMatriz('SOCIEDAD');
+      const abierta = cuerpo(await abrir(cliente.id, 'B 00007-00000010'));
+
+      const cambio = await request(app)
+        .patch(`/clientes/${cliente.id}`)
+        .send({ emisor: 'PERSONA_FISICA' });
+      const quitado = await request(app).patch(`/clientes/${cliente.id}`).send({ emisor: null });
+
+      expect(cambio.status).toBe(200);
+      expect(quitado.status).toBe(200);
+      const detalle = await request(app).get(`/rendiciones/${abierta.id}`);
+      const lista = await request(app).get(`/clientes/${cliente.id}/rendiciones`);
+      expect(cuerpo(detalle).emisor).toBe('SOCIEDAD');
+      expect((lista.body as RendicionJson[]).map((r) => r.emisor)).toEqual(['SOCIEDAD']);
+      const fila = await prisma.rendicion.findUniqueOrThrow({ where: { id: abierta.id } });
+      expect(fila.emisor).toBe('SOCIEDAD');
+    });
   });
 
   it('con dos altas simultáneas de la misma factura se crea una sola', async () => {

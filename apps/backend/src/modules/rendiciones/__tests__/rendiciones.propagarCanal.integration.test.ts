@@ -75,6 +75,7 @@ async function clienteConPrint() {
       emailContacto: 'rendiciones@ejemplo.example',
       sector: 'PRIVADO',
       canalEntrega: 'CORREO',
+      emisor: 'SOCIEDAD',
     },
   });
   clientesCreados.push(cliente.id);
