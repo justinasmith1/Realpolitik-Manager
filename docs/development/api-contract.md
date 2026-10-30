@@ -262,7 +262,7 @@ Reglas que valen para toda la sección (además de las de la sección 1):
 - **Cliente borrado:** igual que en clientes y contactos, un cliente con baja lógica (`isDeleted`) se trata como inexistente. Todas las rutas `/clientes/:id/...` responden `404 NOT_FOUND`.
 - **Cliente no activo:** solo un cliente `ACTIVO` puede tener su matriz editada (alta, modificación o baja de requisitos), sus indicaciones de armado editadas, rendiciones nuevas o requisitos agregados a una rendición abierta. `INACTIVO` y `SUSPENDIDO` se tratan igual (un cliente que dejó de operar temporalmente y puede volver): esas operaciones responden `409 CONFLICT` con `motivo: "CLIENTE_NO_ACTIVO"`, y primero hay que reactivarlo. Las lecturas (`GET`) responden igual para cualquier estado. La anulación de una rendición tampoco se restringe, en ningún estado: es la corrección de un error, no una operación nueva. **Excepción:** las observaciones internas (HU2.10) se leen y se guardan con el cliente en cualquier estado, porque son una nota interna y no generan operaciones (ver 4.4).
 - **Ids de la ruta:** `:id` y `:requisitoId` se validan. Uno que no es un uuid responde `400 VALIDATION_ERROR`.
-- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay seis excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), `POST /rendiciones/:id/requisitos/:requisitoId`, `PATCH /rendiciones/:id/items/:itemId/canal` y `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
+- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay siete excepciones: `GET /clientes/:id/rendiciones`, que con `estado=ANULADA` o `estado=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), `POST /rendiciones/:id/requisitos/:requisitoId`, `PATCH /rendiciones/:id/items/:itemId/canal`, `POST /rendiciones/:id/preparar-envio` y `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
 - **Fechas:** como en clientes y contactos, la API devuelve `creadoEn` y `actualizadoEn`; las columnas `createdAt` y `updatedAt` se traducen en el backend. `isDeleted` y `deletedAt` no se exponen.
 - **Sin requisitos condicionales:** ningún pedido lleva decisiones del tipo "este período aplica / no aplica". Todo requisito activo entra siempre en el checklist.
 - **La factura es un requisito más:** no es implícita. Todo cliente pide al menos la factura, que figura en su matriz como requisito del tipo "Factura".
@@ -315,6 +315,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | Rendiciones | `GET /rendiciones/:id`                                      | Trae una rendición con su checklist                                     | 200         |
 | Rendiciones | `POST /rendiciones/:id/requisitos/:requisitoId`             | Agrega a una rendición activa los ítems de un requisito nuevo           | 200         |
 | Rendiciones | `PATCH /rendiciones/:id/items/:itemId/canal`                | Corrige el canal de un ítem de una rendición activa                     | 200         |
+| HU2.5       | `POST /rendiciones/:id/preparar-envio`                      | Valida los ítems elegidos para enviar y devuelve sus datos (no envía)   | 200         |
 | Rendiciones | `POST /clientes/:id/requisitos/:requisitoId/propagar-canal` | Pasa el canal actual de un requisito a sus ítems en rendiciones activas | 200         |
 | HU2.5       | `PATCH /rendiciones/:id/estado`                             | Anula una rendición (baja lógica, no reversible)                        | 200         |
 | Clientes    | `GET /clientes` (extensión)                                 | Agrega `matrizConfigurada` y un filtro por ese campo                    | 200         |
@@ -713,6 +714,23 @@ Para cuando un requisito tenía un canal equivocado: los ítems guardan el canal
   - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado; el ítem no existe o es de otra rendición.
   - `409 CONFLICT` con `motivo: "RENDICION_ANULADA"`: la rendición está anulada.
 - **Cómo lo usa el front:** desde el detalle de una rendición activa, ítem por ítem, con confirmación. En una anulada no se ofrece.
+
+#### `POST /rendiciones/:id/preparar-envio`
+
+Prepara el envío de los ítems elegidos (HU2.5 con HU2.8). **No envía nada ni guarda nada**: comprueba con los datos de ahora que los ítems se pueden enviar y devuelve sus datos, para que la operadora los mande por el canal. No cambia el estado de la rendición ni de los ítems.
+
+- **Pedido:** `{ "itemIds": ["uuid", …] }`: al menos uno, sin repetir, hasta 500 (`PrepararEnvioSchema` de `@realpolitik/shared`).
+- **Qué valida:** la rendición está activa; cada ítem es de esta rendición, está completado **y tiene una aplicación documental vigente** (no alcanza con `completado`: un ítem completado sin aplicación, por ejemplo un dato anterior a HU2.8, no se envía). Es la regla `motivoNoEnviable` de shared, la misma que usa el checklist para habilitar la casilla. Como en HU2.5, todos los ítems van por el mismo canal. Lee con una foto consistente (transacción `REPEATABLE READ` de solo lectura).
+- **Respuesta 200:** `{ rendicionId, canal, items }` (`PreparacionEnvioSchema`): el canal único de la selección y los ítems en el orden del checklist, cada uno con `completado: true` y su `documento` vigente (`ItemEnviableSchema`, una especialización de `ItemChecklistSchema`: en el checklist general `documento` sigue opcional).
+- **Errores:**
+  - `400 VALIDATION_ERROR`: id de la rendición que no es uuid; `itemIds` ausente, vacío, con repetidos o con ids inválidos.
+  - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado; un ítem no existe o es de otra rendición.
+  - `409 CONFLICT`, sin escribir nada:
+    - `motivo: "RENDICION_ANULADA"`: la rendición está anulada.
+    - `motivo: "ITEM_PENDIENTE"`, con `itemId`: el primer ítem (en el orden pedido) que no está completado.
+    - `motivo: "ITEM_SIN_DOCUMENTO_VIGENTE"`, con `itemId`: el primer ítem completado sin aplicación vigente.
+    - `motivo: "CANALES_DISTINTOS"`, con `canales`: los ítems se envían por canales distintos.
+- **Cómo lo usa el front:** al tocar «Enviar» en el detalle de una rendición activa. Solo se pueden marcar los ítems que se pueden enviar; si el servidor responde 409 (algo cambió entre la selección y el envío), se vuelve a pedir la rendición y se avisa.
 
 #### `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`
 

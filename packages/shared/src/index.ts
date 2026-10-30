@@ -251,7 +251,22 @@ export type {
   CodigoErrorChecklist,
   Faltantes,
 } from './utils/checklist.js';
-export { canalDeSeleccion, destinatariosDeCorreo } from './utils/envio.js';
+export {
+  MAX_ITEMS_A_ENVIAR,
+  MENSAJE_ITEMS_A_ENVIAR,
+  ItemEnviableSchema,
+  MotivoNoEnviable,
+  PrepararEnvioSchema,
+  PreparacionEnvioSchema,
+} from './schemas/envio.schema.js';
+export type {
+  ItemEnviable,
+  MotivoNoEnviable as MotivoNoEnviableType,
+  PrepararEnvioDto,
+  PreparacionEnvio,
+} from './schemas/envio.schema.js';
+
+export { canalDeSeleccion, destinatariosDeCorreo, motivoNoEnviable } from './utils/envio.js';
 export type { CanalDeSeleccion, DestinatarioDeCorreo } from './utils/envio.js';
 export { ANIO_MIN, ANIO_MAX, mesActual, periodoMuyFuturo } from './utils/periodo.js';
 export type { Periodo } from './utils/periodo.js';

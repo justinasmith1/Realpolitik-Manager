@@ -1,14 +1,18 @@
 import { Prisma } from '@prisma/client';
 import {
+  canalDeSeleccion,
   compararItemsDeChecklist,
   esChecklistError,
   FILTRO_ESTADO_POR_DEFECTO,
   generarChecklist,
+  motivoNoEnviable,
+  PreparacionEnvioSchema,
   type CanalEntregaType,
   type CreateRendicionDto,
   type FiltroEstadoRendiciones,
   type ItemChecklistNuevo,
   type ListarRendicionesQuery,
+  type PreparacionEnvio,
   type Rendicion,
   type RendicionDetalle,
   type RendicionResumen,
@@ -20,6 +24,7 @@ import { prisma } from '../../lib/prisma';
 
 import {
   APLICACION_VIGENTE,
+  toItemChecklistDto,
   toRendicionDetalleDto,
   toRendicionDto,
   toRendicionResumenDto,
@@ -595,4 +600,84 @@ export async function propagarCanalDeRequisito(
     }
     return { canalEntrega, rendiciones: resultados };
   });
+}
+
+// ─── Preparar el envío (HU2.5 con HU2.8) ──────────────────────────────────────────────────
+
+/**
+ * Comprueba que los ítems elegidos se pueden enviar y devuelve sus datos (contrato 4.5). No envía
+ * nada ni guarda nada: el envío lo hace la operadora por el canal. Valida con los datos de ahora,
+ * no con lo que mostraba la pantalla: un pedido armado a mano no puede incluir un ítem que no se
+ * puede enviar.
+ *
+ * - La rendición tiene que existir (si no, o si su cliente se borró, 404) y estar activa (409
+ *   `RENDICION_ANULADA`).
+ * - Cada ítem tiene que ser de esta rendición (si no, 404), estar completado (409
+ *   `ITEM_PENDIENTE`) y tener una aplicación documental vigente (409
+ *   `ITEM_SIN_DOCUMENTO_VIGENTE`): no alcanza con `completado`. El 409 lleva el `itemId` del
+ *   primero que no cumple, en el orden pedido. La regla es `motivoNoEnviable` de shared, la misma
+ *   que usa el checklist.
+ * - Como en HU2.5, un envío va por un solo canal (409 `CANALES_DISTINTOS`, con los canales).
+ *
+ * Se lee en una transacción de solo lectura con una foto consistente (REPEATABLE READ): la
+ * rendición, los ítems y sus aplicaciones vigentes son del mismo momento.
+ */
+export async function prepararEnvio(
+  rendicionId: string,
+  itemIds: readonly string[],
+): Promise<PreparacionEnvio> {
+  return prisma.$transaction(
+    async (tx) => {
+      const rendicion = await tx.rendicion.findFirst({
+        where: { id: rendicionId, cliente: { isDeleted: false } },
+        select: { id: true, isDeleted: true },
+      });
+      if (rendicion === null) {
+        throw notFound('Rendición no encontrada');
+      }
+      if (rendicion.isDeleted) {
+        throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
+      }
+
+      // Un ítem de otra rendición no existe para esta.
+      const filas = await tx.itemChecklist.findMany({
+        where: { id: { in: [...itemIds] }, rendicionId },
+        include: { aplicaciones: APLICACION_VIGENTE },
+      });
+      const porId = new Map(filas.map((fila) => [fila.id, toItemChecklistDto(fila)]));
+      const items = itemIds.map((id) => porId.get(id));
+      if (items.some((item) => item === undefined)) {
+        throw notFound('Ítem no encontrado');
+      }
+
+      const elegidos = items.filter((item) => item !== undefined);
+      for (const item of elegidos) {
+        const motivo = motivoNoEnviable(item);
+        if (motivo !== null) {
+          throw conflict(
+            motivo,
+            { itemId: item.id },
+            motivo === 'ITEM_PENDIENTE'
+              ? 'El ítem todavía no tiene un documento'
+              : 'El ítem no tiene un documento vigente',
+          );
+        }
+      }
+      const canal = canalDeSeleccion(elegidos);
+      if (canal.tipo !== 'un-canal') {
+        throw conflict(
+          'CANALES_DISTINTOS',
+          { canales: canal.tipo === 'mezclados' ? canal.canales : [] },
+          'Los ítems se envían por canales distintos',
+        );
+      }
+
+      return PreparacionEnvioSchema.parse({
+        rendicionId,
+        canal: canal.canal,
+        items: [...elegidos].sort(compararItemsDeChecklist),
+      });
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+  );
 }

@@ -3,6 +3,8 @@ import type {
   ActualizarEstadoRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
+  PreparacionEnvio,
+  PrepararEnvioSchema,
   PropagarCanalDeRequisitoSchema,
   Rendicion,
   RendicionDetalle,
@@ -26,6 +28,7 @@ import {
   corregirCanalDeItem,
   listarRendiciones,
   obtenerRendicion,
+  prepararEnvio,
   propagarCanalDeRequisito,
 } from './rendiciones.service';
 
@@ -118,4 +121,20 @@ export async function propagarCanalDeRequisitoController(
     body.rendicionIds,
   );
   res.status(200).json(resultado);
+}
+
+type PrepararEnvioLocals = ValidatedLocals<{
+  params: typeof IdParamsSchema;
+  body: typeof PrepararEnvioSchema;
+}>;
+
+export async function prepararEnvioController(
+  _req: Request,
+  res: Response<PreparacionEnvio, PrepararEnvioLocals>,
+): Promise<void> {
+  const preparacion = await prepararEnvio(
+    res.locals.validated.params.id,
+    res.locals.validated.body.itemIds,
+  );
+  res.status(200).json(preparacion);
 }
