@@ -22,6 +22,7 @@ describe('montoEscrito', () => {
     ['1250000.50', 1250000.5],
     ['1.250.000', 1250000],
     ['1.250.000,5', 1250000.5],
+    ['1.250.000,50', 1250000.5],
     ['  ', null],
     ['', null],
   ])('%j → %s', (texto, esperado) => {
@@ -31,11 +32,24 @@ describe('montoEscrito', () => {
   it('da NaN con texto que no es un número', () => {
     expect(montoEscrito('abc')).toBeNaN();
   });
+
+  // `Number()` solo aceptaría `1e5` (100000), `0x10` (16) y los signos.
+  it.each(['1e5', '0x10', '-4', '+5'])(
+    'da NaN con %j: solo acepta dígitos, puntos y comas',
+    (texto) => {
+      expect(montoEscrito(texto)).toBeNaN();
+    },
+  );
 });
 
 describe('etiquetas de la OC', () => {
-  it('formatea un monto como moneda argentina', () => {
+  it('formatea un monto entero como moneda argentina, sin decimales', () => {
     expect(etiquetaDeMonto(1250000).replace(/\s/g, ' ')).toBe('$ 1.250.000');
+  });
+
+  it('con centavos, siempre muestra dos decimales', () => {
+    expect(etiquetaDeMonto(1250000.5).replace(/\s/g, ' ')).toBe('$ 1.250.000,50');
+    expect(etiquetaDeMonto(1250000.05).replace(/\s/g, ' ')).toBe('$ 1.250.000,05');
   });
 
   it('sin monto, un guion', () => {

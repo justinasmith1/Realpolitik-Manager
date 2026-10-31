@@ -87,16 +87,26 @@ export const motivoParaNoEnviar: Record<MotivoNoEnviableType, string> = {
 export const TEXTO_OC_NO_ASIGNADA = 'No asignada';
 export const TEXTO_MONTO_SIN_CARGAR = '-';
 
-const formatoDeMoneda = new Intl.NumberFormat('es-AR', {
+const formatoDeMonedaEntera = new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
-  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+const formatoDeMonedaConCentavos = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
-/** Un monto como moneda ("$ 1.250.000"), o un guion si no se cargó. */
+/**
+ * Un monto como moneda, o un guion si no se cargó. Un entero va sin decimales ("$ 1.250.000"); con
+ * centavos, siempre dos ("$ 1.250.000,50", no "$ 1.250.000,5").
+ */
 export function etiquetaDeMonto(monto: number | null): string {
-  return monto === null ? TEXTO_MONTO_SIN_CARGAR : formatoDeMoneda.format(monto);
+  if (monto === null) return TEXTO_MONTO_SIN_CARGAR;
+  const formato = Number.isInteger(monto) ? formatoDeMonedaEntera : formatoDeMonedaConCentavos;
+  return formato.format(monto);
 }
 
 /** El número de OC como se lee en pantalla, o "No asignada" si no se cargó. */

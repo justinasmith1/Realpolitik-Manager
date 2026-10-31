@@ -7,15 +7,7 @@ import {
   type RendicionDetalle,
 } from '@realpolitik/shared';
 import { ArrowLeftIcon, PencilIcon } from 'lucide-react';
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 
 import { Alert } from '@/components/ui/alert';
@@ -24,8 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Toast } from '@/components/ui/toast';
 import { enfocarYMostrar } from '@/lib/focus';
+import { cn } from '@/lib/utils';
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
 import { etiquetasCanalEntrega } from '@/modules/clientes/clientes.etiquetas';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
@@ -199,7 +191,7 @@ function DetalleDeRendicion({
   const [avisoDeMezcla, setAvisoDeMezcla] = useState(false);
   const [envio, setEnvio] = useState<Envio | null>(null);
   const [itemACorregir, setItemACorregir] = useState<ItemChecklist | null>(null);
-  // El resultado de la última acción sobre un ítem (canal o documento).
+  // El resultado de la última acción sobre un ítem (canal o documento) o sobre la OC.
   const [avisoDelChecklist, setAvisoDelChecklist] = useState<{
     variant: 'success' | 'warning' | 'destructive';
     texto: string;
@@ -215,8 +207,6 @@ function DetalleDeRendicion({
   );
   const [editandoCliente, setEditandoCliente] = useState(false);
   const [editandoOc, setEditandoOc] = useState(false);
-  const [avisoToast, setAvisoToast] = useState<string | null>(null);
-  const cerrarToast = useCallback(() => setAvisoToast(null), []);
   const avance = calcularFaltantes(rendicion.items);
   const anulada = rendicion.estado === 'ANULADA';
   const completo = checklistCompleto(avance);
@@ -326,8 +316,10 @@ function DetalleDeRendicion({
                   type="button"
                   variant="ghost"
                   size="xs"
-                  aria-label="Editar OC"
-                  onClick={() => setEditandoOc(true)}
+                  onClick={() => {
+                    setAvisoDelChecklist(null);
+                    setEditandoOc(true);
+                  }}
                 >
                   <PencilIcon aria-hidden="true" />
                   Editar OC
@@ -504,11 +496,10 @@ function DetalleDeRendicion({
           onAbiertoChange={setEditandoOc}
           onGuardada={(texto) => {
             setEditandoOc(false);
-            setAvisoToast(texto);
+            setAvisoDelChecklist({ variant: 'success', texto });
           }}
         />
       )}
-      <Toast mensaje={avisoToast} onCerrar={cerrarToast} />
     </>
   );
 }
@@ -536,7 +527,11 @@ function DatoDeCabecera({
       <dt className="text-xs text-content-secondary">{etiqueta}</dt>
       <dd className="flex min-w-0 flex-wrap items-center gap-x-2">
         <span
-          className={`${apagado ? 'text-muted-foreground' : 'text-foreground'} ${mono ? 'font-mono' : ''} min-w-0 break-words`}
+          className={cn(
+            'min-w-0 break-words',
+            apagado ? 'text-muted-foreground' : 'text-foreground',
+            mono && 'font-mono',
+          )}
         >
           {children}
         </span>

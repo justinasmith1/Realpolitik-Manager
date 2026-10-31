@@ -51,10 +51,12 @@ export const ocVacia = (valores: EditarOcFormValues): boolean =>
 /**
  * Un monto escrito a número. Acepta `1250000`, `1250000,50`, `1250000.50` y `1.250.000,50`. Vacío
  * es `null` (sin monto). Lo que no es un número da `NaN`, que el schema rechaza con su mensaje.
+ * Solo se aceptan dígitos, puntos y comas: `Number()` solo también aceptaría `1e5` o `0x10`.
  */
 export function montoEscrito(texto: string): number | null {
   const limpio = texto.trim().replace(/\s/g, '');
   if (limpio === '') return null;
+  if (!/^[\d.,]+$/.test(limpio)) return Number.NaN;
   const conMiles = /^\d{1,3}(\.\d{3})+(,\d+)?$/.test(limpio) || limpio.includes(',');
   return Number(conMiles ? limpio.replace(/\./g, '').replace(',', '.') : limpio);
 }
