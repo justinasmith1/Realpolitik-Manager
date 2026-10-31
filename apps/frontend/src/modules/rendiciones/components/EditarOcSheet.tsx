@@ -25,7 +25,10 @@ import {
   type CampoOc,
   type EditarOcFormValues,
 } from '@/modules/rendiciones/components/editarOcForm.validation';
-import { mensajeFalloActualizacionOc } from '@/modules/rendiciones/components/erroresDeRendicion';
+import {
+  mensajeFalloActualizacionOc,
+  type ErroresDeActualizacionOc,
+} from '@/modules/rendiciones/components/erroresDeRendicion';
 import {
   useActualizarOcDeRendicion,
   useUltimaOc,
@@ -42,6 +45,9 @@ interface EditarOcSheetProps {
 
 export const TEXTO_OC_GUARDADA = 'Orden de compra guardada.';
 
+/** Ayuda de los dos montos: cómo se escriben. */
+const AYUDA_MONTO = 'En pesos, por ejemplo 1250000 o 1250000,50.';
+
 /**
  * Panel para cargar o editar la orden de compra de una rendición (HU2.11): número de OC, monto
  * mensual y monto total, los tres opcionales. El período no se pide: es el de la rendición. Al
@@ -53,7 +59,25 @@ export function EditarOcSheet({
   onAbiertoChange,
   onGuardada,
 }: EditarOcSheetProps) {
+  // Una sola mutación, la del panel: el freno de cierre mira el mismo guardado que hace el form.
   const actualizacion = useActualizarOcDeRendicion();
+
+  async function guardar(
+    datos: ActualizarRendicionDto,
+  ): Promise<ErroresDeActualizacionOc | undefined> {
+    try {
+      await actualizacion.mutateAsync({
+        clienteId: rendicion.clienteId,
+        rendicionId: rendicion.id,
+        datos,
+      });
+    } catch (fallo) {
+      return mensajeFalloActualizacionOc(interpretarFalloActualizacionOc(fallo));
+    }
+    onGuardada(TEXTO_OC_GUARDADA);
+    return undefined;
+  }
+
   return (
     <Sheet
       open={abierto}
@@ -74,8 +98,8 @@ export function EditarOcSheet({
         <EditarOcForm
           rendicion={rendicion}
           abierto={abierto}
+          onSubmit={guardar}
           onCancel={() => onAbiertoChange(false)}
-          onGuardada={onGuardada}
         />
       </SheetContent>
     </Sheet>
@@ -85,13 +109,13 @@ export function EditarOcSheet({
 interface EditarOcFormProps {
   rendicion: RendicionDetalle;
   abierto: boolean;
+  /** Guarda la OC. Devuelve los errores a mostrar, o `undefined` si salió bien. */
+  onSubmit: (datos: ActualizarRendicionDto) => Promise<ErroresDeActualizacionOc | undefined>;
   onCancel: () => void;
-  onGuardada: (texto: string) => void;
 }
 
-function EditarOcForm({ rendicion, abierto, onCancel, onGuardada }: EditarOcFormProps) {
+function EditarOcForm({ rendicion, abierto, onSubmit, onCancel }: EditarOcFormProps) {
   const id = useId();
-  const actualizacion = useActualizarOcDeRendicion();
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   // Se decide una vez, al abrir el panel: si la OC ya tenía datos no se sugiere nada.
   const [vacioAlAbrir] = useState(() => ocVacia(valoresInicialesOc(rendicion)));
@@ -133,25 +157,13 @@ function EditarOcForm({ rendicion, abierto, onCancel, onGuardada }: EditarOcForm
   const enviar = handleSubmit(
     async (datos) => {
       setErrorGeneral(null);
-      try {
-        await actualizacion.mutateAsync({
-          clienteId: rendicion.clienteId,
-          rendicionId: rendicion.id,
-          datos,
-        });
-      } catch (fallo) {
-        const errores = mensajeFalloActualizacionOc(interpretarFalloActualizacionOc(fallo));
-        for (const [campo, message] of Object.entries(errores.campos ?? {}) as [
-          CampoOc,
-          string,
-        ][]) {
-          setError(campo, { type: 'server', message });
-          enfocarYMostrar(document.getElementById(idDe(campo)));
-        }
-        setErrorGeneral(errores.general ?? null);
-        return;
+      const errores = await onSubmit(datos);
+      if (errores === undefined) return;
+      for (const [campo, message] of Object.entries(errores.campos ?? {}) as [CampoOc, string][]) {
+        setError(campo, { type: 'server', message });
+        enfocarYMostrar(document.getElementById(idDe(campo)));
       }
-      onGuardada(TEXTO_OC_GUARDADA);
+      setErrorGeneral(errores.general ?? null);
     },
     (invalidos) => {
       const primero = ordenDeCamposOc.find((campo) => invalidos[campo] !== undefined);
@@ -196,7 +208,7 @@ function EditarOcForm({ rendicion, abierto, onCancel, onGuardada }: EditarOcForm
             id={idDe('montoMensual')}
             label="Monto mensual"
             optional
-            hint="En pesos, por ejemplo 1250000 o 1250000,50."
+            hint={AYUDA_MONTO}
             error={errors.montoMensual}
           >
             <Input
@@ -209,12 +221,21 @@ function EditarOcForm({ rendicion, abierto, onCancel, onGuardada }: EditarOcForm
               })}
             />
           </FormField>
-          <FormField id={idDe('montoTotal')} label="Monto total" optional error={errors.montoTotal}>
+          <FormField
+            id={idDe('montoTotal')}
+            label="Monto total"
+            optional
+            hint={AYUDA_MONTO}
+            error={errors.montoTotal}
+          >
             <Input
               inputMode="decimal"
               autoComplete="off"
               {...register('montoTotal')}
-              {...describirCampo(idDe('montoTotal'), errors.montoTotal, { required: false })}
+              {...describirCampo(idDe('montoTotal'), errors.montoTotal, {
+                hint: true,
+                required: false,
+              })}
             />
           </FormField>
         </div>
