@@ -92,15 +92,17 @@ export const NumeroOcSchema = z
   .min(1, { message: MENSAJE_NUMERO_OC })
   .max(NUMERO_OC_MAX, { message: MENSAJE_NUMERO_OC });
 
-/** Monto de la OC: no negativo, hasta 2 decimales y dentro del rango de la columna. */
+/**
+ * Monto de la OC: no negativo, hasta 2 decimales y dentro del rango de la columna. Los decimales
+ * se comparan con `toFixed(2)` y no multiplicando por 100: `268438263.29 * 100` da
+ * `26843826329.000004` y rechazaría un monto válido.
+ */
 export const MontoOcSchema = z
   .number({ invalid_type_error: MENSAJE_MONTO_OC })
   .finite({ message: MENSAJE_MONTO_OC })
   .min(0, { message: MENSAJE_MONTO_OC })
   .max(MONTO_OC_MAX, { message: MENSAJE_MONTO_OC })
-  .refine((monto) => Math.abs(Math.round(monto * 100) - monto * 100) < 1e-6, {
-    message: MENSAJE_MONTO_OC,
-  });
+  .refine((monto) => Number(monto.toFixed(2)) === monto, { message: MENSAJE_MONTO_OC });
 
 /** Los tres datos de la OC, todos opcionales. */
 const DatosOcCreacionShape = {

@@ -28,9 +28,17 @@ describe('MontoOcSchema', () => {
     expect(MontoOcSchema.safeParse(monto).success).toBe(true);
   });
 
-  it.each([-1, 10.123, Number.NaN, Infinity, MONTO_OC_MAX + 1, '10'])('rechaza %s', (monto) => {
-    expect(MontoOcSchema.safeParse(monto).success).toBe(false);
+  // Con `monto * 100` el punto flotante da `26843826329.000004` y el monto se rechazaba.
+  it.each([268438263.29, 999999999999.99])('acepta un monto grande con centavos: %s', (monto) => {
+    expect(MontoOcSchema.safeParse(monto).success).toBe(true);
   });
+
+  it.each([-1, 10.123, 0.001, Number.NaN, Infinity, MONTO_OC_MAX + 1, '10'])(
+    'rechaza %s',
+    (monto) => {
+      expect(MontoOcSchema.safeParse(monto).success).toBe(false);
+    },
+  );
 });
 
 describe('CreateRendicionSchema con OC', () => {
