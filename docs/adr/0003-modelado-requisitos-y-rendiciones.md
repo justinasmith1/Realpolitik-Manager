@@ -6,7 +6,7 @@ Accepted
 
 ## Fecha
 
-2026-10-20 (actualizada el 2026-10-21 con la unicidad del nombre del tipo de documento, HU2.1: ver punto 8; el 2026-10-27 con la corrección del canal de un ítem, punto 9, y las reglas confirmadas con el negocio; y el 2026-10-30 con el emisor del cliente y de la rendición, y la unicidad del número de factura por emisor, HU2.9: ver punto 11)
+2026-10-20 (actualizada el 2026-10-21 con la unicidad del nombre del tipo de documento, HU2.1: ver punto 8; el 2026-10-27 con la corrección del canal de un ítem, punto 9, y las reglas confirmadas con el negocio; y el 2026-10-30 con el emisor del cliente y de la rendición, y la unicidad del número de factura por emisor, HU2.9: ver punto 11; y la orden de compra de la rendición, HU2.11: ver punto 12)
 
 ## Contexto
 
@@ -34,7 +34,7 @@ Restricciones heredadas de ADR-0002: UUID como clave, baja lógica (`isDeleted` 
   - `matrizConfigurada` (default `false`): indica si el cliente ya tiene su matriz configurada, es decir, al menos un requisito activo. La mantiene el backend: pasa a `true` al haber un requisito activo y vuelve a `false` al dar de baja el último. No se edita a mano. Una matriz sin requisitos activos significa que todavía no se configuró: no existe la "matriz vacía a propósito".
   - `indicacionesArmado` (`VARCHAR(1000)`, opcional): indicaciones de armado del legajo.
   - `observaciones` (`VARCHAR(1000)`, opcional): nota interna con hechos puntuales de la cuenta (HU2.10). Es una sola nota que se reemplaza al guardar, con la misma lógica que `indicacionesArmado`: un campo de `Cliente`, sin tabla aparte.
-- **`Rendicion`**: cliente + `anio` + `mes` + `numeroFactura` (número de factura, obligatorio). Un número de factura está en una sola rendición **activa por emisor**, sin importar el período ni el cliente: desde HU2.9 la unicidad es (`emisor`, `numeroFactura`) entre las activas, incluso entre clientes distintos (punto 11; antes era (cliente, `numeroFactura`)). Un cliente puede tener varias rendiciones en el mismo mes, una por factura, y recibir facturas de los dos emisores. `Rendicion.emisor` es una foto tomada al abrirla; es `NULL` en las anteriores a HU2.9, que conservan la regla por cliente. La orden de compra se modela aparte en otra HU. Con baja lógica: una rendición abierta con un período o un número de factura mal cargados se anula (`isDeleted`) en vez de borrarse, porque tiene valor fiscal (corrección en HU2.5).
+- **`Rendicion`**: cliente + `anio` + `mes` + `numeroFactura` (número de factura, obligatorio). Un número de factura está en una sola rendición **activa por emisor**, sin importar el período ni el cliente: desde HU2.9 la unicidad es (`emisor`, `numeroFactura`) entre las activas, incluso entre clientes distintos (punto 11; antes era (cliente, `numeroFactura`)). Un cliente puede tener varias rendiciones en el mismo mes, una por factura, y recibir facturas de los dos emisores. `Rendicion.emisor` es una foto tomada al abrirla; es `NULL` en las anteriores a HU2.9, que conservan la regla por cliente. La orden de compra (número, monto mensual y monto total) es un dato opcional de la rendición, sin unicidad (punto 12). Con baja lógica: una rendición abierta con un período o un número de factura mal cargados se anula (`isDeleted`) en vez de borrarse, porque tiene valor fiscal (corrección en HU2.5).
 - **`ItemChecklist`**: un documento a presentar en una rendición.
 
 ### 2. El checklist es una foto (snapshot)
@@ -122,6 +122,13 @@ En este proyecto las bajas son lógicas: estas reglas solo actúan ante un borra
 | `ck_item_ordinal`                      | `1 <= ordinal <= totalOrdinal`  |
 | `ck_item_completado_coherente`         | `completado` ⇔ `completadoAt`   |
 | `ck_item_dia_rango`                    | `diaAproximado` null o 1..31    |
+
+HU2.11 suma dos, para la orden de compra (punto 12):
+
+| CHECK                                 | Regla                                                 |
+| ------------------------------------- | ----------------------------------------------------- |
+| `ck_rendicion_numero_oc_no_vacio`     | `numeroOc` null o `btrim(numeroOc) <> ''`             |
+| `ck_rendicion_montos_oc_no_negativos` | `montoMensual` y `montoTotal`, cada uno null o `>= 0` |
 
 Como en el resto del modelo, la aplicación valida primero (T2.2) y los CHECK son la última línea de defensa.
 
@@ -227,6 +234,19 @@ CREATE UNIQUE INDEX "uq_rendicion_emisor_factura_activa"
 - **(b)** `uq_rendicion_factura_activa_sin_emisor` queda sin uso cuando no queden rendiciones heredadas activas, y se puede quitar entonces (con una migración que lo elimine).
 - **(c)** Con índices parciales creados en SQL, Prisma informa como `meta.target` del P2002 las **columnas** del índice (`['emisor', 'numeroFactura']` o `['clienteId', 'numeroFactura']`) y no su nombre. Se verificó contra PostgreSQL 16, también dentro de una transacción serializable y con altas concurrentes. Por eso `esFacturaDuplicada` acepta ambas formas (columnas y nombres de los dos índices), y hay un test de integración que provoca cada violación y comprueba lo que informa Prisma.
 
+### 12. Orden de compra de la rendición (HU2.11, 30/10/2026)
+
+Muchos organismos emiten una orden de compra (OC) que respalda la facturación: un número, un monto mensual y un monto total. La operadora necesita registrarla junto con cada rendición.
+
+**Decisión (implementada).**
+
+- **Es de la rendición, no del cliente.** `Rendicion` suma `numeroOc` (`VARCHAR(100)`), `montoMensual` y `montoTotal` (`DECIMAL(14,2)`), los tres opcionales. Un cliente que no usa OC no carga nada, y uno que la usa puede cambiarla de un mes a otro o tener una distinta por factura: en `Cliente` habría una sola y se perdería la de cada rendición. El período no se repite: es el de la rendición. La migración es `20261030140000_hu2_11_orden_compra_rendicion`; las rendiciones existentes quedan con los tres en `NULL`.
+- **Sin unicidad.** El número de OC se repite entre meses (Moreno, la OC 342 de febrero a diciembre), entre facturas del mismo mes (La Plata, dos facturas con la OC 1578) y entre clientes, porque cada organismo numera sus OC con su propia numeración (confirmado por el dueño, Santiago, el 30/10/2026). No hay índice único ni chequeo en el servicio, y ningún `409` por número de OC. Solo hay un índice común `(clienteId, numeroOc)`, para buscar la última OC del cliente.
+- **Montos en `DECIMAL(14,2)`**, no en un número de punto flotante: son importes en pesos, con centavos exactos. El tope es `999999999999.99`. La API los expone como números JSON: el mapper los convierte con `Decimal.toNumber()`, sin perder precisión, porque 14 dígitos entran en un `number`. `MontoOcSchema` de shared valida hasta 2 decimales con `Number(monto.toFixed(2)) === monto`, no multiplicando por 100, que por el punto flotante rechazaba montos grandes con centavos.
+- **Dos CHECK** como última línea de defensa (punto 7): `ck_rendicion_numero_oc_no_vacio` (un número cargado no puede ser solo espacios: para no tener OC el valor es `NULL`) y `ck_rendicion_montos_oc_no_negativos`.
+- **Se edita aparte del resto de la rendición.** `PATCH /rendiciones/:id` cambia solo la OC, en rendiciones activas (una anulada responde `409 RENDICION_ANULADA`); el período, la factura y el emisor siguen corrigiéndose anulando. Un campo ausente no se toca y `null` lo borra. El alta (`POST /clientes/:id/rendiciones`) también acepta los tres datos, opcionales.
+- **Sugerencia.** `GET /clientes/:id/ultima-oc` devuelve la OC de la rendición activa más reciente del cliente que tenga número, para ofrecer repetirla. Es solo una ayuda: no copia nada sola.
+
 ### Reglas de negocio adicionales (T2.2)
 
 Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo anterior:
@@ -261,6 +281,9 @@ Reglas de validación que se suman en los schemas Zod de T2.2, sobre el modelo a
   - **`citext`**: solo ignora mayúsculas, no acentos, y es otra extensión.
   - **Validar solo en la aplicación**: carrera entre altas simultáneas y nada protege lo que no pasa por la API.
   - **Guardar el nombre ya normalizado en `nombre`**: se pierde cómo lo escribió la administradora ("Constancia ARCA" se mostraría "constancia arca").
+- **Orden de compra en `Cliente` o única** (HU2.11, punto 12):
+  - **Un campo de `Cliente`**: descartado porque la OC cambia entre meses y entre facturas, y cada rendición tiene que conservar la suya.
+  - **Número de OC único por cliente o en todo el sistema**: descartado porque la misma OC respalda varios meses y varias facturas, y dos organismos pueden usar el mismo número.
 - **Tabla de emisores** (HU2.9): descartada por lo del punto 11. Dos valores fijos no justifican una tabla con su clave foránea, su seed y su administración; si hiciera falta un tercero, se agrega al enum.
 - **Factura implícita / matriz vacía a propósito**: la idea era que la factura acompañara siempre a la rendición sin figurar en la matriz, y que `matrizConfigurada = true` con la matriz vacía marcara a un cliente que se rinde solo con la factura. Descartada el 20/10/2026: todo cliente pide al menos la factura, así que conviene tratarla como un requisito más (con su cantidad, días y canal, y como ítem del checklist). Así, una matriz sin requisitos activos solo puede significar que falta configurarla, y `matrizConfigurada` se deduce de los requisitos en vez de cargarse a mano.
 

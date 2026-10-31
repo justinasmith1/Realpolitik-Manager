@@ -7,6 +7,8 @@ import {
   generarChecklist,
   motivoNoEnviable,
   PreparacionEnvioSchema,
+  UltimaOcSchema,
+  type ActualizarRendicionDto,
   type CanalEntregaType,
   type CreateRendicionDto,
   type EmisorType,
@@ -18,6 +20,7 @@ import {
   type RendicionDetalle,
   type RendicionResumen,
   type ResultadoPropagarCanal,
+  type UltimaOc,
 } from '@realpolitik/shared';
 
 import { conflict, notFound, validationError, type AppError } from '../../errors/app-error';
@@ -264,6 +267,9 @@ async function insertarRendicion(
       mes: input.mes,
       numeroFactura: input.numeroFactura,
       emisor,
+      ...(input.numeroOc !== undefined && { numeroOc: input.numeroOc }),
+      ...(input.montoMensual !== undefined && { montoMensual: input.montoMensual }),
+      ...(input.montoTotal !== undefined && { montoTotal: input.montoTotal }),
       items: { createMany: { data: items } },
     },
     include: CON_ITEMS,
@@ -398,6 +404,64 @@ export async function obtenerRendicion(id: string): Promise<RendicionDetalle> {
     throw notFound('Rendición no encontrada');
   }
   return toRendicionDetalleDto(conItemsEnOrden(rendicion));
+}
+
+/**
+ * Edita los datos de la OC de una rendición (HU2.11): `PATCH /rendiciones/:id`. Un campo ausente no
+ * se toca y `null` lo borra. Solo en una rendición activa (anulada: `409 RENDICION_ANULADA`, es
+ * historial). El período no se pide: es el de la rendición. El número de OC no es único: se repite
+ * entre meses, entre facturas y entre clientes. Una sola escritura, en transacción serializable
+ * junto con el chequeo de anulada.
+ */
+export async function actualizarRendicion(
+  id: string,
+  datos: ActualizarRendicionDto,
+): Promise<RendicionDetalle> {
+  return enTransaccionSerializable(async (tx) => {
+    const rendicion = await tx.rendicion.findFirst({
+      where: { id, cliente: { isDeleted: false } },
+      select: { id: true, isDeleted: true },
+    });
+    if (rendicion === null) {
+      throw notFound('Rendición no encontrada');
+    }
+    if (rendicion.isDeleted) {
+      throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
+    }
+
+    const actualizada = await tx.rendicion.update({
+      where: { id },
+      data: {
+        ...(datos.numeroOc !== undefined && { numeroOc: datos.numeroOc }),
+        ...(datos.montoMensual !== undefined && { montoMensual: datos.montoMensual }),
+        ...(datos.montoTotal !== undefined && { montoTotal: datos.montoTotal }),
+      },
+      include: CON_ITEMS,
+    });
+    return toRendicionDetalleDto(conItemsEnOrden(actualizada));
+  });
+}
+
+/**
+ * La OC de la rendición activa más reciente del cliente que tenga número de OC (HU2.11): sirve de
+ * sugerencia al cargar la de este mes. Más reciente = período (año y mes) y, dentro del mismo mes,
+ * la última creada, como el listado. `null` si ninguna tiene OC.
+ */
+export async function obtenerUltimaOc(clienteId: string): Promise<UltimaOc> {
+  await exigirClienteVigente(clienteId);
+  const ultima = await prisma.rendicion.findFirst({
+    where: { clienteId, isDeleted: false, numeroOc: { not: null } },
+    orderBy: [{ anio: 'desc' }, { mes: 'desc' }, { createdAt: 'desc' }],
+    select: { numeroOc: true, montoMensual: true, montoTotal: true },
+  });
+  if (ultima === null || ultima.numeroOc === null) {
+    return null;
+  }
+  return UltimaOcSchema.parse({
+    numeroOc: ultima.numeroOc,
+    montoMensual: ultima.montoMensual?.toNumber() ?? null,
+    montoTotal: ultima.montoTotal?.toNumber() ?? null,
+  });
 }
 
 /**

@@ -55,7 +55,10 @@ const CAMPOS_DE_RENDICION = [
   'estado',
   'id',
   'mes',
+  'montoMensual',
+  'montoTotal',
   'numeroFactura',
+  'numeroOc',
 ];
 
 function filaRendicion(extra: Record<string, unknown> = {}) {

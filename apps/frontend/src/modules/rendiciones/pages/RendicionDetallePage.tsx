@@ -6,7 +6,7 @@ import {
   type Cliente,
   type RendicionDetalle,
 } from '@realpolitik/shared';
-import { ArrowLeftIcon } from 'lucide-react';
+import { ArrowLeftIcon, PencilIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 
@@ -17,6 +17,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { enfocarYMostrar } from '@/lib/focus';
+import { cn } from '@/lib/utils';
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
 import { etiquetasCanalEntrega } from '@/modules/clientes/clientes.etiquetas';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
@@ -34,6 +35,7 @@ import {
   interpretarFalloPreparacionEnvio,
 } from '@/modules/rendiciones/api/rendiciones.api';
 import { CambiarCanalDialog } from '@/modules/rendiciones/components/CambiarCanalDialog';
+import { EditarOcSheet } from '@/modules/rendiciones/components/EditarOcSheet';
 import { EnvioDialog, type Envio } from '@/modules/rendiciones/components/EnvioDialog';
 import { mensajeFalloPreparacionEnvio } from '@/modules/rendiciones/components/erroresDeRendicion';
 import {
@@ -45,6 +47,8 @@ import {
   avanceDelChecklist,
   checklistCompleto,
   etiquetaDeEmisor,
+  etiquetaDeMonto,
+  etiquetaDeNumeroOc,
   etiquetaDePeriodo,
   motivoParaNoEnviar,
   nombreDeItem,
@@ -187,7 +191,7 @@ function DetalleDeRendicion({
   const [avisoDeMezcla, setAvisoDeMezcla] = useState(false);
   const [envio, setEnvio] = useState<Envio | null>(null);
   const [itemACorregir, setItemACorregir] = useState<ItemChecklist | null>(null);
-  // El resultado de la última acción sobre un ítem (canal o documento).
+  // El resultado de la última acción sobre un ítem (canal o documento) o sobre la OC.
   const [avisoDelChecklist, setAvisoDelChecklist] = useState<{
     variant: 'success' | 'warning' | 'destructive';
     texto: string;
@@ -202,6 +206,7 @@ function DetalleDeRendicion({
     }),
   );
   const [editandoCliente, setEditandoCliente] = useState(false);
+  const [editandoOc, setEditandoOc] = useState(false);
   const avance = calcularFaltantes(rendicion.items);
   const anulada = rendicion.estado === 'ANULADA';
   const completo = checklistCompleto(avance);
@@ -294,17 +299,47 @@ function DetalleDeRendicion({
         <h1 ref={tituloRef} tabIndex={-1} className="text-xl font-semibold tracking-tight">
           Rendición {etiquetaDePeriodo(rendicion)}
         </h1>
+        <dl
+          aria-label="Datos de la rendición"
+          className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-panel border bg-panel px-4 py-3 text-sm sm:grid-cols-3 lg:grid-cols-6"
+        >
+          <DatoDeCabecera etiqueta="Período">{etiquetaDePeriodo(rendicion)}</DatoDeCabecera>
+          <DatoDeCabecera etiqueta="Número de factura" mono>
+            {rendicion.numeroFactura}
+          </DatoDeCabecera>
+          <DatoDeCabecera
+            etiqueta="Número de OC"
+            apagado={rendicion.numeroOc === null}
+            accion={
+              !anulada && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => {
+                    setAvisoDelChecklist(null);
+                    setEditandoOc(true);
+                  }}
+                >
+                  <PencilIcon aria-hidden="true" />
+                  Editar OC
+                </Button>
+              )
+            }
+          >
+            {etiquetaDeNumeroOc(rendicion.numeroOc)}
+          </DatoDeCabecera>
+          <DatoDeCabecera etiqueta="Monto mensual" apagado={rendicion.montoMensual === null}>
+            {etiquetaDeMonto(rendicion.montoMensual)}
+          </DatoDeCabecera>
+          <DatoDeCabecera etiqueta="Monto total" apagado={rendicion.montoTotal === null}>
+            {etiquetaDeMonto(rendicion.montoTotal)}
+          </DatoDeCabecera>
+          <DatoDeCabecera etiqueta="Emisor" apagado={rendicion.emisor === null}>
+            {etiquetaDeEmisor(rendicion.emisor)}
+          </DatoDeCabecera>
+        </dl>
         <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-          <div className="flex gap-1.5">
-            <dt className="text-content-secondary">Factura</dt>
-            <dd className="font-mono text-foreground">{rendicion.numeroFactura}</dd>
-          </div>
-          <div className="flex gap-1.5">
-            <dt className="text-content-secondary">Emisor</dt>
-            <dd className={rendicion.emisor === null ? 'text-muted-foreground' : 'text-foreground'}>
-              {etiquetaDeEmisor(rendicion.emisor)}
-            </dd>
-          </div>
           <div className="flex items-center gap-1.5">
             <dt className="text-content-secondary">Estado</dt>
             <dd>
@@ -454,6 +489,54 @@ function DetalleDeRendicion({
           }}
         />
       )}
+      {!anulada && (
+        <EditarOcSheet
+          rendicion={rendicion}
+          abierto={editandoOc}
+          onAbiertoChange={setEditandoOc}
+          onGuardada={(texto) => {
+            setEditandoOc(false);
+            setAvisoDelChecklist({ variant: 'success', texto });
+          }}
+        />
+      )}
     </>
+  );
+}
+
+interface DatoDeCabeceraProps {
+  etiqueta: string;
+  children: ReactNode;
+  /** El dato no está cargado: se ve en tono apagado. */
+  apagado?: boolean;
+  mono?: boolean;
+  /** Acción al lado del dato (p. ej. editar). */
+  accion?: ReactNode;
+}
+
+/** Una celda de la grilla de la cabecera: etiqueta arriba y dato abajo. */
+function DatoDeCabecera({
+  etiqueta,
+  children,
+  apagado = false,
+  mono = false,
+  accion,
+}: DatoDeCabeceraProps) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <dt className="text-xs text-content-secondary">{etiqueta}</dt>
+      <dd className="flex min-w-0 flex-wrap items-center gap-x-2">
+        <span
+          className={cn(
+            'min-w-0 break-words',
+            apagado ? 'text-muted-foreground' : 'text-foreground',
+            mono && 'font-mono',
+          )}
+        >
+          {children}
+        </span>
+        {accion}
+      </dd>
+    </div>
   );
 }

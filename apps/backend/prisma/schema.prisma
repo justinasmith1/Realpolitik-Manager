@@ -100,6 +100,11 @@ enum PeriodicidadTipo {
 //                                          emisor: la regla anterior, para las rendiciones
 //                                          existentes (AND "emisor" IS NULL)
 //
+// Orden de compra de la rendición (HU2.11, ADR-0003): CHECK en la migración
+// `20261030140000_hu2_11_orden_compra_rendicion`. El número de OC no tiene índice único.
+//   ck_rendicion_numero_oc_no_vacio     numeroOc NULL o con algún carácter que no sea espacio
+//   ck_rendicion_montos_oc_no_negativos montoMensual y montoTotal NULL o >= 0
+//
 // Documentos y sus aplicaciones (HU2.8, ADR-0004): CHECK e índice parcial en la migración
 // `20261029120000_hu2_8_documentos_aplicaciones`.
 //   ck_documento_mes                  mes 1..12 y anio 2020..2100 (como ck_rendicion_mes)
@@ -281,6 +286,14 @@ model Rendicion {
   /// que siguen con la regla de unicidad por cliente.
   emisor      Emisor?
 
+  // Orden de compra (HU2.11). Los tres datos son opcionales y de la rendición, no del cliente.
+  // El número no es único: se repite entre meses, entre facturas y entre clientes (cada organismo
+  // numera sus OC). CHECK ck_rendicion_numero_oc_no_vacio y ck_rendicion_montos_oc_no_negativos,
+  // en SQL.
+  numeroOc      String?  @db.VarChar(100)
+  montoMensual  Decimal? @db.Decimal(14, 2)
+  montoTotal    Decimal? @db.Decimal(14, 2)
+
   // Baja lógica (anular una rendición mal cargada, HU2.5). CHECK ck_rendicion_baja_logica:
   // isDeleted ⇔ deletedAt. La unicidad del número de factura (en cualquier período) vale solo
   // entre las activas: con emisor, (emisor, numeroFactura) entre todos los clientes
@@ -294,6 +307,9 @@ model Rendicion {
   updatedAt   DateTime @updatedAt
 
   items       ItemChecklist[]
+
+  /// Última OC del cliente (GET /clientes/:id/ultima-oc).
+  @@index([clienteId, numeroOc])
 }
 
 // ─── Modelo ItemChecklist ─────────────────────────────────────────────────────
