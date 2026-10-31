@@ -146,7 +146,7 @@ describe('RendicionDetallePage: Orden de Compra (HU2.11)', () => {
     expect(screen.queryByRole('button', { name: 'Editar OC' })).not.toBeInTheDocument();
   });
 
-  it('al abrir el modal con los campos vacíos sugiere repetir la última OC, autocompleta los 3 inputs y guarda refrescando la cabecera y mostrando un Toast', async () => {
+  it('al abrir el modal con los campos vacíos sugiere repetir la última OC, autocompleta los 3 inputs y guarda refrescando la cabecera y avisa que se guardó', async () => {
     servir({
       ultimaOc: {
         numeroOc: 'OC-2026-77',
@@ -180,10 +180,9 @@ describe('RendicionDetallePage: Orden de Compra (HU2.11)', () => {
     expect(datoDeCabecera('Monto total').textContent?.replace(/\s/g, ' ')).toBe('$ 15.000.000');
   });
 
-  it('si el número de OC pertenece a otro cliente (409 OC_DE_OTRO_CLIENTE), marca el campo sin cerrar el modal', async () => {
+  it('si la rendición se anuló mientras tanto (409 RENDICION_ANULADA), lo avisa sin cerrar el panel', async () => {
     servir({
-      patchRespuesta: () =>
-        errorJson(409, 'CONFLICT', { motivo: 'OC_DE_OTRO_CLIENTE', numeroOc: 'OC-AJENA' }),
+      patchRespuesta: () => errorJson(409, 'CONFLICT', { motivo: 'RENDICION_ANULADA' }),
     });
     const { user } = renderDetalle();
     await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
@@ -191,11 +190,11 @@ describe('RendicionDetallePage: Orden de Compra (HU2.11)', () => {
     await user.click(screen.getByRole('button', { name: 'Editar OC' }));
     const dialog = within(await screen.findByRole('dialog', { name: 'Orden de compra' }));
 
-    await user.type(dialog.getByLabelText(/Número de OC/), 'OC-AJENA');
+    await user.type(dialog.getByLabelText(/Número de OC/), 'OC-342');
     await user.click(dialog.getByRole('button', { name: 'Guardar OC' }));
 
     expect(
-      await dialog.findByText('Ese número de OC ya está asignado a otro cliente.'),
+      await dialog.findByText('La rendición está anulada: ya no se puede modificar.'),
     ).toBeVisible();
     expect(screen.getByRole('dialog', { name: 'Orden de compra' })).toBeInTheDocument();
   });

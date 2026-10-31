@@ -184,7 +184,6 @@ export interface ErroresDeActualizacionOc {
   general?: string;
 }
 
-const MENSAJE_OC_DE_OTRO_CLIENTE = 'Ese número de OC ya está asignado a otro cliente.';
 const MENSAJE_INESPERADO_OC =
   'No pudimos guardar la orden de compra. Probá de nuevo en unos segundos.';
 
@@ -194,8 +193,6 @@ const esCampoOc = (campo: string): campo is CampoOc =>
 /** Errores del formulario de la OC para cada fallo. */
 export function mensajeFalloActualizacionOc(fallo: FalloActualizacionOc): ErroresDeActualizacionOc {
   switch (fallo.tipo) {
-    case 'oc-de-otro-cliente':
-      return { campos: { numeroOc: MENSAJE_OC_DE_OTRO_CLIENTE } };
     case 'rendicion-anulada':
       return { general: 'La rendición está anulada: ya no se puede modificar.' };
     case 'no-existe':

@@ -244,32 +244,6 @@ function itemsDeLaMatriz(
   }
 }
 
-/**
- * El número de OC no se repite entre clientes (HU2.11): si una rendición activa de OTRO cliente ya
- * lo usa, 409 `OC_DE_OTRO_CLIENTE`. Dentro del mismo cliente puede repetirse sin límite (otros
- * meses u otras facturas). No es un índice único porque la regla es "un número, un cliente", que
- * la base no puede expresar sin impedir esas repeticiones. Corre dentro de la transacción
- * serializable de quien escribe, así dos altas simultáneas con el mismo número chocan y una se
- * reintenta viendo a la otra.
- */
-async function exigirOcLibreEntreClientes(
-  tx: Prisma.TransactionClient,
-  clienteId: string,
-  numeroOc: string,
-): Promise<void> {
-  const deOtroCliente = await tx.rendicion.findFirst({
-    where: { numeroOc, isDeleted: false, clienteId: { not: clienteId } },
-    select: { id: true },
-  });
-  if (deOtroCliente !== null) {
-    throw conflict(
-      'OC_DE_OTRO_CLIENTE',
-      { numeroOc },
-      'Ese número de OC ya está asignado a otro cliente',
-    );
-  }
-}
-
 async function insertarRendicion(
   tx: Prisma.TransactionClient,
   clienteId: string,
@@ -285,9 +259,6 @@ async function insertarRendicion(
     include: { tipoDocumento: { select: { nombre: true } } },
   });
   const items = itemsDeLaMatriz(requisitos, cliente.canalEntrega);
-  if (input.numeroOc !== undefined) {
-    await exigirOcLibreEntreClientes(tx, clienteId, input.numeroOc);
-  }
 
   const creada = await tx.rendicion.create({
     data: {
@@ -438,8 +409,9 @@ export async function obtenerRendicion(id: string): Promise<RendicionDetalle> {
 /**
  * Edita los datos de la OC de una rendición (HU2.11): `PATCH /rendiciones/:id`. Un campo ausente no
  * se toca y `null` lo borra. Solo en una rendición activa (anulada: `409 RENDICION_ANULADA`, es
- * historial). El período no se pide: es el de la rendición. Si el número es de otro cliente, 409
- * `OC_DE_OTRO_CLIENTE`. Una sola escritura, en transacción serializable junto con el chequeo.
+ * historial). El período no se pide: es el de la rendición. El número de OC no es único: se repite
+ * entre meses, entre facturas y entre clientes. Una sola escritura, en transacción serializable
+ * junto con el chequeo de anulada.
  */
 export async function actualizarRendicion(
   id: string,
@@ -448,16 +420,13 @@ export async function actualizarRendicion(
   return enTransaccionSerializable(async (tx) => {
     const rendicion = await tx.rendicion.findFirst({
       where: { id, cliente: { isDeleted: false } },
-      select: { id: true, clienteId: true, isDeleted: true },
+      select: { id: true, isDeleted: true },
     });
     if (rendicion === null) {
       throw notFound('Rendición no encontrada');
     }
     if (rendicion.isDeleted) {
       throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
-    }
-    if (typeof datos.numeroOc === 'string') {
-      await exigirOcLibreEntreClientes(tx, rendicion.clienteId, datos.numeroOc);
     }
 
     const actualizada = await tx.rendicion.update({

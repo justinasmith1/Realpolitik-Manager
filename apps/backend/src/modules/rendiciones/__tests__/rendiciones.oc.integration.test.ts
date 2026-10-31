@@ -1,8 +1,6 @@
 // Integración de Orden de Compra (HU2.11) contra PostgreSQL REAL:
 // - Persistencia de `numeroOc`, `montoMensual` y `montoTotal` (Decimal) al abrir y al editar (`PATCH /rendiciones/:id`)
-// - Repetición permitida del mismo `numeroOc` en el mismo cliente (distintos meses o distintas facturas)
-// - Rechazo 409 `OC_DE_OTRO_CLIENTE` si se intenta usar el `numeroOc` de una rendición activa de otro cliente
-// - Una rendición anulada libera su `numeroOc` para otro cliente
+// - El `numeroOc` no es único: se repite en el mismo cliente (distintos meses o distintas facturas) y entre clientes
 // - `GET /clientes/:id/ultima-oc` devuelve la OC de la rendición activa más reciente con `numeroOc` no nulo (o `null`)
 // - CHECK constraints en SQL (`ck_rendicion_numero_oc_no_vacio` y `ck_rendicion_montos_oc_no_negativos`)
 
@@ -125,7 +123,7 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
     });
   });
 
-  it('permite repetir el mismo numeroOc en el mismo cliente, pero lo rechaza entre clientes distintos', async () => {
+  it('permite repetir el mismo numeroOc en el mismo cliente y entre clientes distintos', async () => {
     const clienteA = await crearClienteConRequisito();
     const clienteB = await crearClienteConRequisito();
     const numeroOc = `OC-${MARCA}-COMPARTIDA`;
@@ -151,31 +149,27 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
     });
     expect(r2.status).toBe(201);
 
-    // Otro cliente al abrir: 409 OC_DE_OTRO_CLIENTE.
-    const rechazoAlta = await request(app).post(`/clientes/${clienteB.id}/rendiciones`).send({
+    // Otro cliente al abrir: también permitido (cada organismo numera sus OC).
+    const altaOtroCliente = await request(app).post(`/clientes/${clienteB.id}/rendiciones`).send({
       anio: 2026,
       mes: 9,
       numeroFactura: facturaUnica(),
       numeroOc,
     });
-    expect(rechazoAlta.status).toBe(409);
-    expect(rechazoAlta.body).toMatchObject({
-      error: { code: 'CONFLICT', details: { motivo: 'OC_DE_OTRO_CLIENTE', numeroOc } },
-    });
+    expect(altaOtroCliente.status).toBe(201);
+    expect(altaOtroCliente.body).toMatchObject({ numeroOc });
 
-    // Otro cliente al editar con PATCH: también 409 OC_DE_OTRO_CLIENTE.
+    // Otro cliente al editar con PATCH: también permitido.
     const rB = await request(app)
       .post(`/clientes/${clienteB.id}/rendiciones`)
       .send({ anio: 2026, mes: 9, numeroFactura: facturaUnica() });
     expect(rB.status).toBe(201);
 
-    const rechazoPatch = await request(app)
+    const edicionOtroCliente = await request(app)
       .patch(`/rendiciones/${(rB.body as { id: string }).id}`)
       .send({ numeroOc });
-    expect(rechazoPatch.status).toBe(409);
-    expect(rechazoPatch.body).toMatchObject({
-      error: { code: 'CONFLICT', details: { motivo: 'OC_DE_OTRO_CLIENTE', numeroOc } },
-    });
+    expect(edicionOtroCliente.status).toBe(200);
+    expect(edicionOtroCliente.body).toMatchObject({ numeroOc });
   });
 
   it('GET /clientes/:id/ultima-oc devuelve la OC de la rendición activa más reciente con numeroOc no nulo, o null si no hay', async () => {

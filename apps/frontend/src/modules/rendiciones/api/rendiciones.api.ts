@@ -440,7 +440,6 @@ export async function obtenerUltimaOc(clienteId: string, signal?: AbortSignal): 
 /** Por qué no se pudo guardar la OC, en términos del dominio. */
 export type FalloActualizacionOc =
   | { tipo: 'datos-invalidos'; detalles: DetalleInvalido[] }
-  | { tipo: 'oc-de-otro-cliente' }
   | { tipo: 'rendicion-anulada' }
   | { tipo: 'no-existe' }
   | { tipo: 'inesperado' };
@@ -458,9 +457,13 @@ export function interpretarFalloActualizacionOc(error: unknown): FalloActualizac
     return { tipo: 'no-existe' };
   }
   const details = respuesta.cuerpo?.details;
-  if (respuesta.status === 409 && respuesta.cuerpo?.code === 'CONFLICT' && esObjeto(details)) {
-    if (details.motivo === 'OC_DE_OTRO_CLIENTE') return { tipo: 'oc-de-otro-cliente' };
-    if (details.motivo === 'RENDICION_ANULADA') return { tipo: 'rendicion-anulada' };
+  if (
+    respuesta.status === 409 &&
+    respuesta.cuerpo?.code === 'CONFLICT' &&
+    esObjeto(details) &&
+    details.motivo === 'RENDICION_ANULADA'
+  ) {
+    return { tipo: 'rendicion-anulada' };
   }
   return { tipo: 'inesperado' };
 }

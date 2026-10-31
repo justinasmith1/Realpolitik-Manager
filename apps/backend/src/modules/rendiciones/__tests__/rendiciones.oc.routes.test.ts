@@ -5,8 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../../app';
 
 // Orden de compra (HU2.11), con la base simulada:
-// - `POST /clientes/:id/rendiciones` con datos de OC opcionales y rechazo 409 `OC_DE_OTRO_CLIENTE`
-// - `PATCH /rendiciones/:id` (actualizar / borrar datos de OC)
+// - `POST /clientes/:id/rendiciones` con datos de OC opcionales
+// - `PATCH /rendiciones/:id` (actualizar / borrar datos de OC). El número de OC no es único: no se
+//   busca si otra rendición lo usa.
 // - `GET /clientes/:id/ultima-oc` (sugerencia de última OC del cliente)
 const { transaccion, prismaMock } = vi.hoisted(() => {
   const delegado = () => ({
@@ -33,7 +34,6 @@ vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
 const CLIENTE = 'a1b2c3d4-e5f6-4789-abcd-ef0123456789';
-const OTRO_CLIENTE = 'a1b2c3d4-e5f6-4789-abcd-ef0123456700';
 const RENDICION = 'e1f2a3b4-c5d6-4789-8abc-def012345678';
 const REQ_FACTURA = 'd1e2f3a4-b5c6-4789-8abc-def012345601';
 const TIPO_FACTURA = 'c1d2e3f4-a5b6-4789-8abc-def012345601';
@@ -105,7 +105,6 @@ beforeEach(() => {
     emisor: 'SOCIEDAD',
   });
   transaccion.requisitoCliente.findMany.mockResolvedValue(MATRIZ);
-  transaccion.rendicion.findFirst.mockResolvedValue(null);
   transaccion.rendicion.create.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
     Promise.resolve(
       filaRendicionConItems({
@@ -137,38 +136,14 @@ describe('POST /clientes/:id/rendiciones — Orden de Compra (HU2.11)', () => {
       montoMensual: 1250000,
       montoTotal: 15000000.5,
     });
-    expect(transaccion.rendicion.findFirst).toHaveBeenCalledWith({
-      where: { numeroOc: 'OC-2026-01', isDeleted: false, clienteId: { not: CLIENTE } },
-      select: { id: true },
-    });
-  });
-
-  it('responde 409 OC_DE_OTRO_CLIENTE si otra rendición activa de otro cliente usa ese numeroOc', async () => {
-    transaccion.rendicion.findFirst.mockResolvedValueOnce({ id: 'otra-rendicion-id' });
-
-    const res = await request(app).post(`/clientes/${CLIENTE}/rendiciones`).send({
-      anio: 2026,
-      mes: 10,
-      numeroFactura: 'B 00002-00001482',
-      numeroOc: 'OC-AJENA',
-    });
-
-    expect(res.status).toBe(409);
-    expect(res.body).toMatchObject({
-      error: {
-        code: 'CONFLICT',
-        details: { motivo: 'OC_DE_OTRO_CLIENTE', numeroOc: 'OC-AJENA' },
-      },
-    });
-    expect(transaccion.rendicion.create).not.toHaveBeenCalled();
+    // Sin regla de unicidad: no se busca si otra rendición usa el número.
+    expect(transaccion.rendicion.findFirst).not.toHaveBeenCalled();
   });
 });
 
 describe('PATCH /rendiciones/:id — Actualizar OC (HU2.11)', () => {
   beforeEach(() => {
-    transaccion.rendicion.findFirst
-      .mockResolvedValueOnce({ id: RENDICION, clienteId: CLIENTE, isDeleted: false })
-      .mockResolvedValueOnce(null);
+    transaccion.rendicion.findFirst.mockResolvedValueOnce({ id: RENDICION, isDeleted: false });
     transaccion.rendicion.update.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
       Promise.resolve(
         filaRendicionConItems({
@@ -239,7 +214,7 @@ describe('PATCH /rendiciones/:id — Actualizar OC (HU2.11)', () => {
   it('responde 409 RENDICION_ANULADA si la rendición está anulada', async () => {
     transaccion.rendicion.findFirst
       .mockReset()
-      .mockResolvedValueOnce({ id: RENDICION, clienteId: CLIENTE, isDeleted: true });
+      .mockResolvedValueOnce({ id: RENDICION, isDeleted: true });
 
     const res = await request(app).patch(`/rendiciones/${RENDICION}`).send({ numeroOc: 'OC-1' });
     expect(res.status).toBe(409);
@@ -248,21 +223,13 @@ describe('PATCH /rendiciones/:id — Actualizar OC (HU2.11)', () => {
     });
   });
 
-  it('responde 409 OC_DE_OTRO_CLIENTE si el nuevo numeroOc pertenece a otro cliente', async () => {
-    transaccion.rendicion.findFirst
-      .mockReset()
-      .mockResolvedValueOnce({ id: RENDICION, clienteId: CLIENTE, isDeleted: false })
-      .mockResolvedValueOnce({ id: OTRO_CLIENTE });
+  it('acepta un numeroOc que ya usa otra rendición del mismo cliente: el número no es único', async () => {
+    const res = await request(app).patch(`/rendiciones/${RENDICION}`).send({ numeroOc: 'OC-342' });
 
-    const res = await request(app)
-      .patch(`/rendiciones/${RENDICION}`)
-      .send({ numeroOc: 'OC-AJENA' });
-
-    expect(res.status).toBe(409);
-    expect(res.body).toMatchObject({
-      error: { code: 'CONFLICT', details: { motivo: 'OC_DE_OTRO_CLIENTE', numeroOc: 'OC-AJENA' } },
-    });
-    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ numeroOc: 'OC-342' });
+    // Solo se lee la rendición a editar: no se busca otra con el mismo número.
+    expect(transaccion.rendicion.findFirst).toHaveBeenCalledTimes(1);
   });
 });
 
