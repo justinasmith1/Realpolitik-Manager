@@ -121,32 +121,52 @@ const DatosOcCreacionShape = {
  * la fecha se lee al validar, no al importar el módulo. Solo se evalúa si `anio` y `mes` ya son
  * válidos, para no sumar un segundo error a un mes fuera de 1 a 12.
  */
-export const CreateRendicionSchema = z
-  .object({
-    anio: AnioSchema,
-    mes: MesSchema,
-    numeroFactura: NumeroFacturaSchema,
-    /**
-     * Emisor de la factura (HU2.9). Opcional: sin él, el servidor usa el emisor habitual del
-     * cliente, y si el cliente tampoco tiene, responde 400 en `emisor`. `null` no se acepta.
-     */
-    emisor: Emisor.optional(),
-    ...DatosOcCreacionShape,
-  })
-  .superRefine((datos, ctx) => {
-    if (!AnioSchema.safeParse(datos.anio).success || !MesSchema.safeParse(datos.mes).success) {
-      return;
-    }
-    if (periodoMuyFuturo({ anio: datos.anio, mes: datos.mes })) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['mes'],
-        message: 'El período no puede ser posterior al mes siguiente al actual.',
-      });
-    }
-  });
+const CamposCreateRendicion = z.object({
+  anio: AnioSchema,
+  mes: MesSchema,
+  numeroFactura: NumeroFacturaSchema,
+  /**
+   * Emisor de la factura (HU2.9). Opcional: sin él, el servidor usa el emisor habitual del
+   * cliente, y si el cliente tampoco tiene, responde 400 en `emisor`. `null` no se acepta.
+   */
+  emisor: Emisor.optional(),
+  ...DatosOcCreacionShape,
+});
+
+/** El período, como máximo, el mes siguiente al actual. La comparten el pedido y el formulario. */
+function periodoHastaElMesSiguiente(datos: { anio: number; mes: number }, ctx: z.RefinementCtx) {
+  if (!AnioSchema.safeParse(datos.anio).success || !MesSchema.safeParse(datos.mes).success) {
+    return;
+  }
+  if (periodoMuyFuturo({ anio: datos.anio, mes: datos.mes })) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['mes'],
+      message: 'El período no puede ser posterior al mes siguiente al actual.',
+    });
+  }
+}
+
+export const CreateRendicionSchema = CamposCreateRendicion.superRefine(periodoHastaElMesSiguiente);
 
 export type CreateRendicionDto = z.infer<typeof CreateRendicionSchema>;
+
+export const MENSAJE_EMISOR_OBLIGATORIO = 'Elegí el emisor de la factura.';
+
+/**
+ * El formulario "Abrir rendición" del frontend: el mismo pedido que `CreateRendicionSchema`, pero
+ * con el `emisor` obligatorio. En el pedido es opcional porque el servidor completa el habitual
+ * del cliente; el formulario lo precarga con ese y siempre lo manda, así que no lo deja vacío. Es
+ * obligatorio en el campo (no en un refine aparte): el error sale junto con los de los otros
+ * campos, aunque alguno no sea válido.
+ */
+export const AbrirRendicionFormSchema = CamposCreateRendicion.extend({
+  emisor: z.enum(Emisor.options, {
+    errorMap: () => ({ message: MENSAJE_EMISOR_OBLIGATORIO }),
+  }),
+}).superRefine(periodoHastaElMesSiguiente);
+
+export type AbrirRendicionFormDto = z.infer<typeof AbrirRendicionFormSchema>;
 
 /**
  * Cuerpo de `PATCH /rendiciones/:id/estado` (HU2.5): solo `'ANULADA'`. La anulación no es

@@ -14,8 +14,11 @@ export const TEXTO_SIN_EMISOR = 'Sin emisor';
 export const etiquetaDeEmisor = (emisor: EmisorType | null): string =>
   emisor === null ? TEXTO_SIN_EMISOR : etiquetasEmisor[emisor];
 
-/** Debajo del selector de emisor de "Abrir rendición". */
-export const MENSAJE_EMISOR_OBLIGATORIO = 'Elegí el emisor de la factura.';
+/**
+ * Debajo del selector de emisor de "Abrir rendición". El de "obligatorio" vive en shared, junto a
+ * `AbrirRendicionFormSchema`, que lo usa.
+ */
+export { MENSAJE_EMISOR_OBLIGATORIO } from '@realpolitik/shared';
 export const AYUDA_EMISOR_DEL_CLIENTE =
   'Es el emisor habitual del cliente. Cambialo solo si esta factura la emite el otro emisor.';
 export const AYUDA_EMISOR_SIN_HABITUAL =
