@@ -12,13 +12,14 @@ interface PasosDelAsistenteProps {
  * Indicador de pasos de un asistente. Mismo aspecto que el de la carga masiva de requisitos, pero
  * como lista ordenada: el lector de pantalla anuncia "paso 2 de 3" y el actual lleva
  * `aria-current="step"`. Los pasos hechos llevan una tilde y, además, el texto "hecho" oculto: el
- * ícono nunca es el único canal.
+ * ícono nunca es el único canal. Sin scroll horizontal: si no entran en una línea (una pantalla
+ * angosta), pasan a la siguiente, y cada paso se lee entero.
  */
 export function PasosDelAsistente({ pasos, actual }: PasosDelAsistenteProps) {
   return (
     <ol
       aria-label="Pasos"
-      className="flex items-center gap-3 overflow-x-auto pt-3 text-xs font-medium whitespace-nowrap"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-3 text-xs font-medium"
     >
       {pasos.map((nombre, indice) => {
         const numero = indice + 1;
@@ -29,7 +30,7 @@ export function PasosDelAsistente({ pasos, actual }: PasosDelAsistenteProps) {
             key={nombre}
             aria-current={esActual ? 'step' : undefined}
             className={cn(
-              'inline-flex shrink-0 items-center gap-1.5',
+              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap',
               esActual || hecho ? 'font-semibold text-foreground' : 'text-muted-foreground',
               // El separador entre pasos, sin elementos extra en la lista.
               indice > 0 && 'before:mr-1.5 before:text-muted-foreground before:content-["—"]',
