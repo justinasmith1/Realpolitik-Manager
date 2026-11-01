@@ -28,6 +28,6 @@ describe('StepOne', () => {
     expect(screen.getByText('No hay tipos de documento activos para seleccionar.')).toBeVisible();
     expect(
       screen.getByRole('link', { name: 'Ir al catálogo de tipos de documento' }),
-    ).toHaveAttribute('href', '/documentos');
+    ).toHaveAttribute('href', '/documentos/tipos');
   });
 });

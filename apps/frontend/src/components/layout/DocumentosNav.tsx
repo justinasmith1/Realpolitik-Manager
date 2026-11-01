@@ -7,12 +7,12 @@ interface DestinoDocumentos {
   label: string;
 }
 
-// Solo secciones que existen como ruta real. `/documentos` sigue siendo el catálogo de tipos (es
-// donde lleva el Sidebar): va primero. Las dos son coincidencia exacta, así `/documentos` no queda
-// activo en `/documentos/archivos`.
+// Solo secciones que existen como ruta real. El repositorio (adonde lleva el Sidebar) va primero y
+// los tipos después, como Clientes y Requisitos. Coincidencia exacta: ninguna queda activa en una
+// subruta de la otra.
 const destinos: DestinoDocumentos[] = [
-  { to: '/documentos', label: 'Tipos de documento' },
   { to: '/documentos/archivos', label: 'Archivos' },
+  { to: '/documentos/tipos', label: 'Tipos de documento' },
 ];
 
 /**

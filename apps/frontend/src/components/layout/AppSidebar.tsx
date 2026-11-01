@@ -1,6 +1,6 @@
 import { FileTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, UsersIcon } from 'lucide-react';
 import type { ComponentType } from 'react';
-import { NavLink, useMatch } from 'react-router';
+import { Link, useMatch } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -18,14 +18,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 interface NavDestination {
   to: string;
+  /** Prefijo de la sección: el destino queda marcado en cualquier ruta que empiece así. */
+  seccion: string;
   label: string;
   icon: ComponentType;
 }
 
-// Solo destinos que existen como ruta real.
+// Solo destinos que existen como ruta real. Documentos abre su repositorio, pero queda marcado
+// también en la pestaña de tipos: por eso la sección no es el mismo `to`.
 const destinations: NavDestination[] = [
-  { to: '/clientes', label: 'Clientes', icon: UsersIcon },
-  { to: '/documentos', label: 'Documentos', icon: FileTextIcon },
+  { to: '/clientes', seccion: '/clientes', label: 'Clientes', icon: UsersIcon },
+  { to: '/documentos/archivos', seccion: '/documentos', label: 'Documentos', icon: FileTextIcon },
 ];
 
 // Misma curva y duración que el ancho del Sidebar (ver `sidebar.tsx`): todo se mueve junto.
@@ -102,8 +105,8 @@ function CollapseToggle() {
 // no se mueve y el texto nunca queda cortado a medias. Siguen en el árbol de accesibilidad.
 const claseEtiqueta = `whitespace-nowrap transition-opacity ${transicion} group-data-[collapsible=icon]:opacity-0`;
 
-function NavItem({ to, label, icon: Icon }: NavDestination) {
-  const isActive = useMatch({ path: to, end: false }) !== null;
+function NavItem({ to, seccion, label, icon: Icon }: NavDestination) {
+  const isActive = useMatch({ path: seccion, end: false }) !== null;
   const { isMobile, state } = useSidebar();
   // El tooltip solo hace falta con el Sidebar colapsado a íconos en escritorio. En
   // los demás casos no debe existir: abierto por el foco de teclado, consume el
@@ -116,7 +119,9 @@ function NavItem({ to, label, icon: Icon }: NavDestination) {
         size="nav"
         isActive={isActive}
         {...tooltip}
-        render={<NavLink to={to} />}
+        // `Link` y no `NavLink`: el actual lo decide la sección, no el `to` (un `NavLink` a
+        // `/documentos/archivos` no se marcaría en `/documentos/tipos`).
+        render={<Link to={to} aria-current={isActive ? 'page' : undefined} />}
         className="data-active:shadow-[inset_3px_0_0_var(--brand-accent)]"
       >
         <Icon />

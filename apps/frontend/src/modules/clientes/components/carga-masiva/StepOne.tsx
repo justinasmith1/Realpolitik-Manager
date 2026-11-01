@@ -63,7 +63,7 @@ export function StepOne() {
           No hay tipos de documento activos para seleccionar.
         </p>
         <Link
-          to="/documentos"
+          to="/documentos/tipos"
           className="text-sm font-medium text-brand-accent underline hover:opacity-80"
         >
           Ir al catálogo de tipos de documento

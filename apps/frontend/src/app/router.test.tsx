@@ -36,8 +36,8 @@ describe('router', () => {
     expect(router.state.location.pathname).toBe('/clientes');
   });
 
-  it('muestra el catálogo de tipos en /documentos, como sección propia y no como matriz de un cliente', () => {
-    renderRoute('/documentos');
+  it('muestra el catálogo de tipos en /documentos/tipos, dentro de Documentos y no como matriz de un cliente', () => {
+    renderRoute('/documentos/tipos');
 
     const main = screen.getByRole('main');
     expect(within(main).getByRole('heading', { level: 1, name: 'Documentos' })).toBeInTheDocument();
@@ -51,8 +51,8 @@ describe('router', () => {
     expect(screen.queryByRole('heading', { name: 'Página no encontrada' })).not.toBeInTheDocument();
   });
 
-  it('en /documentos la navegación secundaria marca Tipos de documento (HU2.8)', () => {
-    renderRoute('/documentos');
+  it('en /documentos/tipos la navegación secundaria marca Tipos de documento (HU2.8)', () => {
+    renderRoute('/documentos/tipos');
 
     const secciones = screen.getByRole('navigation', { name: 'Secciones de Documentos' });
     expect(within(secciones).getByRole('link', { name: 'Tipos de documento' })).toHaveAttribute(
@@ -82,21 +82,63 @@ describe('router', () => {
     expect(screen.queryByRole('heading', { name: 'Página no encontrada' })).not.toBeInTheDocument();
   });
 
+  describe('/documentos abre el repositorio', () => {
+    it('redirige a /documentos/archivos, con Archivos marcado', async () => {
+      const router = renderRoute('/documentos');
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Documentos' }),
+      ).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe('/documentos/archivos');
+      const secciones = screen.getByRole('navigation', { name: 'Secciones de Documentos' });
+      expect(within(secciones).getByRole('link', { name: 'Archivos' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+    });
+
+    it('conserva la query string: el período y el tipo de la URL siguen filtrando', async () => {
+      // `tipo` tiene que ser un uuid: el repositorio descarta de la URL uno inválido.
+      const query = '?anio=2026&mes=9&tipo=00000000-0000-4000-8000-000000000001';
+      const router = renderRoute(`/documentos${query}`);
+
+      await screen.findByRole('heading', { level: 1, name: 'Documentos' });
+      expect(router.state.location.pathname).toBe('/documentos/archivos');
+      expect(router.state.location.search).toBe(query);
+    });
+
+    it('reemplaza la entrada del historial: Atrás no vuelve a /documentos', async () => {
+      const router = createMemoryRouter(routes, { initialEntries: ['/clientes'] });
+      render(
+        <AppProviders>
+          <RouterProvider router={router} />
+        </AppProviders>,
+      );
+      await act(() => router.navigate('/documentos'));
+      await screen.findByRole('heading', { level: 1, name: 'Documentos' });
+      expect(router.state.location.pathname).toBe('/documentos/archivos');
+
+      await act(() => router.navigate(-1));
+
+      expect(router.state.location.pathname).toBe('/clientes');
+    });
+  });
+
   describe('la ruta vieja /clientes/tipos-documento', () => {
-    it('redirige a /documentos', async () => {
+    it('redirige al catálogo, /documentos/tipos', async () => {
       const router = renderRoute('/clientes/tipos-documento');
 
       expect(
         await screen.findByRole('heading', { level: 1, name: 'Documentos' }),
       ).toBeInTheDocument();
-      expect(router.state.location.pathname).toBe('/documentos');
+      expect(router.state.location.pathname).toBe('/documentos/tipos');
     });
 
     it('conserva la query string: ?desactivados=1 sigue incluyendo los desactivados', async () => {
       const router = renderRoute('/clientes/tipos-documento?desactivados=1');
 
       await screen.findByRole('heading', { level: 1, name: 'Documentos' });
-      expect(router.state.location.pathname).toBe('/documentos');
+      expect(router.state.location.pathname).toBe('/documentos/tipos');
       expect(router.state.location.search).toBe('?desactivados=1');
     });
 
@@ -116,7 +158,7 @@ describe('router', () => {
       );
       await act(() => router.navigate('/clientes/tipos-documento'));
       await screen.findByRole('heading', { level: 1, name: 'Documentos' });
-      expect(router.state.location.pathname).toBe('/documentos');
+      expect(router.state.location.pathname).toBe('/documentos/tipos');
 
       await act(() => router.navigate(-1));
 
