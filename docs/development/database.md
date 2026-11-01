@@ -92,7 +92,7 @@ Es `prisma migrate deploy`. Solo aplica las migraciones que ya están versionada
 
 Borra **todos los clientes** (los contactos caen en cascada) y los reemplaza por los de ejemplo. No es incremental ni se puede deshacer. Nunca se ejecuta en producción: el seed se niega a correr si `NODE_ENV=production` o si el host de `DATABASE_URL` no es `localhost`, `127.0.0.1` o `::1`, y no hay una variable para saltear esa guarda.
 
-`pnpm --filter @realpolitik/backend db:seed` carga `apps/backend/.env` con `node --env-file=.env` (Node >= 20.19, el mínimo del proyecto). Si `DATABASE_URL` **ya está definida** en el entorno, Node no la reemplaza: gana la del entorno. Así `prisma db seed` sigue funcionando —Prisma carga el mismo `.env` y después ejecuta `pnpm run db:seed`— y un valor heredado no se cambia en silencio por el archivo. Antes de borrar clientes, el script imprime host, puerto y nombre de la base, nunca la contraseña. Con la base en Docker de esta guía (`127.0.0.1` y el `POSTGRES_PORT` del `.env`) no hace falta exportar nada.
+`pnpm --filter @realpolitik/backend db:seed` carga `apps/backend/.env` con `node --env-file=.env` (Node 24, la versión del proyecto). Si `DATABASE_URL` **ya está definida** en el entorno, Node no la reemplaza: gana la del entorno. Así `prisma db seed` sigue funcionando —Prisma carga el mismo `.env` y después ejecuta `pnpm run db:seed`— y un valor heredado no se cambia en silencio por el archivo. Antes de borrar clientes, el script imprime host, puerto y nombre de la base, nunca la contraseña. Con la base en Docker de esta guía (`127.0.0.1` y el `POSTGRES_PORT` del `.env`) no hace falta exportar nada.
 
 Hace, en este orden:
 
