@@ -1,6 +1,6 @@
 import {
+  AbrirRendicionFormSchema,
   ANIO_MIN,
-  CreateRendicionSchema,
   Emisor,
   mesActual,
   type CreateRendicionDto,
@@ -10,7 +10,6 @@ import type { FieldErrors, Resolver } from 'react-hook-form';
 
 import type { SelectOption } from '@/components/ui/select';
 import { etiquetasEmisor, nombresDeMes } from '@/modules/clientes/clientes.etiquetas';
-import { MENSAJE_EMISOR_OBLIGATORIO } from '@/modules/rendiciones/rendiciones.etiquetas';
 
 /** Valores del formulario: lo que muestran los controles (los selects trabajan con texto). */
 export interface AbrirRendicionFormValues {
@@ -76,37 +75,31 @@ export function opcionesDeAnio(ahora: Date = new Date()): SelectOption[] {
 }
 
 /**
- * Valida con `CreateRendicionSchema` de shared, la misma regla que aplica el backend: período
- * hasta el mes siguiente y número de factura recortado y en mayúsculas. Entrega los datos ya
- * normalizados. Cada error va a su campo (el del período cae en `mes`).
+ * Valida con `AbrirRendicionFormSchema` de shared: las mismas reglas que aplica el backend al
+ * abrir (período hasta el mes siguiente, número de factura en su forma canónica), con el emisor
+ * obligatorio. Entrega los datos ya normalizados. Cada error va a su campo (el del período cae en
+ * `mes`).
  */
 export const abrirRendicionResolver: Resolver<
   AbrirRendicionFormValues,
   unknown,
   CreateRendicionDto
 > = (valores) => {
-  const resultado = CreateRendicionSchema.safeParse({
+  const resultado = AbrirRendicionFormSchema.safeParse({
     anio: Number(valores.anio),
     mes: Number(valores.mes),
     numeroFactura: valores.numeroFactura,
     ...(valores.emisor === '' ? {} : { emisor: valores.emisor }),
   });
-  const errors: FieldErrors<AbrirRendicionFormValues> = {};
-  // El emisor es obligatorio al abrir: en shared es opcional porque el servidor completa el del
-  // cliente, pero acá el formulario siempre lo manda y no deja el campo vacío.
-  if (valores.emisor === '') {
-    errors.emisor = { type: 'required', message: MENSAJE_EMISOR_OBLIGATORIO };
-  }
-  if (!resultado.success) {
-    for (const issue of resultado.error.issues) {
-      const campo = issue.path[0];
-      if (esCampo(campo) && errors[campo] === undefined) {
-        errors[campo] = { type: issue.code, message: issue.message };
-      }
-    }
-  }
-  if (resultado.success && Object.keys(errors).length === 0) {
+  if (resultado.success) {
     return { values: resultado.data, errors: {} };
+  }
+  const errors: FieldErrors<AbrirRendicionFormValues> = {};
+  for (const issue of resultado.error.issues) {
+    const campo = issue.path[0];
+    if (esCampo(campo) && errors[campo] === undefined) {
+      errors[campo] = { type: issue.code, message: issue.message };
+    }
   }
   return { values: {}, errors };
 };

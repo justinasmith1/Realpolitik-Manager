@@ -6,7 +6,7 @@ Guía para preparar el entorno de desarrollo según el estado actual del reposit
 
 ## Requisitos
 
-- **Node.js** >= 20.19.0.
+- **Node.js** 24. Es la misma versión en el desarrollo local, en `Dockerfile.dev`, en el CI y en el despliegue. Está declarada en `.nvmrc` (con nvm o fnm alcanza con `nvm use` o `fnm use`), y `engines.node` del `package.json` raíz exige `>=24.0.0`.
 - **pnpm** 9.7.1. El repositorio lo declara como `packageManager: pnpm@9.7.1` en el `package.json` raíz.
 
 Se recomienda usar [Corepack](https://nodejs.org/api/corepack.html) (incluido con Node) para obtener la versión de pnpm declarada:

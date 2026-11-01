@@ -55,7 +55,7 @@ describe('AppLayout', () => {
     expect(links[0]).toHaveAttribute('href', '/clientes');
     expect(links[0]).toHaveAttribute('aria-current', 'page');
     expect(links[1]).toHaveAccessibleName('Documentos');
-    expect(links[1]).toHaveAttribute('href', '/documentos');
+    expect(links[1]).toHaveAttribute('href', '/documentos/archivos');
     expect(links[1]).not.toHaveAttribute('aria-current');
   });
 

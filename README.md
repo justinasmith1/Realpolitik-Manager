@@ -30,7 +30,7 @@ docs/
 
 ## Inicio rápido
 
-Requisitos: Node.js >= 20 y pnpm 9.
+Requisitos: Node.js 24 (la versión está en `.nvmrc`) y pnpm 9.
 
 ```bash
 pnpm install --frozen-lockfile

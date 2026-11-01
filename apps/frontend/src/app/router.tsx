@@ -26,25 +26,30 @@ export const routes: RouteObject[] = [
         element: <MatricesPage />,
         handle: { title: 'Requisitos' } satisfies AppRouteHandle,
       },
-      // El catálogo de tipos de documento es general del sistema, no de un cliente: tiene su
-      // propia sección en el Sidebar.
+      // Sección Documentos, con su navegación secundaria (como Clientes y Requisitos): el
+      // repositorio de archivos (HU2.8) es lo de todos los días y va primero; el catálogo de tipos
+      // de documento, general del sistema y no de un cliente, es la segunda pestaña.
+      // `/documentos` lleva al repositorio. Los redirects de un loader conservan la query string
+      // (el hash no llega a un loader y las páginas no lo usan) y reemplazan la entrada del
+      // historial, así Atrás no vuelve a la ruta que redirige.
       {
         path: 'documentos',
-        element: <TiposDocumentoPage />,
-        handle: { title: 'Documentos' } satisfies AppRouteHandle,
+        loader: ({ request }) => redirect(`/documentos/archivos${new URL(request.url).search}`),
       },
-      // Repositorio de archivos (HU2.8): misma sección del Sidebar, con su navegación secundaria.
       {
         path: 'documentos/archivos',
         element: <ArchivosPage />,
         handle: { title: 'Documentos' } satisfies AppRouteHandle,
       },
-      // Ruta anterior del catálogo: se redirige para no romper enlaces guardados. Conserva la
-      // query string (`?desactivados=1`); el hash no llega a un loader y la página no lo usa. El
-      // redirect de un loader reemplaza la entrada del historial, así Atrás no vuelve acá.
+      {
+        path: 'documentos/tipos',
+        element: <TiposDocumentoPage />,
+        handle: { title: 'Documentos' } satisfies AppRouteHandle,
+      },
+      // Ruta anterior del catálogo: se redirige para no romper enlaces guardados (`?desactivados=1`).
       {
         path: 'clientes/tipos-documento',
-        loader: ({ request }) => redirect(`/documentos${new URL(request.url).search}`),
+        loader: ({ request }) => redirect(`/documentos/tipos${new URL(request.url).search}`),
       },
       // Detalle de un cliente, no una sección del catálogo: ClientesNav no gana un ítem.
       {

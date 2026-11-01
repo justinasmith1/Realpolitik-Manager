@@ -1,6 +1,7 @@
 # Imagen SOLO para desarrollo local (la usa docker-compose.yml). No se usa en producción.
-# Trae Node 20 + pnpm (versión de `packageManager`) y corre como el usuario `node`, no root.
-FROM node:20-bookworm-slim
+# Trae Node 24 + pnpm (versión de `packageManager`) y corre como el usuario `node`, no root.
+# Node 24 es la versión del proyecto (`.nvmrc`, el CI y `engines.node`): si cambia, cambia en los tres.
+FROM node:24-bookworm-slim
 
 # openssl: lo necesita el motor de Prisma.
 RUN apt-get update \

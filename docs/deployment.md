@@ -32,7 +32,7 @@ Nunca se versionan secretos. `VITE_API_URL` tampoco es un secreto, pero su valor
 
 ## Node y pnpm
 
-- **Runtime objetivo de despliegue y CI: Node 24.** `engines.node` sigue siendo `>=20.19.0` para que el desarrollo local con Node 20.19+ siga funcionando.
+- **Node 24 en todos lados:** despliegue, CI, `Dockerfile.dev` y desarrollo local. La versión está en `.nvmrc` (el CI la lee de ahí con `node-version-file`) y `engines.node` exige `>=24.0.0`. En Railway la fija `RAILPACK_NODE_VERSION=24`, que vive en el proveedor: si se cambia la versión del proyecto, hay que cambiarla también ahí.
 - **pnpm 9.7.1**, declarado en `packageManager` del `package.json` raíz.
   - En CI lo respeta `pnpm/action-setup` (lee `packageManager`).
   - En Vercel hay que definir `ENABLE_EXPERIMENTAL_COREPACK=1` en el proyecto; si no, Vercel elige la versión de pnpm por su cuenta (con un `installCommand` propio puede terminar usando una versión muy vieja, incapaz de leer este lockfile).

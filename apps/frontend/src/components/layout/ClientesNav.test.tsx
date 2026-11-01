@@ -129,8 +129,8 @@ describe('ClientesNav', () => {
 });
 
 describe('Ruta /documentos en el shell', () => {
-  it('la entrada directa por URL muestra el catálogo dentro del shell, con el encabezado Documentos', async () => {
-    renderRoute('/documentos');
+  it('la entrada directa por URL al catálogo lo muestra dentro del shell, con el encabezado Documentos', async () => {
+    renderRoute('/documentos/tipos');
 
     expect(screen.getByRole('navigation', { name: 'Principal' })).toBeInTheDocument();
     expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 })).toHaveTextContent(
@@ -143,24 +143,28 @@ describe('Ruta /documentos en el shell', () => {
   });
 
   it('no muestra la navegación secundaria de Clientes', () => {
-    renderRoute('/documentos');
+    renderRoute('/documentos/archivos');
 
     expect(screen.queryByRole('navigation', { name: 'Secciones de Clientes' })).toBeNull();
   });
 
-  it('el Sidebar ofrece Clientes y Documentos, y marca solo Documentos', () => {
-    renderRoute('/documentos');
+  it.each(['/documentos/archivos', '/documentos/tipos'])(
+    'en %s el Sidebar ofrece Clientes y Documentos, y marca solo Documentos',
+    (path) => {
+      renderRoute(path);
 
-    const nav = screen.getByRole('navigation', { name: 'Principal' });
-    expect(
-      within(nav)
-        .getAllByRole('link')
-        .map((link) => link.textContent),
-    ).toEqual(['Clientes', 'Documentos']);
-    expect(enlaceDelSidebar('Documentos')).toHaveAttribute('href', '/documentos');
-    expect(enlaceDelSidebar('Documentos')).toHaveAttribute('aria-current', 'page');
-    expect(enlaceDelSidebar('Clientes')).not.toHaveAttribute('aria-current');
-  });
+      const nav = screen.getByRole('navigation', { name: 'Principal' });
+      expect(
+        within(nav)
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual(['Clientes', 'Documentos']);
+      // Documentos abre el repositorio, y queda marcado también en la pestaña de tipos.
+      expect(enlaceDelSidebar('Documentos')).toHaveAttribute('href', '/documentos/archivos');
+      expect(enlaceDelSidebar('Documentos')).toHaveAttribute('aria-current', 'page');
+      expect(enlaceDelSidebar('Clientes')).not.toHaveAttribute('aria-current');
+    },
+  );
 
   it('en /clientes el Sidebar marca Clientes y no Documentos', () => {
     renderRoute('/clientes');
@@ -169,22 +173,48 @@ describe('Ruta /documentos en el shell', () => {
     expect(enlaceDelSidebar('Documentos')).not.toHaveAttribute('aria-current');
   });
 
-  it('se llega a Documentos desde el Sidebar sin pasar por Clientes, y Atrás vuelve', async () => {
+  it('desde el Sidebar, Documentos abre el repositorio de archivos, y Atrás vuelve', async () => {
     const { router, user } = renderRoute('/clientes/matrices');
 
     await user.click(enlaceDelSidebar('Documentos'));
-    expect(router.state.location.pathname).toBe('/documentos');
+    expect(router.state.location.pathname).toBe('/documentos/archivos');
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Documentos' }),
     ).toBeInTheDocument();
+    const secciones = screen.getByRole('navigation', { name: 'Secciones de Documentos' });
+    expect(within(secciones).getByRole('link', { name: 'Archivos' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
 
     await act(() => router.navigate(-1));
     expect(router.state.location.pathname).toBe('/clientes/matrices');
   });
 
+  it('desde el repositorio, la pestaña Tipos de documento lleva al catálogo', async () => {
+    const { router, user } = renderRoute('/documentos/archivos');
+    const secciones = () => screen.getByRole('navigation', { name: 'Secciones de Documentos' });
+    expect(
+      within(secciones())
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Archivos', 'Tipos de documento']);
+
+    await user.click(within(secciones()).getByRole('link', { name: 'Tipos de documento' }));
+
+    expect(router.state.location.pathname).toBe('/documentos/tipos');
+    expect(
+      await screen.findByText('Catálogo de tipos de documento que se pueden pedir como requisito.'),
+    ).toBeInTheDocument();
+    expect(within(secciones()).getByRole('link', { name: 'Tipos de documento' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
   it('en mobile el Header dice "Documentos"', () => {
     simularMobile();
-    renderRoute('/documentos');
+    renderRoute('/documentos/archivos');
 
     expect(within(screen.getByRole('banner')).getByText('Documentos')).toBeInTheDocument();
   });

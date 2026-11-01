@@ -594,7 +594,7 @@ function CatalogoDeTipos({
       <div className="flex flex-col items-start gap-2 text-sm">
         <p>No hay tipos de documento activos para agregar.</p>
         <Link
-          to="/documentos"
+          to="/documentos/tipos"
           className="rounded-chip font-medium text-foreground underline outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
         >
           Ir al catálogo de tipos de documento

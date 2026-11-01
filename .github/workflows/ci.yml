@@ -51,11 +51,12 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
 
-      # Node 24 es el runtime objetivo de deploy. `engines.node` sigue siendo >=20.19.0.
+      # La versión sale de `.nvmrc` (Node 24, el runtime objetivo de deploy): es la misma que usan
+      # `Dockerfile.dev` y el desarrollo local, y `engines.node` del package.json raíz la exige.
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 24.x
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install dependencies

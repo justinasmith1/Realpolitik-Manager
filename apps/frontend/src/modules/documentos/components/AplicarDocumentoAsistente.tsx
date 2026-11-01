@@ -234,7 +234,11 @@ export function AplicarDocumentoAsistente({
         if (!abrir) cerrar();
       }}
     >
-      <SheetContent className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-none md:max-w-2xl">
+      {/* Ancho como el de la carga masiva de requisitos: todo el ancho en pantallas chicas y, desde
+          `md`, la mitad de la ventana (nunca menos de 42rem, para que entren los tres pasos y el
+          nombre del archivo). Las clases van con `data-[side=right]:` porque así fija el ancho
+          `SheetContent` (`w-3/4` y `sm:max-w-sm`), y sin ese prefijo no lo pisan. */}
+      <SheetContent className="flex h-full flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none md:data-[side=right]:w-[max(50vw,42rem)]">
         <SheetHeader className="border-b px-6 py-4">
           <SheetTitle>{titulo}</SheetTitle>
           <SheetDescription>

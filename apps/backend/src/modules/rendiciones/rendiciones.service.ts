@@ -244,15 +244,27 @@ function itemsDeLaMatriz(
   }
 }
 
+/**
+ * El alta chocó con el índice de la factura. Lleva el emisor que resolvió ese intento: con él se
+ * busca la rendición que tiene la factura, fuera de la transacción (que ya se revirtió).
+ */
+class FacturaDuplicadaEnAlta extends Error {
+  constructor(
+    readonly emisor: EmisorType,
+    options: { cause: unknown },
+  ) {
+    super('La factura ya está en otra rendición activa del mismo emisor', options);
+    this.name = 'FacturaDuplicadaEnAlta';
+  }
+}
+
 async function insertarRendicion(
   tx: Prisma.TransactionClient,
   clienteId: string,
   input: CreateRendicionDto,
-  alResolverEmisor: (emisor: EmisorType) => void,
 ): Promise<RendicionDetalle> {
   const cliente = await exigirClienteActivo(tx, clienteId);
   const emisor = emisorDeLaRendicion(input.emisor, cliente.emisor);
-  alResolverEmisor(emisor);
 
   const requisitos = await tx.requisitoCliente.findMany({
     where: { clienteId, isDeleted: false },
@@ -260,20 +272,28 @@ async function insertarRendicion(
   });
   const items = itemsDeLaMatriz(requisitos, cliente.canalEntrega);
 
-  const creada = await tx.rendicion.create({
-    data: {
-      clienteId,
-      anio: input.anio,
-      mes: input.mes,
-      numeroFactura: input.numeroFactura,
-      emisor,
-      ...(input.numeroOc !== undefined && { numeroOc: input.numeroOc }),
-      ...(input.montoMensual !== undefined && { montoMensual: input.montoMensual }),
-      ...(input.montoTotal !== undefined && { montoTotal: input.montoTotal }),
-      items: { createMany: { data: items } },
-    },
-    include: CON_ITEMS,
-  });
+  let creada: RendicionConItems;
+  try {
+    creada = await tx.rendicion.create({
+      data: {
+        clienteId,
+        anio: input.anio,
+        mes: input.mes,
+        numeroFactura: input.numeroFactura,
+        emisor,
+        ...(input.numeroOc !== undefined && { numeroOc: input.numeroOc }),
+        ...(input.montoMensual !== undefined && { montoMensual: input.montoMensual }),
+        ...(input.montoTotal !== undefined && { montoTotal: input.montoTotal }),
+        items: { createMany: { data: items } },
+      },
+      include: CON_ITEMS,
+    });
+  } catch (error) {
+    if (esFacturaDuplicada(error)) {
+      throw new FacturaDuplicadaEnAlta(emisor, { cause: error });
+    }
+    throw error;
+  }
   return toRendicionDetalleDto(conItemsEnOrden(creada));
 }
 
@@ -287,28 +307,20 @@ async function insertarRendicion(
  * pasarían esa consulta. Se inserta y, si un índice parcial rechaza la fila, se responde 409 con
  * la rendición que la tiene (de este cliente o de otro). Si esa fila ya no está (la anularon en
  * el medio), se reintenta.
+ *
+ * Un conflicto de serialización (P2034) lo reintenta `enTransaccionSerializable`, en cualquier
+ * punto del alta (también antes de resolver el emisor): llega acá solo si se agotaron los
+ * intentos, y se propaga.
  */
 export async function abrirRendicion(
   clienteId: string,
   input: CreateRendicionDto,
 ): Promise<RendicionDetalle> {
-  // El emisor se resuelve dentro de la transacción (con el cliente que ve esa lectura); se guarda
-  // acá para buscar la rendición que tiene la factura si el alta choca.
-  let emisor: EmisorType | undefined;
   for (let intento = 1; ; intento += 1) {
-    emisor = undefined;
     try {
-      return await enTransaccionSerializable((tx) =>
-        insertarRendicion(tx, clienteId, input, (resuelto) => {
-          emisor = resuelto;
-        }),
-      );
+      return await enTransaccionSerializable((tx) => insertarRendicion(tx, clienteId, input));
     } catch (error) {
-      if (!esFacturaDuplicada(error) && !esConflictoDeEscritura(error)) {
-        throw error;
-      }
-      // Sin emisor resuelto el alta ni llegó a insertar: no puede haber un duplicado que buscar.
-      if (emisor === undefined) {
+      if (!(error instanceof FacturaDuplicadaEnAlta)) {
         throw error;
       }
       // Una alta siempre lleva emisor, así que solo puede chocar con el índice por emisor:
@@ -316,15 +328,15 @@ export async function abrirRendicion(
       // sin emisor (la regla vieja, por cliente): una del mismo cliente llevaría a la rendición
       // equivocada, y con una heredada la alta no choca (no comparten índice).
       const existente = await prisma.rendicion.findFirst({
-        where: { isDeleted: false, numeroFactura: input.numeroFactura, emisor },
+        where: { isDeleted: false, numeroFactura: input.numeroFactura, emisor: error.emisor },
         select: { id: true, clienteId: true, anio: true, mes: true, numeroFactura: true },
       });
       if (existente !== null) {
         throw rendicionDuplicada(existente);
       }
-      // Un P2034 ya se reintentó dentro de la transacción. Sin fila confirmada no es un duplicado.
-      if (esConflictoDeEscritura(error) || intento >= INTENTOS) {
-        throw error;
+      // Sin fila confirmada (la anularon en el medio): se reintenta el alta.
+      if (intento >= INTENTOS) {
+        throw error.cause;
       }
     }
   }

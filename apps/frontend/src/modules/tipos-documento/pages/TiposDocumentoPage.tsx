@@ -38,8 +38,8 @@ const avisoDeEstado: Record<AccionDeEstado, (nombre: string) => string> = {
 };
 
 /**
- * Catálogo de tipos de documento (HU2.1), en su propia sección del Sidebar, "Documentos"
- * (`/documentos`): es un catálogo general del sistema, no de un cliente.
+ * Catálogo de tipos de documento (HU2.1), segunda pestaña de la sección "Documentos" del Sidebar
+ * (`/documentos/tipos`): es un catálogo general del sistema, no de un cliente.
  *
  * Además de consultar, se crean tipos ("Nuevo tipo"), se editan (desde el nombre o el ⋯) y se
  * desactivan o reactivan con confirmación. Cada operación invalida el catálogo (lo hacen los

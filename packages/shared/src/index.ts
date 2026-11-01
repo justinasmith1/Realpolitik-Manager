@@ -131,6 +131,8 @@ export {
   normalizarNumeroFactura,
   NumeroFacturaSchema,
   CreateRendicionSchema,
+  AbrirRendicionFormSchema,
+  MENSAJE_EMISOR_OBLIGATORIO,
   ActualizarEstadoRendicionSchema,
   ActualizarRendicionSchema,
   MENSAJE_ACTUALIZAR_OC_VACIO,
@@ -149,6 +151,7 @@ export {
 } from './schemas/rendicion.schema.js';
 export type {
   CreateRendicionDto,
+  AbrirRendicionFormDto,
   ActualizarEstadoRendicionDto,
   ActualizarRendicionDto,
   UltimaOc,
