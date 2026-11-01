@@ -239,7 +239,11 @@ function servir({
     const archivo = /^\/documentos\/([^/]+)\/archivo$/.exec(path);
     if (archivo !== null) {
       if (fallos.archivo !== undefined) return Promise.resolve(fallos.archivo());
-      return Promise.resolve(new Response(new Blob(['%PDF-1.4']), { status: 200 }));
+      // Como texto y no como `Blob`: el `Blob` de jsdom no es el de Node, y `fetch` lo rechaza
+      // (Node 22) o lo convierte en el texto "[object Blob]" (Node 24).
+      return Promise.resolve(
+        new Response('%PDF-1.4', { status: 200, headers: { 'Content-Type': 'application/pdf' } }),
+      );
     }
     const reemplazo = /^\/rendiciones\/[^/]+\/items\/([^/]+)\/reemplazo$/.exec(path);
     if (reemplazo !== null && metodo === 'POST') {
@@ -490,20 +494,29 @@ describe('RendicionDetallePage: documentos del checklist', () => {
 
   it('descarga el archivo vigente a través del backend con su nombre original', async () => {
     servir();
-    const crear = vi.fn(() => 'blob:prueba');
+    const urlCreada = 'blob:prueba';
+    const crear = vi.fn((_contenido: Blob) => urlCreada);
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: crear, revokeObjectURL: vi.fn() }));
-    const clic = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+    // Se guarda lo que tenía el enlace al hacer clic y se compara después: un `expect` adentro
+    // del clic haría fallar la descarga y el test vería solo el aviso de error.
+    const enlaces: { download: string; href: string | null }[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
       this: HTMLAnchorElement,
     ) {
-      expect(this.download).toBe('print-octubre.pdf');
+      enlaces.push({ download: this.download, href: this.getAttribute('href') });
     });
     const { user } = renderDetalle();
     await cargado();
 
     await user.click(screen.getByRole('button', { name: 'Descargar print-octubre.pdf' }));
 
-    await waitFor(() => expect(clic).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(enlaces).toHaveLength(1));
     expect(llamadas('GET', `/documentos/${DOC_A}/archivo`)).toHaveLength(1);
+    // La URL del enlace es la que se creó con el contenido que mandó el backend.
+    expect(crear).toHaveBeenCalledTimes(1);
+    const [contenido] = crear.mock.calls[0] ?? [];
+    expect(await contenido?.text()).toBe('%PDF-1.4');
+    expect(enlaces[0]).toEqual({ download: 'print-octubre.pdf', href: urlCreada });
   });
 
   it('si la descarga falla, lo avisa en el checklist', async () => {
