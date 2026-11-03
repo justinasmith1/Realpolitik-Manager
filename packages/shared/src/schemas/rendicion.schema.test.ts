@@ -314,10 +314,14 @@ describe('entidades de lectura', () => {
     anio: 2026,
     mes: 10,
     numeroFactura: '0001-00001234',
+    estado: 'EN_CURSO',
     vigencia: 'ACTIVA',
     anuladaEn: null,
     creadoEn: '2026-10-20T12:00:00.000Z',
     actualizadoEn: '2026-10-20T12:00:00.000Z',
+    historial: [
+      { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-20T12:00:00.000Z' },
+    ],
   };
 
   describe('ItemChecklistSchema', () => {

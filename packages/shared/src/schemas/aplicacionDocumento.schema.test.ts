@@ -272,11 +272,13 @@ describe('Compatibilidad: el documento del ítem en el checklist', () => {
         anio: 2026,
         mes: 10,
         numeroFactura: 'B 00002-00001482',
+        estado: 'EN_CURSO',
         vigencia: 'ACTIVA',
         anuladaEn: null,
         creadoEn: '2026-10-20T12:00:00.000Z',
         actualizadoEn: '2026-10-20T12:00:00.000Z',
         items: [itemChecklist],
+        historial: [],
       }).items,
     ).toHaveLength(1);
   });

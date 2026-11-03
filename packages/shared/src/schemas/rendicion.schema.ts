@@ -227,6 +227,44 @@ export const VigenciaRendicion = z.enum(['ACTIVA', 'ANULADA']);
 
 export type VigenciaRendicion = z.infer<typeof VigenciaRendicion>;
 
+// ─── Estado de la rendición (HU3.1, ADR-0005) ─────────────────────────────────
+// En qué paso está: nace EN_CURSO y cada cambio queda en su historial. "Atrasada" no es un estado:
+// la calcula el sistema (HU3.4). La anulación es aparte (`vigencia`): una anulada conserva el
+// último estado que tenía.
+
+export const MENSAJE_ESTADO_RENDICION =
+  'El estado debe ser EN_CURSO, COMPLETA, ENVIADA, APROBADA o RECHAZADA.';
+
+export const EstadoRendicion = z.enum(
+  ['EN_CURSO', 'COMPLETA', 'ENVIADA', 'APROBADA', 'RECHAZADA'],
+  {
+    errorMap: () => ({ message: MENSAJE_ESTADO_RENDICION }),
+  },
+);
+
+export type EstadoRendicion = z.infer<typeof EstadoRendicion>;
+
+/** Cómo se lee cada estado en pantalla. */
+export const ETIQUETAS_ESTADO_RENDICION: Record<EstadoRendicion, string> = {
+  EN_CURSO: 'En curso',
+  COMPLETA: 'Completa',
+  ENVIADA: 'Enviada',
+  APROBADA: 'Aprobada',
+  RECHAZADA: 'Rechazada',
+};
+
+/**
+ * Un cambio de estado. `estadoAnterior` es `null` solo en la primera entrada, la del alta.
+ * `fecha` es cuándo ocurrió el cambio.
+ */
+export const HistorialEstadoRendicionSchema = z.object({
+  estadoAnterior: EstadoRendicion.nullable(),
+  estadoNuevo: EstadoRendicion,
+  fecha: z.coerce.date(),
+});
+
+export type HistorialEstadoRendicion = z.infer<typeof HistorialEstadoRendicionSchema>;
+
 /**
  * Un documento a presentar en una rendición: una foto del requisito tomada al abrirla
  * (ADR-0003). `canalEntrega` es el canal efectivo ya resuelto, nunca `null`. `completadoEn` es la
@@ -271,6 +309,8 @@ export const RendicionSchema = z.object({
   numeroOc: z.string().nullable().default(null),
   montoMensual: z.number().nullable().default(null),
   montoTotal: z.number().nullable().default(null),
+  /** En qué paso está (HU3.1). Independiente de la vigencia. */
+  estado: EstadoRendicion,
   vigencia: VigenciaRendicion,
   anuladaEn: z.coerce.date().nullable(),
   creadoEn: z.coerce.date(),
@@ -279,9 +319,13 @@ export const RendicionSchema = z.object({
 
 export type Rendicion = z.infer<typeof RendicionSchema>;
 
-/** Rendición con su checklist: el detalle y la respuesta de alta. */
+/**
+ * Rendición con su checklist: el detalle y la respuesta de alta. Lleva el historial de estados,
+ * del cambio más viejo al más nuevo (HU3.1).
+ */
 export const RendicionDetalleSchema = RendicionSchema.extend({
   items: z.array(ItemChecklistSchema),
+  historial: z.array(HistorialEstadoRendicionSchema),
 });
 
 export type RendicionDetalle = z.infer<typeof RendicionDetalleSchema>;

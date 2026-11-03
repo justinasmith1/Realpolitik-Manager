@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-import { AnioSchema, MENSAJE_ANIO, MENSAJE_MES, MesSchema } from './rendicion.schema.js';
+import {
+  AnioSchema,
+  EstadoRendicion,
+  MENSAJE_ANIO,
+  MENSAJE_MES,
+  MesSchema,
+} from './rendicion.schema.js';
 
 /**
  * Un número entero de un query string. Llega como texto y se acepta solo si son dígitos puros:
@@ -41,6 +47,8 @@ export const MENSAJE_REQUISITO_ID = 'El ID del requisito debe ser un UUID válid
  * - `mes`: entero de 1 a 12. Opcional; se puede combinar con `anio` o usar solo.
  * - `vigencia`: `ACTIVA`, `ANULADA` o `TODAS`. Opcional; sin él, `ACTIVA`
  *   (`FILTRO_VIGENCIA_POR_DEFECTO`).
+ * - `estado`: uno de los estados de la rendición (HU3.1). Opcional; sin él, todos. Se combina
+ *   con la vigencia: una anulada conserva su estado.
  * - `requisitoId`: uuid de un requisito del cliente. Opcional; solo las rendiciones que tienen
  *   ítems de ese requisito (para ofrecer propagarles un cambio de canal).
  *
@@ -50,6 +58,7 @@ export const ListarRendicionesQuerySchema = z.object({
   anio: enteroDeQuery(AnioSchema, MENSAJE_ANIO).optional(),
   mes: enteroDeQuery(MesSchema, MENSAJE_MES).optional(),
   vigencia: FiltroVigenciaRendiciones.optional(),
+  estado: EstadoRendicion.optional(),
   requisitoId: z
     .string({ invalid_type_error: MENSAJE_REQUISITO_ID })
     .uuid({ message: MENSAJE_REQUISITO_ID })
