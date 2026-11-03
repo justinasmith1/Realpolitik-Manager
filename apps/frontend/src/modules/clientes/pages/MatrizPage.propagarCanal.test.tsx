@@ -54,7 +54,7 @@ const rendicion = (id: string, mes: number, numeroFactura: string) => ({
   anio: 2026,
   mes,
   numeroFactura,
-  estado: 'ACTIVA',
+  vigencia: 'ACTIVA',
   anuladaEn: null,
   resumen: { totalItems: 3, completados: 0 },
   ...fechas,
@@ -190,7 +190,10 @@ describe('MatrizPage: actualizar el canal en las rendiciones abiertas', () => {
     expect(ventana.getByRole('button', { name: 'Actualizar las elegidas' })).toBeDisabled();
     const [[entrada]] = listadosPorRequisito() as [[Parameters<typeof fetch>[0]]];
     const { searchParams } = new URL(urlDe(entrada));
-    expect(Object.fromEntries(searchParams)).toEqual({ estado: 'ACTIVA', requisitoId: REQ_PRINT });
+    expect(Object.fromEntries(searchParams)).toEqual({
+      vigencia: 'ACTIVA',
+      requisitoId: REQ_PRINT,
+    });
   });
 
   it('volver a heredar también lo ofrece, con el canal del cliente', async () => {

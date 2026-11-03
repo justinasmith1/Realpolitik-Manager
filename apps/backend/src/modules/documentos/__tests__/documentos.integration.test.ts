@@ -444,7 +444,7 @@ describe.skipIf(url === undefined)('documentos contra PostgreSQL', () => {
       expect(
         detalle.aplicaciones.map((a) => [
           a.estado,
-          a.ubicacion.rendicion.estado,
+          a.ubicacion.rendicion.vigencia,
           a.itemChecklistId,
         ]),
       ).toEqual([

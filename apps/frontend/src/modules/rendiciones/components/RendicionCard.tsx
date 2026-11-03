@@ -60,7 +60,7 @@ export function RendicionCard({ rendicion, onAnulada, onYaNoExiste }: RendicionC
   const periodo = etiquetaDePeriodo(rendicion);
   const completo = checklistCompleto(rendicion.resumen);
   const idTitulo = `${idDeTarjeta(rendicion.id)}-titulo`;
-  const anulada = rendicion.estado === 'ANULADA';
+  const anulada = rendicion.vigencia === 'ANULADA';
 
   async function confirmar() {
     if (enCurso.current) return;

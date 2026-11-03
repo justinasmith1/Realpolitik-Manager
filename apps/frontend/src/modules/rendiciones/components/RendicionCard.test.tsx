@@ -141,7 +141,7 @@ describe('RendicionCard', () => {
 
   it('confirmar envía la anulación y avisa', async () => {
     fetchMock.mockResolvedValue(
-      json(rendicionJson({ estado: 'ANULADA', anuladaEn: '2026-10-15T16:00:00.000Z' })),
+      json(rendicionJson({ vigencia: 'ANULADA', anuladaEn: '2026-10-15T16:00:00.000Z' })),
     );
     const { user, onAnulada } = renderTarjeta();
 
@@ -192,7 +192,7 @@ describe('RendicionCard', () => {
   });
 
   describe('anulada', () => {
-    const ANULADA = { estado: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' };
+    const ANULADA = { vigencia: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' };
 
     it('lleva la marca "Anulada", se ve atenuada y no ofrece "Anular"', () => {
       renderTarjeta({ totalItems: 4, completados: 4 }, ANULADA);

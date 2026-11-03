@@ -108,7 +108,7 @@ describe('RendicionSchema con OC', () => {
       anio: 2026,
       mes: 10,
       numeroFactura: 'B 00002-00001482',
-      estado: 'ACTIVA',
+      vigencia: 'ACTIVA',
       anuladaEn: null,
       creadoEn: '2026-10-01T00:00:00.000Z',
       actualizadoEn: '2026-10-01T00:00:00.000Z',

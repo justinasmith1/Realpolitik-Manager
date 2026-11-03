@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { ClienteEstado } from './cliente.schema.js';
 import { DocumentoSchema } from './documento.schema.js';
-import { RendicionEstado } from './rendicion.schema.js';
+import { VigenciaRendicion } from './rendicion.schema.js';
 
 // Aplicaciones de un documento a ítems del checklist (HU2.8, ADR-0004). Una aplicación es
 // historial: no se borra. Un ítem tiene a lo sumo una VIGENTE; las anteriores quedan
@@ -78,12 +78,12 @@ const ItemDeUbicacion = z.object({
 });
 
 /**
- * Dónde está una aplicación. La rendición lleva su estado: una aplicación en una rendición
+ * Dónde está una aplicación. La rendición lleva su vigencia: una aplicación en una rendición
  * anulada se conserva como historial y se sigue mostrando, marcada.
  */
 export const UbicacionDeAplicacionSchema = z.object({
   cliente: ClienteDeUbicacion,
-  rendicion: RendicionDeUbicacion.extend({ estado: RendicionEstado }),
+  rendicion: RendicionDeUbicacion.extend({ vigencia: VigenciaRendicion }),
   item: ItemDeUbicacion,
 });
 

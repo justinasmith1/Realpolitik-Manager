@@ -289,7 +289,7 @@ describe('RendicionesSection', () => {
       id: OTRA_ID,
       mes: 11,
       numeroFactura: 'A 00001-00000009',
-      estado: 'ANULADA',
+      vigencia: 'ANULADA',
       anuladaEn: '2026-10-20T15:00:00.000Z',
     });
 
@@ -312,12 +312,12 @@ describe('RendicionesSection', () => {
 
       await elegirOpcion(user, screen.getByLabelText('Estado'), 'Anuladas');
 
-      await waitFor(() => expect(router.state.location.search).toBe('?estado=ANULADA'));
+      await waitFor(() => expect(router.state.location.search).toBe('?vigencia=ANULADA'));
       expect(
         await screen.findByText('No hay rendiciones anuladas para este cliente.'),
       ).toBeVisible();
       expect(pedidosDelListado().at(-1)).toBe(
-        `https://api.example/clientes/${CLIENTE_ID}/rendiciones?estado=ANULADA`,
+        `https://api.example/clientes/${CLIENTE_ID}/rendiciones?vigencia=ANULADA`,
       );
 
       await elegirOpcion(user, screen.getByLabelText('Estado'), 'Activas');
@@ -331,9 +331,9 @@ describe('RendicionesSection', () => {
     });
 
     it.each([
-      ['?estado=ANULADA&mes=10', 'No hay rendiciones anuladas en ese período.'],
-      ['?estado=TODAS', 'Todavía no hay rendiciones para este cliente.'],
-      ['?estado=TODAS&anio=2026', 'No hay rendiciones en ese período.'],
+      ['?vigencia=ANULADA&mes=10', 'No hay rendiciones anuladas en ese período.'],
+      ['?vigencia=TODAS', 'Todavía no hay rendiciones para este cliente.'],
+      ['?vigencia=TODAS&anio=2026', 'No hay rendiciones en ese período.'],
     ])('el vacío tiene sentido según el filtro (%s)', async (query, mensaje) => {
       fetchMock.mockResolvedValue(json([]));
       renderSeccion('ACTIVO', `${MATRIZ}${query}`);
@@ -341,7 +341,7 @@ describe('RendicionesSection', () => {
       expect(await screen.findByText(mensaje)).toBeVisible();
     });
 
-    it.each(['?estado=ACTIVA', '?estado=borrada', '?estado=TODAS&estado=ANULADA'])(
+    it.each(['?vigencia=ACTIVA', '?vigencia=borrada', '?vigencia=TODAS&vigencia=ANULADA'])(
       '%s se quita de la URL (valor por defecto o inválido) y lista las activas',
       async (query) => {
         fetchMock.mockResolvedValue(json([]));
@@ -356,7 +356,7 @@ describe('RendicionesSection', () => {
     it('con "Todas" muestra las activas primero y la anulada atenuada, sin "Anular" y navegable', async () => {
       // El backend ya las manda en ese orden: la anulada es más reciente, pero va después.
       fetchMock.mockResolvedValue(json([resumenJson(), ANULADA]));
-      const { user, router } = renderSeccion('ACTIVO', `${MATRIZ}?estado=TODAS`);
+      const { user, router } = renderSeccion('ACTIVO', `${MATRIZ}?vigencia=TODAS`);
 
       const tarjetas = await screen.findAllByRole('article');
       expect(tarjetas.map((tarjeta) => tarjeta.getAttribute('data-estado'))).toEqual([

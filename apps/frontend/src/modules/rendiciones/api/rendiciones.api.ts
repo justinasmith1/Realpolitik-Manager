@@ -64,7 +64,7 @@ export async function listarRendiciones(
   const params = new URLSearchParams();
   if (filtros.anio !== undefined) params.set('anio', String(filtros.anio));
   if (filtros.mes !== undefined) params.set('mes', String(filtros.mes));
-  if (filtros.estado !== undefined) params.set('estado', filtros.estado);
+  if (filtros.vigencia !== undefined) params.set('vigencia', filtros.vigencia);
   if (filtros.requisitoId !== undefined) params.set('requisitoId', filtros.requisitoId);
   const query = params.toString() === '' ? '' : `?${params.toString()}`;
   const response = await http(

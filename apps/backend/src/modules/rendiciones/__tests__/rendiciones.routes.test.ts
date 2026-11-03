@@ -52,13 +52,13 @@ const CAMPOS_DE_RENDICION = [
   'clienteId',
   'creadoEn',
   'emisor',
-  'estado',
   'id',
   'mes',
   'montoMensual',
   'montoTotal',
   'numeroFactura',
   'numeroOc',
+  'vigencia',
 ];
 
 function filaRendicion(extra: Record<string, unknown> = {}) {
@@ -253,7 +253,7 @@ describe('POST /clientes/:id/rendiciones', () => {
     const cuerpo = res.body as Record<string, unknown>;
     expect(Object.keys(cuerpo).sort()).toEqual([...CAMPOS_DE_RENDICION, 'items'].sort());
     expect(cuerpo).toMatchObject({
-      estado: 'ACTIVA',
+      vigencia: 'ACTIVA',
       anuladaEn: null,
       numeroFactura: 'B 00002-00001482',
     });
@@ -591,7 +591,7 @@ describe('GET /clientes/:id/rendiciones', () => {
   it('con requisitoId lista solo las que tienen ítems de ese requisito', async () => {
     const requisitoId = 'd1e2f3a4-b5c6-4789-8abc-def012345601';
 
-    await listar(`?estado=ACTIVA&requisitoId=${requisitoId}`);
+    await listar(`?vigencia=ACTIVA&requisitoId=${requisitoId}`);
 
     expect(prismaMock.rendicion.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -624,10 +624,10 @@ describe('GET /clientes/:id/rendiciones', () => {
     expect(prismaMock.itemChecklist.groupBy).not.toHaveBeenCalled();
   });
 
-  describe('filtro de estado', () => {
+  describe('filtro de vigencia', () => {
     const ORDEN = [{ anio: 'desc' }, { mes: 'desc' }, { createdAt: 'desc' }];
 
-    it('sin estado lista solo las activas (default ACTIVA)', async () => {
+    it('sin vigencia lista solo las activas (default ACTIVA)', async () => {
       await listar();
 
       expect(prismaMock.rendicion.findMany).toHaveBeenCalledWith({
@@ -637,7 +637,7 @@ describe('GET /clientes/:id/rendiciones', () => {
     });
 
     it('ACTIVA es lo mismo que no mandarlo', async () => {
-      await listar('?estado=ACTIVA');
+      await listar('?vigencia=ACTIVA');
 
       expect(prismaMock.rendicion.findMany).toHaveBeenCalledWith({
         where: { clienteId: CLIENTE, isDeleted: false },
@@ -645,24 +645,24 @@ describe('GET /clientes/:id/rendiciones', () => {
       });
     });
 
-    it('ANULADA lista solo las anuladas, con su estado y fecha', async () => {
+    it('ANULADA lista solo las anuladas, con su vigencia y fecha', async () => {
       prismaMock.rendicion.findMany.mockResolvedValue([
         filaRendicion({ isDeleted: true, deletedAt: new Date('2026-10-20T15:00:00.000Z') }),
       ]);
 
-      const res = await listar('?estado=ANULADA&anio=2026');
+      const res = await listar('?vigencia=ANULADA&anio=2026');
 
       expect(prismaMock.rendicion.findMany).toHaveBeenCalledWith({
         where: { clienteId: CLIENTE, isDeleted: true, anio: 2026 },
         orderBy: ORDEN,
       });
       expect(res.body).toEqual([
-        expect.objectContaining({ estado: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' }),
+        expect.objectContaining({ vigencia: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' }),
       ]);
     });
 
-    it('TODAS no filtra por estado y ordena primero las activas', async () => {
-      await listar('?estado=TODAS');
+    it('TODAS no filtra por vigencia y ordena primero las activas', async () => {
+      await listar('?vigencia=TODAS');
 
       expect(prismaMock.rendicion.findMany).toHaveBeenCalledWith({
         where: { clienteId: CLIENTE },
@@ -670,18 +670,20 @@ describe('GET /clientes/:id/rendiciones', () => {
       });
     });
 
-    it.each(['?estado=activa', '?estado=BORRADA', '?estado=', '?estado=ACTIVA&estado=TODAS'])(
-      '400 VALIDATION_ERROR con %s',
-      async (query) => {
-        const res = await listar(query);
+    it.each([
+      '?vigencia=activa',
+      '?vigencia=BORRADA',
+      '?vigencia=',
+      '?vigencia=ACTIVA&vigencia=TODAS',
+    ])('400 VALIDATION_ERROR con %s', async (query) => {
+      const res = await listar(query);
 
-        expect(res.status).toBe(400);
-        expect(
-          (res.body as { error: { code: string; details: { campo: string }[] } }).error,
-        ).toMatchObject({ code: 'VALIDATION_ERROR', details: [{ campo: 'estado' }] });
-        expect(prismaMock.rendicion.findMany).not.toHaveBeenCalled();
-      },
-    );
+      expect(res.status).toBe(400);
+      expect(
+        (res.body as { error: { code: string; details: { campo: string }[] } }).error,
+      ).toMatchObject({ code: 'VALIDATION_ERROR', details: [{ campo: 'vigencia' }] });
+      expect(prismaMock.rendicion.findMany).not.toHaveBeenCalled();
+    });
   });
 
   it.each(['?anio=abc', '?mes=13', '?anio=2019'])('400 con %s', async (query) => {
@@ -752,7 +754,7 @@ describe('GET /rendiciones/:id', () => {
     const res = await obtener();
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: RENDICION, estado: 'ACTIVA', items: [] });
+    expect(res.body).toMatchObject({ id: RENDICION, vigencia: 'ACTIVA', items: [] });
     expect(prismaMock.rendicion.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: RENDICION, cliente: { isDeleted: false } },
@@ -760,7 +762,7 @@ describe('GET /rendiciones/:id', () => {
     );
   });
 
-  it('una anulada también se ve, como historial, con su estado', async () => {
+  it('una anulada también se ve, como historial, con su vigencia', async () => {
     const anuladaEn = new Date('2026-10-01T10:00:00.000Z');
     prismaMock.rendicion.findFirst.mockResolvedValue(
       filaRendicion({ isDeleted: true, deletedAt: anuladaEn, items: [] }),
@@ -769,7 +771,7 @@ describe('GET /rendiciones/:id', () => {
     const res = await obtener();
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ estado: 'ANULADA', anuladaEn: anuladaEn.toISOString() });
+    expect(res.body).toMatchObject({ vigencia: 'ANULADA', anuladaEn: anuladaEn.toISOString() });
     expect(Object.keys(res.body as object).sort()).toEqual(
       [...CAMPOS_DE_RENDICION, 'items'].sort(),
     );
@@ -802,7 +804,7 @@ describe('PATCH /rendiciones/:id/estado', () => {
       data: { isDeleted: true, deletedAt: expect.any(Date) as unknown },
     });
     const cuerpo = res.body as Record<string, unknown>;
-    expect(cuerpo).toMatchObject({ estado: 'ANULADA', anuladaEn: HOY.toISOString() });
+    expect(cuerpo).toMatchObject({ vigencia: 'ANULADA', anuladaEn: HOY.toISOString() });
     expect(Object.keys(cuerpo).sort()).toEqual(CAMPOS_DE_RENDICION);
   });
 
@@ -815,7 +817,7 @@ describe('PATCH /rendiciones/:id/estado', () => {
     const res = await anular();
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ estado: 'ANULADA', anuladaEn: antes.toISOString() });
+    expect(res.body).toMatchObject({ vigencia: 'ANULADA', anuladaEn: antes.toISOString() });
     expect(prismaMock.rendicion.update).not.toHaveBeenCalled();
   });
 
@@ -829,7 +831,7 @@ describe('PATCH /rendiciones/:id/estado', () => {
     const res = await anular();
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ estado: 'ANULADA', anuladaEn: antes.toISOString() });
+    expect(res.body).toMatchObject({ vigencia: 'ANULADA', anuladaEn: antes.toISOString() });
   });
 
   it('se puede anular aunque el cliente no esté activo: no consulta su estado', async () => {

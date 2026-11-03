@@ -328,7 +328,7 @@ describe('ArchivosPage: detalle de un documento', () => {
   it('muestra dónde está vigente y el historial, con rendiciones anuladas y clientes inactivos', async () => {
     const ubicacion = (cliente: object, rendicion: object, estado: string, it: object) => ({
       cliente,
-      rendicion: { ...rendicion, estado },
+      rendicion: { ...rendicion, vigencia: estado },
       item: it,
     });
     servidor.detalle = () =>

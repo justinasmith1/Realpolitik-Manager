@@ -17,20 +17,20 @@ export function enteroDeQuery(rango: z.ZodType<number>, mensaje: string) {
 }
 
 /**
- * Qué rendiciones lista `GET /clientes/:id/rendiciones` según su estado: las activas, las
- * anuladas o todas. Una anulada es la baja lógica de la rendición: no hay otro estado oculto.
+ * Qué rendiciones lista `GET /clientes/:id/rendiciones` según su vigencia: las activas, las
+ * anuladas o todas. Una anulada es la baja lógica de la rendición.
  */
-export const FiltroEstadoRendiciones = z.enum(['ACTIVA', 'ANULADA', 'TODAS'], {
-  errorMap: () => ({ message: 'El estado debe ser ACTIVA, ANULADA o TODAS.' }),
+export const FiltroVigenciaRendiciones = z.enum(['ACTIVA', 'ANULADA', 'TODAS'], {
+  errorMap: () => ({ message: 'La vigencia debe ser ACTIVA, ANULADA o TODAS.' }),
 });
 
-export type FiltroEstadoRendiciones = z.infer<typeof FiltroEstadoRendiciones>;
+export type FiltroVigenciaRendiciones = z.infer<typeof FiltroVigenciaRendiciones>;
 
 /**
- * Sin `estado`, se listan las activas. El valor no se completa en el schema: así un pedido sin el
- * parámetro sigue siendo `{}` (el frontend no lo escribe en la URL) y lo aplica el backend.
+ * Sin `vigencia`, se listan las activas. El valor no se completa en el schema: así un pedido sin
+ * el parámetro sigue siendo `{}` (el frontend no lo escribe en la URL) y lo aplica el backend.
  */
-export const FILTRO_ESTADO_POR_DEFECTO: FiltroEstadoRendiciones = 'ACTIVA';
+export const FILTRO_VIGENCIA_POR_DEFECTO: FiltroVigenciaRendiciones = 'ACTIVA';
 
 export const MENSAJE_REQUISITO_ID = 'El ID del requisito debe ser un UUID válido.';
 
@@ -39,8 +39,8 @@ export const MENSAJE_REQUISITO_ID = 'El ID del requisito debe ser un UUID válid
  *
  * - `anio`: entero de 2020 a 2100. Opcional.
  * - `mes`: entero de 1 a 12. Opcional; se puede combinar con `anio` o usar solo.
- * - `estado`: `ACTIVA`, `ANULADA` o `TODAS`. Opcional; sin él, `ACTIVA`
- *   (`FILTRO_ESTADO_POR_DEFECTO`).
+ * - `vigencia`: `ACTIVA`, `ANULADA` o `TODAS`. Opcional; sin él, `ACTIVA`
+ *   (`FILTRO_VIGENCIA_POR_DEFECTO`).
  * - `requisitoId`: uuid de un requisito del cliente. Opcional; solo las rendiciones que tienen
  *   ítems de ese requisito (para ofrecer propagarles un cambio de canal).
  *
@@ -49,7 +49,7 @@ export const MENSAJE_REQUISITO_ID = 'El ID del requisito debe ser un UUID válid
 export const ListarRendicionesQuerySchema = z.object({
   anio: enteroDeQuery(AnioSchema, MENSAJE_ANIO).optional(),
   mes: enteroDeQuery(MesSchema, MENSAJE_MES).optional(),
-  estado: FiltroEstadoRendiciones.optional(),
+  vigencia: FiltroVigenciaRendiciones.optional(),
   requisitoId: z
     .string({ invalid_type_error: MENSAJE_REQUISITO_ID })
     .uuid({ message: MENSAJE_REQUISITO_ID })

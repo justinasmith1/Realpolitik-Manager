@@ -222,10 +222,10 @@ export type UltimaOc = z.infer<typeof UltimaOcSchema>;
 // Son lo que devuelve la API: validan la forma, sin reglas de escritura (el período, las
 // mayúsculas), para que un registro anterior a ellas no rompa un listado.
 
-/** Estado derivado de la baja lógica: `ANULADA` si la rendición tiene `anuladaEn`. */
-export const RendicionEstado = z.enum(['ACTIVA', 'ANULADA']);
+/** Vigencia derivada de la baja lógica: `ANULADA` si la rendición tiene `anuladaEn`. */
+export const VigenciaRendicion = z.enum(['ACTIVA', 'ANULADA']);
 
-export type RendicionEstado = z.infer<typeof RendicionEstado>;
+export type VigenciaRendicion = z.infer<typeof VigenciaRendicion>;
 
 /**
  * Un documento a presentar en una rendición: una foto del requisito tomada al abrirla
@@ -271,7 +271,7 @@ export const RendicionSchema = z.object({
   numeroOc: z.string().nullable().default(null),
   montoMensual: z.number().nullable().default(null),
   montoTotal: z.number().nullable().default(null),
-  estado: RendicionEstado,
+  vigencia: VigenciaRendicion,
   anuladaEn: z.coerce.date().nullable(),
   creadoEn: z.coerce.date(),
   actualizadoEn: z.coerce.date(),

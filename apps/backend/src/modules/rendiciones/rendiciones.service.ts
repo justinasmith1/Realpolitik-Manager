@@ -3,7 +3,7 @@ import {
   canalDeSeleccion,
   compararItemsDeChecklist,
   esChecklistError,
-  FILTRO_ESTADO_POR_DEFECTO,
+  FILTRO_VIGENCIA_POR_DEFECTO,
   generarChecklist,
   motivoNoEnviable,
   PreparacionEnvioSchema,
@@ -12,7 +12,7 @@ import {
   type CanalEntregaType,
   type CreateRendicionDto,
   type EmisorType,
-  type FiltroEstadoRendiciones,
+  type FiltroVigenciaRendiciones,
   type ItemChecklistNuevo,
   type ListarRendicionesQuery,
   type PreparacionEnvio,
@@ -342,26 +342,26 @@ export async function abrirRendicion(
   }
 }
 
-/** Cada filtro de estado como baja lógica: anulada es `isDeleted`. `TODAS` no filtra. */
-const BAJA_SEGUN_ESTADO: Record<FiltroEstadoRendiciones, boolean | undefined> = {
+/** Cada filtro de vigencia como baja lógica: anulada es `isDeleted`. `TODAS` no filtra. */
+const BAJA_SEGUN_VIGENCIA: Record<FiltroVigenciaRendiciones, boolean | undefined> = {
   ACTIVA: false,
   ANULADA: true,
   TODAS: undefined,
 };
 
 /**
- * Rendiciones del cliente, con el avance de su checklist (contrato 4.5). Sin `estado`, solo las
+ * Rendiciones del cliente, con el avance de su checklist (contrato 4.5). Sin `vigencia`, solo las
  * activas. Con `requisitoId`, solo las que tienen ítems de ese requisito. Orden: año y mes
  * descendentes y, dentro del mismo mes, la más reciente primero; con `TODAS`, primero las activas
  * y después las anuladas, cada grupo con ese orden.
  */
 export async function listarRendiciones(
   clienteId: string,
-  { anio, mes, estado = FILTRO_ESTADO_POR_DEFECTO, requisitoId }: ListarRendicionesQuery,
+  { anio, mes, vigencia = FILTRO_VIGENCIA_POR_DEFECTO, requisitoId }: ListarRendicionesQuery,
 ): Promise<RendicionResumen[]> {
   await exigirClienteVigente(clienteId);
 
-  const isDeleted = BAJA_SEGUN_ESTADO[estado];
+  const isDeleted = BAJA_SEGUN_VIGENCIA[vigencia];
   const filas = await prisma.rendicion.findMany({
     where: {
       clienteId,
@@ -404,7 +404,7 @@ export async function listarRendiciones(
 }
 
 /**
- * Una rendición con su checklist. También una anulada (con `estado: ANULADA`): su detalle se
+ * Una rendición con su checklist. También una anulada (con `vigencia: ANULADA`): su detalle se
  * conserva como historial. De un cliente borrado, no existe.
  */
 export async function obtenerRendicion(id: string): Promise<RendicionDetalle> {

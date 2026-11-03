@@ -1,5 +1,5 @@
 import {
-  FiltroEstadoRendiciones,
+  FiltroVigenciaRendiciones,
   type ClienteEstadoType,
   type EmisorType,
   type RendicionDetalle,
@@ -49,14 +49,14 @@ const describir = (rendicion: { anio: number; mes: number; numeroFactura: string
 
 const OPCION_TODOS: SelectOption = { value: '', label: 'Todos' };
 
-const OPCIONES_ESTADO: SelectOption[] = [
+const OPCIONES_VIGENCIA: SelectOption[] = [
   { value: 'ACTIVA', label: 'Activas' },
   { value: 'ANULADA', label: 'Anuladas' },
   { value: 'TODAS', label: 'Todas' },
 ];
 
-/** Qué decir cuando no hay rendiciones, según el estado elegido y si hay filtro de período. */
-const SIN_RENDICIONES: Record<FiltroEstadoRendiciones, { siempre: string; enPeriodo: string }> = {
+/** Qué decir cuando no hay rendiciones, según la vigencia elegida y si hay filtro de período. */
+const SIN_RENDICIONES: Record<FiltroVigenciaRendiciones, { siempre: string; enPeriodo: string }> = {
   ACTIVA: {
     siempre: 'No hay rendiciones activas para este cliente.',
     enPeriodo: 'No hay rendiciones activas en ese período.',
@@ -73,7 +73,7 @@ const SIN_RENDICIONES: Record<FiltroEstadoRendiciones, { siempre: string; enPeri
 
 /**
  * Rendiciones de un cliente dentro de su página de matriz (HU2.5, HU2.6), de la más nueva a la
- * más vieja, con filtros de año, mes y estado guardados en la URL. Por defecto, solo las activas:
+ * más vieja, con filtros de año, mes y vigencia guardados en la URL. Por defecto, solo las activas:
  * las anuladas se consultan con el filtro, sin mezclarse (con "Todas", van después de las
  * activas, como las ordena el backend). Cada tarjeta lleva a su detalle. Solo un cliente ACTIVO puede abrir rendiciones nuevas; anular se permite en cualquier
  * estado (contrato 4.6).
@@ -85,7 +85,7 @@ export function RendicionesSection({
 }: RendicionesSectionProps) {
   const navigate = useNavigate();
   const id = useId();
-  const { filtros, estado, hayFiltros, cambiarAnio, cambiarMes, cambiarEstado } =
+  const { filtros, vigencia, hayFiltros, cambiarAnio, cambiarMes, cambiarVigencia } =
     useFiltroRendiciones();
   const consulta = useRendiciones(cliente.id, filtros);
   const [abriendo, setAbriendo] = useState(false);
@@ -157,7 +157,7 @@ export function RendicionesSection({
   } else if (consulta.data.length === 0) {
     contenido = (
       <p className="text-sm text-muted-foreground">
-        {hayFiltros ? SIN_RENDICIONES[estado].enPeriodo : SIN_RENDICIONES[estado].siempre}
+        {hayFiltros ? SIN_RENDICIONES[vigencia].enPeriodo : SIN_RENDICIONES[vigencia].siempre}
       </p>
     );
   } else {
@@ -222,17 +222,17 @@ export function RendicionesSection({
           />
         </div>
         <div className="flex min-w-36 flex-col gap-1.5">
-          <label htmlFor={`${id}-estado`} className="text-sm font-medium text-foreground">
+          <label htmlFor={`${id}-vigencia`} className="text-sm font-medium text-foreground">
             Estado
           </label>
           <Select
-            id={`${id}-estado`}
-            value={estado}
+            id={`${id}-vigencia`}
+            value={vigencia}
             onValueChange={(valor) => {
-              const elegido = FiltroEstadoRendiciones.safeParse(valor);
-              if (elegido.success) cambiarEstado(elegido.data);
+              const elegido = FiltroVigenciaRendiciones.safeParse(valor);
+              if (elegido.success) cambiarVigencia(elegido.data);
             }}
-            options={OPCIONES_ESTADO}
+            options={OPCIONES_VIGENCIA}
           />
         </div>
       </div>

@@ -138,7 +138,7 @@ describe('RendicionDetallePage: Orden de Compra (HU2.11)', () => {
 
   it('en una rendición anulada no ofrece el botón Editar OC', async () => {
     servir({
-      inicial: { estado: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' },
+      inicial: { vigencia: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' },
     });
     renderDetalle();
 

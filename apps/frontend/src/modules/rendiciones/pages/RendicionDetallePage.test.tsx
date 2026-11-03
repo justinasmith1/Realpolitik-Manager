@@ -230,7 +230,7 @@ describe('RendicionDetallePage', () => {
   it('una rendición anulada se ve, con su aviso y su estado', async () => {
     servir(() =>
       json({
-        ...rendicionJson({ estado: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' }),
+        ...rendicionJson({ vigencia: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' }),
         items: ITEMS,
       }),
     );

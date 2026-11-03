@@ -276,7 +276,7 @@ describe.skipIf(url === undefined)(
       await request(app).patch(`/rendiciones/${anulada.id}/estado`).send({ estado: 'ANULADA' });
 
       const res = await request(app).get(
-        `/clientes/${cliente.id}/rendiciones?estado=ACTIVA&requisitoId=${nota.id}`,
+        `/clientes/${cliente.id}/rendiciones?vigencia=ACTIVA&requisitoId=${nota.id}`,
       );
 
       expect(res.status).toBe(200);

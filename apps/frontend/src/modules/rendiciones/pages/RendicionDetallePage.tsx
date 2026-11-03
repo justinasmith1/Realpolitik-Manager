@@ -208,7 +208,7 @@ function DetalleDeRendicion({
   const [editandoCliente, setEditandoCliente] = useState(false);
   const [editandoOc, setEditandoOc] = useState(false);
   const avance = calcularFaltantes(rendicion.items);
-  const anulada = rendicion.estado === 'ANULADA';
+  const anulada = rendicion.vigencia === 'ANULADA';
   const completo = checklistCompleto(avance);
   const visibles = soloFaltantes ? avance.faltantes : rendicion.items;
   // Solo cuentan los que se pueden enviar con los datos de ahora: si un ítem marcado deja de

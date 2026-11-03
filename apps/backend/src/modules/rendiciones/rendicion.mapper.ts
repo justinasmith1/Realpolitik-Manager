@@ -15,7 +15,7 @@ import {
 } from '@realpolitik/shared';
 
 // Filas de Prisma → rendición del contrato (sección 4.5). Los campos se copian uno por uno:
-// `isDeleted` y `deletedAt` no salen; el estado se deriva de la baja lógica (`ANULADA` y su
+// `isDeleted` y `deletedAt` no salen; la vigencia se deriva de la baja lógica (`ANULADA` y su
 // fecha en `anuladaEn`). `createdAt`/`updatedAt`/`completadoAt` pasan a `creadoEn`/
 // `actualizadoEn`/`completadoEn`. Cada salida se valida con el schema de shared: un dato que no
 // cumple el contrato termina en un 500, no en un JSON inválido.
@@ -57,7 +57,7 @@ const camposDeRendicion = (row: RendicionRow) => ({
   numeroOc: row.numeroOc,
   montoMensual: row.montoMensual?.toNumber() ?? null,
   montoTotal: row.montoTotal?.toNumber() ?? null,
-  estado: row.isDeleted ? 'ANULADA' : 'ACTIVA',
+  vigencia: row.isDeleted ? 'ANULADA' : 'ACTIVA',
   anuladaEn: row.isDeleted ? row.deletedAt : null,
   creadoEn: row.createdAt,
   actualizadoEn: row.updatedAt,

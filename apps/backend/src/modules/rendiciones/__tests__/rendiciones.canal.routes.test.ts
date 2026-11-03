@@ -93,7 +93,7 @@ describe('PATCH /rendiciones/:id/items/:itemId/canal', () => {
     });
     expect(res.body).toMatchObject({
       id: RENDICION,
-      estado: 'ACTIVA',
+      vigencia: 'ACTIVA',
       items: [{ id: ITEM, canalEntrega: 'PORTAL_WEB' }],
     });
   });

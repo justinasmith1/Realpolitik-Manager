@@ -180,7 +180,7 @@ function servir({
   const detalle = () =>
     json({
       ...rendicionJson(
-        estado === 'ANULADA' ? { estado, anuladaEn: '2026-10-20T15:00:00.000Z' } : {},
+        estado === 'ANULADA' ? { vigencia: estado, anuladaEn: '2026-10-20T15:00:00.000Z' } : {},
       ),
       items: items.map((item) => {
         if (sinDocumentos) return item;

@@ -143,7 +143,7 @@ export {
   NUMERO_OC_MAX,
   NumeroOcSchema,
   UltimaOcSchema,
-  RendicionEstado,
+  VigenciaRendicion,
   ItemChecklistSchema,
   RendicionSchema,
   RendicionDetalleSchema,
@@ -155,7 +155,7 @@ export type {
   ActualizarEstadoRendicionDto,
   ActualizarRendicionDto,
   UltimaOc,
-  RendicionEstado as RendicionEstadoType,
+  VigenciaRendicion as VigenciaRendicionType,
   ItemChecklist,
   Rendicion,
   RendicionDetalle,
@@ -176,8 +176,8 @@ export type {
   ResultadoPropagarCanal,
 } from './schemas/canalDeItem.schema.js';
 export {
-  FILTRO_ESTADO_POR_DEFECTO,
-  FiltroEstadoRendiciones,
+  FILTRO_VIGENCIA_POR_DEFECTO,
+  FiltroVigenciaRendiciones,
   ListarRendicionesQuerySchema,
   MENSAJE_REQUISITO_ID,
 } from './schemas/listarRendicionesQuery.schema.js';

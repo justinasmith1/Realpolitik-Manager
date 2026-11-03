@@ -314,7 +314,7 @@ describe('entidades de lectura', () => {
     anio: 2026,
     mes: 10,
     numeroFactura: '0001-00001234',
-    estado: 'ACTIVA',
+    vigencia: 'ACTIVA',
     anuladaEn: null,
     creadoEn: '2026-10-20T12:00:00.000Z',
     actualizadoEn: '2026-10-20T12:00:00.000Z',
@@ -358,17 +358,17 @@ describe('entidades de lectura', () => {
   describe('RendicionSchema', () => {
     it('lee la rendición activa', () => {
       const r = RendicionSchema.parse(rendicion);
-      expect(r.estado).toBe('ACTIVA');
+      expect(r.vigencia).toBe('ACTIVA');
       expect(r.anuladaEn).toBeNull();
     });
 
     it('lee la rendición anulada con su fecha', () => {
       const r = RendicionSchema.parse({
         ...rendicion,
-        estado: 'ANULADA',
+        vigencia: 'ANULADA',
         anuladaEn: '2026-10-22T10:00:00.000Z',
       });
-      expect(r.estado).toBe('ANULADA');
+      expect(r.vigencia).toBe('ANULADA');
       expect(r.anuladaEn).toBeInstanceOf(Date);
     });
 
@@ -382,8 +382,8 @@ describe('entidades de lectura', () => {
       expect(RendicionSchema.safeParse({ ...rendicion, anio: 2099, mes: 12 }).success).toBe(true);
     });
 
-    it('rechaza un estado desconocido', () => {
-      expect(RendicionSchema.safeParse({ ...rendicion, estado: 'BORRADA' }).success).toBe(false);
+    it('rechaza una vigencia desconocida', () => {
+      expect(RendicionSchema.safeParse({ ...rendicion, vigencia: 'BORRADA' }).success).toBe(false);
     });
 
     describe('emisor (HU2.9)', () => {
