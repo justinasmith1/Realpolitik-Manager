@@ -72,6 +72,25 @@
   --subtipo-sindical-soft: #eff3e0;
   --subtipo-sindical-border: #cdd8a6;
 
+  /* Estado de la rendición (HU3.1, badge `EstadoRendicionBadge`). Colores propios, los mismos en
+     todo el sistema. El rojo no se usa: queda para la marca de Atrasada (HU3.4). Contraste del
+     texto sobre su fondo, de 5.4:1 a 6.2:1 (AA para texto chico). */
+  --estado-en-curso: #1e57b0;
+  --estado-en-curso-soft: #e8f0fc;
+  --estado-en-curso-border: #bdd0f1;
+  --estado-completa: #3b6a1e;
+  --estado-completa-soft: #eff7e7;
+  --estado-completa-border: #cae2b4;
+  --estado-enviada: #7438b0;
+  --estado-enviada-soft: #f3ecfb;
+  --estado-enviada-border: #d9c7f1;
+  --estado-aprobada: #0e6a3b;
+  --estado-aprobada-soft: #dcf1e5;
+  --estado-aprobada-border: #a6d8bb;
+  --estado-rechazada: #a3470d;
+  --estado-rechazada-soft: #fdefe4;
+  --estado-rechazada-border: #f2cbaf;
+
   /* Sidebar: superficie oscura propia del shell (no es un modo oscuro global) */
   --sidebar: #161314;
   --sidebar-foreground: #dad4d2;
@@ -136,6 +155,21 @@
   --color-subtipo-sindical: var(--subtipo-sindical);
   --color-subtipo-sindical-soft: var(--subtipo-sindical-soft);
   --color-subtipo-sindical-border: var(--subtipo-sindical-border);
+  --color-estado-en-curso: var(--estado-en-curso);
+  --color-estado-en-curso-soft: var(--estado-en-curso-soft);
+  --color-estado-en-curso-border: var(--estado-en-curso-border);
+  --color-estado-completa: var(--estado-completa);
+  --color-estado-completa-soft: var(--estado-completa-soft);
+  --color-estado-completa-border: var(--estado-completa-border);
+  --color-estado-enviada: var(--estado-enviada);
+  --color-estado-enviada-soft: var(--estado-enviada-soft);
+  --color-estado-enviada-border: var(--estado-enviada-border);
+  --color-estado-aprobada: var(--estado-aprobada);
+  --color-estado-aprobada-soft: var(--estado-aprobada-soft);
+  --color-estado-aprobada-border: var(--estado-aprobada-border);
+  --color-estado-rechazada: var(--estado-rechazada);
+  --color-estado-rechazada-soft: var(--estado-rechazada-soft);
+  --color-estado-rechazada-border: var(--estado-rechazada-border);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);

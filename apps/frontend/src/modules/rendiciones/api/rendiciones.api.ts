@@ -53,8 +53,9 @@ function pedidoJson(method: 'POST' | 'PATCH', cuerpo: Record<string, unknown>): 
 
 /**
  * `GET /clientes/:id/rendiciones`, con el avance de cada una. Los filtros `anio` y `mes` son
- * opcionales; sin ellos, todos los períodos. Sin `estado`, el backend lista solo las activas. Con
- * `requisitoId`, solo las que tienen ítems de ese requisito.
+ * opcionales; sin ellos, todos los períodos. Sin `vigencia`, el backend lista solo las activas. Con
+ * `estado` (HU3.1), solo las que están en ese paso. Con `requisitoId`, solo las que tienen ítems de
+ * ese requisito.
  */
 export async function listarRendiciones(
   clienteId: string,
@@ -65,6 +66,7 @@ export async function listarRendiciones(
   if (filtros.anio !== undefined) params.set('anio', String(filtros.anio));
   if (filtros.mes !== undefined) params.set('mes', String(filtros.mes));
   if (filtros.vigencia !== undefined) params.set('vigencia', filtros.vigencia);
+  if (filtros.estado !== undefined) params.set('estado', filtros.estado);
   if (filtros.requisitoId !== undefined) params.set('requisitoId', filtros.requisitoId);
   const query = params.toString() === '' ? '' : `?${params.toString()}`;
   const response = await http(

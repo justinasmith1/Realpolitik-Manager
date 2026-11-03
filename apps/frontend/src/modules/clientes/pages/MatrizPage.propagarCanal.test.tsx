@@ -54,6 +54,7 @@ const rendicion = (id: string, mes: number, numeroFactura: string) => ({
   anio: 2026,
   mes,
   numeroFactura,
+  estado: 'EN_CURSO',
   vigencia: 'ACTIVA',
   anuladaEn: null,
   resumen: { totalItems: 3, completados: 0 },

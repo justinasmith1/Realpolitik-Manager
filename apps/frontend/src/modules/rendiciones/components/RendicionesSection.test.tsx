@@ -300,7 +300,7 @@ describe('RendicionesSection', () => {
       expect(
         await screen.findByText('No hay rendiciones activas para este cliente.'),
       ).toBeVisible();
-      expect(screen.getByLabelText('Estado')).toHaveTextContent('Activas');
+      expect(screen.getByLabelText('Vigencia')).toHaveTextContent('Activas');
       expect(router.state.location.search).toBe('');
       expect(pedidosDelListado()[0]).toBe(`https://api.example/clientes/${CLIENTE_ID}/rendiciones`);
     });
@@ -310,7 +310,7 @@ describe('RendicionesSection', () => {
       const { user, router } = renderSeccion();
       await screen.findByText('No hay rendiciones activas para este cliente.');
 
-      await elegirOpcion(user, screen.getByLabelText('Estado'), 'Anuladas');
+      await elegirOpcion(user, screen.getByLabelText('Vigencia'), 'Anuladas');
 
       await waitFor(() => expect(router.state.location.search).toBe('?vigencia=ANULADA'));
       expect(
@@ -320,7 +320,7 @@ describe('RendicionesSection', () => {
         `https://api.example/clientes/${CLIENTE_ID}/rendiciones?vigencia=ANULADA`,
       );
 
-      await elegirOpcion(user, screen.getByLabelText('Estado'), 'Activas');
+      await elegirOpcion(user, screen.getByLabelText('Vigencia'), 'Activas');
 
       await waitFor(() => expect(router.state.location.search).toBe(''));
       await waitFor(() =>
@@ -363,7 +363,7 @@ describe('RendicionesSection', () => {
         'activa',
         'anulada',
       ]);
-      expect(screen.getByLabelText('Estado')).toHaveTextContent('Todas');
+      expect(screen.getByLabelText('Vigencia')).toHaveTextContent('Todas');
       const anulada = screen.getByRole('article', { name: 'Noviembre 2026' });
       expect(anulada).toHaveTextContent('Anulada');
       expect(

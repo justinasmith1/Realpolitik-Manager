@@ -22,6 +22,7 @@ import {
   cierraTrasFallarAnulacion,
   MENSAJE_FALLO_ANULACION,
 } from '@/modules/rendiciones/components/erroresDeRendicion';
+import { EstadoRendicionBadge } from '@/modules/rendiciones/components/EstadoRendicionBadge';
 import { useAnularRendicion } from '@/modules/rendiciones/hooks/useRendiciones';
 import {
   avanceDelChecklist,
@@ -44,8 +45,8 @@ interface RendicionCardProps {
 }
 
 /**
- * Una rendición del listado: período, factura y avance del checklist, con una marca cuando está
- * completo. Una anulada se ve atenuada, con su marca y sin "Anular": se abre igual, y el detalle
+ * Una rendición del listado: período, factura, su estado (HU3.1) y el avance del checklist, con
+ * una marca cuando está completo. Una anulada se ve atenuada, con su marca y sin "Anular": se abre igual, y el detalle
  * la muestra en solo lectura. Toda la tarjeta lleva al detalle: el enlace del período se estira sobre ella (un solo
  * enlace para el teclado y los lectores, sin elementos interactivos anidados). "Anular" queda por
  * encima y fuera del enlace, así que su clic no navega. Pide confirmación (contrato 4.6) y espera
@@ -119,6 +120,8 @@ export function RendicionCard({ rendicion, onAnulada, onYaNoExiste }: RendicionC
           )}
         </p>
         <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {/* El estado es independiente de la anulación: una anulada conserva el suyo. */}
+          <EstadoRendicionBadge estado={rendicion.estado} />
           {anulada && <Badge tone="muted">Anulada</Badge>}
           <span>{avanceDelChecklist(rendicion.resumen)}</span>
           {completo && !anulada && (

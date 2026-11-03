@@ -1,6 +1,7 @@
 import {
   FILTRO_VIGENCIA_POR_DEFECTO,
   ListarRendicionesQuerySchema,
+  type EstadoRendicionType,
   type FiltroVigenciaRendiciones,
   type ListarRendicionesQuery,
 } from '@realpolitik/shared';
@@ -10,7 +11,7 @@ import { useSearchParams } from 'react-router';
 type CampoDeFiltro = keyof ListarRendicionesQuery;
 type ValorDeFiltro = ListarRendicionesQuery[CampoDeFiltro];
 
-const CAMPOS: readonly CampoDeFiltro[] = ['anio', 'mes', 'vigencia'];
+const CAMPOS: readonly CampoDeFiltro[] = ['anio', 'mes', 'vigencia', 'estado'];
 
 /** Un valor del parámetro, solo si cumple el schema de shared (el mismo que valida el backend). */
 function leer<C extends CampoDeFiltro>(
@@ -23,13 +24,13 @@ function leer<C extends CampoDeFiltro>(
 }
 
 /**
- * Filtros de año, mes y vigencia del listado de rendiciones, guardados en la URL
- * (`?anio=2026&mes=10&vigencia=ANULADA`): se pueden compartir, sobreviven a una recarga y
+ * Filtros de año, mes, vigencia y estado (HU3.1) del listado de rendiciones, guardados en la URL
+ * (`?anio=2026&mes=10&vigencia=ANULADA&estado=ENVIADA`): se pueden compartir, sobreviven a una recarga y
  * Atrás/Adelante los restauran. Mismo criterio que `useFiltroDesactivados`:
  *
  * - Sin parámetros, sin filtro de período y solo las activas. Un filtro en su valor por defecto
- *   ("Todos" en año y mes, "Activas" en vigencia) no deja el parámetro en la URL.
- * - URL canónica: un valor que no cumple el schema (`anio=abc`, `mes=13`, `vigencia=x`, repetido)
+ *   ("Todos" en año y mes, "Activas" en vigencia, "Todas" en estado) no deja el parámetro en la URL.
+ * - URL canónica: un valor que no cumple el schema (`anio=abc`, `mes=13`, `vigencia=x`, `estado=x`, repetido)
  *   o un `vigencia=ACTIVA` explícito se quitan, con `replace`, para no dejar una entrada extra en
  *   el historial.
  * - Los demás parámetros de la URL no se tocan.
@@ -41,6 +42,7 @@ export function useFiltroRendiciones() {
       anio: params.getAll('anio'),
       mes: params.getAll('mes'),
       vigencia: params.getAll('vigencia'),
+      estado: params.getAll('estado'),
     }),
     [params],
   );
@@ -49,6 +51,8 @@ export function useFiltroRendiciones() {
   const vigenciaLeida = leer('vigencia', crudos.vigencia);
   // El valor por defecto no se guarda: se trata como si no estuviera.
   const vigenciaElegida = vigenciaLeida === FILTRO_VIGENCIA_POR_DEFECTO ? undefined : vigenciaLeida;
+  // Sin estado, todas: no hay un valor por defecto que quitar.
+  const estado = leer('estado', crudos.estado);
 
   const actualizar = useCallback(
     (cambios: Partial<Record<CampoDeFiltro, ValorDeFiltro>>, reemplazar: boolean) => {
@@ -73,10 +77,11 @@ export function useFiltroRendiciones() {
   const canonica =
     (crudos.anio.length === 0 || anio !== undefined) &&
     (crudos.mes.length === 0 || mes !== undefined) &&
-    (crudos.vigencia.length === 0 || vigenciaElegida !== undefined);
+    (crudos.vigencia.length === 0 || vigenciaElegida !== undefined) &&
+    (crudos.estado.length === 0 || estado !== undefined);
   useEffect(() => {
-    if (!canonica) actualizar({ anio, mes, vigencia: vigenciaElegida }, true);
-  }, [canonica, anio, mes, vigenciaElegida, actualizar]);
+    if (!canonica) actualizar({ anio, mes, vigencia: vigenciaElegida, estado }, true);
+  }, [canonica, anio, mes, vigenciaElegida, estado, actualizar]);
 
   const cambiarAnio = useCallback(
     (valor: number | undefined) => actualizar({ anio: valor }, false),
@@ -91,24 +96,33 @@ export function useFiltroRendiciones() {
       actualizar({ vigencia: valor === FILTRO_VIGENCIA_POR_DEFECTO ? undefined : valor }, false),
     [actualizar],
   );
+  /** `undefined` = todos los estados. */
+  const cambiarEstado = useCallback(
+    (valor: EstadoRendicionType | undefined) => actualizar({ estado: valor }, false),
+    [actualizar],
+  );
 
   const filtros: ListarRendicionesQuery = useMemo(
     () => ({
       ...(anio === undefined ? {} : { anio }),
       ...(mes === undefined ? {} : { mes }),
       ...(vigenciaElegida === undefined ? {} : { vigencia: vigenciaElegida }),
+      ...(estado === undefined ? {} : { estado }),
     }),
-    [anio, mes, vigenciaElegida],
+    [anio, mes, vigenciaElegida, estado],
   );
 
   return {
     filtros,
     /** La vigencia que se lista, con el valor por defecto ya aplicado. */
     vigencia: vigenciaElegida ?? FILTRO_VIGENCIA_POR_DEFECTO,
+    /** El estado que se lista; `undefined` = todos. */
+    estado,
     /** Hay un filtro de período (año o mes). */
     hayFiltros: anio !== undefined || mes !== undefined,
     cambiarAnio,
     cambiarMes,
     cambiarVigencia,
+    cambiarEstado,
   };
 }
