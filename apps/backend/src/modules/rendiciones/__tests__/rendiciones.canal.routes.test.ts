@@ -53,6 +53,8 @@ const rendicionCon = (canalEntrega: string) => ({
   anio: 2026,
   mes: 10,
   numeroFactura: 'A 00001-00000001',
+  estado: 'EN_CURSO',
+  historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA }],
   isDeleted: false,
   deletedAt: null,
   createdAt: AHORA,

@@ -52,6 +52,7 @@ const CAMPOS_DE_RENDICION = [
   'clienteId',
   'creadoEn',
   'emisor',
+  'estado',
   'id',
   'mes',
   'montoMensual',
@@ -68,6 +69,8 @@ function filaRendicion(extra: Record<string, unknown> = {}) {
     anio: 2026,
     mes: 10,
     numeroFactura: 'A 00001-00000001',
+    estado: 'EN_CURSO',
+    historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA }],
     isDeleted: false,
     deletedAt: null,
     createdAt: AHORA,
@@ -251,7 +254,9 @@ describe('POST /clientes/:id/rendiciones', () => {
     const res = await abrir(pedido);
 
     const cuerpo = res.body as Record<string, unknown>;
-    expect(Object.keys(cuerpo).sort()).toEqual([...CAMPOS_DE_RENDICION, 'items'].sort());
+    expect(Object.keys(cuerpo).sort()).toEqual(
+      [...CAMPOS_DE_RENDICION, 'items', 'historial'].sort(),
+    );
     expect(cuerpo).toMatchObject({
       vigencia: 'ACTIVA',
       anuladaEn: null,
@@ -773,7 +778,7 @@ describe('GET /rendiciones/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ vigencia: 'ANULADA', anuladaEn: anuladaEn.toISOString() });
     expect(Object.keys(res.body as object).sort()).toEqual(
-      [...CAMPOS_DE_RENDICION, 'items'].sort(),
+      [...CAMPOS_DE_RENDICION, 'items', 'historial'].sort(),
     );
   });
 
