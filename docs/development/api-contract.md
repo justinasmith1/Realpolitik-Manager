@@ -595,10 +595,14 @@ Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y e
   "numeroOc": "342",
   "montoMensual": 1250000.5,
   "montoTotal": 15000006,
+  "estado": "EN_CURSO",
   "vigencia": "ACTIVA",
   "anuladaEn": null,
   "creadoEn": "2026-10-20T12:00:00.000Z",
   "actualizadoEn": "2026-10-20T12:00:00.000Z",
+  "historial": [
+    { "estadoAnterior": null, "estadoNuevo": "EN_CURSO", "fecha": "2026-10-20T12:00:00.000Z" }
+  ],
   "items": [
     {
       "id": "f1a2b3c4-d5e6-4789-8abc-def012345678",
@@ -630,6 +634,9 @@ Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y e
   - `montoMensual` y `montoTotal`: números en pesos, mayores o iguales a 0, con hasta 2 decimales y como máximo `999999999999.99` (el tope de la columna `DECIMAL(14,2)`). Viajan como número JSON (`1250000.5`), no como texto.
   - **El número de OC no es único:** se repite entre meses (la misma OC de febrero a diciembre), entre facturas del mismo mes y entre clientes, porque cada organismo numera sus OC. No hay ningún `409` por número de OC.
 - **Vigencia (`vigencia`, `anuladaEn`):** `ACTIVA` o `ANULADA`, derivada de la baja lógica; `anuladaEn` es la fecha de anulación (`deletedAt`) o `null`. El listado devuelve por defecto solo `ACTIVA` y muestra las anuladas solo si se piden con el filtro `vigencia`; el detalle devuelve también una anulada, que se conserva como historial.
+- **Estado (`estado`, HU3.1):** en qué paso está la rendición: `EN_CURSO`, `COMPLETA`, `ENVIADA`, `APROBADA` o `RECHAZADA` (en pantalla: "En curso", "Completa", "Enviada", "Aprobada" y "Rechazada"). Toda rendición nace `EN_CURSO`. La clave siempre está presente en la respuesta (alta, detalle, listado y anulación). Es **independiente de la vigencia**: una rendición anulada conserva el último estado que tenía. "Atrasada" no es un estado: la calcula el sistema (HU3.4). Ver [ADR-0005](../adr/0005-estados-de-la-rendicion.md).
+  - **Por ahora no hay ningún endpoint que cambie el estado:** lo cambian las HU3.6 (Completa), HU3.7 (Enviada), HU3.8 (Aprobada o Rechazada) y HU3.9 (corregir una rechazada).
+- **Historial (`historial`, HU3.1):** solo en el detalle y en la respuesta de alta (y en las demás que devuelven la rendición con su checklist). Cada cambio de estado, del más viejo al más nuevo: `{ "estadoAnterior", "estadoNuevo", "fecha" }`. La primera entrada es la del alta, con `estadoAnterior: null`. `fecha` es cuándo ocurrió el cambio. Las rendiciones anteriores a HU3.1 tienen una sola entrada (`null` → `EN_CURSO`) con la fecha en que se crearon. Anular no agrega una entrada: no es un cambio de estado.
 - **Ítems (`items`):** solo en el detalle y en la respuesta de alta. Cada ítem es un documento a presentar, ordenados por `nombreTipoDocumento` y luego por `ordinal`. `completadoEn` es la columna `completadoAt`, con el mismo criterio de nombres que `creadoEn`. El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
 
 #### `POST /clientes/:id/rendiciones`
@@ -641,7 +648,7 @@ Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y e
   2. Por cada requisito **activo** de la matriz del cliente crea `cantidad` ítems, con `ordinal` de 1 a `cantidad` y `totalOrdinal` = `cantidad`. Entran también los requisitos cuyo tipo de documento está inactivo.
   3. Cada ítem copia: `tipoDocumentoId`, el nombre del tipo en ese momento (`nombreTipoDocumento`), el día de su ocurrencia (`diasAproximados[ordinal - 1]`, o `null` si el requisito no tenía días) y el canal efectivo (`requisito.canalEntrega ?? cliente.canalEntrega`, nunca `null`). Los ítems nacen con `completado: false`.
   4. No copia la nota del requisito, la descripción del tipo ni datos del cliente.
-- **Respuesta 201:** la rendición con su checklist (`items`).
+- **Respuesta 201:** la rendición con su checklist (`items`), en estado `EN_CURSO` y con su historial de una entrada (`null` → `EN_CURSO`), que se crea en la misma transacción.
 - **Errores:**
   - `400 VALIDATION_ERROR`: ni el pedido ni el cliente tienen `emisor`, o el `emisor` del pedido no es `PERSONA_FISICA` ni `SOCIEDAD` (o es `null`), en `details[].campo: "emisor"`; falta `anio`, `mes` o `numeroFactura`; `anio` fuera de 2020 a 2100 o no entero; `mes` fuera de 1 a 12 o no entero; período posterior al mes siguiente al actual (el error cae en `mes`); `numeroFactura` vacío, de solo espacios o que, después de normalizarlo, no cumple el formato (sin letra, otra letra que A, B o C, punto de venta de más de 5 dígitos, número de más de 8, letras en los números o sin guion; el mensaje dice el formato esperado con el ejemplo `B 00002-00001482`); `numeroOc` vacío, de solo espacios o de más de 100 caracteres; `montoMensual` o `montoTotal` que no es un número, negativo, con más de 2 decimales o mayor a 999.999.999.999,99; id que no es uuid.
   - `404 NOT_FOUND`: el cliente no existe o está borrado.
@@ -671,12 +678,13 @@ Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y e
 
 #### `GET /clientes/:id/rendiciones`
 
-| Parámetro     | Obligatorio | Descripción                                                                                            |
-| ------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
-| `anio`        | No          | Entero de 2020 a 2100                                                                                  |
-| `mes`         | No          | Entero de 1 a 12. Se puede combinar con `anio` o usar solo                                             |
-| `vigencia`    | No          | `ACTIVA`, `ANULADA` o `TODAS`. Sin el parámetro, `ACTIVA`. Se combina con el período                   |
-| `requisitoId` | No          | uuid de un requisito. Solo las rendiciones que tienen ítems de ese requisito. Se combina con los demás |
+| Parámetro     | Obligatorio | Descripción                                                                                                                           |
+| ------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `anio`        | No          | Entero de 2020 a 2100                                                                                                                 |
+| `mes`         | No          | Entero de 1 a 12. Se puede combinar con `anio` o usar solo                                                                            |
+| `vigencia`    | No          | `ACTIVA`, `ANULADA` o `TODAS`. Sin el parámetro, `ACTIVA`. Se combina con el período                                                  |
+| `estado`      | No          | `EN_CURSO`, `COMPLETA`, `ENVIADA`, `APROBADA` o `RECHAZADA` (HU3.1). Sin el parámetro, todos. Se combina con la vigencia y el período |
+| `requisitoId` | No          | uuid de un requisito. Solo las rendiciones que tienen ítems de ese requisito. Se combina con los demás                                |
 
 - **Respuesta 200:** las rendiciones del cliente según `estado`, sin `items` y con un resumen de avance. Sin el parámetro, solo las **activas**, como antes: las anuladas se consultan pidiéndolas. Lista vacía si no hay. Orden: `anio` descendente, `mes` descendente y, dentro del mismo mes, la más reciente primero (`creadoEn` descendente). Con `TODAS`, primero las activas y después las anuladas, cada grupo con ese orden.
 - **Estado y baja lógica:** una rendición anulada es su baja lógica (no hay otro estado oculto). Las rendiciones de un cliente borrado no se listan con ningún filtro: el cliente no existe (`404`).
@@ -693,6 +701,7 @@ Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y e
     "numeroOc": null,
     "montoMensual": null,
     "montoTotal": null,
+    "estado": "EN_CURSO",
     "vigencia": "ACTIVA",
     "anuladaEn": null,
     "resumen": { "totalItems": 4, "completados": 1 },
@@ -702,11 +711,11 @@ Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y e
 ]
 ```
 
-- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid; `anio` o `mes` fuera de rango o no enteros; `vigencia` que no es `ACTIVA`, `ANULADA` ni `TODAS`, o repetida; `requisitoId` que no es uuid, o repetido), `404 NOT_FOUND` (el cliente no existe o está borrado). Un `requisitoId` de otro cliente no es un error: la lista sale vacía.
+- **Errores:** `400 VALIDATION_ERROR` (id que no es uuid; `anio` o `mes` fuera de rango o no enteros; `vigencia` que no es `ACTIVA`, `ANULADA` ni `TODAS`, o repetida; `estado` que no es uno de los cinco estados (en mayúsculas), o repetido; `requisitoId` que no es uuid, o repetido), `404 NOT_FOUND` (el cliente no existe o está borrado). Un `requisitoId` de otro cliente no es un error: la lista sale vacía.
 
 #### `GET /rendiciones/:id`
 
-- **Respuesta 200:** la rendición con su checklist (`items`), su `emisor` (`null` en las anteriores a HU2.9) y los datos de su orden de compra (`null` los que no se cargaron), también si está anulada (`"vigencia": "ANULADA"` y `anuladaEn`): el detalle se conserva como historial, en solo lectura.
+- **Respuesta 200:** la rendición con su checklist (`items`), su `estado` y su `historial` de estados (HU3.1), su `emisor` (`null` en las anteriores a HU2.9) y los datos de su orden de compra (`null` los que no se cargaron), también si está anulada (`"vigencia": "ANULADA"` y `anuladaEn`): el detalle se conserva como historial, en solo lectura.
 - **Errores:** `400 VALIDATION_ERROR` (id que no es uuid), `404 NOT_FOUND` (la rendición no existe o su cliente está borrado).
 
 #### `PATCH /rendiciones/:id`
@@ -857,6 +866,7 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 8. **Hecho.** `ActualizarCanalDeItemSchema` (corregir el canal de un ítem), `PropagarCanalDeRequisitoSchema` (pedido de la propagación) y `ResultadoPropagarCanalSchema` (su respuesta). Todos usan el enum `CanalEntrega` del cliente. `ListarRendicionesQuerySchema` suma `estado` y `requisitoId`.
 9. **Hecho (HU2.10).** `ObservacionesClienteSchema` (cuerpo de `PUT /clientes/:id/observaciones`, admite saltos de línea) y `ObservacionesClienteLecturaSchema` (respuesta del `GET`, que no rechaza caracteres de control ya guardados), con el tope `OBSERVACIONES_CLIENTE_MAX` (1000).
 10. **Hecho (HU2.11).** `NumeroOcSchema` (texto recortado, de 1 a `NUMERO_OC_MAX` = 100 caracteres) y `MontoOcSchema` (de 0 a `MONTO_OC_MAX` = 999999999999.99, hasta 2 decimales). `CreateRendicionSchema` suma los tres datos de la OC, opcionales; `ActualizarRendicionSchema` es el cuerpo de `PATCH /rendiciones/:id` (cada campo opcional y anulable, al menos uno); `UltimaOcSchema` es la respuesta de `GET /clientes/:id/ultima-oc`. `RendicionSchema` suma `numeroOc`, `montoMensual` y `montoTotal`, `null` si no se cargaron (una clave ausente también es `null`).
+11. **Hecho (HU3.1).** `EstadoRendicion` (los cinco estados, con `ETIQUETAS_ESTADO_RENDICION` para pantalla) y `HistorialEstadoRendicionSchema` (`estadoAnterior`, `estadoNuevo`, `fecha`). `RendicionSchema` suma `estado` (también el resumen) y `RendicionDetalleSchema` suma `historial`. `ListarRendicionesQuerySchema` suma el filtro `estado`. El valor derivado de la baja lógica (`ACTIVA`/`ANULADA`) se llama `vigencia` (`VigenciaRendicion` y el filtro `FiltroVigenciaRendiciones`).
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 

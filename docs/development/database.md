@@ -179,6 +179,28 @@ El seed carga los 9 tipos validados con la administradora, en este orden: Factur
 - **Renombre de "Orden de compra" a "OC".** El seed anterior cargaba "Orden de compra". Si la base lo tiene, el seed lo renombra a "OC" **en la misma fila** (mismo id), así que los requisitos que lo usan no cambian. Si la fila no tenía descripción, recibe "Orden de compra". Los ítems de rendiciones ya abiertas conservan el nombre anterior, porque es una foto del momento (ADR-0003, punto 2).
 - **Conflicto.** Si la base tiene a la vez "Orden de compra" y "OC", el seed falla con un error que nombra los dos, no los fusiona y no llega a borrar clientes. Resolvelo a mano y volvé a ejecutarlo.
 
+## Estado de la rendición (HU3.1)
+
+En qué paso está cada rendición, con su historial de cambios. La decisión de diseño está en [ADR-0005](../adr/0005-estados-de-la-rendicion.md).
+
+- **Enum `EstadoRendicion`:** `EN_CURSO`, `COMPLETA`, `ENVIADA`, `APROBADA` y `RECHAZADA`. Isomorfo con `EstadoRendicion` de `@realpolitik/shared`. "Atrasada" no es un valor: la calcula el sistema (HU3.4).
+- **`Rendicion.estado`:** obligatorio, con default `EN_CURSO`. Es independiente de la baja lógica (`isDeleted`): una rendición anulada conserva el último estado que tenía.
+- **Tabla `HistorialEstadoRendicion`:** una fila por cambio de estado. Es historial: no se edita ni se borra (cae en cascada solo si se borra físicamente la rendición).
+
+| Columna          | Tipo                        | Notas                                                    |
+| ---------------- | --------------------------- | -------------------------------------------------------- |
+| `id`             | UUID                        |                                                          |
+| `rendicionId`    | UUID, FK a `Rendicion`      | `onDelete: Cascade`                                      |
+| `estadoAnterior` | `EstadoRendicion`, opcional | `NULL` solo en la primera entrada, la del alta           |
+| `estadoNuevo`    | `EstadoRendicion`           |                                                          |
+| `fecha`          | fecha y hora                | Cuándo ocurrió el cambio. Default: el momento del insert |
+| `motivo`         | texto, opcional             | Lo va a usar el rechazo (HU3.8). Hoy siempre `NULL`      |
+| `createdAt`      | fecha y hora                | Auditoría                                                |
+
+Índice `HistorialEstadoRendicion_rendicionId_fecha_idx` sobre `(rendicionId, fecha)`: el historial de una rendición se lee en orden.
+
+La migración `20261103120000_hu3_1_estado_rendicion` crea el enum, la columna y la tabla, y le da a **cada rendición existente** (también a las anuladas) el estado `EN_CURSO` y una entrada inicial (`NULL` → `EN_CURSO`) con su `createdAt` como fecha. Las altas nuevas crean esa entrada en la misma transacción que la rendición. Los cambios posteriores pasan por un solo punto del backend (`registrarCambioDeEstado`), que actualiza el estado y agrega la entrada juntos.
+
 ## Tests de integración
 
 Las suites `*.integration.test.ts` del backend (y los `*.api.test.tsx` del frontend) corren contra PostgreSQL real. Sin `TEST_DATABASE_URL` se saltan, y **se niegan a correr** si esa base no se llama `*_audit` o `*_test`: nunca apuntan a la de desarrollo. Cada suite borra lo que crea.
