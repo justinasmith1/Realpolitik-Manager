@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  FILTRO_ESTADO_POR_DEFECTO,
+  FILTRO_VIGENCIA_POR_DEFECTO,
   ListarRendicionesQuerySchema,
   MENSAJE_REQUISITO_ID,
 } from './listarRendicionesQuery.schema.js';
@@ -80,30 +80,30 @@ describe('ListarRendicionesQuerySchema', () => {
     if (!r.success) expect(r.error.issues.map((i) => i.path)).toEqual([['anio'], ['mes']]);
   });
 
-  describe('estado', () => {
+  describe('vigencia', () => {
     it('es opcional y no se completa: sin el parámetro el pedido sigue vacío', () => {
       expect(ListarRendicionesQuerySchema.parse({})).toEqual({});
-      expect(FILTRO_ESTADO_POR_DEFECTO).toBe('ACTIVA');
+      expect(FILTRO_VIGENCIA_POR_DEFECTO).toBe('ACTIVA');
     });
 
-    it.each(['ACTIVA', 'ANULADA', 'TODAS'])('acepta %s', (estado) => {
-      expect(ListarRendicionesQuerySchema.parse({ estado })).toEqual({ estado });
+    it.each(['ACTIVA', 'ANULADA', 'TODAS'])('acepta %s', (vigencia) => {
+      expect(ListarRendicionesQuerySchema.parse({ vigencia })).toEqual({ vigencia });
     });
 
     it('se combina con el período', () => {
       expect(
-        ListarRendicionesQuerySchema.parse({ anio: '2026', mes: '10', estado: 'TODAS' }),
-      ).toEqual({ anio: 2026, mes: 10, estado: 'TODAS' });
+        ListarRendicionesQuerySchema.parse({ anio: '2026', mes: '10', vigencia: 'TODAS' }),
+      ).toEqual({ anio: 2026, mes: 10, vigencia: 'TODAS' });
     });
 
     it.each(['activa', 'ANULADAS', 'BORRADA', '', ['ACTIVA', 'ANULADA']])(
       'rechaza %j con un mensaje claro',
-      (estado) => {
-        const r = ListarRendicionesQuerySchema.safeParse({ estado });
+      (vigencia) => {
+        const r = ListarRendicionesQuerySchema.safeParse({ vigencia });
         expect(r.success).toBe(false);
         if (!r.success) {
-          expect(r.error.issues[0]?.message).toBe('El estado debe ser ACTIVA, ANULADA o TODAS.');
-          expect(r.error.issues[0]?.path).toEqual(['estado']);
+          expect(r.error.issues[0]?.message).toBe('La vigencia debe ser ACTIVA, ANULADA o TODAS.');
+          expect(r.error.issues[0]?.path).toEqual(['vigencia']);
         }
       },
     );
@@ -112,11 +112,11 @@ describe('ListarRendicionesQuerySchema', () => {
   describe('requisitoId', () => {
     const REQUISITO = 'd1e2f3a4-b5c6-4789-8abc-def012345601';
 
-    it('es opcional y se combina con el estado', () => {
+    it('es opcional y se combina con la vigencia', () => {
       expect(ListarRendicionesQuerySchema.parse({})).toEqual({});
       expect(
-        ListarRendicionesQuerySchema.parse({ estado: 'ACTIVA', requisitoId: REQUISITO }),
-      ).toEqual({ estado: 'ACTIVA', requisitoId: REQUISITO });
+        ListarRendicionesQuerySchema.parse({ vigencia: 'ACTIVA', requisitoId: REQUISITO }),
+      ).toEqual({ vigencia: 'ACTIVA', requisitoId: REQUISITO });
     });
 
     it.each(['no-es-uuid', '', [REQUISITO, REQUISITO]])(

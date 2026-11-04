@@ -143,7 +143,7 @@ const abrir = (
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...periodo, numeroFactura, ...(emisor === undefined ? {} : { emisor }) });
 const anular = (id: string) =>
-  request(app).patch(`/rendiciones/${id}/estado`).send({ estado: 'ANULADA' });
+  request(app).patch(`/rendiciones/${id}/vigencia`).send({ vigencia: 'ANULADA' });
 
 interface ItemJson {
   nombreTipoDocumento: string;
@@ -158,7 +158,7 @@ interface RendicionJson {
   clienteId: string;
   emisor: EmisorDePrueba | null;
   numeroFactura: string;
-  estado: string;
+  vigencia: string;
   anuladaEn: string | null;
   items?: ItemJson[];
   resumen?: { totalItems: number; completados: number };
@@ -448,25 +448,25 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
     const segunda = await anular(abierta.id);
 
     expect(primera.status).toBe(200);
-    expect(cuerpo(primera)).toMatchObject({ estado: 'ANULADA' });
+    expect(cuerpo(primera)).toMatchObject({ vigencia: 'ANULADA' });
     expect(cuerpo(segunda).anuladaEn).toBe(cuerpo(primera).anuladaEn);
     expect(await prisma.itemChecklist.count({ where: { rendicionId: abierta.id } })).toBe(3);
     const detalle = await request(app).get(`/rendiciones/${abierta.id}`);
     expect(detalle.status).toBe(200);
-    expect(cuerpo(detalle)).toMatchObject({ estado: 'ANULADA' });
+    expect(cuerpo(detalle)).toMatchObject({ vigencia: 'ANULADA' });
     expect(
       ((await request(app).get(`/clientes/${cliente.id}/rendiciones`)).body as unknown[]).length,
     ).toBe(0);
     expect((await abrir(cliente.id, 'a 1-5')).status).toBe(201);
   });
 
-  it('el filtro de estado separa activas y anuladas; con TODAS, las activas van primero', async () => {
+  it('el filtro de vigencia separa activas y anuladas; con TODAS, las activas van primero', async () => {
     const cliente = await clienteConMatriz();
     const anterior =
       PERIODO.mes === 1
         ? { anio: PERIODO.anio - 1, mes: 12 }
         : { anio: PERIODO.anio, mes: PERIODO.mes - 1 };
-    // La anulada es la del período más reciente: sin el orden por estado iría primera.
+    // La anulada es la del período más reciente: sin el orden por vigencia iría primera.
     const anulada = cuerpo(await abrir(cliente.id, 'A 00001-00000011'));
     const activa = cuerpo(await abrir(cliente.id, 'A 00001-00000012', anterior));
     await anular(anulada.id);
@@ -474,13 +474,13 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
       (
         (await request(app).get(`/clientes/${cliente.id}/rendiciones${query}`))
           .body as RendicionJson[]
-      ).map(({ id, estado }) => ({ id, estado }));
+      ).map(({ id, vigencia }) => ({ id, vigencia }));
 
-    expect(await listar('')).toEqual([{ id: activa.id, estado: 'ACTIVA' }]);
-    expect(await listar('?estado=ANULADA')).toEqual([{ id: anulada.id, estado: 'ANULADA' }]);
-    expect(await listar('?estado=TODAS')).toEqual([
-      { id: activa.id, estado: 'ACTIVA' },
-      { id: anulada.id, estado: 'ANULADA' },
+    expect(await listar('')).toEqual([{ id: activa.id, vigencia: 'ACTIVA' }]);
+    expect(await listar('?vigencia=ANULADA')).toEqual([{ id: anulada.id, vigencia: 'ANULADA' }]);
+    expect(await listar('?vigencia=TODAS')).toEqual([
+      { id: activa.id, vigencia: 'ACTIVA' },
+      { id: anulada.id, vigencia: 'ANULADA' },
     ]);
   });
 

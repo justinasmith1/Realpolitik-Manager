@@ -15,7 +15,7 @@ import {
 } from '@realpolitik/shared';
 
 // Filas de Prisma → rendición del contrato (sección 4.5). Los campos se copian uno por uno:
-// `isDeleted` y `deletedAt` no salen; el estado se deriva de la baja lógica (`ANULADA` y su
+// `isDeleted` y `deletedAt` no salen; la vigencia se deriva de la baja lógica (`ANULADA` y su
 // fecha en `anuladaEn`). `createdAt`/`updatedAt`/`completadoAt` pasan a `creadoEn`/
 // `actualizadoEn`/`completadoEn`. Cada salida se valida con el schema de shared: un dato que no
 // cumple el contrato termina en un 500, no en un JSON inválido.
@@ -37,10 +37,24 @@ export const APLICACION_VIGENTE = {
 
 type AplicacionVigenteRow = Prisma.AplicacionDocumentoGetPayload<typeof APLICACION_VIGENTE>;
 
+/**
+ * El historial de estados de una rendición (HU3.1), del cambio más viejo al más nuevo. Dos cambios
+ * con la misma fecha quedan en el orden en que se registraron.
+ */
+export const HISTORIAL_EN_ORDEN = {
+  orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }],
+  select: { estadoAnterior: true, estadoNuevo: true, fecha: true },
+} satisfies Prisma.Rendicion$historialArgs;
+
+type HistorialRow = Prisma.HistorialEstadoRendicionGetPayload<typeof HISTORIAL_EN_ORDEN>;
+
 /** Un ítem y, si se cargó, su aplicación vigente. */
 export type ItemConDocumento = ItemChecklistRow & { aplicaciones?: AplicacionVigenteRow[] };
 
-export type RendicionConItems = RendicionRow & { items: ItemConDocumento[] };
+export type RendicionConItems = RendicionRow & {
+  items: ItemConDocumento[];
+  historial: HistorialRow[];
+};
 
 export interface ResumenDeAvance {
   totalItems: number;
@@ -57,7 +71,8 @@ const camposDeRendicion = (row: RendicionRow) => ({
   numeroOc: row.numeroOc,
   montoMensual: row.montoMensual?.toNumber() ?? null,
   montoTotal: row.montoTotal?.toNumber() ?? null,
-  estado: row.isDeleted ? 'ANULADA' : 'ACTIVA',
+  estado: row.estado,
+  vigencia: row.isDeleted ? 'ANULADA' : 'ACTIVA',
   anuladaEn: row.isDeleted ? row.deletedAt : null,
   creadoEn: row.createdAt,
   actualizadoEn: row.updatedAt,
@@ -104,11 +119,12 @@ export function toItemChecklistDto(row: ItemConDocumento): ItemChecklist {
   return ItemChecklistSchema.parse(camposDeItem(row));
 }
 
-/** Rendición con su checklist: el detalle y la respuesta del alta. */
+/** Rendición con su checklist y su historial de estados: el detalle y la respuesta del alta. */
 export function toRendicionDetalleDto(row: RendicionConItems): RendicionDetalle {
   return RendicionDetalleSchema.parse({
     ...camposDeRendicion(row),
     items: row.items.map(camposDeItem),
+    historial: row.historial,
   });
 }
 

@@ -155,7 +155,7 @@ describe.skipIf(url === undefined)('corregir el canal de un ítem, contra Postgr
     const rendicion = await abrir(cliente.id, 'A 00001-00000104');
     const item = rendicion.items[0];
     if (item === undefined) throw new Error('falta el ítem');
-    await request(app).patch(`/rendiciones/${rendicion.id}/estado`).send({ estado: 'ANULADA' });
+    await request(app).patch(`/rendiciones/${rendicion.id}/vigencia`).send({ vigencia: 'ANULADA' });
 
     const res = await corregir(rendicion.id, item.id, 'WHATSAPP');
 

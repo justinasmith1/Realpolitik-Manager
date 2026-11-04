@@ -53,6 +53,8 @@ const rendicionCon = (canalEntrega: string) => ({
   anio: 2026,
   mes: 10,
   numeroFactura: 'A 00001-00000001',
+  estado: 'EN_CURSO',
+  historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA }],
   isDeleted: false,
   deletedAt: null,
   createdAt: AHORA,
@@ -93,7 +95,7 @@ describe('PATCH /rendiciones/:id/items/:itemId/canal', () => {
     });
     expect(res.body).toMatchObject({
       id: RENDICION,
-      estado: 'ACTIVA',
+      vigencia: 'ACTIVA',
       items: [{ id: ITEM, canalEntrega: 'PORTAL_WEB' }],
     });
   });

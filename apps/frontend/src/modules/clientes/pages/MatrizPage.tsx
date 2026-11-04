@@ -155,7 +155,7 @@ export function MatrizPage() {
     let rendiciones: RendicionResumen[];
     try {
       rendiciones = await queryClient.fetchQuery(
-        listaDeRendiciones(cliente.id, { estado: 'ACTIVA', requisitoId: actualizado.id }),
+        listaDeRendiciones(cliente.id, { vigencia: 'ACTIVA', requisitoId: actualizado.id }),
       );
     } catch {
       return;

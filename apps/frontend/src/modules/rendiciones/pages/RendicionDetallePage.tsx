@@ -38,6 +38,8 @@ import { CambiarCanalDialog } from '@/modules/rendiciones/components/CambiarCana
 import { EditarOcSheet } from '@/modules/rendiciones/components/EditarOcSheet';
 import { EnvioDialog, type Envio } from '@/modules/rendiciones/components/EnvioDialog';
 import { mensajeFalloPreparacionEnvio } from '@/modules/rendiciones/components/erroresDeRendicion';
+import { EstadoRendicionBadge } from '@/modules/rendiciones/components/EstadoRendicionBadge';
+import { HistorialDeEstados } from '@/modules/rendiciones/components/HistorialDeEstados';
 import {
   ItemChecklistFila,
   type AccionesDeDocumento,
@@ -63,7 +65,7 @@ const formatoDeFecha = new Intl.DateTimeFormat('es-AR', {
 
 /**
  * Detalle de una rendición (`/clientes/:id/rendiciones/:rendicionId`, HU2.5 y HU2.6): período,
- * factura, estado, avance y el checklist en solo lectura, con las indicaciones de armado del
+ * factura, estado con su historial (HU3.1), vigencia, avance y el checklist en solo lectura, con las indicaciones de armado del
  * cliente al costado. Una rendición anulada se ve igual, como historial, con su aviso.
  *
  * Los ítems se eligen para enviarlos por su canal (ya resuelto en cada ítem al abrir la
@@ -208,7 +210,7 @@ function DetalleDeRendicion({
   const [editandoCliente, setEditandoCliente] = useState(false);
   const [editandoOc, setEditandoOc] = useState(false);
   const avance = calcularFaltantes(rendicion.items);
-  const anulada = rendicion.estado === 'ANULADA';
+  const anulada = rendicion.vigencia === 'ANULADA';
   const completo = checklistCompleto(avance);
   const visibles = soloFaltantes ? avance.faltantes : rendicion.items;
   // Solo cuentan los que se pueden enviar con los datos de ahora: si un ítem marcado deja de
@@ -340,8 +342,15 @@ function DetalleDeRendicion({
           </DatoDeCabecera>
         </dl>
         <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+          {/* En qué paso está (HU3.1) y si está anulada: son independientes. */}
           <div className="flex items-center gap-1.5">
             <dt className="text-content-secondary">Estado</dt>
+            <dd>
+              <EstadoRendicionBadge estado={rendicion.estado} />
+            </dd>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <dt className="text-content-secondary">Vigencia</dt>
             <dd>
               <Badge tone={anulada ? 'muted' : 'neutral'}>{anulada ? 'Anulada' : 'Activa'}</Badge>
             </dd>
@@ -351,6 +360,7 @@ function DetalleDeRendicion({
             <dd className="text-foreground">{avanceDelChecklist(avance)}</dd>
           </div>
         </dl>
+        <HistorialDeEstados historial={rendicion.historial} />
       </header>
 
       {anulada && (

@@ -29,10 +29,13 @@ export function rendicionJson(extra: Record<string, unknown> = {}) {
     mes: 10,
     numeroFactura: 'A 00001-00000001',
     emisor: 'SOCIEDAD',
-    estado: 'ACTIVA',
+    estado: 'EN_CURSO',
+    vigencia: 'ACTIVA',
     anuladaEn: null,
     creadoEn: FECHA,
     actualizadoEn: FECHA,
+    // Solo lo lee el detalle; el listado lo ignora.
+    historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: FECHA }],
     ...extra,
   };
 }

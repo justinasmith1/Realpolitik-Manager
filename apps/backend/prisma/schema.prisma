@@ -47,6 +47,16 @@ enum Emisor {
   SOCIEDAD
 }
 
+/// En qué paso está una rendición (HU3.1, ADR-0005). Isomorfo con `EstadoRendicion` de shared.
+/// "Atrasada" no es un estado: se calcula (HU3.4). La anulación es aparte (`isDeleted`).
+enum EstadoRendicion {
+  EN_CURSO
+  COMPLETA
+  ENVIADA
+  APROBADA
+  RECHAZADA
+}
+
 /// Periodicidad con la que se rinde al cliente (HU1.5).
 enum PeriodicidadTipo {
   MENSUAL
@@ -104,6 +114,10 @@ enum PeriodicidadTipo {
 // `20261030140000_hu2_11_orden_compra_rendicion`. El número de OC no tiene índice único.
 //   ck_rendicion_numero_oc_no_vacio     numeroOc NULL o con algún carácter que no sea espacio
 //   ck_rendicion_montos_oc_no_negativos montoMensual y montoTotal NULL o >= 0
+//
+// Estado de la rendición (HU3.1, ADR-0005): la migración `20261103120000_hu3_1_estado_rendicion`
+// agrega `Rendicion.estado` y la tabla `HistorialEstadoRendicion`, y le da a cada rendición
+// existente (también a las anuladas) el estado EN_CURSO con su entrada inicial de historial.
 //
 // Documentos y sus aplicaciones (HU2.8, ADR-0004): CHECK e índice parcial en la migración
 // `20261029120000_hu2_8_documentos_aplicaciones`.
@@ -294,6 +308,10 @@ model Rendicion {
   montoMensual  Decimal? @db.Decimal(14, 2)
   montoTotal    Decimal? @db.Decimal(14, 2)
 
+  /// En qué paso está (HU3.1). Nace EN_CURSO; cada cambio deja una entrada en `historial`. Una
+  /// rendición anulada conserva el último estado que tenía: la anulación es `isDeleted`, aparte.
+  estado      EstadoRendicion @default(EN_CURSO)
+
   // Baja lógica (anular una rendición mal cargada, HU2.5). CHECK ck_rendicion_baja_logica:
   // isDeleted ⇔ deletedAt. La unicidad del número de factura (en cualquier período) vale solo
   // entre las activas: con emisor, (emisor, numeroFactura) entre todos los clientes
@@ -307,9 +325,35 @@ model Rendicion {
   updatedAt   DateTime @updatedAt
 
   items       ItemChecklist[]
+  historial   HistorialEstadoRendicion[]
 
   /// Última OC del cliente (GET /clientes/:id/ultima-oc).
   @@index([clienteId, numeroOc])
+}
+
+// ─── Modelo HistorialEstadoRendicion ──────────────────────────────────────────
+
+/// Un cambio de estado de una rendición (HU3.1, ADR-0005). Es historial: no se edita ni se borra.
+/// La primera entrada es la del alta (`estadoAnterior` null → EN_CURSO).
+model HistorialEstadoRendicion {
+  id             String           @id @default(uuid()) @db.Uuid
+
+  rendicionId    String           @db.Uuid
+  rendicion      Rendicion        @relation(fields: [rendicionId], references: [id], onDelete: Cascade)
+
+  /// Null solo en la primera entrada.
+  estadoAnterior EstadoRendicion?
+  estadoNuevo    EstadoRendicion
+  /// Cuándo ocurrió el cambio.
+  fecha          DateTime         @default(now())
+  /// Por qué (lo usa el rechazo, HU3.8). Hoy siempre null.
+  motivo         String?
+
+  // Auditoría
+  createdAt      DateTime         @default(now())
+
+  /// El historial de una rendición, en orden.
+  @@index([rendicionId, fecha])
 }
 
 // ─── Modelo ItemChecklist ─────────────────────────────────────────────────────

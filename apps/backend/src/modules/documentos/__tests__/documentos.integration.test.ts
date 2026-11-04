@@ -239,7 +239,7 @@ describe.skipIf(url === undefined)('documentos contra PostgreSQL', () => {
     const rA4 = await abrir(clienteA.id, MES_ANTERIOR);
     const rB1 = await abrir(clienteB.id);
     expect(
-      (await request(app).patch(`/rendiciones/${rA3.id}/estado`).send({ estado: 'ANULADA' }))
+      (await request(app).patch(`/rendiciones/${rA3.id}/vigencia`).send({ vigencia: 'ANULADA' }))
         .status,
     ).toBe(200);
 
@@ -444,7 +444,7 @@ describe.skipIf(url === undefined)('documentos contra PostgreSQL', () => {
       expect(
         detalle.aplicaciones.map((a) => [
           a.estado,
-          a.ubicacion.rendicion.estado,
+          a.ubicacion.rendicion.vigencia,
           a.itemChecklistId,
         ]),
       ).toEqual([

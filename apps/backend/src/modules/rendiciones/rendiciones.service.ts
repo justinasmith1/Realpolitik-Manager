@@ -3,7 +3,7 @@ import {
   canalDeSeleccion,
   compararItemsDeChecklist,
   esChecklistError,
-  FILTRO_ESTADO_POR_DEFECTO,
+  FILTRO_VIGENCIA_POR_DEFECTO,
   generarChecklist,
   motivoNoEnviable,
   PreparacionEnvioSchema,
@@ -12,7 +12,8 @@ import {
   type CanalEntregaType,
   type CreateRendicionDto,
   type EmisorType,
-  type FiltroEstadoRendiciones,
+  type EstadoRendicionType,
+  type FiltroVigenciaRendiciones,
   type ItemChecklistNuevo,
   type ListarRendicionesQuery,
   type PreparacionEnvio,
@@ -28,6 +29,7 @@ import { prisma } from '../../lib/prisma';
 
 import {
   APLICACION_VIGENTE,
+  HISTORIAL_EN_ORDEN,
   toItemChecklistDto,
   toRendicionDetalleDto,
   toRendicionDto,
@@ -55,10 +57,14 @@ const INDICE_FACTURA_SIN_EMISOR = 'uq_rendicion_factura_activa_sin_emisor';
 /** Tope de reintentos ante una carrera (P2034, o un duplicado cuya fila ya no está). */
 const INTENTOS = 3;
 
-/** Los ítems, cada uno con su documento vigente (HU2.8). */
+/** Los ítems, cada uno con su documento vigente (HU2.8), y el historial de estados (HU3.1). */
 const CON_ITEMS = {
   items: { include: { aplicaciones: APLICACION_VIGENTE } },
+  historial: HISTORIAL_EN_ORDEN,
 } satisfies Prisma.RendicionInclude;
+
+/** El estado con el que nace toda rendición (HU3.1). */
+const ESTADO_INICIAL: EstadoRendicionType = 'EN_CURSO';
 
 /**
  * Los ítems en el orden del checklist (`compararItemsDeChecklist` de shared, el mismo de
@@ -284,6 +290,9 @@ async function insertarRendicion(
         ...(input.numeroOc !== undefined && { numeroOc: input.numeroOc }),
         ...(input.montoMensual !== undefined && { montoMensual: input.montoMensual }),
         ...(input.montoTotal !== undefined && { montoTotal: input.montoTotal }),
+        // Nace en curso, con la primera entrada de su historial, en la misma transacción.
+        estado: ESTADO_INICIAL,
+        historial: { create: { estadoAnterior: null, estadoNuevo: ESTADO_INICIAL } },
         items: { createMany: { data: items } },
       },
       include: CON_ITEMS,
@@ -342,32 +351,40 @@ export async function abrirRendicion(
   }
 }
 
-/** Cada filtro de estado como baja lógica: anulada es `isDeleted`. `TODAS` no filtra. */
-const BAJA_SEGUN_ESTADO: Record<FiltroEstadoRendiciones, boolean | undefined> = {
+/** Cada filtro de vigencia como baja lógica: anulada es `isDeleted`. `TODAS` no filtra. */
+const BAJA_SEGUN_VIGENCIA: Record<FiltroVigenciaRendiciones, boolean | undefined> = {
   ACTIVA: false,
   ANULADA: true,
   TODAS: undefined,
 };
 
 /**
- * Rendiciones del cliente, con el avance de su checklist (contrato 4.5). Sin `estado`, solo las
- * activas. Con `requisitoId`, solo las que tienen ítems de ese requisito. Orden: año y mes
+ * Rendiciones del cliente, con el avance de su checklist (contrato 4.5). Sin `vigencia`, solo las
+ * activas. Con `estado` (HU3.1), solo las que están en ese paso, de la vigencia pedida (una anulada
+ * conserva su estado). Con `requisitoId`, solo las que tienen ítems de ese requisito. Orden: año y mes
  * descendentes y, dentro del mismo mes, la más reciente primero; con `TODAS`, primero las activas
  * y después las anuladas, cada grupo con ese orden.
  */
 export async function listarRendiciones(
   clienteId: string,
-  { anio, mes, estado = FILTRO_ESTADO_POR_DEFECTO, requisitoId }: ListarRendicionesQuery,
+  {
+    anio,
+    mes,
+    vigencia = FILTRO_VIGENCIA_POR_DEFECTO,
+    estado,
+    requisitoId,
+  }: ListarRendicionesQuery,
 ): Promise<RendicionResumen[]> {
   await exigirClienteVigente(clienteId);
 
-  const isDeleted = BAJA_SEGUN_ESTADO[estado];
+  const isDeleted = BAJA_SEGUN_VIGENCIA[vigencia];
   const filas = await prisma.rendicion.findMany({
     where: {
       clienteId,
       ...(isDeleted !== undefined && { isDeleted }),
       ...(anio !== undefined && { anio }),
       ...(mes !== undefined && { mes }),
+      ...(estado !== undefined && { estado }),
       ...(requisitoId !== undefined && {
         items: { some: { requisitoClienteId: requisitoId } },
       }),
@@ -404,7 +421,7 @@ export async function listarRendiciones(
 }
 
 /**
- * Una rendición con su checklist. También una anulada (con `estado: ANULADA`): su detalle se
+ * Una rendición con su checklist. También una anulada (con `vigencia: ANULADA`): su detalle se
  * conserva como historial. De un cliente borrado, no existe.
  */
 export async function obtenerRendicion(id: string): Promise<RendicionDetalle> {
@@ -416,6 +433,40 @@ export async function obtenerRendicion(id: string): Promise<RendicionDetalle> {
     throw notFound('Rendición no encontrada');
   }
   return toRendicionDetalleDto(conItemsEnOrden(rendicion));
+}
+
+/**
+ * Registra un cambio de estado de una rendición (HU3.1, ADR-0005): actualiza `estado` y agrega la
+ * entrada del historial con el estado anterior, en una sola transacción serializable (dos cambios
+ * simultáneos no pueden registrar el mismo estado anterior). Es el punto único que van a usar las
+ * HU que cambian el estado (Completa, Enviada, Aprobada, Rechazada y la corrección de una
+ * rechazada): no tiene endpoint. No valida transiciones ni la vigencia: eso lo decide cada una de
+ * esas HU. `motivo` lo usa el rechazo (HU3.8).
+ */
+export async function registrarCambioDeEstado(
+  rendicionId: string,
+  estadoNuevo: EstadoRendicionType,
+  motivo: string | null = null,
+): Promise<RendicionDetalle> {
+  return enTransaccionSerializable(async (tx) => {
+    const rendicion = await tx.rendicion.findFirst({
+      where: { id: rendicionId, cliente: { isDeleted: false } },
+      select: { estado: true },
+    });
+    if (rendicion === null) {
+      throw notFound('Rendición no encontrada');
+    }
+
+    const actualizada = await tx.rendicion.update({
+      where: { id: rendicionId },
+      data: {
+        estado: estadoNuevo,
+        historial: { create: { estadoAnterior: rendicion.estado, estadoNuevo, motivo } },
+      },
+      include: CON_ITEMS,
+    });
+    return toRendicionDetalleDto(conItemsEnOrden(actualizada));
+  });
 }
 
 /**

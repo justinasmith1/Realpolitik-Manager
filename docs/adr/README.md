@@ -38,6 +38,7 @@ Secuencial, con cuatro dígitos y nombre descriptivo: `NNNN-titulo-en-kebab-case
 | [0002](0002-modelado-datos.md)                            | Estrategia de modelado de datos para clientes | Proposed |
 | [0003](0003-modelado-requisitos-y-rendiciones.md)         | Modelado de requisitos y rendiciones          | Proposed |
 | [0004](0004-reutilizacion-y-almacenamiento-documentos.md) | Reutilización y almacenamiento de documentos  | Proposed |
+| [0005](0005-estados-de-la-rendicion.md)                   | Estados de la rendición                       | Proposed |
 
 ## Decisiones todavía abiertas
 

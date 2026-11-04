@@ -52,6 +52,8 @@ function filaRendicionConItems(extra: Record<string, unknown> = {}) {
     numeroOc: null,
     montoMensual: null,
     montoTotal: null,
+    estado: 'EN_CURSO',
+    historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA }],
     isDeleted: false,
     deletedAt: null,
     createdAt: AHORA,

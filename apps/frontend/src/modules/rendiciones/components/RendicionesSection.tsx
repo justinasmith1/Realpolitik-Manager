@@ -1,10 +1,14 @@
 import {
-  FiltroEstadoRendiciones,
+  ETIQUETAS_ESTADO_RENDICION,
+  EstadoRendicion,
+  FiltroVigenciaRendiciones,
   type ClienteEstadoType,
+  type EstadoRendicionType,
   type EmisorType,
   type RendicionDetalle,
   type RendicionResumen,
 } from '@realpolitik/shared';
+import { cn } from 'cn';
 import { PlusIcon } from 'lucide-react';
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -49,14 +53,30 @@ const describir = (rendicion: { anio: number; mes: number; numeroFactura: string
 
 const OPCION_TODOS: SelectOption = { value: '', label: 'Todos' };
 
-const OPCIONES_ESTADO: SelectOption[] = [
+/** Los chips del filtro por estado: "Todas" (sin filtro) y cada estado, en el orden del proceso. */
+const OPCIONES_ESTADO: { valor: EstadoRendicionType | undefined; etiqueta: string }[] = [
+  { valor: undefined, etiqueta: 'Todas' },
+  ...EstadoRendicion.options.map((valor) => ({
+    valor,
+    etiqueta: ETIQUETAS_ESTADO_RENDICION[valor],
+  })),
+];
+
+const OPCIONES_VIGENCIA: SelectOption[] = [
   { value: 'ACTIVA', label: 'Activas' },
   { value: 'ANULADA', label: 'Anuladas' },
   { value: 'TODAS', label: 'Todas' },
 ];
 
-/** Qué decir cuando no hay rendiciones, según el estado elegido y si hay filtro de período. */
-const SIN_RENDICIONES: Record<FiltroEstadoRendiciones, { siempre: string; enPeriodo: string }> = {
+/** Cómo se nombran las rendiciones de cada vigencia en el aviso de "no hay" con un estado. */
+const DE_LA_VIGENCIA: Record<FiltroVigenciaRendiciones, string> = {
+  ACTIVA: 'activas ',
+  ANULADA: 'anuladas ',
+  TODAS: '',
+};
+
+/** Qué decir cuando no hay rendiciones, según la vigencia elegida y si hay filtro de período. */
+const SIN_RENDICIONES: Record<FiltroVigenciaRendiciones, { siempre: string; enPeriodo: string }> = {
   ACTIVA: {
     siempre: 'No hay rendiciones activas para este cliente.',
     enPeriodo: 'No hay rendiciones activas en ese período.',
@@ -73,7 +93,8 @@ const SIN_RENDICIONES: Record<FiltroEstadoRendiciones, { siempre: string; enPeri
 
 /**
  * Rendiciones de un cliente dentro de su página de matriz (HU2.5, HU2.6), de la más nueva a la
- * más vieja, con filtros de año, mes y estado guardados en la URL. Por defecto, solo las activas:
+ * más vieja, con filtros de año, mes, vigencia y estado (HU3.1) guardados en la URL. Cada una
+ * muestra su estado con un badge. Por defecto, solo las activas:
  * las anuladas se consultan con el filtro, sin mezclarse (con "Todas", van después de las
  * activas, como las ordena el backend). Cada tarjeta lleva a su detalle. Solo un cliente ACTIVO puede abrir rendiciones nuevas; anular se permite en cualquier
  * estado (contrato 4.6).
@@ -85,8 +106,16 @@ export function RendicionesSection({
 }: RendicionesSectionProps) {
   const navigate = useNavigate();
   const id = useId();
-  const { filtros, estado, hayFiltros, cambiarAnio, cambiarMes, cambiarEstado } =
-    useFiltroRendiciones();
+  const {
+    filtros,
+    vigencia,
+    estado,
+    hayFiltros,
+    cambiarAnio,
+    cambiarMes,
+    cambiarVigencia,
+    cambiarEstado,
+  } = useFiltroRendiciones();
   const consulta = useRendiciones(cliente.id, filtros);
   const [abriendo, setAbriendo] = useState(false);
   const tituloRef = useRef<HTMLHeadingElement>(null);
@@ -154,10 +183,23 @@ export function RendicionesSection({
         <Skeleton className="h-16 w-full" />
       </div>
     );
+  } else if (consulta.data.length === 0 && estado !== undefined) {
+    // Con un estado elegido, el aviso lo nombra y ofrece volver a todos.
+    contenido = (
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm text-muted-foreground">
+          No hay rendiciones {DE_LA_VIGENCIA[vigencia]}en estado «
+          {ETIQUETAS_ESTADO_RENDICION[estado]}»{hayFiltros ? ' en ese período' : ''}.
+        </p>
+        <Button type="button" variant="outline" size="sm" onClick={() => cambiarEstado(undefined)}>
+          Limpiar filtro
+        </Button>
+      </div>
+    );
   } else if (consulta.data.length === 0) {
     contenido = (
       <p className="text-sm text-muted-foreground">
-        {hayFiltros ? SIN_RENDICIONES[estado].enPeriodo : SIN_RENDICIONES[estado].siempre}
+        {hayFiltros ? SIN_RENDICIONES[vigencia].enPeriodo : SIN_RENDICIONES[vigencia].siempre}
       </p>
     );
   } else {
@@ -222,19 +264,46 @@ export function RendicionesSection({
           />
         </div>
         <div className="flex min-w-36 flex-col gap-1.5">
-          <label htmlFor={`${id}-estado`} className="text-sm font-medium text-foreground">
-            Estado
+          <label htmlFor={`${id}-vigencia`} className="text-sm font-medium text-foreground">
+            Vigencia
           </label>
           <Select
-            id={`${id}-estado`}
-            value={estado}
+            id={`${id}-vigencia`}
+            value={vigencia}
             onValueChange={(valor) => {
-              const elegido = FiltroEstadoRendiciones.safeParse(valor);
-              if (elegido.success) cambiarEstado(elegido.data);
+              const elegido = FiltroVigenciaRendiciones.safeParse(valor);
+              if (elegido.success) cambiarVigencia(elegido.data);
             }}
-            options={OPCIONES_ESTADO}
+            options={OPCIONES_VIGENCIA}
           />
         </div>
+      </div>
+      {/* Filtro por estado (HU3.1): botones de alternancia, como en Requisitos; `aria-pressed`
+          anuncia el activo. Si no entran en una línea, pasan a la siguiente. */}
+      <div
+        role="group"
+        aria-label="Estado"
+        className="flex flex-wrap gap-1 self-start rounded-lg border border-border bg-card p-1 text-xs font-medium"
+      >
+        {OPCIONES_ESTADO.map(({ valor, etiqueta }) => {
+          const activo = estado === valor;
+          return (
+            <button
+              key={etiqueta}
+              type="button"
+              aria-pressed={activo}
+              onClick={() => cambiarEstado(valor)}
+              className={cn(
+                'cursor-pointer rounded-md px-3 py-1.5 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30',
+                activo
+                  ? 'bg-primary font-semibold text-primary-foreground shadow-xs'
+                  : 'text-content-secondary hover:text-foreground',
+              )}
+            >
+              {etiqueta}
+            </button>
+          );
+        })}
       </div>
       {contenido}
       <AbrirRendicionSheet

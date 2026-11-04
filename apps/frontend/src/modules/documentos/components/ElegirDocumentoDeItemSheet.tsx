@@ -103,7 +103,7 @@ export function ElegirDocumentoDeItemSheet({
   const otros = documentos?.filter((documento) => documento.id !== actual?.documentoId) ?? [];
   const elegido = otros.find((documento) => documento.id === elegidoId) ?? null;
   const ocupado = aplicacion.isPending || reemplazo.isPending;
-  const anulada = rendicion.estado === 'ANULADA';
+  const anulada = rendicion.vigencia === 'ANULADA';
 
   // El ítem pudo cambiar mientras tanto (otra persona, o un 409 que refrescó la rendición).
   let impedimento: string | null = null;

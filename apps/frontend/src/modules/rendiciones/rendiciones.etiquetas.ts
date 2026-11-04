@@ -115,3 +115,15 @@ export function etiquetaDeMonto(monto: number | null): string {
 /** El número de OC como se lee en pantalla, o "No asignada" si no se cargó. */
 export const etiquetaDeNumeroOc = (numeroOc: string | null): string =>
   numeroOc ?? TEXTO_OC_NO_ASIGNADA;
+
+// ─── Estado de la rendición (HU3.1) ───────────────────────────────────────────
+
+const formatoDeFechaCorta = new Intl.DateTimeFormat('es-AR', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  timeZone: 'America/Argentina/Buenos_Aires',
+});
+
+/** Una fecha como la lee la operadora, dd/mm/aaaa en horario de Buenos Aires: "03/11/2026". */
+export const fechaCorta = (fecha: Date): string => formatoDeFechaCorta.format(fecha);

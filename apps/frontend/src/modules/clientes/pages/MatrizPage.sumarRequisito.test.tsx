@@ -56,7 +56,8 @@ const rendicion = (id: string, mes: number, numeroFactura: string) => ({
   anio: 2026,
   mes,
   numeroFactura,
-  estado: 'ACTIVA',
+  estado: 'EN_CURSO',
+  vigencia: 'ACTIVA',
   anuladaEn: null,
   resumen: { totalItems: 2, completados: 0 },
   ...fechas,
@@ -74,7 +75,7 @@ function servir({
     rendicion(REND_OCT, 10, 'A 00001-00000001'),
     rendicion(REND_SEP, 9, 'A 00001-00000002'),
   ],
-  sumar = () => json({ ...rendicion(REND_OCT, 10, 'A 00001-00000001'), items: [] }),
+  sumar = () => json({ ...rendicion(REND_OCT, 10, 'A 00001-00000001'), items: [], historial: [] }),
 }: {
   rendiciones?: unknown[];
   sumar?: (rendicionId: string) => Response;
@@ -225,7 +226,7 @@ describe('MatrizPage: sumar un requisito nuevo a rendiciones abiertas', () => {
               },
               409,
             )
-          : json({ ...rendicion(REND_OCT, 10, 'A 00001-00000001'), items: [] }),
+          : json({ ...rendicion(REND_OCT, 10, 'A 00001-00000001'), items: [], historial: [] }),
     });
     const { user } = renderMatriz();
     await screen.findByRole('article', { name: 'Octubre 2026' });

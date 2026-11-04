@@ -37,7 +37,7 @@ interface DocumentoDetalleSheetProps {
 /** Una aplicación: cliente, factura e ítem, con su estado y el enlace a la rendición. */
 function FilaDeAplicacion({ aplicacion }: { aplicacion: AplicacionUbicada }) {
   const { cliente, rendicion, item } = aplicacion.ubicacion;
-  const anulada = rendicion.estado === 'ANULADA';
+  const anulada = rendicion.vigencia === 'ANULADA';
   return (
     <li className="flex flex-col gap-1 px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-1.5">

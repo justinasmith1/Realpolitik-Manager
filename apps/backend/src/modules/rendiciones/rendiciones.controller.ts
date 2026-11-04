@@ -1,6 +1,6 @@
 import type {
   ActualizarCanalDeItemSchema,
-  ActualizarEstadoRendicionSchema,
+  ActualizarVigenciaRendicionSchema,
   ActualizarRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
@@ -47,7 +47,7 @@ type ListarRendicionesLocals = ValidatedLocals<{
 type ObtenerRendicionLocals = ValidatedLocals<{ params: typeof IdParamsSchema }>;
 type AnularRendicionLocals = ValidatedLocals<{
   params: typeof IdParamsSchema;
-  body: typeof ActualizarEstadoRendicionSchema;
+  body: typeof ActualizarVigenciaRendicionSchema;
 }>;
 
 export async function abrirRendicionController(

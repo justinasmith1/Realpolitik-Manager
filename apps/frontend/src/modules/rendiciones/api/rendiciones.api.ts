@@ -53,8 +53,9 @@ function pedidoJson(method: 'POST' | 'PATCH', cuerpo: Record<string, unknown>): 
 
 /**
  * `GET /clientes/:id/rendiciones`, con el avance de cada una. Los filtros `anio` y `mes` son
- * opcionales; sin ellos, todos los períodos. Sin `estado`, el backend lista solo las activas. Con
- * `requisitoId`, solo las que tienen ítems de ese requisito.
+ * opcionales; sin ellos, todos los períodos. Sin `vigencia`, el backend lista solo las activas. Con
+ * `estado` (HU3.1), solo las que están en ese paso. Con `requisitoId`, solo las que tienen ítems de
+ * ese requisito.
  */
 export async function listarRendiciones(
   clienteId: string,
@@ -64,6 +65,7 @@ export async function listarRendiciones(
   const params = new URLSearchParams();
   if (filtros.anio !== undefined) params.set('anio', String(filtros.anio));
   if (filtros.mes !== undefined) params.set('mes', String(filtros.mes));
+  if (filtros.vigencia !== undefined) params.set('vigencia', filtros.vigencia);
   if (filtros.estado !== undefined) params.set('estado', filtros.estado);
   if (filtros.requisitoId !== undefined) params.set('requisitoId', filtros.requisitoId);
   const query = params.toString() === '' ? '' : `?${params.toString()}`;
@@ -94,11 +96,11 @@ export async function abrirRendicion(
   return RendicionDetalleSchema.parse(await response.json());
 }
 
-/** `PATCH /rendiciones/:id/estado`: la anula. No es reversible. */
+/** `PATCH /rendiciones/:id/vigencia`: la anula. No es reversible. */
 export async function anularRendicion(rendicionId: string): Promise<Rendicion> {
   const response = await http(
-    `/rendiciones/${encodeURIComponent(rendicionId)}/estado`,
-    pedidoJson('PATCH', { estado: 'ANULADA' }),
+    `/rendiciones/${encodeURIComponent(rendicionId)}/vigencia`,
+    pedidoJson('PATCH', { vigencia: 'ANULADA' }),
   );
   return RendicionSchema.parse(await response.json());
 }

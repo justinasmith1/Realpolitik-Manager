@@ -116,7 +116,7 @@ export function toDocumentoConAplicacionesDto(
           ...ubicacion,
           rendicion: {
             ...ubicacion.rendicion,
-            estado: aplicacion.itemChecklist.rendicion.isDeleted ? 'ANULADA' : 'ACTIVA',
+            vigencia: aplicacion.itemChecklist.rendicion.isDeleted ? 'ANULADA' : 'ACTIVA',
           },
         },
       };

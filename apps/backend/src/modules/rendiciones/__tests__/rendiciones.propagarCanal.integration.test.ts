@@ -215,7 +215,7 @@ describe.skipIf(url === undefined)(
       const { cliente, print } = await clienteConPrint();
       const activa = await abrir(cliente.id);
       const anulada = await abrir(cliente.id);
-      await request(app).patch(`/rendiciones/${anulada.id}/estado`).send({ estado: 'ANULADA' });
+      await request(app).patch(`/rendiciones/${anulada.id}/vigencia`).send({ vigencia: 'ANULADA' });
       await cambiarCanalDelRequisito(print.id, 'PORTAL_WEB');
 
       const res = await propagar(cliente.id, print.id, [activa.id, anulada.id]);
@@ -273,10 +273,10 @@ describe.skipIf(url === undefined)(
       for (const rendicion of [conNota, anulada]) {
         await request(app).post(`/rendiciones/${rendicion.id}/requisitos/${nota.id}`);
       }
-      await request(app).patch(`/rendiciones/${anulada.id}/estado`).send({ estado: 'ANULADA' });
+      await request(app).patch(`/rendiciones/${anulada.id}/vigencia`).send({ vigencia: 'ANULADA' });
 
       const res = await request(app).get(
-        `/clientes/${cliente.id}/rendiciones?estado=ACTIVA&requisitoId=${nota.id}`,
+        `/clientes/${cliente.id}/rendiciones?vigencia=ACTIVA&requisitoId=${nota.id}`,
       );
 
       expect(res.status).toBe(200);

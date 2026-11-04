@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Emisor } from './cliente.schema.js';
 import {
-  ActualizarEstadoRendicionSchema,
+  ActualizarVigenciaRendicionSchema,
   CreateRendicionSchema,
   ItemChecklistSchema,
   MENSAJE_NUMERO_FACTURA_FORMATO,
@@ -271,25 +271,30 @@ describe('CreateRendicionSchema', () => {
   });
 });
 
-describe('ActualizarEstadoRendicionSchema', () => {
+describe('ActualizarVigenciaRendicionSchema', () => {
   it("acepta solo 'ANULADA'", () => {
-    expect(ActualizarEstadoRendicionSchema.parse({ estado: 'ANULADA' })).toEqual({
-      estado: 'ANULADA',
+    expect(ActualizarVigenciaRendicionSchema.parse({ vigencia: 'ANULADA' })).toEqual({
+      vigencia: 'ANULADA',
     });
   });
 
-  it.each([{ estado: 'ACTIVA' }, { estado: 'anulada' }, { estado: 'OTRO' }, { estado: null }, {}])(
-    'rechaza %j con un mensaje en español',
-    (cuerpo) => {
-      const e = errores(ActualizarEstadoRendicionSchema.safeParse(cuerpo));
-      expect(e).toEqual([
-        {
-          path: ['estado'],
-          message: 'El estado solo puede ser ANULADA: una rendición anulada no se reactiva.',
-        },
-      ]);
-    },
-  );
+  it.each([
+    { vigencia: 'ACTIVA' },
+    { vigencia: 'anulada' },
+    { vigencia: 'OTRO' },
+    { vigencia: null },
+    {},
+    // El nombre viejo del campo ya no se acepta.
+    { estado: 'ANULADA' },
+  ])('rechaza %j con un mensaje en español', (cuerpo) => {
+    const e = errores(ActualizarVigenciaRendicionSchema.safeParse(cuerpo));
+    expect(e).toEqual([
+      {
+        path: ['vigencia'],
+        message: 'La vigencia solo puede ser ANULADA: una rendición anulada no se reactiva.',
+      },
+    ]);
+  });
 });
 
 describe('entidades de lectura', () => {
@@ -314,10 +319,14 @@ describe('entidades de lectura', () => {
     anio: 2026,
     mes: 10,
     numeroFactura: '0001-00001234',
-    estado: 'ACTIVA',
+    estado: 'EN_CURSO',
+    vigencia: 'ACTIVA',
     anuladaEn: null,
     creadoEn: '2026-10-20T12:00:00.000Z',
     actualizadoEn: '2026-10-20T12:00:00.000Z',
+    historial: [
+      { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-20T12:00:00.000Z' },
+    ],
   };
 
   describe('ItemChecklistSchema', () => {
@@ -358,17 +367,17 @@ describe('entidades de lectura', () => {
   describe('RendicionSchema', () => {
     it('lee la rendición activa', () => {
       const r = RendicionSchema.parse(rendicion);
-      expect(r.estado).toBe('ACTIVA');
+      expect(r.vigencia).toBe('ACTIVA');
       expect(r.anuladaEn).toBeNull();
     });
 
     it('lee la rendición anulada con su fecha', () => {
       const r = RendicionSchema.parse({
         ...rendicion,
-        estado: 'ANULADA',
+        vigencia: 'ANULADA',
         anuladaEn: '2026-10-22T10:00:00.000Z',
       });
-      expect(r.estado).toBe('ANULADA');
+      expect(r.vigencia).toBe('ANULADA');
       expect(r.anuladaEn).toBeInstanceOf(Date);
     });
 
@@ -382,8 +391,8 @@ describe('entidades de lectura', () => {
       expect(RendicionSchema.safeParse({ ...rendicion, anio: 2099, mes: 12 }).success).toBe(true);
     });
 
-    it('rechaza un estado desconocido', () => {
-      expect(RendicionSchema.safeParse({ ...rendicion, estado: 'BORRADA' }).success).toBe(false);
+    it('rechaza una vigencia desconocida', () => {
+      expect(RendicionSchema.safeParse({ ...rendicion, vigencia: 'BORRADA' }).success).toBe(false);
     });
 
     describe('emisor (HU2.9)', () => {

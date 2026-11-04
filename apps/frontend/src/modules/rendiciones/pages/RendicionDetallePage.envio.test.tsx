@@ -279,7 +279,10 @@ describe('RendicionDetallePage: envío por selección', () => {
     const { user } = renderDetalle();
     await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
     await user.click(casilla('Factura'));
-    estado.rendicion = rendicionJson({ estado: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' });
+    estado.rendicion = rendicionJson({
+      vigencia: 'ANULADA',
+      anuladaEn: '2026-10-20T15:00:00.000Z',
+    });
 
     await user.click(screen.getByRole('button', { name: 'Enviar (1)' }));
 
@@ -419,7 +422,7 @@ describe('RendicionDetallePage: envío por selección', () => {
 
   it('una rendición anulada no tiene casillas para elegir ni botón de envío', async () => {
     servir({
-      rendicion: rendicionJson({ estado: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' }),
+      rendicion: rendicionJson({ vigencia: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' }),
     });
     renderDetalle();
     await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
