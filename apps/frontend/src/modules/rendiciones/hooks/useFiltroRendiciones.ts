@@ -13,15 +13,25 @@ type ValorDeFiltro = ListarRendicionesQuery[CampoDeFiltro];
 
 const CAMPOS: readonly CampoDeFiltro[] = ['anio', 'mes', 'vigencia', 'estado'];
 
-/** Un valor del parámetro, solo si cumple el schema de shared (el mismo que valida el backend). */
-function leer<C extends CampoDeFiltro>(
-  campo: C,
-  valores: string[],
-): ListarRendicionesQuery[C] | undefined {
-  if (valores.length !== 1) return undefined;
-  const resultado = ListarRendicionesQuerySchema.shape[campo].safeParse(valores[0]);
-  return resultado.success ? (resultado.data as ListarRendicionesQuery[C]) : undefined;
+/**
+ * Lo que hace falta de un schema de Zod para leer un parámetro: el tipo de lo que entrega sale del
+ * schema, sin aserciones. (El frontend no depende de Zod directamente: alcanza con esta forma.)
+ */
+interface LectorDeParametro<T> {
+  safeParse(valor: string): { success: true; data: T } | { success: false };
 }
+
+/**
+ * Un valor del parámetro, solo si cumple el schema de su campo en shared (el mismo que valida el
+ * backend). Ausente, repetido o inválido: `undefined`, y el filtro vuelve a su valor por defecto.
+ */
+function leer<T>(schema: LectorDeParametro<T>, valores: string[]): T | undefined {
+  if (valores.length !== 1 || valores[0] === undefined) return undefined;
+  const resultado = schema.safeParse(valores[0]);
+  return resultado.success ? resultado.data : undefined;
+}
+
+const { shape } = ListarRendicionesQuerySchema;
 
 /**
  * Filtros de año, mes, vigencia y estado (HU3.1) del listado de rendiciones, guardados en la URL
@@ -46,13 +56,13 @@ export function useFiltroRendiciones() {
     }),
     [params],
   );
-  const anio = leer('anio', crudos.anio);
-  const mes = leer('mes', crudos.mes);
-  const vigenciaLeida = leer('vigencia', crudos.vigencia);
+  const anio = leer(shape.anio, crudos.anio);
+  const mes = leer(shape.mes, crudos.mes);
+  const vigenciaLeida = leer(shape.vigencia, crudos.vigencia);
   // El valor por defecto no se guarda: se trata como si no estuviera.
   const vigenciaElegida = vigenciaLeida === FILTRO_VIGENCIA_POR_DEFECTO ? undefined : vigenciaLeida;
   // Sin estado, todas: no hay un valor por defecto que quitar.
-  const estado = leer('estado', crudos.estado);
+  const estado = leer(shape.estado, crudos.estado);
 
   const actualizar = useCallback(
     (cambios: Partial<Record<CampoDeFiltro, ValorDeFiltro>>, reemplazar: boolean) => {
