@@ -196,7 +196,8 @@ describe.skipIf(url === undefined)('preparar el envío contra PostgreSQL', () =>
       data: { completado: true, completadoAt: new Date() },
     });
     expect(
-      (await request(app).patch(`/rendiciones/${r3.id}/vigencia`).send({ vigencia: 'ANULADA' })).status,
+      (await request(app).patch(`/rendiciones/${r3.id}/vigencia`).send({ vigencia: 'ANULADA' }))
+        .status,
     ).toBe(200);
 
     Object.assign(e, { print: print.id, factura: factura.id, r1, r2, r3, dPrint });

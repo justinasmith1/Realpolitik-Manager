@@ -162,7 +162,9 @@ describe.skipIf(url === undefined)(
     it('con la rendición anulada es 409 RENDICION_ANULADA', async () => {
       const { cliente, rendicionId } = await rendicionAbierta('A 00001-00000204');
       const nuevo = await crearRequisito(cliente.id, 'Print', 1);
-      await request(app).patch(`/rendiciones/${rendicionId}/vigencia`).send({ vigencia: 'ANULADA' });
+      await request(app)
+        .patch(`/rendiciones/${rendicionId}/vigencia`)
+        .send({ vigencia: 'ANULADA' });
 
       const res = await sumar(rendicionId, nuevo.id);
 

@@ -286,18 +286,15 @@ describe('ActualizarVigenciaRendicionSchema', () => {
     {},
     // El nombre viejo del campo ya no se acepta.
     { estado: 'ANULADA' },
-  ])(
-    'rechaza %j con un mensaje en español',
-    (cuerpo) => {
-      const e = errores(ActualizarVigenciaRendicionSchema.safeParse(cuerpo));
-      expect(e).toEqual([
-        {
-          path: ['vigencia'],
-          message: 'La vigencia solo puede ser ANULADA: una rendición anulada no se reactiva.',
-        },
-      ]);
-    },
-  );
+  ])('rechaza %j con un mensaje en español', (cuerpo) => {
+    const e = errores(ActualizarVigenciaRendicionSchema.safeParse(cuerpo));
+    expect(e).toEqual([
+      {
+        path: ['vigencia'],
+        message: 'La vigencia solo puede ser ANULADA: una rendición anulada no se reactiva.',
+      },
+    ]);
+  });
 });
 
 describe('entidades de lectura', () => {
