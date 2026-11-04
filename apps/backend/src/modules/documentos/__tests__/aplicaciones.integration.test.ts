@@ -223,7 +223,7 @@ describe.skipIf(url === undefined)('aplicar y reemplazar documentos contra Postg
     const rA5 = await abrir(clienteA.id);
     const rB1 = await abrir(clienteB.id);
     expect(
-      (await request(app).patch(`/rendiciones/${rA3.id}/estado`).send({ estado: 'ANULADA' }))
+      (await request(app).patch(`/rendiciones/${rA3.id}/vigencia`).send({ vigencia: 'ANULADA' }))
         .status,
     ).toBe(200);
     await prisma.cliente.update({ where: { id: clienteB.id }, data: { estado: 'INACTIVO' } });
@@ -354,7 +354,7 @@ describe.skipIf(url === undefined)('aplicar y reemplazar documentos contra Postg
 
       const [aplicacion, anulacion] = await Promise.all([
         aplicar(e.dPrint, itemIds),
-        request(app).patch(`/rendiciones/${e.rA5.id}/estado`).send({ estado: 'ANULADA' }),
+        request(app).patch(`/rendiciones/${e.rA5.id}/vigencia`).send({ vigencia: 'ANULADA' }),
       ]);
 
       expect(anulacion.status).toBe(200);

@@ -272,7 +272,7 @@ Reglas que valen para toda la sección (además de las de la sección 1):
 - **Cliente borrado:** igual que en clientes y contactos, un cliente con baja lógica (`isDeleted`) se trata como inexistente. Todas las rutas `/clientes/:id/...` responden `404 NOT_FOUND`.
 - **Cliente no activo:** solo un cliente `ACTIVO` puede tener su matriz editada (alta, modificación o baja de requisitos), sus indicaciones de armado editadas, rendiciones nuevas o requisitos agregados a una rendición abierta. `INACTIVO` y `SUSPENDIDO` se tratan igual (un cliente que dejó de operar temporalmente y puede volver): esas operaciones responden `409 CONFLICT` con `motivo: "CLIENTE_NO_ACTIVO"`, y primero hay que reactivarlo. Las lecturas (`GET`) responden igual para cualquier estado. La anulación de una rendición tampoco se restringe, en ningún estado: es la corrección de un error, no una operación nueva. **Excepciones:** las observaciones internas (HU2.10) se leen y se guardan con el cliente en cualquier estado, porque son una nota interna y no generan operaciones (ver 4.4). La orden de compra de una rendición activa (HU2.11) también se edita con el cliente en cualquier estado: es un dato de una rendición ya abierta (ver 4.5).
 - **Ids de la ruta:** `:id` y `:requisitoId` se validan. Uno que no es un uuid responde `400 VALIDATION_ERROR`.
-- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay ocho excepciones: `GET /clientes/:id/rendiciones`, que con `vigencia=ANULADA` o `vigencia=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/estado` (ver 4.6), `PATCH /rendiciones/:id`, `POST /rendiciones/:id/requisitos/:requisitoId`, `PATCH /rendiciones/:id/items/:itemId/canal`, `POST /rendiciones/:id/preparar-envio` y `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
+- **Bajas lógicas:** un requisito dado de baja o una rendición anulada no aparecen en ningún listado ni detalle y se tratan como inexistentes (`404`). Hay ocho excepciones: `GET /clientes/:id/rendiciones`, que con `vigencia=ANULADA` o `vigencia=TODAS` lista también las anuladas (ver 4.5); `GET /rendiciones/:id`, que muestra una rendición anulada como historial (ver 4.5); `PATCH /rendiciones/:id/vigencia` (ver 4.6), `PATCH /rendiciones/:id`, `POST /rendiciones/:id/requisitos/:requisitoId`, `PATCH /rendiciones/:id/items/:itemId/canal`, `POST /rendiciones/:id/preparar-envio` y `POST /clientes/:id/requisitos/:requisitoId/propagar-canal`, que con una rendición anulada responden `409 RENDICION_ANULADA` (ver 4.5).
 - **Fechas:** como en clientes y contactos, la API devuelve `creadoEn` y `actualizadoEn`; las columnas `createdAt` y `updatedAt` se traducen en el backend. `isDeleted` y `deletedAt` no se exponen.
 - **Sin requisitos condicionales:** ningún pedido lleva decisiones del tipo "este período aplica / no aplica". Todo requisito activo entra siempre en el checklist.
 - **La factura es un requisito más:** no es implícita. Todo cliente pide al menos la factura, que figura en su matriz como requisito del tipo "Factura".
@@ -329,7 +329,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | Rendiciones | `PATCH /rendiciones/:id/items/:itemId/canal`                | Corrige el canal de un ítem de una rendición activa                     | 200         |
 | HU2.5       | `POST /rendiciones/:id/preparar-envio`                      | Valida los ítems elegidos para enviar y devuelve sus datos (no envía)   | 200         |
 | Rendiciones | `POST /clientes/:id/requisitos/:requisitoId/propagar-canal` | Pasa el canal actual de un requisito a sus ítems en rendiciones activas | 200         |
-| HU2.5       | `PATCH /rendiciones/:id/estado`                             | Anula una rendición (baja lógica, no reversible)                        | 200         |
+| HU2.5       | `PATCH /rendiciones/:id/vigencia`                           | Anula una rendición (baja lógica, no reversible)                        | 200         |
 | Clientes    | `GET /clientes` (extensión)                                 | Agrega `matrizConfigurada` y un filtro por ese campo                    | 200         |
 | Clientes    | `GET /clientes/:id`                                         | Devuelve un cliente con el mismo DTO, incluido el flag                  | 200         |
 
@@ -822,16 +822,16 @@ Para cuando cambia el canal de un requisito (por ejemplo, Print pasa de WhatsApp
 
 ### 4.6 Anular una rendición (HU2.5)
 
-Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo cambia el estado.
+Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo cambia la vigencia. Hasta la HU3.1 era `PATCH /rendiciones/:id/estado` con `{ "estado": "ANULADA" }`; se renombró porque "estado" pasó a ser el paso del proceso (4.5). La ruta vieja no existe más (`404`).
 
-#### `PATCH /rendiciones/:id/estado`
+#### `PATCH /rendiciones/:id/vigencia`
 
-- **Pedido:** `{ "estado": "ANULADA" }`. La anulación **no es reversible**: enviar `ACTIVA` es `400 VALIDATION_ERROR`. No se registra un motivo.
+- **Pedido:** `{ "vigencia": "ANULADA" }` (`ActualizarVigenciaRendicionSchema` de `@realpolitik/shared`). La anulación **no es reversible**: enviar `ACTIVA` es `400 VALIDATION_ERROR`. No se registra un motivo.
 - **Qué hace:** baja lógica: marca `isDeleted` y guarda `deletedAt`. No borra la rendición ni sus ítems, que conservan su valor fiscal. Desde ese momento no aparece en listados ni en el detalle, y su número de factura se puede usar en otra rendición del mismo emisor, de este cliente o de otro.
 - **Idempotente:** anular una rendición ya anulada responde 200 con la rendición tal cual, **sin escribir** (`anuladaEn` no cambia), igual que pedir el estado que un cliente ya tiene.
 - **Cualquier estado del cliente:** se puede anular aunque el cliente esté `INACTIVO` o `SUSPENDIDO`: es la corrección de un error, no una operación nueva. No responde `CLIENTE_NO_ACTIVO`.
-- **Respuesta 200:** la rendición con `"vigencia": "ANULADA"` y `anuladaEn`, sin `items`.
-- **Errores:** `400 VALIDATION_ERROR` (estado ausente, `ACTIVA` o un valor desconocido, id que no es uuid), `404 NOT_FOUND` (la rendición no existe o su cliente está borrado).
+- **Respuesta 200:** la rendición con `"vigencia": "ANULADA"` y `anuladaEn`, sin `items`. Conserva su `estado` (HU3.1): anular no lo cambia ni agrega una entrada al historial.
+- **Errores:** `400 VALIDATION_ERROR` (`vigencia` ausente, `ACTIVA` o un valor desconocido, id que no es uuid), `404 NOT_FOUND` (la rendición no existe o su cliente está borrado).
 - **Cómo lo usa el front:** "Anular" pide confirmación antes de llamar, como "Desactivar" un cliente.
 
 ### 4.7 Extensión de `GET /clientes`
@@ -860,7 +860,7 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 2. **Hecho.** `RequisitoClienteSchema`, `CreateRequisitoClienteSchema` y `UpdateRequisitoClienteSchema` (sin `tipoDocumentoId`, con la regla de días sobre el estado resultante).
 3. **Hecho.** `CargaMasivaRequisitoSchema` (pedido) y `ResultadoCargaMasivaSchema` (`creados`, `omitidos`).
 4. **Hecho.** `IndicacionesArmadoSchema`, que admite saltos de línea.
-5. **Hecho.** `RendicionSchema`, `RendicionDetalleSchema` (con `items`), `RendicionResumenSchema` (con `resumen`), `ItemChecklistSchema`, `CreateRendicionSchema` (`anio`, `mes`, `numeroFactura` y `emisor` opcional, HU2.9; `RendicionSchema` suma `emisor`, que es `null` si no tiene), `ListarRendicionesQuerySchema` (`anio`, `mes`, `vigencia` y `requisitoId`) y `ActualizarEstadoRendicionSchema` (solo `ANULADA`). Todos usan `numeroFactura`, no `referencia`.
+5. **Hecho.** `RendicionSchema`, `RendicionDetalleSchema` (con `items`), `RendicionResumenSchema` (con `resumen`), `ItemChecklistSchema`, `CreateRendicionSchema` (`anio`, `mes`, `numeroFactura` y `emisor` opcional, HU2.9; `RendicionSchema` suma `emisor`, que es `null` si no tiene), `ListarRendicionesQuerySchema` (`anio`, `mes`, `vigencia` y `requisitoId`) y `ActualizarVigenciaRendicionSchema` (solo `ANULADA`; hasta la HU3.1 se llamaba `ActualizarEstadoRendicionSchema`). Todos usan `numeroFactura`, no `referencia`.
 6. **Hecho.** Para `POST /rendiciones/:id/requisitos/:requisitoId` no hace falta schema de pedido (no lleva cuerpo): valida los dos uuid de la ruta y responde con `RendicionDetalleSchema`.
 7. **Hecho (HU2.2).** En `ClienteSchema`, el campo `matrizConfigurada`; en `ListarClientesQuerySchema`, el filtro `matrizConfigurada`. El backend lo expone en el DTO de cliente y filtra `GET /clientes`. No es editable en el alta ni en el `PATCH`.
 8. **Hecho.** `ActualizarCanalDeItemSchema` (corregir el canal de un ítem), `PropagarCanalDeRequisitoSchema` (pedido de la propagación) y `ResultadoPropagarCanalSchema` (su respuesta). Todos usan el enum `CanalEntrega` del cliente. `ListarRendicionesQuerySchema` suma `estado` y `requisitoId`.

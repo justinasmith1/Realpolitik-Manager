@@ -191,8 +191,8 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
     await registrarCambioDeEstado(abierta.id, 'COMPLETA');
 
     const anulacion = await request(app)
-      .patch(`/rendiciones/${abierta.id}/estado`)
-      .send({ estado: 'ANULADA' });
+      .patch(`/rendiciones/${abierta.id}/vigencia`)
+      .send({ vigencia: 'ANULADA' });
 
     expect(anulacion.status).toBe(200);
     expect(anulacion.body).toMatchObject({ vigencia: 'ANULADA', estado: 'COMPLETA' });

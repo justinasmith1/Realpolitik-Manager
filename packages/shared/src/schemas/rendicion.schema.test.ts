@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Emisor } from './cliente.schema.js';
 import {
-  ActualizarEstadoRendicionSchema,
+  ActualizarVigenciaRendicionSchema,
   CreateRendicionSchema,
   ItemChecklistSchema,
   MENSAJE_NUMERO_FACTURA_FORMATO,
@@ -271,21 +271,29 @@ describe('CreateRendicionSchema', () => {
   });
 });
 
-describe('ActualizarEstadoRendicionSchema', () => {
+describe('ActualizarVigenciaRendicionSchema', () => {
   it("acepta solo 'ANULADA'", () => {
-    expect(ActualizarEstadoRendicionSchema.parse({ estado: 'ANULADA' })).toEqual({
-      estado: 'ANULADA',
+    expect(ActualizarVigenciaRendicionSchema.parse({ vigencia: 'ANULADA' })).toEqual({
+      vigencia: 'ANULADA',
     });
   });
 
-  it.each([{ estado: 'ACTIVA' }, { estado: 'anulada' }, { estado: 'OTRO' }, { estado: null }, {}])(
+  it.each([
+    { vigencia: 'ACTIVA' },
+    { vigencia: 'anulada' },
+    { vigencia: 'OTRO' },
+    { vigencia: null },
+    {},
+    // El nombre viejo del campo ya no se acepta.
+    { estado: 'ANULADA' },
+  ])(
     'rechaza %j con un mensaje en español',
     (cuerpo) => {
-      const e = errores(ActualizarEstadoRendicionSchema.safeParse(cuerpo));
+      const e = errores(ActualizarVigenciaRendicionSchema.safeParse(cuerpo));
       expect(e).toEqual([
         {
-          path: ['estado'],
-          message: 'El estado solo puede ser ANULADA: una rendición anulada no se reactiva.',
+          path: ['vigencia'],
+          message: 'La vigencia solo puede ser ANULADA: una rendición anulada no se reactiva.',
         },
       ]);
     },

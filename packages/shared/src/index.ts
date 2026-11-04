@@ -133,7 +133,7 @@ export {
   CreateRendicionSchema,
   AbrirRendicionFormSchema,
   MENSAJE_EMISOR_OBLIGATORIO,
-  ActualizarEstadoRendicionSchema,
+  ActualizarVigenciaRendicionSchema,
   ActualizarRendicionSchema,
   MENSAJE_ACTUALIZAR_OC_VACIO,
   MENSAJE_MONTO_OC,
@@ -156,7 +156,7 @@ export {
 export type {
   CreateRendicionDto,
   AbrirRendicionFormDto,
-  ActualizarEstadoRendicionDto,
+  ActualizarVigenciaRendicionDto,
   ActualizarRendicionDto,
   UltimaOc,
   VigenciaRendicion as VigenciaRendicionType,

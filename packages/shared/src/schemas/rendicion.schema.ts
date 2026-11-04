@@ -169,18 +169,19 @@ export const AbrirRendicionFormSchema = CamposCreateRendicion.extend({
 export type AbrirRendicionFormDto = z.infer<typeof AbrirRendicionFormSchema>;
 
 /**
- * Cuerpo de `PATCH /rendiciones/:id/estado` (HU2.5): solo `'ANULADA'`. La anulación no es
- * reversible, así que `'ACTIVA'` es un error, igual que cualquier otro valor.
+ * Cuerpo de `PATCH /rendiciones/:id/vigencia` (HU2.5): solo `'ANULADA'`. La anulación no es
+ * reversible, así que `'ACTIVA'` es un error, igual que cualquier otro valor. Es la vigencia (la
+ * baja lógica), no el estado del proceso (HU3.1).
  */
-export const ActualizarEstadoRendicionSchema = z.object({
-  estado: z.literal('ANULADA', {
+export const ActualizarVigenciaRendicionSchema = z.object({
+  vigencia: z.literal('ANULADA', {
     errorMap: () => ({
-      message: 'El estado solo puede ser ANULADA: una rendición anulada no se reactiva.',
+      message: 'La vigencia solo puede ser ANULADA: una rendición anulada no se reactiva.',
     }),
   }),
 });
 
-export type ActualizarEstadoRendicionDto = z.infer<typeof ActualizarEstadoRendicionSchema>;
+export type ActualizarVigenciaRendicionDto = z.infer<typeof ActualizarVigenciaRendicionSchema>;
 
 export const MENSAJE_ACTUALIZAR_OC_VACIO = 'Indicá al menos un dato de la OC para actualizar.';
 

@@ -132,8 +132,8 @@ const abrir = (body: object, id = CLIENTE) =>
 const listar = (query = '', id = CLIENTE) =>
   request(app).get(`/clientes/${id}/rendiciones${query}`);
 const obtener = (id = RENDICION) => request(app).get(`/rendiciones/${id}`);
-const anular = (body: object = { estado: 'ANULADA' }, id = RENDICION) =>
-  request(app).patch(`/rendiciones/${id}/estado`).send(body);
+const anular = (body: object = { vigencia: 'ANULADA' }, id = RENDICION) =>
+  request(app).patch(`/rendiciones/${id}/vigencia`).send(body);
 
 interface CuerpoDeError {
   error: { code: string; details: unknown };
@@ -791,7 +791,7 @@ describe('GET /rendiciones/:id', () => {
   });
 });
 
-describe('PATCH /rendiciones/:id/estado', () => {
+describe('PATCH /rendiciones/:id/vigencia', () => {
   beforeEach(() => {
     prismaMock.rendicion.findFirst.mockResolvedValue(filaRendicion());
     prismaMock.rendicion.update.mockImplementation(
@@ -857,7 +857,7 @@ describe('PATCH /rendiciones/:id/estado', () => {
     expect(prismaMock.rendicion.update).not.toHaveBeenCalled();
   });
 
-  it.each([{ estado: 'ACTIVA' }, {}, { estado: 'OTRO' }])(
+  it.each([{ vigencia: 'ACTIVA' }, {}, { vigencia: 'OTRO' }, { estado: 'ANULADA' }])(
     '400 con %j: no es reversible',
     async (body) => {
       const res = await anular(body);
@@ -866,4 +866,13 @@ describe('PATCH /rendiciones/:id/estado', () => {
       expect(prismaMock.rendicion.update).not.toHaveBeenCalled();
     },
   );
+
+  it('la ruta vieja PATCH /rendiciones/:id/estado ya no existe (404), sin escribir', async () => {
+    const res = await request(app)
+      .patch(`/rendiciones/${RENDICION}/estado`)
+      .send({ estado: 'ANULADA' });
+
+    expect(res.status).toBe(404);
+    expect(prismaMock.rendicion.update).not.toHaveBeenCalled();
+  });
 });

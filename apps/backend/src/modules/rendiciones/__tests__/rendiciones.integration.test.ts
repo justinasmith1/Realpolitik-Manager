@@ -143,7 +143,7 @@ const abrir = (
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...periodo, numeroFactura, ...(emisor === undefined ? {} : { emisor }) });
 const anular = (id: string) =>
-  request(app).patch(`/rendiciones/${id}/estado`).send({ estado: 'ANULADA' });
+  request(app).patch(`/rendiciones/${id}/vigencia`).send({ vigencia: 'ANULADA' });
 
 interface ItemJson {
   nombreTipoDocumento: string;

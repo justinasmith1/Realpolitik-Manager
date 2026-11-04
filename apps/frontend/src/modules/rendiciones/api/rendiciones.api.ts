@@ -96,11 +96,11 @@ export async function abrirRendicion(
   return RendicionDetalleSchema.parse(await response.json());
 }
 
-/** `PATCH /rendiciones/:id/estado`: la anula. No es reversible. */
+/** `PATCH /rendiciones/:id/vigencia`: la anula. No es reversible. */
 export async function anularRendicion(rendicionId: string): Promise<Rendicion> {
   const response = await http(
-    `/rendiciones/${encodeURIComponent(rendicionId)}/estado`,
-    pedidoJson('PATCH', { estado: 'ANULADA' }),
+    `/rendiciones/${encodeURIComponent(rendicionId)}/vigencia`,
+    pedidoJson('PATCH', { vigencia: 'ANULADA' }),
   );
   return RendicionSchema.parse(await response.json());
 }

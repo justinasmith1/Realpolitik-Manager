@@ -150,9 +150,9 @@ describe('RendicionCard', () => {
 
     await waitFor(() => expect(onAnulada).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`https://api.example/rendiciones/${RENDICION_ID}/estado`);
+    expect(url).toBe(`https://api.example/rendiciones/${RENDICION_ID}/vigencia`);
     expect(init?.method).toBe('PATCH');
-    expect(JSON.parse(init?.body as string)).toEqual({ estado: 'ANULADA' });
+    expect(JSON.parse(init?.body as string)).toEqual({ vigencia: 'ANULADA' });
   });
 
   it('cancelar no envía nada ni navega', async () => {

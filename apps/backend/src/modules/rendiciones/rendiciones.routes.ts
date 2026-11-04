@@ -1,6 +1,6 @@
 import {
   ActualizarCanalDeItemSchema,
-  ActualizarEstadoRendicionSchema,
+  ActualizarVigenciaRendicionSchema,
   ActualizarRendicionSchema,
   CreateRendicionSchema,
   ListarRendicionesQuerySchema,
@@ -70,8 +70,8 @@ rendicionesRouter.patch(
   actualizarRendicionController,
 );
 rendicionesRouter.patch(
-  '/:id/estado',
-  validate({ params: IdParamsSchema, body: ActualizarEstadoRendicionSchema }),
+  '/:id/vigencia',
+  validate({ params: IdParamsSchema, body: ActualizarVigenciaRendicionSchema }),
   anularRendicionController,
 );
 
