@@ -1,6 +1,16 @@
-import type { EmisorType, MotivoNoEnviableType } from '@realpolitik/shared';
+import type {
+  ClienteSectorType,
+  ClienteSubtipoPublicoType,
+  EmisorType,
+  MotivoNoEnviableType,
+} from '@realpolitik/shared';
 
-import { etiquetaDeMes, etiquetasEmisor } from '@/modules/clientes/clientes.etiquetas';
+import {
+  etiquetaDeMes,
+  etiquetasEmisor,
+  etiquetasSector,
+  etiquetasSubtipo,
+} from '@/modules/clientes/clientes.etiquetas';
 
 /** Período de una rendición como se lee en pantalla: "Octubre 2026". */
 export function etiquetaDePeriodo({ anio, mes }: { anio: number; mes: number }): string {
@@ -127,3 +137,60 @@ const formatoDeFechaCorta = new Intl.DateTimeFormat('es-AR', {
 
 /** Una fecha como la lee la operadora, dd/mm/aaaa en horario de Buenos Aires: "03/11/2026". */
 export const fechaCorta = (fecha: Date): string => formatoDeFechaCorta.format(fecha);
+
+const formatoDeDiaYMes = new Intl.DateTimeFormat('es-AR', {
+  day: 'numeric',
+  month: 'numeric',
+  timeZone: 'America/Argentina/Buenos_Aires',
+});
+
+/**
+ * Día y mes, dd/mm en horario de Buenos Aires: "03/11". Se arma con las partes porque, sin el año,
+ * el formato de es-AR no completa con ceros (daría "3/11").
+ */
+export function diaYMes(fecha: Date): string {
+  const partes = formatoDeDiaYMes.formatToParts(fecha);
+  const parte = (tipo: 'day' | 'month') =>
+    (partes.find((p) => p.type === tipo)?.value ?? '').padStart(2, '0');
+  return `${parte('day')}/${parte('month')}`;
+}
+
+/** "3 pendientes" / "1 pendiente", o "Sin pendientes" si ya están todos los ítems (pantalla Rendiciones). */
+export const textoDePendientes = (faltantes: number): string =>
+  faltantes === 0 ? 'Sin pendientes' : faltantes === 1 ? '1 pendiente' : `${faltantes} pendientes`;
+
+/**
+ * El tipo de cliente en una línea de texto (pantalla Rendiciones): el subtipo si es público y lo
+ * tiene ("Municipio"), si no el sector ("Público", "Privado").
+ */
+export const tipoDeCliente = ({
+  sector,
+  subtipo,
+}: {
+  sector: ClienteSectorType;
+  subtipo: ClienteSubtipoPublicoType | null;
+}): string =>
+  sector === 'PUBLICO' && subtipo !== null ? etiquetasSubtipo[subtipo] : etiquetasSector[sector];
+
+const formatoDeDiaDeLaSemana = new Intl.DateTimeFormat('es-AR', {
+  weekday: 'long',
+  timeZone: 'America/Argentina/Buenos_Aires',
+});
+
+/** "Hoy es miércoles 04/11", en horario de Buenos Aires (encabezado de la pantalla Rendiciones). */
+export const textoDeHoy = (hoy: Date): string =>
+  `Hoy es ${formatoDeDiaDeLaSemana.format(hoy)} ${diaYMes(hoy)}`;
+
+/**
+ * "3 rendiciones en noviembre" / "1 rendición en noviembre". Si el mes es de otro año que el actual,
+ * lo aclara: "en diciembre de 2025".
+ */
+export function cantidadDeRendicionesEnElMes(
+  cantidad: number,
+  { anio, mes }: { anio: number; mes: number },
+  anioActual: number,
+): string {
+  const rendiciones = cantidad === 1 ? '1 rendición' : `${cantidad} rendiciones`;
+  const nombre = etiquetaDeMes(mes).toLowerCase();
+  return `${rendiciones} en ${nombre}${anio === anioActual ? '' : ` de ${anio}`}`;
+}

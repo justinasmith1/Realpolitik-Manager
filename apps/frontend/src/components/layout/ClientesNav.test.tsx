@@ -149,7 +149,7 @@ describe('Ruta /documentos en el shell', () => {
   });
 
   it.each(['/documentos/archivos', '/documentos/tipos'])(
-    'en %s el Sidebar ofrece Clientes y Documentos, y marca solo Documentos',
+    'en %s el Sidebar ofrece Rendiciones, Clientes y Documentos, y marca solo Documentos',
     (path) => {
       renderRoute(path);
 
@@ -158,7 +158,7 @@ describe('Ruta /documentos en el shell', () => {
         within(nav)
           .getAllByRole('link')
           .map((link) => link.textContent),
-      ).toEqual(['Clientes', 'Documentos']);
+      ).toEqual(['Rendiciones', 'Clientes', 'Documentos']);
       // Documentos abre el repositorio, y queda marcado también en la pestaña de tipos.
       expect(enlaceDelSidebar('Documentos')).toHaveAttribute('href', '/documentos/archivos');
       expect(enlaceDelSidebar('Documentos')).toHaveAttribute('aria-current', 'page');
@@ -238,10 +238,12 @@ describe('Ruta /documentos en el shell', () => {
     },
   );
 
-  it('/ sigue redirigiendo a /clientes', async () => {
+  it('/ redirige a /rendiciones (HU3.2)', async () => {
     const { router } = renderRoute('/');
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Clientes' })).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/clientes');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Rendiciones' }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/rendiciones');
   });
 });

@@ -8,6 +8,7 @@ import { MatricesPage } from '@/modules/clientes/pages/MatricesPage';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
 import { ArchivosPage } from '@/modules/documentos/pages/ArchivosPage';
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
+import { RendicionesPage } from '@/modules/rendiciones/pages/RendicionesPage';
 import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
 
 export const routes: RouteObject[] = [
@@ -15,7 +16,13 @@ export const routes: RouteObject[] = [
     path: '/',
     element: <AppLayout />,
     children: [
-      { index: true, loader: () => redirect('/clientes') },
+      // Al entrar al sistema se abre la pantalla Rendiciones del mes actual (HU3.2).
+      { index: true, loader: () => redirect('/rendiciones') },
+      {
+        path: 'rendiciones',
+        element: <RendicionesPage />,
+        handle: { title: 'Rendiciones' } satisfies AppRouteHandle,
+      },
       {
         path: 'clientes',
         element: <ClientesPage />,

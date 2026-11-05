@@ -5,6 +5,7 @@ import {
   ClienteEstado,
   MotivoNoEnviable,
   PreparacionEnvioSchema,
+  RendicionDelMesSchema,
   RendicionDetalleSchema,
   RendicionResumenSchema,
   RendicionSchema,
@@ -18,6 +19,7 @@ import {
   type MotivoNoEnviableType,
   type PreparacionEnvio,
   type Rendicion,
+  type RendicionDelMes,
   type RendicionDetalle,
   type RendicionResumen,
   type ResultadoPropagarCanal,
@@ -74,6 +76,23 @@ export async function listarRendiciones(
     signal ? { signal } : {},
   );
   return RendicionResumenSchema.array().parse(await response.json());
+}
+
+/**
+ * Las rendiciones activas de todos los clientes en un mes (pantalla Rendiciones, HU3.2), ya en el
+ * orden de la pantalla. La key no cuelga de ningún cliente: son de todos.
+ */
+export const rendicionesDelMesQueryKey = (periodo: { anio: number; mes: number }) =>
+  ['rendiciones', 'mes', periodo.anio, periodo.mes] as const;
+
+/** `GET /rendiciones?anio=&mes=`. */
+export async function listarRendicionesDelMes(
+  periodo: { anio: number; mes: number },
+  signal?: AbortSignal,
+): Promise<RendicionDelMes[]> {
+  const query = new URLSearchParams({ anio: String(periodo.anio), mes: String(periodo.mes) });
+  const response = await http(`/rendiciones?${query.toString()}`, signal ? { signal } : {});
+  return RendicionDelMesSchema.array().parse(await response.json());
 }
 
 /**
