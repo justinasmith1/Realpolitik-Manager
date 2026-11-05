@@ -3,6 +3,7 @@ import {
   ActualizarVigenciaRendicionSchema,
   ActualizarRendicionSchema,
   CreateRendicionSchema,
+  ListarRendicionesDelMesQuerySchema,
   ListarRendicionesQuerySchema,
   PrepararEnvioSchema,
   PropagarCanalDeRequisitoSchema,
@@ -20,6 +21,7 @@ import {
   anularRendicionController,
   corregirCanalDeItemController,
   listarRendicionesController,
+  listarRendicionesDelMesController,
   obtenerRendicionController,
   obtenerUltimaOcController,
   prepararEnvioController,
@@ -62,6 +64,12 @@ rendicionesDeClienteRouter.post(
 /** Una rendición por su id (contrato 4.5 y 4.6). Se monta en `/rendiciones`. */
 export const rendicionesRouter = Router();
 
+// Las rendiciones activas de un mes, de todos los clientes: la pantalla Rendiciones (HU3.2).
+rendicionesRouter.get(
+  '/',
+  validate({ query: ListarRendicionesDelMesQuerySchema }),
+  listarRendicionesDelMesController,
+);
 rendicionesRouter.get('/:id', validate({ params: IdParamsSchema }), obtenerRendicionController);
 // Editar los datos de la OC (HU2.11).
 rendicionesRouter.patch(

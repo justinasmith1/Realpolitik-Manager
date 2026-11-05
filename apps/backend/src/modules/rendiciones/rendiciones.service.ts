@@ -15,9 +15,11 @@ import {
   type EstadoRendicionType,
   type FiltroVigenciaRendiciones,
   type ItemChecklistNuevo,
+  type ListarRendicionesDelMesQuery,
   type ListarRendicionesQuery,
   type PreparacionEnvio,
   type Rendicion,
+  type RendicionDelMes,
   type RendicionDetalle,
   type RendicionResumen,
   type ResultadoPropagarCanal,
@@ -30,9 +32,11 @@ import { prisma } from '../../lib/prisma';
 import {
   APLICACION_VIGENTE,
   HISTORIAL_EN_ORDEN,
+  SELECT_DEL_MES,
   toItemChecklistDto,
   toRendicionDetalleDto,
   toRendicionDto,
+  toRendicionesDelMesDto,
   toRendicionResumenDto,
   type RendicionConItems,
   type ResumenDeAvance,
@@ -351,6 +355,26 @@ export async function abrirRendicion(
   }
 }
 
+/**
+ * El avance del checklist de cada rendición, con un solo conteo para todas: cuántos ítems tiene y
+ * cuántos están completados. Una rendición sin ítems no aparece en el mapa.
+ */
+async function avancesDe(rendicionIds: string[]): Promise<Map<string, ResumenDeAvance>> {
+  const conteos = await prisma.itemChecklist.groupBy({
+    by: ['rendicionId', 'completado'],
+    where: { rendicionId: { in: rendicionIds } },
+    _count: { _all: true },
+  });
+  const resumenes = new Map<string, ResumenDeAvance>();
+  for (const { rendicionId, completado, _count } of conteos) {
+    const resumen = resumenes.get(rendicionId) ?? { totalItems: 0, completados: 0 };
+    resumen.totalItems += _count._all;
+    if (completado) resumen.completados += _count._all;
+    resumenes.set(rendicionId, resumen);
+  }
+  return resumenes;
+}
+
 /** Cada filtro de vigencia como baja lógica: anulada es `isDeleted`. `TODAS` no filtra. */
 const BAJA_SEGUN_VIGENCIA: Record<FiltroVigenciaRendiciones, boolean | undefined> = {
   ACTIVA: false,
@@ -401,23 +425,30 @@ export async function listarRendiciones(
     return [];
   }
 
-  // Un solo conteo para todas: cuántos ítems hay de cada rendición, separados por completado.
-  const conteos = await prisma.itemChecklist.groupBy({
-    by: ['rendicionId', 'completado'],
-    where: { rendicionId: { in: filas.map((fila) => fila.id) } },
-    _count: { _all: true },
-  });
-  const resumenes = new Map<string, ResumenDeAvance>();
-  for (const { rendicionId, completado, _count } of conteos) {
-    const resumen = resumenes.get(rendicionId) ?? { totalItems: 0, completados: 0 };
-    resumen.totalItems += _count._all;
-    if (completado) resumen.completados += _count._all;
-    resumenes.set(rendicionId, resumen);
-  }
-
+  const resumenes = await avancesDe(filas.map((fila) => fila.id));
   return filas.map((fila) =>
     toRendicionResumenDto(fila, resumenes.get(fila.id) ?? { totalItems: 0, completados: 0 }),
   );
+}
+
+/**
+ * Las rendiciones activas de un período, de todos los clientes (pantalla Rendiciones, HU3.2), con
+ * su cliente, su avance y la fecha de su último paso, en el orden de la pantalla. Las anuladas no
+ * aparecen, ni las de un cliente borrado. Dos consultas: las rendiciones con su cliente y su última
+ * entrada de historial, y un solo conteo de ítems para todas.
+ */
+export async function listarRendicionesDelMes({
+  anio,
+  mes,
+}: ListarRendicionesDelMesQuery): Promise<RendicionDelMes[]> {
+  const filas = await prisma.rendicion.findMany({
+    where: { anio, mes, isDeleted: false, cliente: { isDeleted: false } },
+    select: SELECT_DEL_MES,
+  });
+  if (filas.length === 0) {
+    return [];
+  }
+  return toRendicionesDelMesDto(filas, await avancesDe(filas.map((fila) => fila.id)));
 }
 
 /**
