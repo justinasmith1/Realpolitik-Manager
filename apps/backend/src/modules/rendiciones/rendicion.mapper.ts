@@ -4,12 +4,15 @@ import type {
   Rendicion as RendicionRow,
 } from '@prisma/client';
 import {
+  ESTADOS_CON_FECHA,
   ItemChecklistSchema,
+  RendicionDelMesSchema,
   RendicionDetalleSchema,
   RendicionResumenSchema,
   RendicionSchema,
   type ItemChecklist,
   type Rendicion,
+  type RendicionDelMes,
   type RendicionDetalle,
   type RendicionResumen,
 } from '@realpolitik/shared';
@@ -134,4 +137,84 @@ export function toRendicionResumenDto(
   resumen: ResumenDeAvance,
 ): RendicionResumen {
   return RendicionResumenSchema.parse({ ...camposDeRendicion(row), resumen });
+}
+
+// ─── Pantalla Rendiciones (HU3.2) ─────────────────────────────────────────────
+
+/**
+ * Lo que lee el listado del mes de cada rendición: su cliente (nombre corto y tipología) y la
+ * última entrada de su historial, la que la llevó al estado actual.
+ */
+export const SELECT_DEL_MES = {
+  id: true,
+  clienteId: true,
+  numeroFactura: true,
+  estado: true,
+  cliente: { select: { denominacion: true, sector: true, subtipo: true } },
+  historial: {
+    orderBy: [{ fecha: 'desc' }, { createdAt: 'desc' }],
+    take: 1,
+    select: { estadoNuevo: true, fecha: true },
+  },
+} satisfies Prisma.RendicionSelect;
+
+type RendicionDelMesRow = Prisma.RendicionGetPayload<{ select: typeof SELECT_DEL_MES }>;
+
+const tieneFecha = (estado: string): estado is (typeof ESTADOS_CON_FECHA)[number] =>
+  (ESTADOS_CON_FECHA as readonly string[]).includes(estado);
+
+/** Una fila de la pantalla Rendiciones. */
+function toRendicionDelMesDto(row: RendicionDelMesRow, avance: ResumenDeAvance): RendicionDelMes {
+  const [ultima] = row.historial;
+  // La fecha es la de la entrada que la llevó al estado actual: la última, si coincide.
+  const ultimoPaso =
+    tieneFecha(row.estado) && ultima !== undefined && ultima.estadoNuevo === row.estado
+      ? { estado: row.estado, fecha: ultima.fecha }
+      : null;
+  return RendicionDelMesSchema.parse({
+    id: row.id,
+    clienteId: row.clienteId,
+    cliente: row.cliente,
+    numeroFactura: row.numeroFactura,
+    estado: row.estado,
+    avance: {
+      reunidos: avance.completados,
+      total: avance.totalItems,
+      faltantes: avance.totalItems - avance.completados,
+    },
+    ultimoPaso,
+  });
+}
+
+/** Porcentaje de ítems reunidos. Sin ítems, 0. */
+const porcentaje = ({ avance }: RendicionDelMes) =>
+  avance.total === 0 ? 0 : avance.reunidos / avance.total;
+
+/**
+ * El orden de la pantalla: primero las Rechazadas (hay que corregirlas), después el resto, de
+ * menor a mayor avance; a igual avance, por nombre del cliente. La factura y el id solo
+ * desempatan para que el orden sea siempre el mismo.
+ */
+export function compararRendicionesDelMes(a: RendicionDelMes, b: RendicionDelMes): number {
+  const rechazada = Number(b.estado === 'RECHAZADA') - Number(a.estado === 'RECHAZADA');
+  if (rechazada !== 0) return rechazada;
+  const avance = porcentaje(a) - porcentaje(b);
+  if (avance !== 0) return avance;
+  return (
+    a.cliente.denominacion.localeCompare(b.cliente.denominacion, 'es', { sensitivity: 'base' }) ||
+    a.numeroFactura.localeCompare(b.numeroFactura) ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+/** Las filas de la pantalla Rendiciones, ya ordenadas. */
+export function toRendicionesDelMesDto(
+  rows: readonly RendicionDelMesRow[],
+  avances: ReadonlyMap<string, ResumenDeAvance>,
+): RendicionDelMes[] {
+  return rows
+    .map((row) =>
+      toRendicionDelMesDto(row, avances.get(row.id) ?? { totalItems: 0, completados: 0 }),
+    )
+    .sort(compararRendicionesDelMes);
 }

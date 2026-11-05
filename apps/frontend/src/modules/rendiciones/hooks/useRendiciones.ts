@@ -14,10 +14,12 @@ import {
   anularRendicion,
   corregirCanalDeItem,
   listarRendiciones,
+  listarRendicionesDelMes,
   obtenerRendicion,
   obtenerUltimaOc,
   prepararEnvio,
   propagarCanalDeRequisito,
+  rendicionesDelMesQueryKey,
   rendicionesQueryKey,
 } from '@/modules/rendiciones/api/rendiciones.api';
 
@@ -39,6 +41,14 @@ export function listaDeRendiciones(clienteId: string, filtros: ListarRendiciones
     queryKey: [...rendicionesQueryKey(clienteId), 'lista', filtros],
     queryFn: ({ signal }) => listarRendiciones(clienteId, filtros, signal),
     enabled: esIdDeRuta(clienteId),
+  });
+}
+
+/** Las rendiciones activas de un mes, de todos los clientes (pantalla Rendiciones, HU3.2). */
+export function useRendicionesDelMes(periodo: { anio: number; mes: number }) {
+  return useQuery({
+    queryKey: rendicionesDelMesQueryKey(periodo),
+    queryFn: ({ signal }) => listarRendicionesDelMes(periodo, signal),
   });
 }
 

@@ -72,24 +72,26 @@
   --subtipo-sindical-soft: #eff3e0;
   --subtipo-sindical-border: #cdd8a6;
 
-  /* Estado de la rendición (HU3.1, badge `EstadoRendicionBadge`). Colores propios, los mismos en
-     todo el sistema. El rojo no se usa: queda para la marca de Atrasada (HU3.4). Contraste del
-     texto sobre su fondo, de 5.4:1 a 6.2:1 (AA para texto chico). */
-  --estado-en-curso: #1e57b0;
-  --estado-en-curso-soft: #e8f0fc;
-  --estado-en-curso-border: #bdd0f1;
-  --estado-completa: #3b6a1e;
-  --estado-completa-soft: #eff7e7;
-  --estado-completa-border: #cae2b4;
+  /* Estado de la rendición (HU3.1, badge `EstadoRendicionBadge`; pantalla Rendiciones, HU3.2).
+     Colores propios, los mismos en todo el sistema: En curso ámbar, Completa azul, Enviada violeta,
+     Aprobada verde y Rechazada magenta. El rojo no se usa: queda para la marca de Atrasada (HU3.4).
+     Contraste del texto: de 5.6:1 a 6.8:1 sobre su fondo y de 6.3:1 a 7.9:1 sobre blanco (AA para
+     texto chico). */
+  --estado-en-curso: #9a4a00;
+  --estado-en-curso-soft: #fdf1e3;
+  --estado-en-curso-border: #f2cfa6;
+  --estado-completa: #1e57b0;
+  --estado-completa-soft: #e8f0fc;
+  --estado-completa-border: #bdd0f1;
   --estado-enviada: #7438b0;
   --estado-enviada-soft: #f3ecfb;
   --estado-enviada-border: #d9c7f1;
   --estado-aprobada: #0e6a3b;
   --estado-aprobada-soft: #dcf1e5;
   --estado-aprobada-border: #a6d8bb;
-  --estado-rechazada: #a3470d;
-  --estado-rechazada-soft: #fdefe4;
-  --estado-rechazada-border: #f2cbaf;
+  --estado-rechazada: #9c1458;
+  --estado-rechazada-soft: #fbe9f2;
+  --estado-rechazada-border: #efc0d8;
 
   /* Sidebar: superficie oscura propia del shell (no es un modo oscuro global) */
   --sidebar: #161314;

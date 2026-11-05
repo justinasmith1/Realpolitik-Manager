@@ -1,3 +1,5 @@
+import { cn } from 'cn';
+
 // Palabras que no aportan inicial ("Municipalidad de La Plata" → M + P).
 const conectores = new Set(['de', 'del', 'la', 'las', 'los', 'el', 'y']);
 
@@ -28,20 +30,25 @@ function iniciales(nombre: string): string {
 
 interface ClienteMonogramProps {
   nombre: string;
+  /** Para otra forma o color, como el círculo teñido por estado de la pantalla Rendiciones. */
+  className?: string;
 }
 
 /**
  * Monograma de un cliente, derivado de su nombre. Es decorativo: el nombre completo
  * siempre se muestra al lado, así que se oculta a las tecnologías de asistencia para no
  * duplicar la lectura. Es neutral (no cambia de color por cliente) y no es la marca de
- * Realpolitik Manager.
+ * Realpolitik Manager. Con `className` se le puede dar otra forma o color.
  */
-export function ClienteMonogram({ nombre }: ClienteMonogramProps) {
+export function ClienteMonogram({ nombre, className }: ClienteMonogramProps) {
   return (
     <span
       aria-hidden="true"
       // El fondo es el `mono` de la variante neutral del handoff (#E4E3DE, igual a --border).
-      className="inline-flex size-7.5 flex-none items-center justify-center rounded-control bg-border text-[11px] font-semibold tracking-[0.02em] text-content-secondary"
+      className={cn(
+        'inline-flex size-7.5 flex-none items-center justify-center rounded-control bg-border text-[11px] font-semibold tracking-[0.02em] text-content-secondary',
+        className,
+      )}
     >
       {iniciales(nombre)}
     </span>

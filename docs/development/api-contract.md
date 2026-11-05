@@ -322,6 +322,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | HU2.10      | `PUT /clientes/:id/observaciones`                           | Guarda o borra las observaciones internas                               | 200         |
 | Rendiciones | `POST /clientes/:id/rendiciones`                            | Abre una rendición y genera su checklist                                | 201         |
 | Rendiciones | `GET /clientes/:id/rendiciones`                             | Lista las rendiciones del cliente (por defecto, las activas)            | 200         |
+| HU3.2       | `GET /rendiciones?anio=&mes=`                               | Lista las rendiciones activas del mes, de todos los clientes            | 200         |
 | Rendiciones | `GET /rendiciones/:id`                                      | Trae una rendición con su checklist                                     | 200         |
 | HU2.11      | `PATCH /rendiciones/:id`                                    | Edita la orden de compra de una rendición activa                        | 200         |
 | HU2.11      | `GET /clientes/:id/ultima-oc`                               | Trae la última orden de compra del cliente, como sugerencia             | 200         |
@@ -713,6 +714,39 @@ Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y e
 
 - **Errores:** `400 VALIDATION_ERROR` (id que no es uuid; `anio` o `mes` fuera de rango o no enteros; `vigencia` que no es `ACTIVA`, `ANULADA` ni `TODAS`, o repetida; `estado` que no es uno de los cinco estados (en mayúsculas), o repetido; `requisitoId` que no es uuid, o repetido), `404 NOT_FOUND` (el cliente no existe o está borrado). Un `requisitoId` de otro cliente no es un error: la lista sale vacía.
 
+#### `GET /rendiciones?anio=&mes=`
+
+La pantalla Rendiciones (HU3.2): todas las rendiciones **activas** de un período, de todos los clientes, para ver de un vistazo qué falta. Ver [ADR-0005](../adr/0005-estados-de-la-rendicion.md), punto 6.
+
+| Parámetro | Obligatorio | Descripción           |
+| --------- | ----------- | --------------------- |
+| `anio`    | Sí          | Entero de 2020 a 2100 |
+| `mes`     | Sí          | Entero de 1 a 12      |
+
+- **Respuesta 200:** una fila por rendición (`RendicionDelMesSchema` de `@realpolitik/shared`). Un cliente con dos rendiciones en el mes tiene dos filas. Lista vacía si no hay ninguna. Las anuladas no aparecen, ni las de un cliente borrado.
+
+```json
+[
+  {
+    "id": "e1f2a3b4-c5d6-4789-8abc-def012345678",
+    "clienteId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
+    "cliente": { "denominacion": "Muni Ejemplo", "sector": "PUBLICO", "subtipo": "MUNICIPAL" },
+    "numeroFactura": "B 00002-00001482",
+    "estado": "ENVIADA",
+    "avance": { "reunidos": 4, "total": 4, "faltantes": 0 },
+    "ultimoPaso": { "estado": "ENVIADA", "fecha": "2026-11-03T15:00:00.000Z" }
+  }
+]
+```
+
+- **`cliente`:** el nombre corto (`denominacion`) y la tipología: `sector` y, si es público, `subtipo` (`null` en uno privado).
+- **`avance`:** ítems reunidos, el total y los que faltan (`total - reunidos`).
+- **`ultimoPaso`:** en una rendición `ENVIADA`, `APROBADA` o `RECHAZADA`, ese estado y la `fecha` de la entrada del historial que la llevó ahí. `null` en las `EN_CURSO` y `COMPLETA`.
+- **Orden:** primero las `RECHAZADA`; después el resto, de menor a mayor avance (porcentaje de ítems reunidos; sin ítems cuenta como 0 %); a igual avance, por el nombre corto del cliente. La factura desempata.
+- **Consultas:** dos, sin importar cuántas filas haya: las rendiciones con su cliente y su última entrada de historial, y un solo conteo de ítems para todas.
+- **Errores:** `400 VALIDATION_ERROR` (falta `anio` o `mes`, fuera de rango, no enteros o repetidos).
+- **Cómo lo usa el front:** es la pantalla de entrada (`/rendiciones`), con el mes en la URL (`?anio=2026&mes=11`); sin él, el mes actual en horario de Buenos Aires. Cada fila abre el detalle de su rendición.
+
 #### `GET /rendiciones/:id`
 
 - **Respuesta 200:** la rendición con su checklist (`items`), su `estado` y su `historial` de estados (HU3.1), su `emisor` (`null` en las anteriores a HU2.9) y los datos de su orden de compra (`null` los que no se cargaron), también si está anulada (`"vigencia": "ANULADA"` y `anuladaEn`): el detalle se conserva como historial, en solo lectura.
@@ -867,6 +901,7 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 9. **Hecho (HU2.10).** `ObservacionesClienteSchema` (cuerpo de `PUT /clientes/:id/observaciones`, admite saltos de línea) y `ObservacionesClienteLecturaSchema` (respuesta del `GET`, que no rechaza caracteres de control ya guardados), con el tope `OBSERVACIONES_CLIENTE_MAX` (1000).
 10. **Hecho (HU2.11).** `NumeroOcSchema` (texto recortado, de 1 a `NUMERO_OC_MAX` = 100 caracteres) y `MontoOcSchema` (de 0 a `MONTO_OC_MAX` = 999999999999.99, hasta 2 decimales). `CreateRendicionSchema` suma los tres datos de la OC, opcionales; `ActualizarRendicionSchema` es el cuerpo de `PATCH /rendiciones/:id` (cada campo opcional y anulable, al menos uno); `UltimaOcSchema` es la respuesta de `GET /clientes/:id/ultima-oc`. `RendicionSchema` suma `numeroOc`, `montoMensual` y `montoTotal`, `null` si no se cargaron (una clave ausente también es `null`).
 11. **Hecho (HU3.1).** `EstadoRendicion` (los cinco estados, con `ETIQUETAS_ESTADO_RENDICION` para pantalla) y `HistorialEstadoRendicionSchema` (`estadoAnterior`, `estadoNuevo`, `fecha`). `RendicionSchema` suma `estado` (también el resumen) y `RendicionDetalleSchema` suma `historial`. `ListarRendicionesQuerySchema` suma el filtro `estado`. El valor derivado de la baja lógica (`ACTIVA`/`ANULADA`) se llama `vigencia` (`VigenciaRendicion` y el filtro `FiltroVigenciaRendiciones`).
+12. **Hecho (HU3.2).** `ListarRendicionesDelMesQuerySchema` (`anio` y `mes`, obligatorios) y `RendicionDelMesSchema` (la fila de la pantalla Rendiciones), con `ESTADOS_CON_FECHA`.
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 

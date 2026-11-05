@@ -3,12 +3,14 @@ import type {
   ActualizarVigenciaRendicionSchema,
   ActualizarRendicionSchema,
   CreateRendicionSchema,
+  ListarRendicionesDelMesQuerySchema,
   ListarRendicionesQuerySchema,
   PreparacionEnvio,
   PrepararEnvioSchema,
   PropagarCanalDeRequisitoSchema,
   Rendicion,
   RendicionDetalle,
+  RendicionDelMes,
   RendicionResumen,
   ResultadoPropagarCanal,
   UltimaOc,
@@ -30,6 +32,7 @@ import {
   anularRendicion,
   corregirCanalDeItem,
   listarRendiciones,
+  listarRendicionesDelMes,
   obtenerRendicion,
   obtenerUltimaOc,
   prepararEnvio,
@@ -65,6 +68,18 @@ export async function listarRendicionesController(
 ): Promise<void> {
   const { params, query } = res.locals.validated;
   const rendiciones = await listarRendiciones(params.id, query);
+  res.status(200).json(rendiciones);
+}
+
+type ListarRendicionesDelMesLocals = ValidatedLocals<{
+  query: typeof ListarRendicionesDelMesQuerySchema;
+}>;
+
+export async function listarRendicionesDelMesController(
+  _req: Request,
+  res: Response<RendicionDelMes[], ListarRendicionesDelMesLocals>,
+): Promise<void> {
+  const rendiciones = await listarRendicionesDelMes(res.locals.validated.query);
   res.status(200).json(rendiciones);
 }
 

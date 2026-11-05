@@ -45,18 +45,21 @@ describe('AppLayout', () => {
     expect(screen.getByText('Realpolitik Manager')).toBeInTheDocument();
   });
 
-  it('ofrece Clientes y Documentos como destinos, y marca Clientes como página actual en /clientes', () => {
+  it('ofrece Rendiciones (primero), Clientes y Documentos, y marca Clientes como página actual en /clientes', () => {
     renderRoute('/clientes');
 
     const nav = screen.getByRole('navigation', { name: 'Principal' });
     const links = within(nav).getAllByRole('link');
-    expect(links).toHaveLength(2);
-    expect(links[0]).toHaveAccessibleName('Clientes');
-    expect(links[0]).toHaveAttribute('href', '/clientes');
-    expect(links[0]).toHaveAttribute('aria-current', 'page');
-    expect(links[1]).toHaveAccessibleName('Documentos');
-    expect(links[1]).toHaveAttribute('href', '/documentos/archivos');
-    expect(links[1]).not.toHaveAttribute('aria-current');
+    expect(links).toHaveLength(3);
+    expect(links[0]).toHaveAccessibleName('Rendiciones');
+    expect(links[0]).toHaveAttribute('href', '/rendiciones');
+    expect(links[0]).not.toHaveAttribute('aria-current');
+    expect(links[1]).toHaveAccessibleName('Clientes');
+    expect(links[1]).toHaveAttribute('href', '/clientes');
+    expect(links[1]).toHaveAttribute('aria-current', 'page');
+    expect(links[2]).toHaveAccessibleName('Documentos');
+    expect(links[2]).toHaveAttribute('href', '/documentos/archivos');
+    expect(links[2]).not.toHaveAttribute('aria-current');
   });
 
   it('en escritorio no repite el título: no hay Header y la página conserva su h1', () => {
@@ -116,7 +119,7 @@ describe('AppLayout', () => {
     const contraer = screen.getByRole('button', { name: 'Contraer barra lateral' });
     expect(contraer).toHaveFocus();
     await user.tab();
-    expect(enlaceDelSidebar('Clientes')).toHaveFocus();
+    expect(enlaceDelSidebar('Rendiciones')).toHaveFocus();
 
     await user.tab({ shift: true });
     await user.keyboard('{Enter}');

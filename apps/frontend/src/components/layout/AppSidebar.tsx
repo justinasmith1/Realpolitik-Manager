@@ -1,4 +1,10 @@
-import { FileTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, UsersIcon } from 'lucide-react';
+import {
+  ClipboardListIcon,
+  FileTextIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  UsersIcon,
+} from 'lucide-react';
 import type { ComponentType } from 'react';
 import { Link, useMatch } from 'react-router';
 
@@ -27,6 +33,8 @@ interface NavDestination {
 // Solo destinos que existen como ruta real. Documentos abre su repositorio, pero queda marcado
 // también en la pestaña de tipos: por eso la sección no es el mismo `to`.
 const destinations: NavDestination[] = [
+  // La pantalla de entrada (HU3.2): va primero.
+  { to: '/rendiciones', seccion: '/rendiciones', label: 'Rendiciones', icon: ClipboardListIcon },
   { to: '/clientes', seccion: '/clientes', label: 'Clientes', icon: UsersIcon },
   { to: '/documentos/archivos', seccion: '/documentos', label: 'Documentos', icon: FileTextIcon },
 ];

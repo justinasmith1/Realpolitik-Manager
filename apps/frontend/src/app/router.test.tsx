@@ -29,11 +29,18 @@ describe('router', () => {
     expect(within(main).getByRole('heading', { level: 1, name: 'Clientes' })).toBeInTheDocument();
   });
 
-  it('redirige / a /clientes', async () => {
+  it('redirige / a /rendiciones, la pantalla de entrada (HU3.2)', async () => {
     const router = renderRoute('/');
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Clientes' })).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/clientes');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Rendiciones' }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/rendiciones');
+    expect(
+      within(screen.getByRole('navigation', { name: 'Principal' })).getByRole('link', {
+        name: 'Rendiciones',
+      }),
+    ).toHaveAttribute('aria-current', 'page');
   });
 
   it('muestra el catálogo de tipos en /documentos/tipos, dentro de Documentos y no como matriz de un cliente', () => {
