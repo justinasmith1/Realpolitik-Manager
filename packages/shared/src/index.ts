@@ -188,6 +188,15 @@ export {
   MENSAJE_REQUISITO_ID,
 } from './schemas/listarRendicionesQuery.schema.js';
 export type { ListarRendicionesQuery } from './schemas/listarRendicionesQuery.schema.js';
+export {
+  ESTADOS_CON_FECHA,
+  ListarRendicionesDelMesQuerySchema,
+  RendicionDelMesSchema,
+} from './schemas/rendicionesDelMes.schema.js';
+export type {
+  ListarRendicionesDelMesQuery,
+  RendicionDelMes,
+} from './schemas/rendicionesDelMes.schema.js';
 
 export { DocumentoDeItemSchema } from './schemas/documentoDeItem.schema.js';
 export type { DocumentoDeItem } from './schemas/documentoDeItem.schema.js';
