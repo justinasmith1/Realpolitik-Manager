@@ -6,7 +6,7 @@ Proposed
 
 ## Fecha
 
-2026-11-03
+2026-11-03 (actualizada el 2026-11-04 con la pantalla Rendiciones, HU3.2: ver punto 6)
 
 ## Contexto
 
@@ -25,9 +25,13 @@ Restricciones:
    - `HistorialEstadoRendicion` guarda cada cambio: `estadoAnterior` (`NULL` en la primera entrada), `estadoNuevo`, `fecha` (cuándo ocurrió), `motivo` (opcional, para el rechazo de la HU3.8) y `createdAt`. Índice por `(rendicionId, fecha)`, porque el historial se lee por rendición y en orden. La FK es `onDelete: Cascade`: el historial es parte de la rendición, que no se borra físicamente (se anula).
    - La API devuelve `estado` en el listado, en el detalle y en la anulación, y el `historial` (sin `motivo`, que todavía no se usa) en las respuestas que traen la rendición con su checklist, del cambio más viejo al más nuevo.
 2. **Un punto único para cambiar el estado.** `registrarCambioDeEstado` (en `rendiciones.service.ts`) actualiza `estado` y agrega la entrada de historial en una sola transacción serializable, con el estado anterior leído en esa misma transacción. No tiene endpoint: lo van a usar las HU3.6 a HU3.9, cada una con sus reglas (qué transiciones permite, si acepta una anulada). El alta no pasa por ahí: crea la rendición en `EN_CURSO` y su primera entrada en la misma escritura.
-3. **"Atrasada" se calcula, no se guarda.** No es un paso del proceso sino una condición que cambia sola con el calendario: una rendición en curso pasa a estar atrasada a medianoche sin que nadie haga nada, y deja de estarlo si cambia el día límite del cliente. Guardarla obligaría a un proceso programado que la actualice y podría quedar desfasada. La calcula el sistema en la HU3.4, a partir del estado, el período y la periodicidad del cliente; el rojo de la interfaz queda reservado para esa marca.
+3. **"Atrasada" se calcula, no se guarda.** No es un paso del proceso sino una condición que cambia sola con el calendario: una rendición pasa a estar atrasada con el paso del tiempo, sin que nadie haga nada. Guardarla obligaría a un proceso programado que la actualice y podría quedar desfasada. La calcula el sistema en la HU3.4, a partir del estado y el período (no del día límite de la periodicidad: ver punto 6); el rojo de la interfaz queda reservado para esa marca.
 4. **La anulación es independiente del estado.** Anular sigue siendo la baja lógica de HU2.5: la rendición conserva el último estado que tenía y anular no agrega una entrada al historial. Para que los dos conceptos no compartan nombre, el valor derivado de la baja lógica pasa a llamarse `vigencia` (`ACTIVA` o `ANULADA`, filtro `?vigencia=`), y `estado` queda para el estado del proceso. El endpoint de anulación también: pasó de `PATCH /rendiciones/:id/estado` con `{ "estado": "ANULADA" }` a `PATCH /rendiciones/:id/vigencia` con `{ "vigencia": "ANULADA" }` (`ActualizarVigenciaRendicionSchema`), con las mismas validaciones, errores y respuesta, y sin dejar la ruta vieja como alias. Así `/estado` queda libre para las HU que cambian el estado.
 5. **Migración.** `20261103120000_hu3_1_estado_rendicion` crea el enum, la columna y la tabla, y le da a cada rendición existente, también a las anuladas, el estado `EN_CURSO` (el default) y una entrada inicial `NULL → EN_CURSO` fechada en su `createdAt`. Así toda rendición tiene historial desde su alta.
+6. **Pantalla Rendiciones (HU3.2, 2026-11-04).** `GET /rendiciones?anio=&mes=` lista las rendiciones activas de un período, de todos los clientes.
+   - **Orden:** primero las Rechazadas, que hay que corregir; después el resto, de menor a mayor avance (porcentaje de ítems reunidos), porque las que menos avanzaron son las que más trabajo tienen pendiente; a igual avance, por el nombre corto del cliente. El orden lo aplica el backend, así la pantalla y cualquier otro consumidor ven lo mismo.
+   - **Fecha de cada fila:** las Enviadas, Aprobadas y Rechazadas muestran la fecha de la entrada del historial que las llevó a ese estado; las En curso y Completas, ninguna.
+   - **La rendición no tiene fecha límite** (confirmado con la operadora): los clientes no fijan un día para rendir. Por eso "atrasada" (HU3.4) se calculará por mes, y no por el día límite de la periodicidad del cliente (HU1.5), que no se usa para esto. La regla exacta la define la HU3.4.
 
 ## Alternativas consideradas
 
