@@ -160,17 +160,43 @@ export const textoDePendientes = (faltantes: number): string =>
   faltantes === 0 ? 'Sin pendientes' : faltantes === 1 ? '1 pendiente' : `${faltantes} pendientes`;
 
 /**
- * El tipo de cliente en una línea de texto (pantalla Rendiciones): el subtipo si es público y lo
- * tiene ("Municipio"), si no el sector ("Público", "Privado").
+ * Los tipos de cliente de la pantalla Rendiciones, en el orden de sus chips (HU3.3): el subtipo de
+ * un cliente público, o el sector si no tiene subtipo (o es privado). Es también el valor del
+ * parámetro `tipo` de la URL.
  */
-export const tipoDeCliente = ({
-  sector,
-  subtipo,
-}: {
+export const TIPOS_DE_CLIENTE = [
+  'MUNICIPAL',
+  'PROVINCIAL_ORGANISMO',
+  'SINDICAL_OBRA_SOCIAL',
+  'PUBLICO',
+  'PRIVADO',
+] as const satisfies readonly (ClienteSubtipoPublicoType | ClienteSectorType)[];
+
+export type TipoDeCliente = (typeof TIPOS_DE_CLIENTE)[number];
+
+/** El texto es un tipo de cliente válido (para leerlo de la URL o de un desplegable). */
+export const esTipoDeCliente = (valor: string): valor is TipoDeCliente =>
+  (TIPOS_DE_CLIENTE as readonly string[]).includes(valor);
+
+interface Tipologia {
   sector: ClienteSectorType;
   subtipo: ClienteSubtipoPublicoType | null;
-}): string =>
-  sector === 'PUBLICO' && subtipo !== null ? etiquetasSubtipo[subtipo] : etiquetasSector[sector];
+}
+
+/** El tipo de un cliente: su subtipo si es público y lo tiene, si no su sector. */
+export const claveDeTipoDeCliente = ({ sector, subtipo }: Tipologia): TipoDeCliente =>
+  sector === 'PUBLICO' && subtipo !== null ? subtipo : sector;
+
+/** Cómo se lee un tipo de cliente: "Municipio", "Público", "Privado"… */
+export const etiquetaDeTipoDeCliente = (tipo: TipoDeCliente): string =>
+  tipo === 'PUBLICO' || tipo === 'PRIVADO' ? etiquetasSector[tipo] : etiquetasSubtipo[tipo];
+
+/**
+ * El tipo de cliente en una línea de texto (pantalla Rendiciones): el subtipo si es público y lo
+ * tiene ("Municipio"), si no el sector ("Público", "Privado"). Es la misma etiqueta de su chip.
+ */
+export const tipoDeCliente = (tipologia: Tipologia): string =>
+  etiquetaDeTipoDeCliente(claveDeTipoDeCliente(tipologia));
 
 const formatoDeDiaDeLaSemana = new Intl.DateTimeFormat('es-AR', {
   weekday: 'long',
