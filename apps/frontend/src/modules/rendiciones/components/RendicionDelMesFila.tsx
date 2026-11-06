@@ -1,8 +1,4 @@
-import {
-  ETIQUETAS_ESTADO_RENDICION,
-  type EstadoRendicionType,
-  type RendicionDelMes,
-} from '@realpolitik/shared';
+import { ETIQUETAS_ESTADO_RENDICION, type RendicionDelMes } from '@realpolitik/shared';
 import { cn } from 'cn';
 import { ChevronRightIcon } from 'lucide-react';
 import { useId } from 'react';
@@ -10,35 +6,16 @@ import { Link } from 'react-router';
 
 import { ClienteMonogram } from '@/modules/clientes/components/ClienteMonogram';
 import {
+  fondoDeEstado,
+  rellenoDeEstado,
+  textoDeEstado,
+} from '@/modules/rendiciones/estadoRendicion.colores';
+import {
   diaYMes,
   textoDePendientes,
   tipoDeCliente,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 import { rutaDeRendicion } from '@/modules/rendiciones/rendiciones.rutas';
-
-// El monograma, el estado, el porcentaje y la barra van en el color de su estado: los mismos tokens
-// que el badge (`estado-*`). `Record` obliga a cubrir cada estado.
-const colorDeTexto: Record<EstadoRendicionType, string> = {
-  EN_CURSO: 'text-estado-en-curso',
-  COMPLETA: 'text-estado-completa',
-  ENVIADA: 'text-estado-enviada',
-  APROBADA: 'text-estado-aprobada',
-  RECHAZADA: 'text-estado-rechazada',
-};
-const colorDeFondo: Record<EstadoRendicionType, string> = {
-  EN_CURSO: 'bg-estado-en-curso-soft',
-  COMPLETA: 'bg-estado-completa-soft',
-  ENVIADA: 'bg-estado-enviada-soft',
-  APROBADA: 'bg-estado-aprobada-soft',
-  RECHAZADA: 'bg-estado-rechazada-soft',
-};
-const colorDeBarra: Record<EstadoRendicionType, string> = {
-  EN_CURSO: 'bg-estado-en-curso',
-  COMPLETA: 'bg-estado-completa',
-  ENVIADA: 'bg-estado-enviada',
-  APROBADA: 'bg-estado-aprobada',
-  RECHAZADA: 'bg-estado-rechazada',
-};
 
 interface RendicionDelMesFilaProps {
   rendicion: RendicionDelMes;
@@ -75,8 +52,8 @@ export function RendicionDelMesFila({ rendicion }: RendicionDelMesFilaProps) {
             nombre={cliente.denominacion}
             className={cn(
               'size-10 rounded-full text-xs',
-              colorDeFondo[estado],
-              colorDeTexto[estado],
+              fondoDeEstado[estado],
+              textoDeEstado[estado],
             )}
           />
           <div className="flex min-w-0 flex-col gap-0.5">
@@ -99,7 +76,7 @@ export function RendicionDelMesFila({ rendicion }: RendicionDelMesFilaProps) {
                 {' · '}
                 {textoDePendientes(avance.faltantes)}
                 {' · '}
-                <span className={cn('font-semibold', colorDeTexto[estado])}>
+                <span className={cn('font-semibold', textoDeEstado[estado])}>
                   {ETIQUETAS_ESTADO_RENDICION[estado]}
                 </span>
               </span>
@@ -119,14 +96,14 @@ export function RendicionDelMesFila({ rendicion }: RendicionDelMesFilaProps) {
             className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-pill bg-muted lg:w-30 lg:flex-none"
           >
             <div
-              className={cn('h-full rounded-pill', colorDeBarra[estado])}
+              className={cn('h-full rounded-pill', rellenoDeEstado[estado])}
               style={{ width: `${porcentaje}%` }}
             />
           </div>
           <span
             className={cn(
               'w-11 text-right text-[0.8125rem] font-semibold tabular-nums',
-              colorDeTexto[estado],
+              textoDeEstado[estado],
             )}
           >
             {porcentaje}%
