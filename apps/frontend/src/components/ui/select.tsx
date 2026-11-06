@@ -32,6 +32,11 @@ interface SelectProps extends Pick<
   /** Ref al disparador, para que un formulario pueda llevar el foco al campo con error. */
   triggerRef?: React.Ref<HTMLButtonElement> | undefined;
   className?: string | undefined;
+  /**
+   * Qué muestra el disparador para la opción elegida (`undefined` si no hay ninguna). Por defecto,
+   * su etiqueta. Las opciones del menú siguen mostrando su etiqueta.
+   */
+  renderValue?: ((opcion: SelectOption | undefined) => React.ReactNode) | undefined;
 }
 
 /**
@@ -52,6 +57,7 @@ function Select({
   triggerRef,
   className,
   onBlur,
+  renderValue,
   ...aria
 }: SelectProps) {
   // Base UI representa "sin valor" con `null` (y una opción `null` con etiqueta propia reemplaza
@@ -77,6 +83,12 @@ function Select({
       >
         <SelectPrimitive.Value
           placeholder={placeholder}
+          {...(renderValue === undefined
+            ? {}
+            : {
+                children: (elegido: string | null) =>
+                  renderValue(options.find((opcion) => aValorInterno(opcion.value) === elegido)),
+              })}
           // Gris solo si hay placeholder: una opción "Todos"/"Sin configurar" es un valor real.
           className={cn(
             'truncate',

@@ -6,7 +6,7 @@ Proposed
 
 ## Fecha
 
-2026-11-03 (actualizada el 2026-11-04 con la pantalla Rendiciones, HU3.2: ver punto 6)
+2026-11-03 (actualizada el 2026-11-04 con la pantalla Rendiciones, HU3.2: ver punto 6; y el 2026-11-06 con su resumen y filtros, HU3.3: ver punto 7)
 
 ## Contexto
 
@@ -32,6 +32,7 @@ Restricciones:
    - **Orden:** primero las Rechazadas, que hay que corregir; después el resto, de menor a mayor avance (porcentaje de ítems reunidos), porque las que menos avanzaron son las que más trabajo tienen pendiente; a igual avance, por el nombre corto del cliente. El orden lo aplica el backend, así la pantalla y cualquier otro consumidor ven lo mismo.
    - **Fecha de cada fila:** las Enviadas, Aprobadas y Rechazadas muestran la fecha de la entrada del historial que las llevó a ese estado; las En curso y Completas, ninguna.
    - **La rendición no tiene fecha límite** (confirmado con la operadora): los clientes no fijan un día para rendir. Por eso "atrasada" (HU3.4) se calculará por mes, y no por el día límite de la periodicidad del cliente (HU1.5), que no se usa para esto. La regla exacta la define la HU3.4.
+7. **Resumen y filtros de la pantalla Rendiciones (HU3.3, 2026-11-06).** Las tarjetas por estado y los filtros (estado, tipo de cliente y búsqueda por cliente o factura) se calculan en el frontend, sobre el listado del mes que ya trae `GET /rendiciones?anio=&mes=`: son de 40 a 50 rendiciones por mes, así que no hace falta otra consulta ni cambiar el endpoint, y filtrar no espera a la red. Las tarjetas cuentan todas las rendiciones del mes, sin mirar los filtros. Los filtros quedan en la URL junto con el mes y se mantienen al cambiarlo; con el listado del nuevo mes se recalculan las tarjetas, los chips de tipo (solo los tipos presentes) y el resultado de los filtros. Si el volumen por mes creciera mucho, convendría pasar los filtros al backend.
 
 ## Alternativas consideradas
 

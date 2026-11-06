@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { Select, type SelectOption } from '@/components/ui/select';
 
@@ -20,6 +20,7 @@ function Controlado({
   disabled?: boolean;
   invalid?: boolean;
   placeholder?: string;
+  renderValue?: (opcion: SelectOption | undefined) => ReactNode;
 }) {
   const [valor, setValor] = useState(inicial);
   return (
@@ -141,5 +142,22 @@ describe('Select', () => {
     render(<Controlado invalid />);
 
     expect(screen.getByRole('combobox', { name: 'Campo' })).toBeInvalid();
+  });
+
+  it('con renderValue, el disparador muestra otro texto para la elegida; el menú, las etiquetas', async () => {
+    const user = userEvent.setup();
+    render(
+      <Controlado
+        inicial="A"
+        renderValue={(opcion) => (opcion === undefined ? 'Nada' : `Elegida: ${opcion.label}`)}
+      />,
+    );
+    const select = screen.getByRole('combobox', { name: 'Campo' });
+    expect(select).toHaveTextContent('Elegida: Opción A');
+
+    await user.click(select);
+    await user.click(await screen.findByRole('option', { name: 'Opción B' }));
+
+    expect(select).toHaveTextContent('Elegida: Opción B');
   });
 });

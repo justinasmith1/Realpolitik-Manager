@@ -6,7 +6,11 @@ import { Link } from 'react-router';
 import { Alert } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { FiltrosActivos } from '@/modules/rendiciones/components/FiltrosActivos';
+import { FiltrosRendicionesDelMes } from '@/modules/rendiciones/components/FiltrosRendicionesDelMes';
 import { RendicionDelMesFila } from '@/modules/rendiciones/components/RendicionDelMesFila';
+import { ResumenPorEstado } from '@/modules/rendiciones/components/ResumenPorEstado';
+import { useFiltrosRendicionesDelMes } from '@/modules/rendiciones/hooks/useFiltrosRendicionesDelMes';
 import { useMesDeRendiciones } from '@/modules/rendiciones/hooks/useMesDeRendiciones';
 import { useRendicionesDelMes } from '@/modules/rendiciones/hooks/useRendiciones';
 import {
@@ -14,16 +18,33 @@ import {
   etiquetaDePeriodo,
   textoDeHoy,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
+import {
+  contarPorEstado,
+  filtrarRendicionesDelMes,
+  tiposPresentes,
+} from '@/modules/rendiciones/rendicionesDelMes.filtros';
 
 /**
  * Pantalla Rendiciones (`/rendiciones`, HU3.2): todas las rendiciones activas del mes elegido, de
  * todos los clientes, con su estado y su avance, para ver de un vistazo qué falta. Es la pantalla
  * de entrada del sistema. El mes queda en la URL; sin él, el mes actual. Cada fila abre el detalle
  * de su rendición.
+ *
+ * HU3.3: tarjetas con cuántas hay en cada estado (todas las del mes), y filtros por estado, tipo de
+ * cliente y búsqueda, que se combinan y quedan en la URL. Se aplican acá, sobre el listado del mes.
  */
 export function RendicionesPage() {
   const { periodo, anterior, siguiente, elegir } = useMesDeRendiciones();
   const consulta = useRendicionesDelMes(periodo);
+  const {
+    filtros,
+    textoBusqueda,
+    cambiarTexto,
+    elegirEstado,
+    elegirTipo,
+    quitarBusqueda,
+    limpiar,
+  } = useFiltrosRendicionesDelMes();
   const nombreDelMes = etiquetaDePeriodo(periodo);
   const hoy = new Date();
   // La cantidad, cuando ya llegó el listado del mes.
@@ -74,18 +95,56 @@ export function RendicionesPage() {
       </div>
     );
   } else {
+    const delMes = consulta.data;
+    const visibles = filtrarRendicionesDelMes(delMes, filtros);
+    // El tipo filtrado conserva su chip aunque no esté en este mes, para verlo y poder quitarlo.
+    const presentes = tiposPresentes(delMes);
+    const tipos =
+      filtros.tipo === undefined || presentes.includes(filtros.tipo)
+        ? presentes
+        : [...presentes, filtros.tipo];
     contenido = (
-      // Una sola tarjeta, con las filas separadas por una línea fina.
-      <ul
-        aria-label={`Rendiciones de ${nombreDelMes}`}
-        className="divide-y overflow-hidden rounded-card border bg-card"
-      >
-        {consulta.data.map((rendicion) => (
-          <li key={rendicion.id}>
-            <RendicionDelMesFila rendicion={rendicion} />
-          </li>
-        ))}
-      </ul>
+      <>
+        <ResumenPorEstado
+          conteo={contarPorEstado(delMes)}
+          activo={filtros.estado}
+          onElegir={elegirEstado}
+        />
+        <FiltrosRendicionesDelMes
+          tipos={tipos}
+          tipo={filtros.tipo}
+          onTipo={elegirTipo}
+          textoBusqueda={textoBusqueda}
+          onTexto={cambiarTexto}
+        />
+        <FiltrosActivos
+          filtros={filtros}
+          mostradas={visibles.length}
+          total={delMes.length}
+          onQuitarEstado={() => elegirEstado(undefined)}
+          onQuitarTipo={() => elegirTipo(undefined)}
+          onQuitarBusqueda={quitarBusqueda}
+          onLimpiar={limpiar}
+        />
+        {visibles.length === 0 ? (
+          // Solo el aviso: para limpiar está "Limpiar todo", en la línea de filtros activos.
+          <div className="rounded-card border bg-card p-6">
+            <h2 className="text-base font-semibold">Ninguna rendición coincide con los filtros</h2>
+          </div>
+        ) : (
+          // Una sola tarjeta, con las filas separadas por una línea fina.
+          <ul
+            aria-label={`Rendiciones de ${nombreDelMes}`}
+            className="divide-y overflow-hidden rounded-card border bg-card"
+          >
+            {visibles.map((rendicion) => (
+              <li key={rendicion.id}>
+                <RendicionDelMesFila rendicion={rendicion} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
     );
   }
 

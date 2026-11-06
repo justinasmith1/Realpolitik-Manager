@@ -204,3 +204,378 @@ describe('RendicionesPage (HU3.2)', () => {
     expect(screen.getByRole('button', { name: 'Mes siguiente' })).toBeEnabled();
   });
 });
+
+describe('RendicionesPage: resumen y filtros (HU3.3)', () => {
+  interface Cambios {
+    estado?: string;
+    denominacion?: string;
+    sector?: string;
+    subtipo?: string | null;
+    numeroFactura?: string;
+  }
+  let n = 100;
+  const rendicion = ({
+    estado = 'EN_CURSO',
+    denominacion = 'Grupo Solano',
+    sector = 'PRIVADO',
+    subtipo = null,
+    numeroFactura,
+  }: Cambios = {}) => {
+    n += 1;
+    return {
+      ...fila(n, denominacion),
+      cliente: { denominacion, sector, subtipo },
+      numeroFactura: numeroFactura ?? `B 00002-0000${n}`,
+      estado,
+      ultimoPaso: ['ENVIADA', 'APROBADA', 'RECHAZADA'].includes(estado)
+        ? { estado, fecha: '2026-11-03T15:00:00.000Z' }
+        : null,
+    };
+  };
+
+  // Noviembre: 2 En curso, 1 Completa, 1 Enviada, 1 Rechazada. Municipio y Privado.
+  const noviembre = [
+    rendicion({ denominacion: 'Grupo Solano' }),
+    rendicion({
+      denominacion: 'Municipalidad de Córdoba',
+      sector: 'PUBLICO',
+      subtipo: 'MUNICIPAL',
+      numeroFactura: 'B 00002-00001482',
+    }),
+    rendicion({ estado: 'COMPLETA', denominacion: 'Andina Logística' }),
+    rendicion({
+      estado: 'ENVIADA',
+      denominacion: 'Municipalidad de Ensenada',
+      sector: 'PUBLICO',
+      subtipo: 'MUNICIPAL',
+    }),
+    rendicion({ estado: 'RECHAZADA', denominacion: 'Zeta Producciones' }),
+  ];
+
+  const tarjetas = () => screen.getByRole('group', { name: 'Resumen por estado' });
+  const tarjeta = (titulo: string) =>
+    within(tarjetas()).getByRole('button', { name: new RegExp(`^${titulo}`) });
+  const textosDeTarjetas = () =>
+    within(tarjetas())
+      .getAllByRole('button')
+      .map((boton) => boton.textContent);
+  const desplegable = () => screen.getByRole('combobox', { name: 'Tipo de cliente' });
+  const opcionesDeTipo = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(desplegable());
+    const opciones = (await screen.findAllByRole('option')).map((opcion) => opcion.textContent);
+    await user.keyboard('{Escape}');
+    return opciones;
+  };
+  const elegirTipo = async (user: ReturnType<typeof userEvent.setup>, nombre: string) => {
+    await user.click(desplegable());
+    await user.click(await screen.findByRole('option', { name: nombre }));
+  };
+  const activos = () => screen.getByRole('group', { name: 'Filtros activos' });
+  const clientesVisibles = () =>
+    within(screen.getByRole('list', { name: /^Rendiciones de/ }))
+      .getAllByRole('heading', { level: 3 })
+      .map((titulo) => titulo.textContent);
+  const buscador = () => screen.getByRole('searchbox', { name: 'Buscar cliente o factura' });
+  const parametro = (router: { state: { location: { search: string } } }, nombre: string) =>
+    new URLSearchParams(router.state.location.search).get(nombre);
+
+  it('las tarjetas cuentan las rendiciones del mes por estado y no cambian al filtrar', async () => {
+    servir({ '2026-11': noviembre });
+    const { user } = renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    const esperadas = ['En curso2', 'Completas1', 'Enviadas1', 'Aprobadas0', 'Rechazadas1'];
+    expect(textosDeTarjetas()).toEqual(esperadas);
+
+    await user.click(tarjeta('Enviadas'));
+    await elegirTipo(user, 'Municipio');
+
+    expect(clientesVisibles()).toEqual(['Municipalidad de Ensenada']);
+    expect(textosDeTarjetas()).toEqual(esperadas);
+    // El subtítulo sigue contando el total del mes.
+    expect(screen.getByText(/5 rendiciones en noviembre/)).toBeInTheDocument();
+  });
+
+  it('las tarjetas son el único filtro por estado: no hay chips de estado', async () => {
+    servir({ '2026-11': noviembre });
+    renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    expect(screen.queryByRole('group', { name: 'Estado' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Todas' })).toBeNull();
+  });
+
+  it('tocar una tarjeta filtra el listado y lo guarda en la URL; tocarla de nuevo lo quita', async () => {
+    servir({ '2026-11': noviembre });
+    const { router, user } = renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    await user.click(tarjeta('En curso'));
+
+    expect(router.state.location.search).toBe('?estado=EN_CURSO');
+    expect(clientesVisibles()).toEqual(['Grupo Solano', 'Municipalidad de Córdoba']);
+    expect(tarjeta('En curso')).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(tarjeta('En curso'));
+
+    expect(router.state.location.search).toBe('');
+    expect(clientesVisibles()).toHaveLength(5);
+    expect(tarjeta('En curso')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('con un estado activo, su tarjeta se marca y las demás se atenúan, pero siguen clickeables', async () => {
+    servir({ '2026-11': noviembre });
+    const { router, user } = renderPantalla('/rendiciones?estado=EN_CURSO');
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    expect(tarjeta('En curso')).toHaveClass('bg-estado-en-curso-soft', 'border-estado-en-curso');
+    expect(tarjeta('En curso')).not.toHaveClass('opacity-60');
+    expect(tarjeta('Rechazadas')).toHaveClass('opacity-60');
+    expect(tarjeta('Rechazadas')).toHaveTextContent('1');
+
+    // Tocar otra cambia el estado filtrado.
+    await user.click(tarjeta('Rechazadas'));
+
+    expect(router.state.location.search).toBe('?estado=RECHAZADA');
+    expect(clientesVisibles()).toEqual(['Zeta Producciones']);
+    expect(tarjeta('En curso')).toHaveClass('opacity-60');
+  });
+
+  it('sin estado activo, ninguna tarjeta se atenúa', async () => {
+    servir({ '2026-11': noviembre });
+    renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    for (const boton of within(tarjetas()).getAllByRole('button')) {
+      expect(boton).not.toHaveClass('opacity-60');
+    }
+  });
+
+  it('el desplegable de tipo dice "Tipo de cliente: Todos" y ofrece solo los tipos del mes', async () => {
+    servir({ '2026-11': noviembre });
+    const { user } = renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    expect(desplegable()).toHaveTextContent('Tipo de cliente: Todos');
+    expect(await opcionesDeTipo(user)).toEqual(['Todos', 'Municipio', 'Privado']);
+    // El buscador queda blanco también con el modo oscuro del sistema, como el desplegable.
+    expect(buscador()).toHaveClass('dark:bg-card', 'scheme-light');
+  });
+
+  it('elegir un tipo filtra, lo guarda en la URL y el desplegable dice "Tipo: <tipo>"; "Todos" lo quita', async () => {
+    servir({ '2026-11': noviembre });
+    const { router, user } = renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    await elegirTipo(user, 'Municipio');
+
+    expect(router.state.location.search).toBe('?tipo=MUNICIPAL');
+    expect(clientesVisibles()).toEqual(['Municipalidad de Córdoba', 'Municipalidad de Ensenada']);
+    expect(desplegable()).toHaveTextContent('Tipo: Municipio');
+    expect(within(desplegable()).getByText('Municipio')).toHaveClass('font-semibold');
+
+    await elegirTipo(user, 'Todos');
+
+    expect(router.state.location.search).toBe('');
+    expect(desplegable()).toHaveTextContent('Tipo de cliente: Todos');
+  });
+
+  it('estado y tipo de cliente a la vez: solo las que cumplen los dos, y los dos en la URL', async () => {
+    servir({ '2026-11': noviembre });
+    const { router, user } = renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    await user.click(tarjeta('En curso'));
+    await elegirTipo(user, 'Privado');
+
+    expect(clientesVisibles()).toEqual(['Grupo Solano']);
+    expect(parametro(router, 'estado')).toBe('EN_CURSO');
+    expect(parametro(router, 'tipo')).toBe('PRIVADO');
+  });
+
+  it.each([
+    ['por el nombre, sin acentos ni mayúsculas', 'CORDOBA'],
+    ['por la factura, sin guiones ni la B', '0000200001482'],
+    ['por la factura, con guiones', '00002-00001482'],
+    ['por la factura, con la B', 'b 00002-0000148'],
+  ])('el buscador encuentra %s', async (_caso, texto) => {
+    servir({ '2026-11': noviembre });
+    const { router, user } = renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    await user.type(buscador(), texto);
+
+    // Con un pequeño retardo, llega a la URL y filtra.
+    await waitFor(() => expect(parametro(router, 'q')).toBe(texto));
+    // La URL cambia antes de que se vuelva a pintar el listado: se espera también a la lista.
+    await waitFor(() => expect(clientesVisibles()).toEqual(['Municipalidad de Córdoba']));
+  });
+
+  it('recargar con filtros en la URL los aplica', async () => {
+    servir({ '2026-11': noviembre });
+    renderPantalla('/rendiciones?estado=EN_CURSO&tipo=MUNICIPAL&q=cordoba');
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    expect(clientesVisibles()).toEqual(['Municipalidad de Córdoba']);
+    expect(tarjeta('En curso')).toHaveAttribute('aria-pressed', 'true');
+    expect(desplegable()).toHaveTextContent('Tipo: Municipio');
+    expect(buscador()).toHaveValue('cordoba');
+  });
+
+  it('los valores inválidos en la URL se ignoran y se quitan; el mes queda', async () => {
+    servir({ '2026-10': noviembre });
+    const { router } = renderPantalla(
+      '/rendiciones?anio=2026&mes=10&estado=ATRASADA&tipo=OTRO&q=%20%20',
+    );
+    await screen.findByRole('list', { name: 'Rendiciones de Octubre 2026' });
+
+    await waitFor(() => expect(router.state.location.search).toBe('?anio=2026&mes=10'));
+    expect(clientesVisibles()).toHaveLength(5);
+  });
+
+  it('un filtro repetido en la URL también se quita', async () => {
+    servir({ '2026-11': noviembre });
+    const { router } = renderPantalla('/rendiciones?estado=ENVIADA&estado=COMPLETA&tipo=PRIVADO');
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    await waitFor(() => expect(router.state.location.search).toBe('?tipo=PRIVADO'));
+    expect(clientesVisibles()).toEqual(['Grupo Solano', 'Andina Logística', 'Zeta Producciones']);
+  });
+
+  it('sin resultados lo dice, sin botón propio, y "Limpiar todo" deja solo el mes', async () => {
+    servir({ '2026-10': noviembre });
+    const { router, user } = renderPantalla(
+      '/rendiciones?anio=2026&mes=10&estado=APROBADA&tipo=PRIVADO&q=solano',
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ninguna rendición coincide con los filtros' }),
+    ).toBeInTheDocument();
+    // Las tarjetas y los filtros siguen, para cambiarlos.
+    expect(tarjetas()).toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).toBeNull();
+
+    await user.click(within(activos()).getByRole('button', { name: 'Limpiar todo' }));
+
+    expect(router.state.location.search).toBe('?anio=2026&mes=10');
+    expect(clientesVisibles()).toHaveLength(5);
+    expect(buscador()).toHaveValue('');
+  });
+
+  it('al cambiar de mes los filtros se mantienen, y las tarjetas y los tipos son los del nuevo mes', async () => {
+    servir({
+      '2026-11': noviembre,
+      '2026-10': [rendicion({ estado: 'ENVIADA', denominacion: 'Grupo Solano' })],
+    });
+    const { router, user } = renderPantalla('/rendiciones?estado=ENVIADA');
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    await user.click(screen.getByRole('button', { name: 'Mes anterior' }));
+
+    await screen.findByRole('list', { name: 'Rendiciones de Octubre 2026' });
+    expect(parametro(router, 'estado')).toBe('ENVIADA');
+    expect(clientesVisibles()).toEqual(['Grupo Solano']);
+    expect(tarjeta('Enviadas')).toHaveTextContent('1');
+    expect(tarjeta('En curso')).toHaveTextContent('0');
+    expect(await opcionesDeTipo(user)).toEqual(['Todos', 'Privado']);
+  });
+
+  it('un tipo filtrado que no está en el mes sigue en el desplegable, para verlo y quitarlo', async () => {
+    servir({ '2026-11': noviembre });
+    const { router, user } = renderPantalla('/rendiciones?tipo=SINDICAL_OBRA_SOCIAL');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ninguna rendición coincide con los filtros' }),
+    ).toBeInTheDocument();
+    expect(desplegable()).toHaveTextContent('Tipo: Sindicato u obra social');
+    expect(await opcionesDeTipo(user)).toEqual([
+      'Todos',
+      'Municipio',
+      'Privado',
+      'Sindicato u obra social',
+    ]);
+
+    await elegirTipo(user, 'Todos');
+
+    expect(router.state.location.search).toBe('');
+    expect(await opcionesDeTipo(user)).toEqual(['Todos', 'Municipio', 'Privado']);
+  });
+
+  describe('línea de filtros activos', () => {
+    it('no aparece sin filtros', async () => {
+      servir({ '2026-11': noviembre });
+      renderPantalla();
+      await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+      expect(screen.queryByRole('group', { name: 'Filtros activos' })).toBeNull();
+    });
+
+    it('muestra cuántas se ven sobre el total del mes y una etiqueta por filtro', async () => {
+      servir({ '2026-11': noviembre });
+      renderPantalla('/rendiciones?estado=EN_CURSO&tipo=MUNICIPAL&q=cordoba');
+      await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+      expect(activos()).toHaveTextContent(
+        /^1 de 5 · Filtros:Estado: En curso.*Municipio.*“cordoba”.*Limpiar todo$/,
+      );
+      // La del estado va en el color de su estado.
+      expect(within(activos()).getByText('Estado: En curso')).toHaveClass(
+        'text-estado-en-curso',
+        'bg-estado-en-curso-soft',
+      );
+    });
+
+    it.each([
+      [
+        'el estado',
+        'Quitar filtro Estado: En curso',
+        { estado: null, tipo: 'MUNICIPAL', q: 'cordoba' },
+      ],
+      ['el tipo', 'Quitar filtro Municipio', { estado: 'EN_CURSO', tipo: null, q: 'cordoba' }],
+      [
+        'la búsqueda',
+        'Quitar filtro “cordoba”',
+        { estado: 'EN_CURSO', tipo: 'MUNICIPAL', q: null },
+      ],
+    ])('la ✕ de %s quita solo ese filtro', async (_caso, boton, quedan) => {
+      servir({ '2026-11': noviembre });
+      const { router, user } = renderPantalla(
+        '/rendiciones?estado=EN_CURSO&tipo=MUNICIPAL&q=cordoba',
+      );
+      await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+      await user.click(within(activos()).getByRole('button', { name: boton }));
+
+      expect(parametro(router, 'estado')).toBe(quedan.estado);
+      expect(parametro(router, 'tipo')).toBe(quedan.tipo);
+      expect(parametro(router, 'q')).toBe(quedan.q);
+      if (quedan.q === null) expect(buscador()).toHaveValue('');
+    });
+
+    it('"Limpiar todo" deja solo el mes y la línea desaparece', async () => {
+      servir({ '2026-10': noviembre });
+      const { router, user } = renderPantalla(
+        '/rendiciones?anio=2026&mes=10&estado=EN_CURSO&tipo=PRIVADO&q=solano',
+      );
+      await screen.findByRole('list', { name: 'Rendiciones de Octubre 2026' });
+
+      await user.click(within(activos()).getByRole('button', { name: 'Limpiar todo' }));
+
+      expect(router.state.location.search).toBe('?anio=2026&mes=10');
+      expect(screen.queryByRole('group', { name: 'Filtros activos' })).toBeNull();
+      expect(clientesVisibles()).toHaveLength(5);
+      expect(buscador()).toHaveValue('');
+    });
+  });
+
+  it('un mes sin rendiciones no muestra tarjetas ni filtros, solo el aviso', async () => {
+    servir({});
+    renderPantalla('/rendiciones?estado=ENVIADA');
+
+    expect(await screen.findByText('No hay rendiciones en Noviembre 2026')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Resumen por estado' })).toBeNull();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Filtros activos' })).toBeNull();
+  });
+});
