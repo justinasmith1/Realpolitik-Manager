@@ -2,16 +2,27 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
+import type * as DocumentosApi from '@/modules/documentos/api/documentos.api';
+import { useAplicarDocumento } from '@/modules/documentos/hooks/useDocumentos';
 import type * as RendicionesApi from '@/modules/rendiciones/api/rendiciones.api';
 import { rendicionesKeys } from '@/modules/rendiciones/api/rendiciones.keys';
-import { useAbrirRendicion, useAnularRendicion } from '@/modules/rendiciones/hooks/useRendiciones';
+import {
+  useAbrirRendicion,
+  useAgregarRequisitoARendicion,
+  useAnularRendicion,
+} from '@/modules/rendiciones/hooks/useRendiciones';
 
-// Lo que cambia la vigencia de una rendición refresca también la pantalla Rendiciones: el listado
-// del mes y las atrasadas (la tarjeta Atrasadas). La API se simula: acá importa la caché.
+// Lo que cambia la vigencia o el avance de una rendición refresca también la pantalla Rendiciones:
+// el listado del mes y las atrasadas (la tarjeta Atrasadas). La API se simula: acá importa la caché.
 vi.mock('@/modules/rendiciones/api/rendiciones.api', async (original) => ({
   ...(await original<typeof RendicionesApi>()),
   anularRendicion: vi.fn().mockResolvedValue(undefined),
   abrirRendicion: vi.fn().mockResolvedValue(undefined),
+  agregarRequisitoARendicion: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('@/modules/documentos/api/documentos.api', async (original) => ({
+  ...(await original<typeof DocumentosApi>()),
+  aplicarDocumento: vi.fn().mockResolvedValue(undefined),
 }));
 
 const CLIENTE = 'a1b2c3d4-e5f6-4789-abcd-ef0123456789';
@@ -69,5 +80,43 @@ describe('invalidarRendiciones', () => {
     expect(invalidada(keys.atrasadas)).toBe(true);
     expect(invalidada(keys.mes)).toBe(true);
     expect(invalidada(keys.lista)).toBe(true);
+  });
+
+  it('agregar un requisito a una rendición invalida el mes y las atrasadas (cambia el avance)', async () => {
+    const { keys, invalidada, wrapper } = cacheConDatos();
+    const { result } = renderHook(() => useAgregarRequisitoARendicion(), { wrapper });
+
+    await act(() =>
+      result.current.mutateAsync({
+        clienteId: CLIENTE,
+        rendicionId: RENDICION,
+        requisitoId: 'c1d2e3f4-a5b6-4789-8abc-def012345678',
+      }),
+    );
+
+    expect(invalidada(keys.atrasadas)).toBe(true);
+    expect(invalidada(keys.mes)).toBe(true);
+    expect(invalidada(keys.otroMes)).toBe(true);
+    expect(invalidada(keys.detalle)).toBe(true);
+    expect(invalidada(keys.deOtroCliente)).toBe(false);
+  });
+
+  it('aplicar un documento invalida el mes, las atrasadas y las de cada cliente involucrado', async () => {
+    const { keys, invalidada, wrapper } = cacheConDatos();
+    const { result } = renderHook(() => useAplicarDocumento(), { wrapper });
+
+    await act(() =>
+      result.current.mutateAsync({
+        documentoId: 'd1e2f3a4-b5c6-4789-8abc-def012345678',
+        itemIds: ['f1a2b3c4-d5e6-4789-8abc-def012345678'],
+        clienteIds: [CLIENTE],
+      }),
+    );
+
+    expect(invalidada(keys.atrasadas)).toBe(true);
+    expect(invalidada(keys.mes)).toBe(true);
+    expect(invalidada(keys.lista)).toBe(true);
+    expect(invalidada(keys.detalle)).toBe(true);
+    expect(invalidada(keys.deOtroCliente)).toBe(false);
   });
 });

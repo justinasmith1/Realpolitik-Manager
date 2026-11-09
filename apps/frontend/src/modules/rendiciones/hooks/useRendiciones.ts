@@ -103,7 +103,8 @@ export function useAnularRendicion() {
 
 /**
  * Suma un requisito nuevo a una rendición abierta. Sin reintentos. Al terminar, el listado y los
- * detalles del cliente se vuelven a pedir (cambian la cantidad de ítems y el avance).
+ * detalles del cliente se vuelven a pedir (cambian la cantidad de ítems y el avance), y también la
+ * pantalla Rendiciones, que muestra el avance en el listado del mes y en las atrasadas.
  */
 export function useAgregarRequisitoARendicion() {
   const queryClient = useQueryClient();
@@ -117,8 +118,7 @@ export function useAgregarRequisitoARendicion() {
       requisitoId: string;
     }) => agregarRequisitoARendicion(rendicionId, requisitoId),
     retry: false,
-    onSettled: (_resultado, _error, { clienteId }) =>
-      queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) }),
+    onSettled: (_resultado, _error, { clienteId }) => invalidarRendiciones(queryClient, clienteId),
   });
 }
 
