@@ -135,17 +135,15 @@ export function RendicionesPage() {
       limpiar,
     };
     if (!vistaAtrasadas && delMes.length === 0) {
-      // Mes vacío: el aviso. Si hay atrasadas de otros meses, también las tarjetas, para poder
-      // abrirlas desde la de Atrasadas.
-      contenido =
-        (atrasadas?.length ?? 0) > 0 ? (
-          <>
-            {tarjetas}
-            {mesVacio}
-          </>
-        ) : (
-          mesVacio
-        );
+      // Mes vacío: las seis tarjetas (las de estado en 0; Atrasadas con "–" mientras se carga) y el
+      // aviso. Siempre, haya o no atrasadas: la pantalla no cambia de alto al terminar de cargar, y
+      // desde la de Atrasadas se abre su vista.
+      contenido = (
+        <>
+          {tarjetas}
+          {mesVacio}
+        </>
+      );
     } else {
       contenido = (
         <>
