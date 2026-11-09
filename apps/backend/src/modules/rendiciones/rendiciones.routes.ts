@@ -20,6 +20,7 @@ import {
   agregarRequisitoARendicionController,
   anularRendicionController,
   corregirCanalDeItemController,
+  listarRendicionesAtrasadasController,
   listarRendicionesController,
   listarRendicionesDelMesController,
   obtenerRendicionController,
@@ -70,6 +71,8 @@ rendicionesRouter.get(
   validate({ query: ListarRendicionesDelMesQuerySchema }),
   listarRendicionesDelMesController,
 );
+// Las atrasadas de cualquier mes (HU3.4). Antes de `/:id`, para que "atrasadas" no se lea como id.
+rendicionesRouter.get('/atrasadas', listarRendicionesAtrasadasController);
 rendicionesRouter.get('/:id', validate({ params: IdParamsSchema }), obtenerRendicionController);
 // Editar los datos de la OC (HU2.11).
 rendicionesRouter.patch(
