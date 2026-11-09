@@ -26,7 +26,7 @@ import {
   mensajeDelServidor,
 } from '@/lib/errores-api';
 import { ApiClientError, http } from '@/lib/http';
-import { rendicionesQueryKey } from '@/modules/rendiciones/api/rendiciones.api';
+import { rendicionesKeys } from '@/modules/rendiciones/api/rendiciones.keys';
 
 /** Prefijo de todas las queries de documentos: el repositorio, los detalles y los candidatos. */
 export const documentosQueryKey = ['documentos'] as const;
@@ -63,7 +63,7 @@ export interface ItemDeRendicion {
  * reemplazar o anular).
  */
 export const historialDeItemQueryKey = ({ clienteId, rendicionId, itemId }: ItemDeRendicion) =>
-  [...rendicionesQueryKey(clienteId), 'historial', rendicionId, itemId] as const;
+  [...rendicionesKeys.deCliente(clienteId), 'historial', rendicionId, itemId] as const;
 
 const conSenal = (signal?: AbortSignal) => (signal ? { signal } : {});
 

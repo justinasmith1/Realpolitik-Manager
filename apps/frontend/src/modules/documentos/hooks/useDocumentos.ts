@@ -18,7 +18,7 @@ import {
   type ItemDeRendicion,
 } from '@/modules/documentos/api/documentos.api';
 import { descargarDocumento } from '@/modules/documentos/descargarDocumento';
-import { rendicionesQueryKey } from '@/modules/rendiciones/api/rendiciones.api';
+import { rendicionesKeys } from '@/modules/rendiciones/api/rendiciones.keys';
 
 /**
  * Repositorio de un período. Como en el catálogo, mientras llega la respuesta de un filtro nuevo
@@ -81,7 +81,7 @@ export function useAplicarDocumento() {
       Promise.all([
         queryClient.invalidateQueries({ queryKey: documentosQueryKey }),
         ...clienteIds.map((clienteId) =>
-          queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+          queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) }),
         ),
       ]),
   });
@@ -118,7 +118,7 @@ export function useReemplazarDocumentoDeItem() {
     onSettled: (_data, _error, { clienteId }) =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: documentosQueryKey }),
-        queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+        queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) }),
       ]),
   });
 }

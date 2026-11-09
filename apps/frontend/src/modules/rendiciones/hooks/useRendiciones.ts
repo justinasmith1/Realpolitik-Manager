@@ -20,15 +20,14 @@ import {
   obtenerUltimaOc,
   prepararEnvio,
   propagarCanalDeRequisito,
-  rendicionesAtrasadasQueryKey,
-  rendicionesDelMesQueryKey,
-  rendicionesQueryKey,
 } from '@/modules/rendiciones/api/rendiciones.api';
+import { rendicionesKeys } from '@/modules/rendiciones/api/rendiciones.keys';
+import { invalidarRendiciones } from '@/modules/rendiciones/hooks/invalidarRendiciones';
 
 /**
  * Rendiciones activas de un cliente, con filtros opcionales de año y mes. La key es
- * `['clientes', clienteId, 'rendiciones', filtros]`: invalidar `rendicionesQueryKey(clienteId)`
- * refresca todas las variantes (con y sin filtros) y los detalles de ese cliente.
+ * `rendicionesKeys.lista`: invalidar `rendicionesKeys.deCliente(clienteId)` refresca todas las
+ * variantes (con y sin filtros) y los detalles de ese cliente.
  */
 export function useRendiciones(clienteId?: string, filtros: ListarRendicionesQuery = {}) {
   return useQuery(listaDeRendiciones(clienteId ?? '', filtros));
@@ -40,7 +39,7 @@ export function useRendiciones(clienteId?: string, filtros: ListarRendicionesQue
  */
 export function listaDeRendiciones(clienteId: string, filtros: ListarRendicionesQuery = {}) {
   return queryOptions({
-    queryKey: [...rendicionesQueryKey(clienteId), 'lista', filtros],
+    queryKey: rendicionesKeys.lista(clienteId, filtros),
     queryFn: ({ signal }) => listarRendiciones(clienteId, filtros, signal),
     enabled: esIdDeRuta(clienteId),
   });
@@ -49,7 +48,7 @@ export function listaDeRendiciones(clienteId: string, filtros: ListarRendiciones
 /** Las rendiciones activas de un mes, de todos los clientes (pantalla Rendiciones, HU3.2). */
 export function useRendicionesDelMes(periodo: { anio: number; mes: number }) {
   return useQuery({
-    queryKey: rendicionesDelMesQueryKey(periodo),
+    queryKey: rendicionesKeys.delMes(periodo),
     queryFn: ({ signal }) => listarRendicionesDelMes(periodo, signal),
   });
 }
@@ -57,18 +56,15 @@ export function useRendicionesDelMes(periodo: { anio: number; mes: number }) {
 /** Las rendiciones atrasadas de cualquier mes (HU3.4): la tarjeta Atrasadas y su vista. */
 export function useRendicionesAtrasadas() {
   return useQuery({
-    queryKey: rendicionesAtrasadasQueryKey,
+    queryKey: rendicionesKeys.atrasadas,
     queryFn: ({ signal }) => listarRendicionesAtrasadas(signal),
   });
 }
 
 /** Una rendición con su checklist. Cuelga de la key del cliente para refrescarse con ella. */
-const detalleQueryKey = (clienteId: string, rendicionId: string) =>
-  [...rendicionesQueryKey(clienteId), 'detalle', rendicionId] as const;
-
 export function useRendicion(clienteId?: string, rendicionId?: string) {
   return useQuery({
-    queryKey: detalleQueryKey(clienteId ?? '', rendicionId ?? ''),
+    queryKey: rendicionesKeys.detalle(clienteId ?? '', rendicionId ?? ''),
     queryFn: ({ signal }) => obtenerRendicion(rendicionId ?? '', signal),
     enabled: esIdDeRuta(clienteId) && esIdDeRuta(rendicionId),
   });
@@ -77,7 +73,8 @@ export function useRendicion(clienteId?: string, rendicionId?: string) {
 /**
  * Abre una rendición. Sin reintentos: un alta no se repite sola. Al terminar, bien o mal, el
  * listado se vuelve a pedir: un 409 de factura repetida puede deberse a una que todavía no se
- * veía.
+ * veía. También la pantalla Rendiciones: la nueva entra en su mes y, si es de un mes viejo, en las
+ * atrasadas.
  */
 export function useAbrirRendicion() {
   const queryClient = useQueryClient();
@@ -85,14 +82,14 @@ export function useAbrirRendicion() {
     mutationFn: ({ clienteId, datos }: { clienteId: string; datos: CreateRendicionDto }) =>
       abrirRendicion(clienteId, datos),
     retry: false,
-    onSettled: (_resultado, _error, { clienteId }) =>
-      queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+    onSettled: (_resultado, _error, { clienteId }) => invalidarRendiciones(queryClient, clienteId),
   });
 }
 
 /**
  * Anula una rendición. Al terminar, bien o mal, el listado se vuelve a pedir: un 404 significa
- * que ya no está y tiene que desaparecer de la lista.
+ * que ya no está y tiene que desaparecer de la lista. También la pantalla Rendiciones: una anulada
+ * sale de su mes y de las atrasadas (la tarjeta Atrasadas se actualiza enseguida).
  */
 export function useAnularRendicion() {
   const queryClient = useQueryClient();
@@ -100,8 +97,7 @@ export function useAnularRendicion() {
     mutationFn: ({ rendicionId }: { clienteId: string; rendicionId: string }) =>
       anularRendicion(rendicionId),
     retry: false,
-    onSettled: (_resultado, _error, { clienteId }) =>
-      queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+    onSettled: (_resultado, _error, { clienteId }) => invalidarRendiciones(queryClient, clienteId),
   });
 }
 
@@ -122,7 +118,7 @@ export function useAgregarRequisitoARendicion() {
     }) => agregarRequisitoARendicion(rendicionId, requisitoId),
     retry: false,
     onSettled: (_resultado, _error, { clienteId }) =>
-      queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+      queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) }),
   });
 }
 
@@ -146,10 +142,10 @@ export function useCorregirCanalDeItem() {
     }) => corregirCanalDeItem(rendicionId, itemId, canalEntrega),
     retry: false,
     onSuccess: (detalle, { clienteId, rendicionId }) => {
-      queryClient.setQueryData(detalleQueryKey(clienteId, rendicionId), detalle);
+      queryClient.setQueryData(rendicionesKeys.detalle(clienteId, rendicionId), detalle);
     },
     onError: (_error, { clienteId }) =>
-      queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+      queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) }),
   });
 }
 
@@ -172,7 +168,7 @@ export function usePropagarCanalDeRequisito() {
     }) => propagarCanalDeRequisito(clienteId, requisitoId, rendicionIds),
     retry: false,
     onSettled: (_resultado, _error, { clienteId }) =>
-      queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+      queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) }),
   });
 }
 
@@ -194,7 +190,7 @@ export function usePrepararEnvio() {
     }) => prepararEnvio(rendicionId, itemIds),
     retry: false,
     onError: (_error, { clienteId }) =>
-      queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+      queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) }),
   });
 }
 
@@ -207,7 +203,7 @@ export function usePrepararEnvio() {
  */
 export function useUltimaOc(clienteId: string, { enabled }: { enabled: boolean }) {
   return useQuery({
-    queryKey: [...rendicionesQueryKey(clienteId), 'ultima-oc'],
+    queryKey: rendicionesKeys.ultimaOc(clienteId),
     queryFn: ({ signal }) => obtenerUltimaOc(clienteId, signal),
     enabled: enabled && esIdDeRuta(clienteId),
     // Es una sugerencia: no se reintenta ni se reutiliza una vieja.
@@ -234,8 +230,8 @@ export function useActualizarOcDeRendicion() {
     }) => actualizarOcDeRendicion(rendicionId, datos),
     retry: false,
     onSuccess: (detalle, { clienteId, rendicionId }) => {
-      queryClient.setQueryData(detalleQueryKey(clienteId, rendicionId), detalle);
-      void queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) });
+      queryClient.setQueryData(rendicionesKeys.detalle(clienteId, rendicionId), detalle);
+      void queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) });
     },
   });
 }

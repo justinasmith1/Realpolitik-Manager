@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { rendicionesQueryKey } from '@/modules/rendiciones/api/rendiciones.api';
+import { rendicionesKeys } from '@/modules/rendiciones/api/rendiciones.keys';
 import { EditarOcSheet, TEXTO_OC_GUARDADA } from '@/modules/rendiciones/components/EditarOcSheet';
 import {
   CLIENTE_ID,
@@ -30,7 +30,7 @@ afterEach(() => {
   fetchMock.mockReset();
 });
 
-const KEY_ULTIMA_OC = [...rendicionesQueryKey(CLIENTE_ID), 'ultima-oc'];
+const KEY_ULTIMA_OC = rendicionesKeys.ultimaOc(CLIENTE_ID);
 const RUTA_ULTIMA_OC = `/clientes/${CLIENTE_ID}/ultima-oc`;
 
 /** `ultimaOc` es la respuesta de la sugerencia; el PATCH responde la rendición con lo enviado. */
