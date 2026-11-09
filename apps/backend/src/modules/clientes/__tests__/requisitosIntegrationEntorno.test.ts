@@ -1,85 +1,29 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { exigirBaseDeEstaSuite } from './requisitosIntegrationEntorno';
 
-const LOCAL =
-  'postgresql://realpolitik:realpolitik_dev@127.0.0.1:5433/realpolitik_test?schema=public';
-const CI = 'postgresql://postgres:postgres@localhost:5432/realpolitik_test?schema=public';
+// La guarda de las suites de requisitos: solo `realpolitik_test`, en el host y el puerto de
+// `TEST_DATABASE_URL`.
+const url = (destino: string) => `postgresql://usuario:clave@${destino}?schema=public`;
 
 describe('exigirBaseDeEstaSuite', () => {
-  beforeEach(() => {
-    vi.stubEnv('GITHUB_ACTIONS', 'false');
-    vi.stubEnv('ALLOW_COMPOSE_TEST_DB', '');
+  it.each([
+    ['la base de Docker en local (5432)', '127.0.0.1:5432/realpolitik_test'],
+    ['otro puerto local (POSTGRES_PORT=5433)', '127.0.0.1:5433/realpolitik_test'],
+    ['el servicio de GitHub Actions', 'localhost:5432/realpolitik_test'],
+    ['el servicio db de Docker Compose', 'db:5432/realpolitik_test'],
+  ])('acepta realpolitik_test en %s', (_caso, destino) => {
+    expect(() => exigirBaseDeEstaSuite(url(destino))).not.toThrow();
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it('acepta el entorno local del proyecto', () => {
-    expect(() => exigirBaseDeEstaSuite(LOCAL)).not.toThrow();
-  });
-
-  it('acepta localhost:5432/realpolitik_test solo en GitHub Actions', () => {
-    vi.stubEnv('GITHUB_ACTIONS', 'true');
-    expect(() => exigirBaseDeEstaSuite(CI)).not.toThrow();
-  });
-
-  it('rechaza localhost:5432 fuera de GitHub Actions', () => {
-    expect(() => exigirBaseDeEstaSuite(CI)).toThrow(/entorno autorizado/);
-  });
-
-  it('rechaza localhost con un puerto distinto de 5432 en GitHub Actions', () => {
-    vi.stubEnv('GITHUB_ACTIONS', 'true');
-    expect(() =>
-      exigirBaseDeEstaSuite(
-        'postgresql://postgres:postgres@localhost:5433/realpolitik_test?schema=public',
-      ),
-    ).toThrow(/entorno autorizado/);
-  });
-
-  it('rechaza realpolitik_db en el puerto local autorizado', () => {
-    expect(() =>
-      exigirBaseDeEstaSuite(
-        'postgresql://realpolitik:realpolitik_dev@127.0.0.1:5433/realpolitik_db?schema=public',
-      ),
-    ).toThrow(/entorno autorizado/);
-  });
-
-  it('rechaza realpolitik_test en un host o puerto no autorizado', () => {
-    expect(() =>
-      exigirBaseDeEstaSuite(
-        'postgresql://realpolitik:realpolitik_dev@127.0.0.1:5432/realpolitik_test?schema=public',
-      ),
-    ).toThrow(/entorno autorizado/);
-  });
-
-  const COMPOSE = 'postgresql://realpolitik:realpolitik_dev@db:5432/realpolitik_test?schema=public';
-
-  it('acepta db:5432/realpolitik_test solo con ALLOW_COMPOSE_TEST_DB=true', () => {
-    vi.stubEnv('ALLOW_COMPOSE_TEST_DB', 'true');
-    expect(() => exigirBaseDeEstaSuite(COMPOSE)).not.toThrow();
-  });
-
-  it('rechaza db:5432 sin ALLOW_COMPOSE_TEST_DB', () => {
-    expect(() => exigirBaseDeEstaSuite(COMPOSE)).toThrow(/entorno autorizado/);
-  });
-
-  it('con ALLOW_COMPOSE_TEST_DB sigue rechazando la base de desarrollo en db', () => {
-    vi.stubEnv('ALLOW_COMPOSE_TEST_DB', 'true');
-    expect(() =>
-      exigirBaseDeEstaSuite(
-        'postgresql://realpolitik:realpolitik_dev@db:5432/realpolitik_db?schema=public',
-      ),
-    ).toThrow(/entorno autorizado/);
-  });
-
-  it('con ALLOW_COMPOSE_TEST_DB no habilita otros hosts', () => {
-    vi.stubEnv('ALLOW_COMPOSE_TEST_DB', 'true');
-    expect(() =>
-      exigirBaseDeEstaSuite(
-        'postgresql://realpolitik:realpolitik_dev@otro-host:5432/realpolitik_test?schema=public',
-      ),
-    ).toThrow(/entorno autorizado/);
+  it.each([
+    ['la base de desarrollo', '127.0.0.1:5432/realpolitik_db'],
+    ['la base de desarrollo en Docker Compose', 'db:5432/realpolitik_db'],
+    ['otra base descartable', '127.0.0.1:5432/realpolitik_audit'],
+    ['un nombre parecido', '127.0.0.1:5432/realpolitik_test_2'],
+  ])('rechaza %s', (_caso, destino) => {
+    expect(() => exigirBaseDeEstaSuite(url(destino))).toThrow(
+      /solo puede utilizar realpolitik_test/,
+    );
   });
 });

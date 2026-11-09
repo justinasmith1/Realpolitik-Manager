@@ -203,7 +203,7 @@ La migración `20261103120000_hu3_1_estado_rendicion` crea el enum, la columna y
 
 ## Tests de integración
 
-Las suites `*.integration.test.ts` del backend (y los `*.api.test.tsx` del frontend) corren contra PostgreSQL real. Sin `TEST_DATABASE_URL` se saltan, y **se niegan a correr** si esa base no se llama `*_audit` o `*_test`: nunca apuntan a la de desarrollo. Cada suite borra lo que crea.
+Las suites `*.integration.test.ts` del backend (y los `*.api.test.tsx` del frontend) corren contra PostgreSQL real. Sin `TEST_DATABASE_URL` se saltan, y **se niegan a correr** si esa base no se llama `*_audit` o `*_test`: nunca apuntan a la de desarrollo. Cada suite borra lo que crea. Las de requisitos (`requisitos.integration` y `requisitos.masivo`) exigen además que se llame exactamente `realpolitik_test`; el host y el puerto son los de `TEST_DATABASE_URL`, como en las demás.
 
 En los ejemplos, `<usuario>`, `<clave>` y `<puerto>` son los de tu `.env` de la raíz (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`).
 
