@@ -7,6 +7,7 @@ import {
   esAtrasada,
   ESTADOS_CON_FECHA,
   ItemChecklistSchema,
+  periodoAMeses,
   RendicionAtrasadaSchema,
   RendicionDelMesSchema,
   RendicionDetalleSchema,
@@ -237,7 +238,7 @@ export function toRendicionesDelMesDto(
  */
 export function compararRendicionesAtrasadas(a: RendicionAtrasada, b: RendicionAtrasada): number {
   return (
-    a.anio * 12 + a.mes - (b.anio * 12 + b.mes) ||
+    periodoAMeses(a) - periodoAMeses(b) ||
     a.cliente.denominacion.localeCompare(b.cliente.denominacion, 'es', { sensitivity: 'base' }) ||
     a.numeroFactura.localeCompare(b.numeroFactura) ||
     a.id.localeCompare(b.id)

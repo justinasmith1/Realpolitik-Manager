@@ -38,8 +38,17 @@ export function mesActual(ahora: Date = new Date()): Periodo {
   return { anio: valor('year'), mes: valor('month') };
 }
 
-/** Meses transcurridos desde el año 0: permite comparar períodos con un solo número. */
-const enMeses = ({ anio, mes }: Periodo): number => anio * 12 + mes;
+/**
+ * El período como un número absoluto de meses, para comparar, restar o correr períodos con un solo
+ * número. Base 0: enero del año 0 es el mes 0, así la inversa (`mesesAPeriodo`) sale directa con
+ * división y resto. Diciembre de 2026 es 24323 y enero de 2027, 24324.
+ */
+export const periodoAMeses = ({ anio, mes }: Periodo): number => anio * 12 + (mes - 1);
+
+/** La inversa de `periodoAMeses`: el período de un número absoluto de meses (base 0). */
+export function mesesAPeriodo(meses: number): Periodo {
+  return { anio: Math.floor(meses / 12), mes: (meses % 12) + 1 };
+}
 
 /**
  * `true` si el período es posterior al mes siguiente al actual. Cualquier mes pasado vale: se
@@ -47,5 +56,5 @@ const enMeses = ({ anio, mes }: Periodo): number => anio * 12 + mes;
  * adelantado, pero no más.
  */
 export function periodoMuyFuturo(periodo: Periodo, ahora: Date = new Date()): boolean {
-  return enMeses(periodo) > enMeses(mesActual(ahora)) + 1;
+  return periodoAMeses(periodo) > periodoAMeses(mesActual(ahora)) + 1;
 }

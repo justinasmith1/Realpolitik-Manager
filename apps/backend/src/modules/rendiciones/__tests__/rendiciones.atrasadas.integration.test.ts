@@ -18,7 +18,9 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import {
   mesActual,
+  mesesAPeriodo,
   normalizarNombreTipoDocumento as normalizar,
+  periodoAMeses,
   type Periodo,
 } from '@realpolitik/shared';
 import type { Express } from 'express';
@@ -40,11 +42,7 @@ const MARCA = `TESTRA${Date.now().toString(36)}${randomBytes(3).toString('hex')}
 const MARCA_NORMALIZADA = normalizar(MARCA);
 
 /** El período `meses` meses antes del actual (en Buenos Aires). */
-function mesesAtras(meses: number): Periodo {
-  const { anio, mes } = mesActual();
-  const indice = anio * 12 + (mes - 1) - meses;
-  return { anio: Math.floor(indice / 12), mes: (indice % 12) + 1 };
-}
+const mesesAtras = (meses: number): Periodo => mesesAPeriodo(periodoAMeses(mesActual()) - meses);
 const ACTUAL = mesesAtras(0);
 const ANTERIOR = mesesAtras(1);
 const DOS_ATRAS = mesesAtras(2);

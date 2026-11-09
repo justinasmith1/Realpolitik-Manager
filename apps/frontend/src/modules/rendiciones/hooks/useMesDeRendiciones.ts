@@ -3,6 +3,8 @@ import {
   ANIO_MIN,
   ListarRendicionesDelMesQuerySchema,
   mesActual,
+  mesesAPeriodo,
+  periodoAMeses,
 } from '@realpolitik/shared';
 import { useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router';
@@ -13,9 +15,8 @@ export interface Periodo {
 }
 
 /** El mes anterior o el siguiente (`desplazamiento` -1 o 1), cruzando de año si hace falta. */
-export function mesCorrido({ anio, mes }: Periodo, desplazamiento: -1 | 1): Periodo {
-  const indice = anio * 12 + (mes - 1) + desplazamiento;
-  return { anio: Math.floor(indice / 12), mes: (indice % 12) + 1 };
+export function mesCorrido(periodo: Periodo, desplazamiento: -1 | 1): Periodo {
+  return mesesAPeriodo(periodoAMeses(periodo) + desplazamiento);
 }
 
 /** El período está dentro de los años que admite una rendición (2020 a 2100). */
