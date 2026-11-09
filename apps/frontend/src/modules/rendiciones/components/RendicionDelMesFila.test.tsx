@@ -20,6 +20,7 @@ function fila(cambios: Partial<RendicionDelMes> = {}): RendicionDelMes {
     estado: 'EN_CURSO',
     avance: { reunidos: 2, total: 5, faltantes: 3 },
     ultimoPaso: null,
+    atrasada: false,
     ...cambios,
   };
 }
@@ -183,5 +184,34 @@ describe('RendicionDelMesFila', () => {
     const relleno = screen.getByRole('progressbar').firstElementChild;
     expect(relleno).toHaveClass('bg-estado-rechazada');
     expect(relleno).toHaveStyle({ width: '40%' });
+  });
+
+  describe('marca de atrasada (HU3.4)', () => {
+    it('en el lugar de la fecha dice "Atrasada", en rojo; el estado sigue siendo el suyo', () => {
+      renderFila(fila({ estado: 'COMPLETA', atrasada: true }));
+
+      expect(screen.getByText('Atrasada')).toHaveClass('text-atrasada');
+      expect(screen.getByText('Completa')).toBeInTheDocument();
+      expect(screen.getByRole('link')).toHaveAccessibleDescription(/Atrasada$/);
+    });
+
+    it('con su período (vista de atrasadas) dice "Atrasada · Septiembre 2026"', () => {
+      render(
+        <MemoryRouter>
+          <RendicionDelMesFila
+            rendicion={fila({ atrasada: true })}
+            periodo={{ anio: 2026, mes: 9 }}
+          />
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText('Atrasada · Septiembre 2026')).toHaveClass('text-atrasada');
+    });
+
+    it('sin la marca no dice "Atrasada"', () => {
+      renderFila(fila({ atrasada: false }));
+
+      expect(screen.queryByText(/Atrasada/)).toBeNull();
+    });
   });
 });

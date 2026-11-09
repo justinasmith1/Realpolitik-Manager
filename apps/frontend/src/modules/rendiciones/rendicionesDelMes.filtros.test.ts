@@ -25,6 +25,7 @@ function fila(cambios: Partial<RendicionDelMes> = {}): RendicionDelMes {
     estado: 'EN_CURSO',
     avance: { reunidos: 1, total: 2, faltantes: 1 },
     ultimoPaso: null,
+    atrasada: false,
     ...cambios,
   };
 }

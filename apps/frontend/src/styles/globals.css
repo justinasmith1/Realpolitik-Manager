@@ -74,7 +74,7 @@
 
   /* Estado de la rendición (HU3.1, badge `EstadoRendicionBadge`; pantalla Rendiciones, HU3.2).
      Colores propios, los mismos en todo el sistema: En curso ámbar, Completa azul, Enviada violeta,
-     Aprobada verde y Rechazada magenta. El rojo no se usa: queda para la marca de Atrasada (HU3.4).
+     Aprobada verde y Rechazada magenta. El rojo no se usa: es de la marca de Atrasada (`atrasada`).
      Contraste del texto: de 5.6:1 a 6.8:1 sobre su fondo y de 6.3:1 a 7.9:1 sobre blanco (AA para
      texto chico). */
   --estado-en-curso: #9a4a00;
@@ -92,6 +92,13 @@
   --estado-rechazada: #9c1458;
   --estado-rechazada-soft: #fbe9f2;
   --estado-rechazada-border: #efc0d8;
+
+  /* Marca de Atrasada (HU3.4): el único rojo de la pantalla Rendiciones. Distinto del magenta de
+     Rechazada y del rojo de error (`destructive`). Contraste del texto: 5.1:1 sobre su fondo y
+     5.9:1 sobre blanco (AA para texto chico). */
+  --atrasada: #c4211a;
+  --atrasada-soft: #fdecea;
+  --atrasada-border: #f4bdb8;
 
   /* Sidebar: superficie oscura propia del shell (no es un modo oscuro global) */
   --sidebar: #161314;
@@ -172,6 +179,9 @@
   --color-estado-rechazada: var(--estado-rechazada);
   --color-estado-rechazada-soft: var(--estado-rechazada-soft);
   --color-estado-rechazada-border: var(--estado-rechazada-border);
+  --color-atrasada: var(--atrasada);
+  --color-atrasada-soft: var(--atrasada-soft);
+  --color-atrasada-border: var(--atrasada-border);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);

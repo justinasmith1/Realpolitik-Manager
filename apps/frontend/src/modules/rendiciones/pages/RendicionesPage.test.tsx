@@ -19,15 +19,20 @@ const fila = (n: number, denominacion: string) => ({
   estado: 'EN_CURSO',
   avance: { reunidos: 1, total: 2, faltantes: 1 },
   ultimoPaso: null,
+  atrasada: false,
 });
 
-/** El backend simulado: el listado de cada mes, por `anio-mes`. */
-function servir(porMes: Record<string, object[]>) {
+/**
+ * El backend simulado: el listado de cada mes, por `anio-mes`, y el de atrasadas (HU3.4; por
+ * defecto, ninguna).
+ */
+function servir(porMes: Record<string, object[]>, atrasadas: object[] = []) {
   fetchMock.mockImplementation((entrada) => {
     const url = new URL(typeof entrada === 'string' ? entrada : (entrada as Request).url);
     const clave = `${url.searchParams.get('anio')}-${url.searchParams.get('mes')}`;
+    const cuerpo = url.pathname === '/rendiciones/atrasadas' ? atrasadas : (porMes[clave] ?? []);
     return Promise.resolve(
-      new Response(JSON.stringify(porMes[clave] ?? []), {
+      new Response(JSON.stringify(cuerpo), {
         headers: { 'Content-Type': 'application/json' },
       }),
     );
@@ -66,11 +71,14 @@ function renderPantalla(url = '/rendiciones') {
   return { router, user: userEvent.setup() };
 }
 
+/** Los pedidos del listado del mes (el de atrasadas se pide siempre, aparte). */
 const pedidos = () =>
-  fetchMock.mock.calls.map(([entrada]) => {
-    const url = new URL(typeof entrada === 'string' ? entrada : (entrada as Request).url);
-    return `${url.pathname}${url.search}`;
-  });
+  fetchMock.mock.calls
+    .map(([entrada]) => {
+      const url = new URL(typeof entrada === 'string' ? entrada : (entrada as Request).url);
+      return `${url.pathname}${url.search}`;
+    })
+    .filter((pedido) => pedido !== '/rendiciones/atrasadas');
 const mesVisible = () => within(screen.getByRole('group', { name: 'Mes' })).getByText(/\d{4}/);
 
 describe('RendicionesPage (HU3.2)', () => {
@@ -284,7 +292,14 @@ describe('RendicionesPage: resumen y filtros (HU3.3)', () => {
     const { user } = renderPantalla();
     await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
 
-    const esperadas = ['En curso2', 'Completas1', 'Enviadas1', 'Aprobadas0', 'Rechazadas1'];
+    const esperadas = [
+      'En curso2',
+      'Completas1',
+      'Enviadas1',
+      'Aprobadas0',
+      'Rechazadas1',
+      'Atrasadas0',
+    ];
     expect(textosDeTarjetas()).toEqual(esperadas);
 
     await user.click(tarjeta('Enviadas'));
@@ -577,5 +592,264 @@ describe('RendicionesPage: resumen y filtros (HU3.3)', () => {
     expect(screen.queryByRole('group', { name: 'Resumen por estado' })).toBeNull();
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Filtros activos' })).toBeNull();
+  });
+});
+
+describe('RendicionesPage: atrasadas (HU3.4)', () => {
+  let n = 500;
+  const rendicion = (
+    denominacion: string,
+    {
+      estado = 'EN_CURSO',
+      atrasada = false,
+      sector = 'PRIVADO',
+      subtipo = null as string | null,
+    } = {},
+  ) => {
+    n += 1;
+    return {
+      ...fila(n, denominacion),
+      cliente: { denominacion, sector, subtipo },
+      estado,
+      atrasada,
+    };
+  };
+  /** Una fila del listado de atrasadas: la del mes, con su período y `atrasada: true`. */
+  const atrasada = (
+    denominacion: string,
+    anio: number,
+    mes: number,
+    extra: { sector?: string; subtipo?: string | null; estado?: string } = {},
+  ) => ({ ...rendicion(denominacion, { ...extra, atrasada: true }), anio, mes });
+
+  // Hoy es noviembre de 2026: atrasadas, septiembre o antes. Ya vienen ordenadas por el backend.
+  const ATRASADAS = [
+    atrasada('Zeta Producciones', 2026, 3),
+    atrasada('Municipalidad de Córdoba', 2026, 9, {
+      sector: 'PUBLICO',
+      subtipo: 'MUNICIPAL',
+      estado: 'COMPLETA',
+    }),
+    atrasada('Grupo Solano', 2026, 9),
+  ];
+  const NOVIEMBRE = [rendicion('Andina Logística'), rendicion('Grupo Solano')];
+
+  const tarjetas = () => screen.getByRole('group', { name: 'Resumen por estado' });
+  const tarjeta = (titulo: string) =>
+    within(tarjetas()).getByRole('button', { name: new RegExp(`^${titulo}`) });
+  const lista = (nombre: string | RegExp) => screen.getByRole('list', { name: nombre });
+  const clientesDe = (nombre: string | RegExp) =>
+    within(lista(nombre))
+      .getAllByRole('heading', { level: 3 })
+      .map((titulo) => titulo.textContent);
+  const activos = () => screen.getByRole('group', { name: 'Filtros activos' });
+  const parametro = (router: { state: { location: { search: string } } }, nombre: string) =>
+    new URLSearchParams(router.state.location.search).get(nombre);
+
+  it('la tarjeta Atrasadas cuenta todas las atrasadas aunque se esté viendo el mes actual', async () => {
+    servir({ '2026-11': NOVIEMBRE }, ATRASADAS);
+    renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    await waitFor(() => expect(tarjeta('Atrasadas')).toHaveTextContent('Atrasadas3'));
+    expect(within(tarjeta('Atrasadas')).getByText('3')).toHaveClass('text-atrasada');
+    expect(pedidos()).toEqual(['/rendiciones?anio=2026&mes=11']);
+    const urls = fetchMock.mock.calls.map(([entrada]) =>
+      typeof entrada === 'string' ? entrada : (entrada as Request).url,
+    );
+    expect(urls).toContain('https://api.example/rendiciones/atrasadas');
+  });
+
+  it('con 0 atrasadas la tarjeta se muestra igual, en un tono neutro', async () => {
+    servir({ '2026-11': NOVIEMBRE });
+    renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+
+    await waitFor(() => expect(tarjeta('Atrasadas')).toHaveTextContent('Atrasadas0'));
+    const numero = within(tarjeta('Atrasadas')).getByText('0');
+    expect(numero).not.toHaveClass('text-atrasada');
+    expect(numero).toHaveClass('text-content-secondary');
+  });
+
+  it('tocar la tarjeta abre la vista de atrasadas; tocarla de nuevo vuelve al mes', async () => {
+    servir({ '2026-11': NOVIEMBRE }, ATRASADAS);
+    const { router, user } = renderPantalla();
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+    await waitFor(() => expect(tarjeta('Atrasadas')).toHaveTextContent('3'));
+
+    await user.click(tarjeta('Atrasadas'));
+
+    expect(router.state.location.search).toBe('?vista=atrasadas');
+    expect(tarjeta('Atrasadas')).toHaveAttribute('aria-pressed', 'true');
+    expect(clientesDe('Rendiciones atrasadas')).toEqual([
+      'Zeta Producciones',
+      'Municipalidad de Córdoba',
+      'Grupo Solano',
+    ]);
+    // Ninguna tarjeta de estado queda activa.
+    expect(tarjeta('En curso')).toHaveAttribute('aria-pressed', 'false');
+
+    await user.click(tarjeta('Atrasadas'));
+
+    expect(router.state.location.search).toBe('');
+    expect(clientesDe('Rendiciones de Noviembre 2026')).toEqual([
+      'Andina Logística',
+      'Grupo Solano',
+    ]);
+  });
+
+  it('en la vista, de la más vieja a la más nueva, cada fila con "Atrasada · <mes>"', async () => {
+    servir({ '2026-11': NOVIEMBRE }, ATRASADAS);
+    renderPantalla('/rendiciones?vista=atrasadas');
+
+    const filas = within(await screen.findByRole('list', { name: 'Rendiciones atrasadas' }))
+      .getAllByRole('listitem')
+      .map((item) => within(item).getByText(/^Atrasada · /).textContent);
+
+    expect(filas).toEqual([
+      'Atrasada · Marzo 2026',
+      'Atrasada · Septiembre 2026',
+      'Atrasada · Septiembre 2026',
+    ]);
+    expect(within(lista('Rendiciones atrasadas')).getAllByText(/^Atrasada · /)[0]).toHaveClass(
+      'text-atrasada',
+    );
+    // El estado de la segunda línea sigue siendo el suyo.
+    expect(within(lista('Rendiciones atrasadas')).getByText('Completa')).toBeInTheDocument();
+  });
+
+  it('en la vista, el tipo de cliente y el buscador siguen aplicando', async () => {
+    servir({ '2026-11': NOVIEMBRE }, ATRASADAS);
+    const { router, user } = renderPantalla('/rendiciones?vista=atrasadas');
+    await screen.findByRole('list', { name: 'Rendiciones atrasadas' });
+
+    await user.click(screen.getByRole('combobox', { name: 'Tipo de cliente' }));
+    await user.click(await screen.findByRole('option', { name: 'Privado' }));
+    expect(clientesDe('Rendiciones atrasadas')).toEqual(['Zeta Producciones', 'Grupo Solano']);
+
+    await user.type(screen.getByRole('searchbox', { name: 'Buscar cliente o factura' }), 'solano');
+    await waitFor(() => expect(parametro(router, 'q')).toBe('solano'));
+    await waitFor(() => expect(clientesDe('Rendiciones atrasadas')).toEqual(['Grupo Solano']));
+    expect(parametro(router, 'vista')).toBe('atrasadas');
+    expect(activos()).toHaveTextContent(/^1 de 3 · Filtros:/);
+  });
+
+  it('tocar una tarjeta de estado sale de la vista y aplica ese estado al mes', async () => {
+    servir({ '2026-11': NOVIEMBRE }, ATRASADAS);
+    const { router, user } = renderPantalla('/rendiciones?vista=atrasadas');
+    await screen.findByRole('list', { name: 'Rendiciones atrasadas' });
+
+    await user.click(tarjeta('En curso'));
+
+    expect(router.state.location.search).toBe('?estado=EN_CURSO');
+    expect(tarjeta('En curso')).toHaveAttribute('aria-pressed', 'true');
+    expect(tarjeta('Atrasadas')).toHaveAttribute('aria-pressed', 'false');
+    expect(clientesDe('Rendiciones de Noviembre 2026')).toEqual([
+      'Andina Logística',
+      'Grupo Solano',
+    ]);
+  });
+
+  it('recargar con ?vista=atrasadas mantiene la vista; un estado junto con la vista se quita', async () => {
+    servir({ '2026-11': NOVIEMBRE }, ATRASADAS);
+    const { router } = renderPantalla('/rendiciones?vista=atrasadas&estado=ENVIADA');
+
+    expect(await screen.findByRole('list', { name: 'Rendiciones atrasadas' })).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.search).toBe('?vista=atrasadas'));
+    expect(tarjeta('Enviadas')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('una vista desconocida en la URL se ignora y se quita', async () => {
+    servir({ '2026-11': NOVIEMBRE }, ATRASADAS);
+    const { router } = renderPantalla('/rendiciones?vista=otra');
+
+    await screen.findByRole('list', { name: 'Rendiciones de Noviembre 2026' });
+    await waitFor(() => expect(router.state.location.search).toBe(''));
+  });
+
+  it('la línea de filtros activos muestra "Atrasadas ✕" en rojo; su ✕ vuelve al mes', async () => {
+    servir({ '2026-11': NOVIEMBRE }, ATRASADAS);
+    const { router, user } = renderPantalla('/rendiciones?vista=atrasadas');
+    await screen.findByRole('list', { name: 'Rendiciones atrasadas' });
+
+    expect(activos()).toHaveTextContent(/^3 de 3 · Filtros:Atrasadas.*Limpiar todo$/);
+    expect(within(activos()).getByText('Atrasadas')).toHaveClass('text-atrasada');
+
+    await user.click(within(activos()).getByRole('button', { name: 'Quitar filtro Atrasadas' }));
+
+    expect(router.state.location.search).toBe('');
+    expect(screen.queryByRole('group', { name: 'Filtros activos' })).toBeNull();
+  });
+
+  it('"Limpiar todo" desde la vista vuelve al mes sin filtros', async () => {
+    servir({ '2026-10': NOVIEMBRE }, ATRASADAS);
+    const { router, user } = renderPantalla(
+      '/rendiciones?anio=2026&mes=10&vista=atrasadas&tipo=PRIVADO&q=solano',
+    );
+    await screen.findByRole('list', { name: 'Rendiciones atrasadas' });
+
+    await user.click(within(activos()).getByRole('button', { name: 'Limpiar todo' }));
+
+    expect(router.state.location.search).toBe('?anio=2026&mes=10');
+    expect(
+      await screen.findByRole('list', { name: 'Rendiciones de Octubre 2026' }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ['el mes actual', '2026-11', '/rendiciones'],
+    ['el mes anterior', '2026-10', '/rendiciones?anio=2026&mes=10'],
+  ])('en %s ninguna fila tiene la marca', async (_caso, clave, url) => {
+    servir({ [clave]: NOVIEMBRE }, ATRASADAS);
+    renderPantalla(url);
+
+    const listado = await screen.findByRole('list', { name: /^Rendiciones de/ });
+
+    expect(within(listado).queryByText(/^Atrasada/)).toBeNull();
+  });
+
+  it('en un mes de dos meses atrás, las sin enviar vienen primero y marcadas', async () => {
+    // El backend ya las ordena: atrasadas primero.
+    servir(
+      {
+        '2026-9': [
+          rendicion('Municipalidad de Córdoba', { atrasada: true }),
+          rendicion('Zeta Producciones', { estado: 'ENVIADA' }),
+        ],
+      },
+      ATRASADAS,
+    );
+    renderPantalla('/rendiciones?anio=2026&mes=9');
+
+    const items = within(
+      await screen.findByRole('list', { name: 'Rendiciones de Septiembre 2026' }),
+    ).getAllByRole('listitem');
+
+    // Fuera de la vista, la marca es solo "Atrasada", sin el mes (es el que se está viendo).
+    expect(within(items[0] as HTMLElement).getByText('Atrasada')).toHaveClass('text-atrasada');
+    expect(within(items[1] as HTMLElement).queryByText(/^Atrasada/)).toBeNull();
+  });
+
+  it('con el mes vacío y atrasadas, se ven las seis tarjetas y el aviso del mes vacío', async () => {
+    servir({}, ATRASADAS);
+    const { user } = renderPantalla();
+
+    expect(await screen.findByText('No hay rendiciones en Noviembre 2026')).toBeInTheDocument();
+    await waitFor(() => expect(tarjeta('Atrasadas')).toHaveTextContent('3'));
+    expect(within(tarjetas()).getAllByRole('button')).toHaveLength(6);
+    expect(screen.queryByRole('searchbox')).toBeNull();
+
+    // Desde ahí se abre la vista.
+    await user.click(tarjeta('Atrasadas'));
+    expect(await screen.findByRole('list', { name: 'Rendiciones atrasadas' })).toBeInTheDocument();
+  });
+
+  it('en la vista sin atrasadas, lo dice', async () => {
+    servir({ '2026-11': NOVIEMBRE });
+    renderPantalla('/rendiciones?vista=atrasadas');
+
+    expect(
+      await screen.findByRole('heading', { name: 'No hay rendiciones atrasadas' }),
+    ).toBeInTheDocument();
   });
 });
