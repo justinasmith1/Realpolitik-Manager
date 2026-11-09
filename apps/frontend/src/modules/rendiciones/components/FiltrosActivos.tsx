@@ -40,32 +40,38 @@ function EtiquetaDeFiltro({ texto, onQuitar, className }: EtiquetaDeFiltroProps)
 
 interface FiltrosActivosProps {
   filtros: FiltrosDelMes;
-  /** Las rendiciones que se muestran y el total del mes ("1 de 3"). */
+  /** HU3.4: la vista de atrasadas está activa. */
+  vistaAtrasadas: boolean;
+  /** Las rendiciones que se muestran y el total del listado ("1 de 3"): el mes, o las atrasadas. */
   mostradas: number;
   total: number;
   onQuitarEstado: () => void;
   onQuitarTipo: () => void;
   onQuitarBusqueda: () => void;
+  onQuitarAtrasadas: () => void;
   onLimpiar: () => void;
 }
 
 /**
  * La línea de filtros activos de la pantalla Rendiciones (HU3.3), entre los filtros y el listado:
  * "1 de 3 · Filtros: [Estado: En curso ✕] [Municipio ✕] [“solano” ✕]  Limpiar todo". Solo aparece
- * con algún filtro aplicado. La etiqueta del estado va en el color de su estado. En pantallas
+ * con algún filtro aplicado o en la vista de atrasadas (HU3.4), que se muestra como "Atrasadas ✕"
+ * en rojo. La etiqueta del estado va en el color de su estado. En pantallas
  * angostas puede ocupar varias líneas.
  */
 export function FiltrosActivos({
   filtros,
+  vistaAtrasadas,
   mostradas,
   total,
   onQuitarEstado,
   onQuitarTipo,
   onQuitarBusqueda,
+  onQuitarAtrasadas,
   onLimpiar,
 }: FiltrosActivosProps) {
   const { estado, tipo, q } = filtros;
-  if (estado === undefined && tipo === undefined && q === undefined) return null;
+  if (!vistaAtrasadas && estado === undefined && tipo === undefined && q === undefined) return null;
 
   return (
     <div
@@ -79,6 +85,13 @@ export function FiltrosActivos({
         </span>{' '}
         · Filtros:
       </span>
+      {vistaAtrasadas && (
+        <EtiquetaDeFiltro
+          texto="Atrasadas"
+          onQuitar={onQuitarAtrasadas}
+          className="bg-atrasada-soft text-atrasada"
+        />
+      )}
       {estado !== undefined && <EtiquetaDeEstado estado={estado} onQuitar={onQuitarEstado} />}
       {tipo !== undefined && <EtiquetaDeTipo tipo={tipo} onQuitar={onQuitarTipo} />}
       {q !== undefined && (

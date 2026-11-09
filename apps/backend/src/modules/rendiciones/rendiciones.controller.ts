@@ -9,6 +9,7 @@ import type {
   PrepararEnvioSchema,
   PropagarCanalDeRequisitoSchema,
   Rendicion,
+  RendicionAtrasada,
   RendicionDetalle,
   RendicionDelMes,
   RendicionResumen,
@@ -32,6 +33,7 @@ import {
   anularRendicion,
   corregirCanalDeItem,
   listarRendiciones,
+  listarRendicionesAtrasadas,
   listarRendicionesDelMes,
   obtenerRendicion,
   obtenerUltimaOc,
@@ -81,6 +83,14 @@ export async function listarRendicionesDelMesController(
 ): Promise<void> {
   const rendiciones = await listarRendicionesDelMes(res.locals.validated.query);
   res.status(200).json(rendiciones);
+}
+
+/** Las rendiciones atrasadas de cualquier mes (HU3.4). Sin parámetros. */
+export async function listarRendicionesAtrasadasController(
+  _req: Request,
+  res: Response<RendicionAtrasada[]>,
+): Promise<void> {
+  res.status(200).json(await listarRendicionesAtrasadas());
 }
 
 export async function obtenerRendicionController(

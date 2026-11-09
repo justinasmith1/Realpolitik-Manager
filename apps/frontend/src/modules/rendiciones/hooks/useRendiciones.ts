@@ -14,11 +14,13 @@ import {
   anularRendicion,
   corregirCanalDeItem,
   listarRendiciones,
+  listarRendicionesAtrasadas,
   listarRendicionesDelMes,
   obtenerRendicion,
   obtenerUltimaOc,
   prepararEnvio,
   propagarCanalDeRequisito,
+  rendicionesAtrasadasQueryKey,
   rendicionesDelMesQueryKey,
   rendicionesQueryKey,
 } from '@/modules/rendiciones/api/rendiciones.api';
@@ -49,6 +51,14 @@ export function useRendicionesDelMes(periodo: { anio: number; mes: number }) {
   return useQuery({
     queryKey: rendicionesDelMesQueryKey(periodo),
     queryFn: ({ signal }) => listarRendicionesDelMes(periodo, signal),
+  });
+}
+
+/** Las rendiciones atrasadas de cualquier mes (HU3.4): la tarjeta Atrasadas y su vista. */
+export function useRendicionesAtrasadas() {
+  return useQuery({
+    queryKey: rendicionesAtrasadasQueryKey,
+    queryFn: ({ signal }) => listarRendicionesAtrasadas(signal),
   });
 }
 

@@ -12,6 +12,7 @@ import {
 } from '@/modules/rendiciones/estadoRendicion.colores';
 import {
   diaYMes,
+  etiquetaDePeriodo,
   textoDePendientes,
   tipoDeCliente,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
@@ -19,6 +20,11 @@ import { rutaDeRendicion } from '@/modules/rendiciones/rendiciones.rutas';
 
 interface RendicionDelMesFilaProps {
   rendicion: RendicionDelMes;
+  /**
+   * El período de la rendición, para mostrarlo junto a la marca de atrasada. Solo en la vista de
+   * atrasadas (HU3.4), donde el listado junta meses distintos.
+   */
+  periodo?: { anio: number; mes: number } | undefined;
 }
 
 /**
@@ -34,8 +40,17 @@ interface RendicionDelMesFilaProps {
  * anuncia como descripción. Por debajo de `lg` (1024px) la parte derecha baja debajo del
  * cliente: con la barra lateral abierta, el contenido es bastante más angosto que la ventana.
  */
-export function RendicionDelMesFila({ rendicion }: RendicionDelMesFilaProps) {
+export function RendicionDelMesFila({ rendicion, periodo }: RendicionDelMesFilaProps) {
   const { cliente, avance, ultimoPaso, estado } = rendicion;
+  // HU3.4: en el lugar de la fecha, "Atrasada" (o "Atrasada · Septiembre 2026" en su vista). Las
+  // atrasadas están sin enviar, así que no tienen fecha de último paso.
+  const marca = rendicion.atrasada
+    ? `Atrasada${periodo === undefined ? '' : ` · ${etiquetaDePeriodo(periodo)}`}`
+    : null;
+  const fecha =
+    ultimoPaso === null
+      ? null
+      : `${ETIQUETAS_ESTADO_RENDICION[ultimoPaso.estado]} ${diaYMes(ultimoPaso.fecha)}`;
   const porcentaje = avance.total === 0 ? 0 : Math.round((avance.reunidos / avance.total) * 100);
   const idDescripcion = useId();
 
@@ -85,7 +100,7 @@ export function RendicionDelMesFila({ rendicion }: RendicionDelMesFilaProps) {
         </div>
 
         {/* Apilada (debajo de `lg`), alineada con el texto del cliente (monograma de 2.5rem + gap). */}
-        <div className="flex items-center gap-4 pl-13.5 lg:shrink-0 lg:pl-0">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-13.5 lg:shrink-0 lg:flex-nowrap lg:pl-0">
           <div
             role="progressbar"
             aria-label={`Avance de ${cliente.denominacion}`}
@@ -108,10 +123,18 @@ export function RendicionDelMesFila({ rendicion }: RendicionDelMesFilaProps) {
           >
             {porcentaje}%
           </span>
-          {/* Ancho fijo en escritorio, a la derecha, para que las barras queden alineadas. */}
-          <span className="text-right text-[0.8125rem] whitespace-nowrap text-content-secondary lg:w-28">
-            {ultimoPaso !== null &&
-              `${ETIQUETAS_ESTADO_RENDICION[ultimoPaso.estado]} ${diaYMes(ultimoPaso.fecha)}`}
+          {/* Ancho mínimo en escritorio, a la derecha, para que las barras queden alineadas. Con el
+              mes (vista de atrasadas), más ancho; y apilada, en su propia línea, debajo de la barra. */}
+          <span
+            className={cn(
+              'text-[0.8125rem] whitespace-nowrap',
+              periodo === undefined
+                ? 'text-right lg:min-w-28'
+                : 'order-last w-full lg:order-none lg:w-auto lg:min-w-44 lg:text-right',
+              marca === null ? 'text-content-secondary' : 'font-semibold text-atrasada',
+            )}
+          >
+            {marca ?? fecha}
           </span>
           <ChevronRightIcon
             aria-hidden="true"
@@ -121,8 +144,7 @@ export function RendicionDelMesFila({ rendicion }: RendicionDelMesFilaProps) {
         {/* Solo para la descripción del enlace: la segunda línea, el avance y la fecha, como frase. */}
         <span id={idDescripcion} hidden>
           {`${tipoDeCliente(cliente)} · ${textoDePendientes(avance.faltantes)} · ${ETIQUETAS_ESTADO_RENDICION[estado]}. Avance ${porcentaje} %`}
-          {ultimoPaso !== null &&
-            `, ${ETIQUETAS_ESTADO_RENDICION[ultimoPaso.estado]} ${diaYMes(ultimoPaso.fecha)}`}
+          {(marca ?? fecha) !== null && `, ${marca ?? fecha}`}
         </span>
       </Link>
     </article>

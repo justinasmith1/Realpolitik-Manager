@@ -34,6 +34,8 @@ export const ESTADOS_CON_FECHA = ['ENVIADA', 'APROBADA', 'RECHAZADA'] as const;
  * - `avance`: ítems reunidos, el total y los que faltan (`total - reunidos`).
  * - `ultimoPaso`: en una rendición Enviada, Aprobada o Rechazada, ese estado y la fecha de la
  *   entrada del historial que la llevó ahí. `null` en las En curso y Completa.
+ * - `atrasada` (HU3.4): sin enviar y de dos meses atrás o más (`esAtrasada`). Se calcula, no se
+ *   guarda.
  */
 export const RendicionDelMesSchema = z.object({
   id: z.string().uuid(),
@@ -56,6 +58,18 @@ export const RendicionDelMesSchema = z.object({
       fecha: z.coerce.date(),
     })
     .nullable(),
+  atrasada: z.boolean(),
 });
 
 export type RendicionDelMes = z.infer<typeof RendicionDelMesSchema>;
+
+/**
+ * Una fila de `GET /rendiciones/atrasadas` (HU3.4): la misma fila del mes, más su período, porque
+ * el listado junta rendiciones de meses distintos. Todas traen `atrasada: true`.
+ */
+export const RendicionAtrasadaSchema = RendicionDelMesSchema.extend({
+  anio: AnioSchema,
+  mes: MesSchema,
+});
+
+export type RendicionAtrasada = z.infer<typeof RendicionAtrasadaSchema>;

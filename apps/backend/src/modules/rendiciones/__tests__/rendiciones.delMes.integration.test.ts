@@ -1,7 +1,7 @@
 // Pantalla Rendiciones (HU3.2) contra PostgreSQL REAL: `GET /rendiciones?anio=&mes=`.
 // - filtra por período y deja afuera las anuladas
 // - un cliente con dos rendiciones en el mes tiene dos filas
-// - orden: primero las Rechazadas, después por avance de menor a mayor y por cliente
+// - orden: primero las atrasadas (HU3.4), después las Rechazadas, después por avance y por cliente
 // - la fecha del último paso solo en Enviada, Aprobada y Rechazada
 // - un período sin rendiciones da una lista vacía
 //
@@ -123,6 +123,7 @@ interface FilaJson {
   estado: string;
   avance: { reunidos: number; total: number; faltantes: number };
   ultimoPaso: { estado: string; fecha: string } | null;
+  atrasada: boolean;
 }
 
 /** Las filas del período, solo de los clientes de esta suite. */
@@ -151,7 +152,9 @@ describe.skipIf(url === undefined)('Pantalla Rendiciones (HU3.2) contra PostgreS
     expect((await filasDe(ABRIL)).map((fila) => fila.id)).toEqual([deAbril]);
   });
 
-  it('ordena: primero las Rechazadas, después por avance y, a igual avance, por cliente', async () => {
+  // HU3.4: mayo de 2021 es de dos meses atrás o más, así que las En curso son atrasadas y van antes
+  // que la Rechazada; entre ellas, por avance y, a igual avance, por cliente.
+  it('ordena: primero las atrasadas (por avance y por cliente), después las Rechazadas', async () => {
     const alfa = await cliente('Alfa');
     const beta = await cliente('Beta');
     const rechazada = await abrir(beta.id, { anio: 2021, mes: 5 });
@@ -167,7 +170,8 @@ describe.skipIf(url === undefined)('Pantalla Rendiciones (HU3.2) contra PostgreS
 
     const filas = await filasDe({ anio: 2021, mes: 5 });
 
-    expect(filas.map((fila) => fila.id)).toEqual([rechazada, nada, mitadAlfa, mitadBeta, completa]);
+    expect(filas.map((fila) => fila.id)).toEqual([nada, mitadAlfa, mitadBeta, completa, rechazada]);
+    expect(filas.map((fila) => fila.atrasada)).toEqual([true, true, true, true, false]);
     expect(filas.find((fila) => fila.id === mitadAlfa)?.avance).toEqual({
       reunidos: 1,
       total: 2,

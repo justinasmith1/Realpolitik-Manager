@@ -5,6 +5,7 @@ import {
   ClienteEstado,
   MotivoNoEnviable,
   PreparacionEnvioSchema,
+  RendicionAtrasadaSchema,
   RendicionDelMesSchema,
   RendicionDetalleSchema,
   RendicionResumenSchema,
@@ -19,6 +20,7 @@ import {
   type MotivoNoEnviableType,
   type PreparacionEnvio,
   type Rendicion,
+  type RendicionAtrasada,
   type RendicionDelMes,
   type RendicionDetalle,
   type RendicionResumen,
@@ -93,6 +95,17 @@ export async function listarRendicionesDelMes(
   const query = new URLSearchParams({ anio: String(periodo.anio), mes: String(periodo.mes) });
   const response = await http(`/rendiciones?${query.toString()}`, signal ? { signal } : {});
   return RendicionDelMesSchema.array().parse(await response.json());
+}
+
+/** Las rendiciones atrasadas de cualquier mes (HU3.4): no dependen del mes elegido. */
+export const rendicionesAtrasadasQueryKey = ['rendiciones', 'atrasadas'] as const;
+
+/** `GET /rendiciones/atrasadas`: de la más vieja a la más nueva, con su período. */
+export async function listarRendicionesAtrasadas(
+  signal?: AbortSignal,
+): Promise<RendicionAtrasada[]> {
+  const response = await http('/rendiciones/atrasadas', signal ? { signal } : {});
+  return RendicionAtrasadaSchema.array().parse(await response.json());
 }
 
 /**

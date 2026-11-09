@@ -191,10 +191,12 @@ export type { ListarRendicionesQuery } from './schemas/listarRendicionesQuery.sc
 export {
   ESTADOS_CON_FECHA,
   ListarRendicionesDelMesQuerySchema,
+  RendicionAtrasadaSchema,
   RendicionDelMesSchema,
 } from './schemas/rendicionesDelMes.schema.js';
 export type {
   ListarRendicionesDelMesQuery,
+  RendicionAtrasada,
   RendicionDelMes,
 } from './schemas/rendicionesDelMes.schema.js';
 
@@ -301,3 +303,4 @@ export { canalDeSeleccion, destinatariosDeCorreo, motivoNoEnviable } from './uti
 export type { CanalDeSeleccion, DestinatarioDeCorreo } from './utils/envio.js';
 export { ANIO_MIN, ANIO_MAX, mesActual, periodoMuyFuturo } from './utils/periodo.js';
 export type { Periodo } from './utils/periodo.js';
+export { ESTADOS_SIN_ENVIAR, esAtrasada, ultimoPeriodoAtrasado } from './utils/atrasada.js';

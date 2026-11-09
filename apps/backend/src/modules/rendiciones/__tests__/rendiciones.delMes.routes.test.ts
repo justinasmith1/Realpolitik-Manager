@@ -38,16 +38,22 @@ function fila(
     cliente = MUNI,
     estado = 'EN_CURSO',
     historial = [{ estadoNuevo: 'EN_CURSO', fecha: ALTA }],
+    anio = 2026,
+    mes = 11,
   }: {
     clienteId?: string;
     cliente?: object;
     estado?: string;
+    anio?: number;
+    mes?: number;
     historial?: { estadoNuevo: string; fecha: Date }[];
   } = {},
 ) {
   return {
     id: id(n),
     clienteId,
+    anio,
+    mes,
     numeroFactura: `B 00002-0000000${n}`,
     estado,
     cliente,
@@ -66,12 +72,18 @@ function conteos(avances: Record<number, [reunidos: number, total: number]>) {
 const listar = (query = '?anio=2026&mes=11') => request(app).get(`/rendiciones${query}`);
 const ids = (res: request.Response) => (res.body as { id: string }[]).map((r) => r.id);
 
+// "Hoy" fijo: mediados de noviembre de 2026 en Buenos Aires. Atrasadas: septiembre o antes.
+const HOY = new Date('2026-11-15T12:00:00-03:00');
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(HOY);
   prismaMock.rendicion.findMany.mockResolvedValue([]);
   prismaMock.itemChecklist.groupBy.mockResolvedValue([]);
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.resetAllMocks();
 });
 
@@ -110,6 +122,7 @@ describe('GET /rendiciones?anio=&mes= (pantalla Rendiciones, HU3.2)', () => {
         estado: 'EN_CURSO',
         avance: { reunidos: 2, total: 5, faltantes: 3 },
         ultimoPaso: null,
+        atrasada: false,
       },
     ]);
   });
@@ -236,6 +249,45 @@ describe('GET /rendiciones?anio=&mes= (pantalla Rendiciones, HU3.2)', () => {
     expect(error.code).toBe('VALIDATION_ERROR');
     expect(error.details.map((d) => d.campo)).toEqual(campos);
     expect(prismaMock.rendicion.findMany).not.toHaveBeenCalled();
+  });
+
+  describe('atrasada (HU3.4)', () => {
+    it.each([
+      ['septiembre (dos meses atrás), En curso', 9, 'EN_CURSO', true],
+      ['septiembre, Completa', 9, 'COMPLETA', true],
+      ['septiembre, Enviada', 9, 'ENVIADA', false],
+      ['octubre (mes anterior), En curso', 10, 'EN_CURSO', false],
+      ['noviembre (mes actual), En curso', 11, 'EN_CURSO', false],
+    ])('%s: atrasada %s', async (_caso, mes, estado, atrasada) => {
+      prismaMock.rendicion.findMany.mockResolvedValue([fila(1, { mes, estado, historial: [] })]);
+
+      const res = await listar(`?anio=2026&mes=${mes}`);
+
+      expect((res.body as { atrasada: boolean }[])[0]?.atrasada).toBe(atrasada);
+    });
+
+    it('ordena: primero las atrasadas, después las Rechazadas, después por avance', async () => {
+      prismaMock.rendicion.findMany.mockResolvedValue([
+        fila(1, { mes: 9, estado: 'EN_CURSO' }),
+        fila(2, { mes: 9, estado: 'RECHAZADA', historial: [] }),
+        fila(3, { mes: 9, estado: 'COMPLETA', cliente: ZETA, clienteId: CLIENTE_B }),
+        fila(4, { mes: 9, estado: 'ENVIADA', historial: [] }),
+      ]);
+      // La atrasada Completa tiene más avance que la enviada, y aun así va antes.
+      prismaMock.itemChecklist.groupBy.mockResolvedValue(
+        conteos({ 1: [1, 4], 2: [3, 4], 3: [4, 4], 4: [0, 4] }),
+      );
+
+      const res = await listar('?anio=2026&mes=9');
+
+      expect(ids(res)).toEqual([id(1), id(3), id(2), id(4)]);
+      expect((res.body as { atrasada: boolean }[]).map((r) => r.atrasada)).toEqual([
+        true,
+        true,
+        false,
+        false,
+      ]);
+    });
   });
 
   it('no choca con el detalle: GET /rendiciones/:id sigue siendo una rendición', async () => {

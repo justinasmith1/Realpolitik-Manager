@@ -3,10 +3,12 @@ import {
   canalDeSeleccion,
   compararItemsDeChecklist,
   esChecklistError,
+  ESTADOS_SIN_ENVIAR,
   FILTRO_VIGENCIA_POR_DEFECTO,
   generarChecklist,
   motivoNoEnviable,
   PreparacionEnvioSchema,
+  ultimoPeriodoAtrasado,
   UltimaOcSchema,
   type ActualizarRendicionDto,
   type CanalEntregaType,
@@ -19,6 +21,7 @@ import {
   type ListarRendicionesQuery,
   type PreparacionEnvio,
   type Rendicion,
+  type RendicionAtrasada,
   type RendicionDelMes,
   type RendicionDetalle,
   type RendicionResumen,
@@ -36,6 +39,7 @@ import {
   toItemChecklistDto,
   toRendicionDetalleDto,
   toRendicionDto,
+  toRendicionesAtrasadasDto,
   toRendicionesDelMesDto,
   toRendicionResumenDto,
   type RendicionConItems,
@@ -449,6 +453,31 @@ export async function listarRendicionesDelMes({
     return [];
   }
   return toRendicionesDelMesDto(filas, await avancesDe(filas.map((fila) => fila.id)));
+}
+
+/**
+ * Las rendiciones atrasadas de cualquier mes (HU3.4): activas, de un cliente no borrado, sin enviar
+ * (En curso o Completa) y de dos meses atrás o más respecto de `hoy` en Buenos Aires. El límite
+ * sale de la regla de shared (`ultimoPeriodoAtrasado`) y filtra en la base; las filas se arman
+ * igual que las del mes, de la más vieja a la más nueva. Dos consultas, como el listado del mes.
+ */
+export async function listarRendicionesAtrasadas(
+  hoy: Date = new Date(),
+): Promise<RendicionAtrasada[]> {
+  const limite = ultimoPeriodoAtrasado(hoy);
+  const filas = await prisma.rendicion.findMany({
+    where: {
+      isDeleted: false,
+      cliente: { isDeleted: false },
+      estado: { in: [...ESTADOS_SIN_ENVIAR] },
+      OR: [{ anio: { lt: limite.anio } }, { anio: limite.anio, mes: { lte: limite.mes } }],
+    },
+    select: SELECT_DEL_MES,
+  });
+  if (filas.length === 0) {
+    return [];
+  }
+  return toRendicionesAtrasadasDto(filas, await avancesDe(filas.map((fila) => fila.id)), hoy);
 }
 
 /**

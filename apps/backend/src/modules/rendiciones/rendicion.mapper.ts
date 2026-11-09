@@ -4,14 +4,17 @@ import type {
   Rendicion as RendicionRow,
 } from '@prisma/client';
 import {
+  esAtrasada,
   ESTADOS_CON_FECHA,
   ItemChecklistSchema,
+  RendicionAtrasadaSchema,
   RendicionDelMesSchema,
   RendicionDetalleSchema,
   RendicionResumenSchema,
   RendicionSchema,
   type ItemChecklist,
   type Rendicion,
+  type RendicionAtrasada,
   type RendicionDelMes,
   type RendicionDetalle,
   type RendicionResumen,
@@ -148,6 +151,8 @@ export function toRendicionResumenDto(
 export const SELECT_DEL_MES = {
   id: true,
   clienteId: true,
+  anio: true,
+  mes: true,
   numeroFactura: true,
   estado: true,
   cliente: { select: { denominacion: true, sector: true, subtipo: true } },
@@ -163,15 +168,15 @@ type RendicionDelMesRow = Prisma.RendicionGetPayload<{ select: typeof SELECT_DEL
 const tieneFecha = (estado: string): estado is (typeof ESTADOS_CON_FECHA)[number] =>
   (ESTADOS_CON_FECHA as readonly string[]).includes(estado);
 
-/** Una fila de la pantalla Rendiciones. */
-function toRendicionDelMesDto(row: RendicionDelMesRow, avance: ResumenDeAvance): RendicionDelMes {
+/** Los datos de una fila de la pantalla Rendiciones, sin validar (los valida quien la arma). */
+function datosDeFila(row: RendicionDelMesRow, avance: ResumenDeAvance, hoy: Date) {
   const [ultima] = row.historial;
   // La fecha es la de la entrada que la llevó al estado actual: la última, si coincide.
   const ultimoPaso =
     tieneFecha(row.estado) && ultima !== undefined && ultima.estadoNuevo === row.estado
       ? { estado: row.estado, fecha: ultima.fecha }
       : null;
-  return RendicionDelMesSchema.parse({
+  return {
     id: row.id,
     clienteId: row.clienteId,
     cliente: row.cliente,
@@ -183,19 +188,25 @@ function toRendicionDelMesDto(row: RendicionDelMesRow, avance: ResumenDeAvance):
       faltantes: avance.totalItems - avance.completados,
     },
     ultimoPaso,
-  });
+    // HU3.4: se calcula con la regla de shared; las anuladas ya no llegan acá.
+    atrasada: esAtrasada({ anio: row.anio, mes: row.mes }, row.estado, hoy),
+  };
 }
+
+const SIN_ITEMS: ResumenDeAvance = { totalItems: 0, completados: 0 };
 
 /** Porcentaje de ítems reunidos. Sin ítems, 0. */
 const porcentaje = ({ avance }: RendicionDelMes) =>
   avance.total === 0 ? 0 : avance.reunidos / avance.total;
 
 /**
- * El orden de la pantalla: primero las Rechazadas (hay que corregirlas), después el resto, de
- * menor a mayor avance; a igual avance, por nombre del cliente. La factura y el id solo
- * desempatan para que el orden sea siempre el mismo.
+ * El orden de la pantalla: primero las atrasadas (HU3.4: hay que mandarlas ya), después las
+ * Rechazadas (hay que corregirlas), después el resto, de menor a mayor avance; a igual avance, por
+ * nombre del cliente. La factura y el id solo desempatan para que el orden sea siempre el mismo.
  */
 export function compararRendicionesDelMes(a: RendicionDelMes, b: RendicionDelMes): number {
+  const atrasada = Number(b.atrasada) - Number(a.atrasada);
+  if (atrasada !== 0) return atrasada;
   const rechazada = Number(b.estado === 'RECHAZADA') - Number(a.estado === 'RECHAZADA');
   if (rechazada !== 0) return rechazada;
   const avance = porcentaje(a) - porcentaje(b);
@@ -207,14 +218,50 @@ export function compararRendicionesDelMes(a: RendicionDelMes, b: RendicionDelMes
   );
 }
 
-/** Las filas de la pantalla Rendiciones, ya ordenadas. */
+/** Las filas de la pantalla Rendiciones, ya ordenadas. `hoy` decide cuáles están atrasadas. */
 export function toRendicionesDelMesDto(
   rows: readonly RendicionDelMesRow[],
   avances: ReadonlyMap<string, ResumenDeAvance>,
+  hoy: Date = new Date(),
 ): RendicionDelMes[] {
   return rows
     .map((row) =>
-      toRendicionDelMesDto(row, avances.get(row.id) ?? { totalItems: 0, completados: 0 }),
+      RendicionDelMesSchema.parse(datosDeFila(row, avances.get(row.id) ?? SIN_ITEMS, hoy)),
     )
     .sort(compararRendicionesDelMes);
+}
+
+/**
+ * El orden del listado de atrasadas (HU3.4): de la más vieja a la más nueva (período ascendente);
+ * a igual período, por nombre del cliente. La factura y el id solo desempatan.
+ */
+export function compararRendicionesAtrasadas(a: RendicionAtrasada, b: RendicionAtrasada): number {
+  return (
+    a.anio * 12 + a.mes - (b.anio * 12 + b.mes) ||
+    a.cliente.denominacion.localeCompare(b.cliente.denominacion, 'es', { sensitivity: 'base' }) ||
+    a.numeroFactura.localeCompare(b.numeroFactura) ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+/**
+ * Las filas del listado de atrasadas, con su período, ya ordenadas. Las filas llegan filtradas por
+ * la base con el mismo límite; igual se descarta cualquiera que la regla no marque, para que el
+ * listado y la marca de cada fila no puedan contradecirse.
+ */
+export function toRendicionesAtrasadasDto(
+  rows: readonly RendicionDelMesRow[],
+  avances: ReadonlyMap<string, ResumenDeAvance>,
+  hoy: Date = new Date(),
+): RendicionAtrasada[] {
+  return rows
+    .map((row) =>
+      RendicionAtrasadaSchema.parse({
+        ...datosDeFila(row, avances.get(row.id) ?? SIN_ITEMS, hoy),
+        anio: row.anio,
+        mes: row.mes,
+      }),
+    )
+    .filter((fila) => fila.atrasada)
+    .sort(compararRendicionesAtrasadas);
 }

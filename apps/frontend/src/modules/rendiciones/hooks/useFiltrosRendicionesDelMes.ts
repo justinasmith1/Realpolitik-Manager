@@ -23,6 +23,12 @@ function leerTipo(valores: string[]): TipoDeCliente | undefined {
   return valor !== undefined && esTipoDeCliente(valor) ? valor : undefined;
 }
 
+/** Parámetros de la URL que maneja este hook (el mes lo maneja `useMesDeRendiciones`). */
+type Parametro = keyof FiltrosDelMes | 'vista';
+
+/** La vista de atrasadas (HU3.4): `vista=atrasadas`. Cualquier otro valor no se reconoce. */
+const VISTA_ATRASADAS = 'atrasadas';
+
 function leerBusqueda(valores: string[]): string | undefined {
   const valor = unico(valores)?.trim();
   return valor === undefined || valor === '' || valor.length > MAX_BUSQUEDA_RENDICIONES
@@ -41,6 +47,9 @@ function leerBusqueda(valores: string[]): string | undefined {
  * - URL canónica, como el mes: un valor inválido o repetido (o un `q` vacío) se quita, con
  *   `replace`, para no dejar una entrada extra en el historial.
  * - Estado y tipo se eligen tocando: tocar el que ya está activo lo quita.
+ * - HU3.4: `vista=atrasadas` cambia el listado del mes por el de todas las atrasadas. En esa vista
+ *   el tipo y la búsqueda siguen aplicando, pero el estado no: elegir un estado sale de la vista, y
+ *   un `estado` en la URL junto con la vista se quita (URL canónica).
  * - El texto del buscador se escribe en un estado local y llega a la URL con un retardo.
  */
 export function useFiltrosRendicionesDelMes() {
@@ -49,13 +58,17 @@ export function useFiltrosRendicionesDelMes() {
     estado: params.getAll('estado'),
     tipo: params.getAll('tipo'),
     q: params.getAll('q'),
+    vista: params.getAll('vista'),
   };
-  const estado = leerEstado(crudos.estado);
+  const vistaAtrasadas = unico(crudos.vista) === VISTA_ATRASADAS;
+  const estadoLeido = leerEstado(crudos.estado);
+  // En la vista de atrasadas el estado no aplica.
+  const estado = vistaAtrasadas ? undefined : estadoLeido;
   const tipo = leerTipo(crudos.tipo);
   const q = leerBusqueda(crudos.q);
 
   const actualizar = useCallback(
-    (cambios: Partial<Record<keyof FiltrosDelMes, string | undefined>>, reemplazar: boolean) => {
+    (cambios: Partial<Record<Parametro, string | undefined>>, reemplazar: boolean) => {
       setParams(
         (previos) => {
           const siguientes = new URLSearchParams(previos);
@@ -73,16 +86,18 @@ export function useFiltrosRendicionesDelMes() {
 
   // URL canónica: lo que no se pudo leer se quita. Un `q` válido pero con espacios alrededor
   // queda como está: se recorta al leerlo.
-  const estadoInvalido = crudos.estado.length > 0 && estado === undefined;
+  const estadoInvalido = crudos.estado.length > 0 && (vistaAtrasadas || estadoLeido === undefined);
+  const vistaInvalida = crudos.vista.length > 0 && !vistaAtrasadas;
   const tipoInvalido = crudos.tipo.length > 0 && tipo === undefined;
   const busquedaInvalida = crudos.q.length > 0 && q === undefined;
   useEffect(() => {
-    const aQuitar: Partial<Record<keyof FiltrosDelMes, undefined>> = {};
+    const aQuitar: Partial<Record<Parametro, undefined>> = {};
+    if (vistaInvalida) aQuitar.vista = undefined;
     if (estadoInvalido) aQuitar.estado = undefined;
     if (tipoInvalido) aQuitar.tipo = undefined;
     if (busquedaInvalida) aQuitar.q = undefined;
     if (Object.keys(aQuitar).length > 0) actualizar(aQuitar, true);
-  }, [estadoInvalido, tipoInvalido, busquedaInvalida, actualizar]);
+  }, [estadoInvalido, vistaInvalida, tipoInvalido, busquedaInvalida, actualizar]);
 
   // El buscador: estado local, y a la URL con retardo.
   const [textoBusqueda, setTextoBusqueda] = useState(q ?? '');
@@ -110,11 +125,24 @@ export function useFiltrosRendicionesDelMes() {
   return {
     /** Los filtros vigentes, para filtrar el listado. */
     filtros: { estado, tipo, q } satisfies FiltrosDelMes,
+    /** La vista de todas las atrasadas (HU3.4), en lugar del listado del mes. */
+    vistaAtrasadas,
     textoBusqueda,
     cambiarTexto,
-    /** Elige un estado; el que ya está activo, o `undefined` ("Todas"), lo quita. */
+    /**
+     * Elige un estado; el que ya está activo, o `undefined`, lo quita. Desde la vista de atrasadas,
+     * sale de la vista y aplica ese estado al mes.
+     */
     elegirEstado: (nuevo: EstadoRendicionType | undefined) =>
-      actualizar({ estado: nuevo === estado ? undefined : nuevo }, false),
+      actualizar({ estado: nuevo === estado ? undefined : nuevo, vista: undefined }, false),
+    /** Entra a la vista de atrasadas (quitando el estado) o, si ya está, vuelve al mes. */
+    alternarAtrasadas: () =>
+      actualizar(
+        vistaAtrasadas ? { vista: undefined } : { vista: VISTA_ATRASADAS, estado: undefined },
+        false,
+      ),
+    /** Sale de la vista de atrasadas y vuelve al listado del mes. */
+    quitarAtrasadas: () => actualizar({ vista: undefined }, false),
     /** Elige un tipo de cliente; el que ya está activo, o `undefined` ("Todos"), lo quita. */
     elegirTipo: (nuevo: TipoDeCliente | undefined) =>
       actualizar({ tipo: nuevo === tipo ? undefined : nuevo }, false),
@@ -124,11 +152,11 @@ export function useFiltrosRendicionesDelMes() {
       setTextoBusqueda('');
       actualizar({ q: undefined }, false);
     },
-    /** Quita los tres filtros y deja solo el mes. */
+    /** Quita los filtros y la vista de atrasadas, y deja solo el mes. */
     limpiar: () => {
       cancelarBusquedaPendiente();
       setTextoBusqueda('');
-      actualizar({ estado: undefined, tipo: undefined, q: undefined }, false);
+      actualizar({ estado: undefined, tipo: undefined, q: undefined, vista: undefined }, false);
     },
   };
 }

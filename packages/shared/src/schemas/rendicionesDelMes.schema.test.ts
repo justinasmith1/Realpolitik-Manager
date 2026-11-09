@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MENSAJE_ANIO, MENSAJE_MES } from './rendicion.schema.js';
 import {
   ListarRendicionesDelMesQuerySchema,
+  RendicionAtrasadaSchema,
   RendicionDelMesSchema,
 } from './rendicionesDelMes.schema.js';
 
@@ -57,6 +58,7 @@ describe('RendicionDelMesSchema', () => {
     estado: 'EN_CURSO',
     avance: { reunidos: 2, total: 5, faltantes: 3 },
     ultimoPaso: null,
+    atrasada: false,
   };
 
   it('lee una fila En curso, sin último paso', () => {
@@ -91,7 +93,34 @@ describe('RendicionDelMesSchema', () => {
     ['un avance negativo', { avance: { reunidos: -1, total: 5, faltantes: 6 } }],
     ['un estado desconocido', { estado: 'ATRASADA' }],
     ['sin cliente', { cliente: undefined }],
+    ['sin atrasada', { atrasada: undefined }],
   ])('rechaza %s', (_caso, cambio) => {
     expect(RendicionDelMesSchema.safeParse({ ...fila, ...cambio }).success).toBe(false);
+  });
+});
+
+describe('RendicionAtrasadaSchema', () => {
+  const fila = {
+    id: 'e1f2a3b4-c5d6-4789-8abc-def012345678',
+    clienteId: 'a1b2c3d4-e5f6-4789-abcd-ef0123456789',
+    cliente: { denominacion: 'Muni Ejemplo', sector: 'PUBLICO', subtipo: 'MUNICIPAL' },
+    numeroFactura: 'B 00002-00001482',
+    estado: 'EN_CURSO',
+    avance: { reunidos: 2, total: 5, faltantes: 3 },
+    ultimoPaso: null,
+    atrasada: true,
+    anio: 2026,
+    mes: 9,
+  };
+
+  it('es la fila del mes más su período', () => {
+    expect(RendicionAtrasadaSchema.parse(fila)).toEqual(fila);
+  });
+
+  it.each([
+    ['sin período', { anio: undefined }],
+    ['un mes fuera de rango', { mes: 13 }],
+  ])('rechaza %s', (_caso, cambio) => {
+    expect(RendicionAtrasadaSchema.safeParse({ ...fila, ...cambio }).success).toBe(false);
   });
 });
