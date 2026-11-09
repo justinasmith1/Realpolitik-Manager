@@ -69,10 +69,7 @@ export function FiltrosRendicionesDelMes({
           maxLength={MAX_BUSQUEDA_RENDICIONES}
           value={textoBusqueda}
           onChange={(e) => onTexto(e.target.value)}
-          // Blanco siempre, como el desplegable: el `Input` trae `dark:bg-input/30`, que con el modo
-          // oscuro del sistema lo pintaba de gris (la app no tiene tema oscuro). `scheme-light`: las
-          // partes nativas (la ✕ de borrar) también en claro. El foco lo marcan el borde y el anillo.
-          className="pl-9 text-ellipsis scheme-light dark:bg-card"
+          className="pl-9 text-ellipsis"
         />
       </div>
     </div>
