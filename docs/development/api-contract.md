@@ -323,6 +323,7 @@ Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: 
 | Rendiciones | `POST /clientes/:id/rendiciones`                            | Abre una rendición y genera su checklist                                | 201         |
 | Rendiciones | `GET /clientes/:id/rendiciones`                             | Lista las rendiciones del cliente (por defecto, las activas)            | 200         |
 | HU3.2       | `GET /rendiciones?anio=&mes=`                               | Lista las rendiciones activas del mes, de todos los clientes            | 200         |
+| HU3.4       | `GET /rendiciones/atrasadas`                                | Lista las rendiciones atrasadas de cualquier mes                        | 200         |
 | Rendiciones | `GET /rendiciones/:id`                                      | Trae una rendición con su checklist                                     | 200         |
 | HU2.11      | `PATCH /rendiciones/:id`                                    | Edita la orden de compra de una rendición activa                        | 200         |
 | HU2.11      | `GET /clientes/:id/ultima-oc`                               | Trae la última orden de compra del cliente, como sugerencia             | 200         |
@@ -734,7 +735,8 @@ La pantalla Rendiciones (HU3.2): todas las rendiciones **activas** de un períod
     "numeroFactura": "B 00002-00001482",
     "estado": "ENVIADA",
     "avance": { "reunidos": 4, "total": 4, "faltantes": 0 },
-    "ultimoPaso": { "estado": "ENVIADA", "fecha": "2026-11-03T15:00:00.000Z" }
+    "ultimoPaso": { "estado": "ENVIADA", "fecha": "2026-11-03T15:00:00.000Z" },
+    "atrasada": false
   }
 ]
 ```
@@ -742,10 +744,40 @@ La pantalla Rendiciones (HU3.2): todas las rendiciones **activas** de un períod
 - **`cliente`:** el nombre corto (`denominacion`) y la tipología: `sector` y, si es público, `subtipo` (`null` en uno privado).
 - **`avance`:** ítems reunidos, el total y los que faltan (`total - reunidos`).
 - **`ultimoPaso`:** en una rendición `ENVIADA`, `APROBADA` o `RECHAZADA`, ese estado y la `fecha` de la entrada del historial que la llevó ahí. `null` en las `EN_CURSO` y `COMPLETA`.
-- **Orden:** primero las `RECHAZADA`; después el resto, de menor a mayor avance (porcentaje de ítems reunidos; sin ítems cuenta como 0 %); a igual avance, por el nombre corto del cliente. La factura desempata.
+- **`atrasada` (HU3.4):** `true` si la rendición todavía no se envió (`EN_CURSO` o `COMPLETA`) y su período es de dos meses atrás o más respecto del mes actual en horario de Buenos Aires (`esAtrasada` de `@realpolitik/shared`). Se calcula en cada consulta, no se guarda. Ver [ADR-0005](../adr/0005-estados-de-la-rendicion.md), punto 8.
+- **Orden:** primero las atrasadas (HU3.4); después las `RECHAZADA`; después el resto, de menor a mayor avance (porcentaje de ítems reunidos; sin ítems cuenta como 0 %); a igual avance, por el nombre corto del cliente. La factura desempata.
 - **Consultas:** dos, sin importar cuántas filas haya: las rendiciones con su cliente y su última entrada de historial, y un solo conteo de ítems para todas.
 - **Errores:** `400 VALIDATION_ERROR` (falta `anio` o `mes`, fuera de rango, no enteros o repetidos).
 - **Cómo lo usa el front:** es la pantalla de entrada (`/rendiciones`), con el mes en la URL (`?anio=2026&mes=11`); sin él, el mes actual en horario de Buenos Aires. Cada fila abre el detalle de su rendición.
+
+#### `GET /rendiciones/atrasadas`
+
+Las rendiciones atrasadas de cualquier mes (HU3.4): la tarjeta Atrasadas de la pantalla Rendiciones y su vista. Sin parámetros. Ver [ADR-0005](../adr/0005-estados-de-la-rendicion.md), punto 8.
+
+- **Respuesta 200:** una fila por rendición atrasada (`RendicionAtrasadaSchema` de `@realpolitik/shared`): la misma fila de `GET /rendiciones?anio=&mes=`, con `atrasada: true`, más su período (`anio` y `mes`), porque el listado junta meses distintos. Lista vacía si no hay ninguna.
+
+```json
+[
+  {
+    "id": "e1f2a3b4-c5d6-4789-8abc-def012345678",
+    "clienteId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
+    "cliente": { "denominacion": "Muni Ejemplo", "sector": "PUBLICO", "subtipo": "MUNICIPAL" },
+    "numeroFactura": "B 00002-00001482",
+    "estado": "EN_CURSO",
+    "avance": { "reunidos": 2, "total": 5, "faltantes": 3 },
+    "ultimoPaso": null,
+    "atrasada": true,
+    "anio": 2026,
+    "mes": 9
+  }
+]
+```
+
+- **Qué rendiciones:** activas (las anuladas nunca están atrasadas), de un cliente no borrado, en `EN_CURSO` o `COMPLETA`, y de un período de dos meses atrás o más respecto del mes actual en horario de Buenos Aires. En noviembre de 2026: septiembre de 2026 o antes. En enero de 2027: noviembre de 2026 o antes. Apenas una pasa a `ENVIADA` (o a un estado posterior), deja de aparecer.
+- **Orden:** de la más vieja a la más nueva (período ascendente); a igual período, por el nombre corto del cliente. La factura desempata.
+- **Consultas:** dos, como el listado del mes: las rendiciones (el límite de período, `ultimoPeriodoAtrasado` de `@realpolitik/shared`, filtra en la base) y un solo conteo de ítems para todas.
+- **Ruta:** se declara antes de `GET /rendiciones/:id`, así que `atrasadas` no se interpreta como un id.
+- **Cómo lo usa el front:** la tarjeta Atrasadas muestra cuántas hay, sin importar el mes elegido ni los filtros. Tocarla abre la vista de atrasadas (`?vista=atrasadas`, junto con el mes), donde el tipo de cliente y el buscador siguen aplicando.
 
 #### `GET /rendiciones/:id`
 
@@ -902,6 +934,7 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 10. **Hecho (HU2.11).** `NumeroOcSchema` (texto recortado, de 1 a `NUMERO_OC_MAX` = 100 caracteres) y `MontoOcSchema` (de 0 a `MONTO_OC_MAX` = 999999999999.99, hasta 2 decimales). `CreateRendicionSchema` suma los tres datos de la OC, opcionales; `ActualizarRendicionSchema` es el cuerpo de `PATCH /rendiciones/:id` (cada campo opcional y anulable, al menos uno); `UltimaOcSchema` es la respuesta de `GET /clientes/:id/ultima-oc`. `RendicionSchema` suma `numeroOc`, `montoMensual` y `montoTotal`, `null` si no se cargaron (una clave ausente también es `null`).
 11. **Hecho (HU3.1).** `EstadoRendicion` (los cinco estados, con `ETIQUETAS_ESTADO_RENDICION` para pantalla) y `HistorialEstadoRendicionSchema` (`estadoAnterior`, `estadoNuevo`, `fecha`). `RendicionSchema` suma `estado` (también el resumen) y `RendicionDetalleSchema` suma `historial`. `ListarRendicionesQuerySchema` suma el filtro `estado`. El valor derivado de la baja lógica (`ACTIVA`/`ANULADA`) se llama `vigencia` (`VigenciaRendicion` y el filtro `FiltroVigenciaRendiciones`).
 12. **Hecho (HU3.2).** `ListarRendicionesDelMesQuerySchema` (`anio` y `mes`, obligatorios) y `RendicionDelMesSchema` (la fila de la pantalla Rendiciones), con `ESTADOS_CON_FECHA`.
+13. **Hecho (HU3.4).** `atrasada` en `RendicionDelMesSchema`, `RendicionAtrasadaSchema` (la fila más `anio` y `mes`) y la regla en `utils/atrasada.ts`: `esAtrasada(periodo, estado, hoy)`, `ultimoPeriodoAtrasado(hoy)` y `ESTADOS_SIN_ENVIAR`.
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 
