@@ -10,6 +10,14 @@
 @import 'shadcn/tailwind.css';
 
 /*
+ * La app no tiene tema oscuro. En Tailwind v4 la variante `dark:` se activa por defecto con el modo
+ * oscuro del sistema o del navegador, y los componentes base (Input, Textarea, Button, Checkbox)
+ * traen clases `dark:` que los pintaban de gris. Acá solo se activa con la clase `dark`, que la app
+ * nunca pone: las clases `dark:` quedan sin efecto y los controles se ven siempre en claro.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * Tokens de Realpolitik Manager. Fuente de verdad visual: handoff de Design.
  * Los valores se mantienen en hex, tal como figuran en el handoff.
  */

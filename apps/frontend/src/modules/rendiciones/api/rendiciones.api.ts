@@ -35,14 +35,6 @@ import {
   type DetalleInvalido,
 } from '@/lib/errores-api';
 import { ApiClientError, http } from '@/lib/http';
-import { clientesQueryKey } from '@/modules/clientes/api/clientes.api';
-
-/**
- * Rendiciones de un cliente: `['clientes', clienteId, 'rendiciones']`. Cuelga de la key de
- * clientes, como la matriz: invalidar esta key no toca las de otro cliente.
- */
-export const rendicionesQueryKey = (clienteId: string) =>
-  [...clientesQueryKey, clienteId, 'rendiciones'] as const;
 
 const rutaDeRendicionesDe = (clienteId: string) =>
   `/clientes/${encodeURIComponent(clienteId)}/rendiciones`;
@@ -82,12 +74,8 @@ export async function listarRendiciones(
 
 /**
  * Las rendiciones activas de todos los clientes en un mes (pantalla Rendiciones, HU3.2), ya en el
- * orden de la pantalla. La key no cuelga de ningún cliente: son de todos.
+ * orden de la pantalla (su key: `rendicionesKeys.delMes`). `GET /rendiciones?anio=&mes=`.
  */
-export const rendicionesDelMesQueryKey = (periodo: { anio: number; mes: number }) =>
-  ['rendiciones', 'mes', periodo.anio, periodo.mes] as const;
-
-/** `GET /rendiciones?anio=&mes=`. */
 export async function listarRendicionesDelMes(
   periodo: { anio: number; mes: number },
   signal?: AbortSignal,
@@ -96,9 +84,6 @@ export async function listarRendicionesDelMes(
   const response = await http(`/rendiciones?${query.toString()}`, signal ? { signal } : {});
   return RendicionDelMesSchema.array().parse(await response.json());
 }
-
-/** Las rendiciones atrasadas de cualquier mes (HU3.4): no dependen del mes elegido. */
-export const rendicionesAtrasadasQueryKey = ['rendiciones', 'atrasadas'] as const;
 
 /** `GET /rendiciones/atrasadas`: de la más vieja a la más nueva, con su período. */
 export async function listarRendicionesAtrasadas(

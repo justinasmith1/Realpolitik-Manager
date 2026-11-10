@@ -1,6 +1,6 @@
 import type { EstadoRendicion } from '../schemas/rendicion.schema.js';
 
-import { mesActual, type Periodo } from './periodo.js';
+import { mesActual, mesesAPeriodo, periodoAMeses, type Periodo } from './periodo.js';
 
 // "Atrasada" (HU3.4, ADR-0005 punto 8). Se calcula, no se guarda. La regla vive solo acá: la usan
 // el backend (para marcar las filas y para listar las atrasadas) y el frontend.
@@ -14,9 +14,6 @@ export const ESTADOS_SIN_ENVIAR = [
 const sinEnviar = (estado: EstadoRendicion): boolean =>
   (ESTADOS_SIN_ENVIAR as readonly EstadoRendicion[]).includes(estado);
 
-/** Meses transcurridos desde el año 0: permite comparar y restar períodos con un solo número. */
-const enMeses = ({ anio, mes }: Periodo): number => anio * 12 + (mes - 1);
-
 /**
  * El período más nuevo que ya cuenta como atrasado: dos meses antes del mes actual, en horario de
  * Buenos Aires. La rendición de un mes se trabaja durante el mes siguiente, así que la del mes
@@ -24,8 +21,7 @@ const enMeses = ({ anio, mes }: Periodo): number => anio * 12 + (mes - 1);
  * noviembre de 2026.
  */
 export function ultimoPeriodoAtrasado(hoy: Date = new Date()): Periodo {
-  const indice = enMeses(mesActual(hoy)) - 2;
-  return { anio: Math.floor(indice / 12), mes: (indice % 12) + 1 };
+  return mesesAPeriodo(periodoAMeses(mesActual(hoy)) - 2);
 }
 
 /**
@@ -39,5 +35,5 @@ export function esAtrasada(
   estado: EstadoRendicion,
   hoy: Date = new Date(),
 ): boolean {
-  return sinEnviar(estado) && enMeses(periodo) <= enMeses(ultimoPeriodoAtrasado(hoy));
+  return sinEnviar(estado) && periodoAMeses(periodo) <= periodoAMeses(ultimoPeriodoAtrasado(hoy));
 }

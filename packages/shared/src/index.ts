@@ -301,6 +301,13 @@ export type {
 
 export { canalDeSeleccion, destinatariosDeCorreo, motivoNoEnviable } from './utils/envio.js';
 export type { CanalDeSeleccion, DestinatarioDeCorreo } from './utils/envio.js';
-export { ANIO_MIN, ANIO_MAX, mesActual, periodoMuyFuturo } from './utils/periodo.js';
+export {
+  ANIO_MIN,
+  ANIO_MAX,
+  mesActual,
+  mesesAPeriodo,
+  periodoAMeses,
+  periodoMuyFuturo,
+} from './utils/periodo.js';
 export type { Periodo } from './utils/periodo.js';
 export { ESTADOS_SIN_ENVIAR, esAtrasada, ultimoPeriodoAtrasado } from './utils/atrasada.js';

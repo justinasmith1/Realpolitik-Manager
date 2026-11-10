@@ -18,7 +18,7 @@ import {
   type ItemDeRendicion,
 } from '@/modules/documentos/api/documentos.api';
 import { descargarDocumento } from '@/modules/documentos/descargarDocumento';
-import { rendicionesQueryKey } from '@/modules/rendiciones/api/rendiciones.api';
+import { invalidarRendiciones } from '@/modules/rendiciones/hooks/invalidarRendiciones';
 
 /**
  * Repositorio de un período. Como en el catálogo, mientras llega la respuesta de un filtro nuevo
@@ -69,8 +69,9 @@ export interface AplicacionPedida {
 
 /**
  * Aplica un documento a los ítems elegidos. Salga bien o mal, se vuelven a pedir los documentos
- * (repositorio, detalle y candidatos: un 409 significa que algo cambió) y las rendiciones de los
- * clientes involucrados. La mutación termina recién cuando eso se volvió a pedir.
+ * (repositorio, detalle y candidatos: un 409 significa que algo cambió), las rendiciones de los
+ * clientes involucrados y la pantalla Rendiciones (cambia el avance). La mutación termina recién
+ * cuando eso se volvió a pedir.
  */
 export function useAplicarDocumento() {
   const queryClient = useQueryClient();
@@ -80,9 +81,7 @@ export function useAplicarDocumento() {
     onSettled: (_data, _error, { clienteIds }) =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: documentosQueryKey }),
-        ...clienteIds.map((clienteId) =>
-          queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
-        ),
+        ...clienteIds.map((clienteId) => invalidarRendiciones(queryClient, clienteId)),
       ]),
   });
 }
@@ -105,9 +104,9 @@ export interface ReemplazoPedido extends ItemDeRendicion {
 
 /**
  * Reemplaza el documento vigente de un ítem. Sin reintentos. Salga bien o mal, se vuelven a pedir
- * los documentos (cambian sus aplicaciones vigentes) y las rendiciones del cliente, con el
- * detalle y el historial: un 409 significa que el ítem cambió y hay que mostrar el vigente de
- * ahora. La mutación termina recién cuando eso se volvió a pedir.
+ * los documentos (cambian sus aplicaciones vigentes), las rendiciones del cliente, con el detalle
+ * y el historial, y la pantalla Rendiciones: un 409 significa que el ítem cambió y hay que mostrar
+ * el vigente de ahora. La mutación termina recién cuando eso se volvió a pedir.
  */
 export function useReemplazarDocumentoDeItem() {
   const queryClient = useQueryClient();
@@ -118,7 +117,7 @@ export function useReemplazarDocumentoDeItem() {
     onSettled: (_data, _error, { clienteId }) =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: documentosQueryKey }),
-        queryClient.invalidateQueries({ queryKey: rendicionesQueryKey(clienteId) }),
+        invalidarRendiciones(queryClient, clienteId),
       ]),
   });
 }

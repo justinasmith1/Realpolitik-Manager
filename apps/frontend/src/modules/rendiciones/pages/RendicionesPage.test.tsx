@@ -373,8 +373,6 @@ describe('RendicionesPage: resumen y filtros (HU3.3)', () => {
 
     expect(desplegable()).toHaveTextContent('Tipo de cliente: Todos');
     expect(await opcionesDeTipo(user)).toEqual(['Todos', 'Municipio', 'Privado']);
-    // El buscador queda blanco también con el modo oscuro del sistema, como el desplegable.
-    expect(buscador()).toHaveClass('dark:bg-card', 'scheme-light');
   });
 
   it('elegir un tipo filtra, lo guarda en la URL y el desplegable dice "Tipo: <tipo>"; "Todos" lo quita', async () => {
@@ -584,12 +582,14 @@ describe('RendicionesPage: resumen y filtros (HU3.3)', () => {
     });
   });
 
-  it('un mes sin rendiciones no muestra tarjetas ni filtros, solo el aviso', async () => {
+  // Deuda técnica post HU3.4: con el mes vacío las seis tarjetas se ven siempre (en 0), sin filtros.
+  it('un mes sin rendiciones muestra las tarjetas en 0 y el aviso, sin filtros', async () => {
     servir({});
     renderPantalla('/rendiciones?estado=ENVIADA');
 
     expect(await screen.findByText('No hay rendiciones en Noviembre 2026')).toBeInTheDocument();
-    expect(screen.queryByRole('group', { name: 'Resumen por estado' })).toBeNull();
+    const tarjetasDelMes = screen.getByRole('group', { name: 'Resumen por estado' });
+    expect(within(tarjetasDelMes).getAllByRole('button')).toHaveLength(6);
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Filtros activos' })).toBeNull();
   });
@@ -842,6 +842,32 @@ describe('RendicionesPage: atrasadas (HU3.4)', () => {
     // Desde ahí se abre la vista.
     await user.click(tarjeta('Atrasadas'));
     expect(await screen.findByRole('list', { name: 'Rendiciones atrasadas' })).toBeInTheDocument();
+  });
+
+  it('con el mes vacío y las atrasadas cargando, las seis tarjetas ya están en pantalla', async () => {
+    // El listado del mes responde vacío; el de atrasadas no responde todavía.
+    fetchMock.mockImplementation((entrada) => {
+      const url = new URL(typeof entrada === 'string' ? entrada : (entrada as Request).url);
+      if (url.pathname === '/rendiciones/atrasadas') return new Promise<Response>(() => undefined);
+      return Promise.resolve(
+        new Response('[]', { headers: { 'Content-Type': 'application/json' } }),
+      );
+    });
+    renderPantalla();
+
+    expect(await screen.findByText('No hay rendiciones en Noviembre 2026')).toBeInTheDocument();
+    expect(within(tarjetas()).getAllByRole('button')).toHaveLength(6);
+    // Atrasadas, con el estado de carga.
+    expect(tarjeta('Atrasadas')).toHaveTextContent('Atrasadas–');
+  });
+
+  it('con el mes vacío y 0 atrasadas, siguen las seis tarjetas (Atrasadas en 0, neutra)', async () => {
+    servir({});
+    renderPantalla();
+
+    expect(await screen.findByText('No hay rendiciones en Noviembre 2026')).toBeInTheDocument();
+    await waitFor(() => expect(tarjeta('Atrasadas')).toHaveTextContent('Atrasadas0'));
+    expect(within(tarjetas()).getAllByRole('button')).toHaveLength(6);
   });
 
   it('en la vista sin atrasadas, lo dice', async () => {

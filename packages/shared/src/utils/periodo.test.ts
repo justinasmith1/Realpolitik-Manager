@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ANIO_MAX, ANIO_MIN, mesActual, periodoMuyFuturo } from './periodo.js';
+import {
+  ANIO_MAX,
+  ANIO_MIN,
+  mesActual,
+  mesesAPeriodo,
+  periodoAMeses,
+  periodoMuyFuturo,
+} from './periodo.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -84,5 +91,37 @@ describe('periodoMuyFuturo', () => {
     vi.setSystemTime(ahora);
     expect(periodoMuyFuturo({ anio: 2026, mes: 11 })).toBe(false);
     expect(periodoMuyFuturo({ anio: 2026, mes: 12 })).toBe(true);
+  });
+});
+
+describe('periodoAMeses y mesesAPeriodo', () => {
+  it('base 0: enero del año 0 es el mes 0', () => {
+    expect(periodoAMeses({ anio: 0, mes: 1 })).toBe(0);
+    expect(periodoAMeses({ anio: 2026, mes: 12 })).toBe(24323);
+  });
+
+  it('enero sigue a diciembre del año anterior (cambio de año)', () => {
+    expect(periodoAMeses({ anio: 2027, mes: 1 }) - periodoAMeses({ anio: 2026, mes: 12 })).toBe(1);
+    expect(mesesAPeriodo(periodoAMeses({ anio: 2026, mes: 12 }) + 1)).toEqual({
+      anio: 2027,
+      mes: 1,
+    });
+    expect(mesesAPeriodo(periodoAMeses({ anio: 2027, mes: 1 }) - 1)).toEqual({
+      anio: 2026,
+      mes: 12,
+    });
+  });
+
+  it('resta meses cruzando de año', () => {
+    expect(mesesAPeriodo(periodoAMeses({ anio: 2027, mes: 1 }) - 2)).toEqual({
+      anio: 2026,
+      mes: 11,
+    });
+  });
+
+  it('una es la inversa de la otra en todos los meses', () => {
+    for (let mes = 1; mes <= 12; mes += 1) {
+      expect(mesesAPeriodo(periodoAMeses({ anio: 2026, mes }))).toEqual({ anio: 2026, mes });
+    }
   });
 });

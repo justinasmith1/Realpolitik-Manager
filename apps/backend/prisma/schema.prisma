@@ -329,6 +329,9 @@ model Rendicion {
 
   /// Última OC del cliente (GET /clientes/:id/ultima-oc).
   @@index([clienteId, numeroOc])
+  /// Atrasadas de cualquier mes (GET /rendiciones/atrasadas, HU3.4): activas, sin enviar y de un
+  /// período hasta el límite.
+  @@index([isDeleted, estado, anio, mes])
 }
 
 // ─── Modelo HistorialEstadoRendicion ──────────────────────────────────────────
