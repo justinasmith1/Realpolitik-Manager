@@ -1,8 +1,10 @@
-import type {
-  ClienteSectorType,
-  ClienteSubtipoPublicoType,
-  EmisorType,
-  MotivoNoEnviableType,
+import {
+  ETIQUETAS_ESTADO_RENDICION,
+  type ClienteSectorType,
+  type ClienteSubtipoPublicoType,
+  type EmisorType,
+  type EstadoRendicionType,
+  type MotivoNoEnviableType,
 } from '@realpolitik/shared';
 
 import {
@@ -202,6 +204,15 @@ const formatoDeDiaDeLaSemana = new Intl.DateTimeFormat('es-AR', {
   weekday: 'long',
   timeZone: 'America/Argentina/Buenos_Aires',
 });
+
+/** La fecha del último paso, como se lee en la fila y en el panel de resumen: "Enviada 08/11". */
+export const textoDeUltimoPaso = ({
+  estado,
+  fecha,
+}: {
+  estado: EstadoRendicionType;
+  fecha: Date;
+}): string => `${ETIQUETAS_ESTADO_RENDICION[estado]} ${diaYMes(fecha)}`;
 
 /** "Hoy es miércoles 04/11", en horario de Buenos Aires (encabezado de la pantalla Rendiciones). */
 export const textoDeHoy = (hoy: Date): string =>

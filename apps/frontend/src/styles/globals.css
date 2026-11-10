@@ -108,6 +108,14 @@
   --atrasada-soft: #fdecea;
   --atrasada-border: #f4bdb8;
 
+  /* Selección (HU3.5): beige cálido de la rendición abierta en el panel de resumen (fondo de su
+     fila y "Pendiente" del panel). Sobre él, el riel de la barra de avance usa `seleccion-riel`:
+     el de siempre (`muted`) tiene la misma luminancia que este fondo y no se vería. El riel queda
+     a 1.20:1 del fondo, como `muted` sobre blanco (1.16:1); los textos de la fila siguen en AA
+     (5:1 o más). */
+  --seleccion: #f4ede3;
+  --seleccion-riel: #e3d9c9;
+
   /* Sidebar: superficie oscura propia del shell (no es un modo oscuro global) */
   --sidebar: #161314;
   --sidebar-foreground: #dad4d2;
@@ -190,6 +198,8 @@
   --color-atrasada: var(--atrasada);
   --color-atrasada-soft: var(--atrasada-soft);
   --color-atrasada-border: var(--atrasada-border);
+  --color-seleccion: var(--seleccion);
+  --color-seleccion-riel: var(--seleccion-riel);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
