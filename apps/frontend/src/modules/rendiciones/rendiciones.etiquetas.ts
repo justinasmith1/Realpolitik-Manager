@@ -96,6 +96,14 @@ export const motivoParaNoEnviar: Record<MotivoNoEnviableType, string> = {
   ITEM_SIN_DOCUMENTO_VIGENTE: 'Figura reunido, pero no tiene un documento vigente: no se envía.',
 };
 
+// ─── Estado de la rendición (HU3.6) ───────────────────────────────────────────────────────
+
+export const TEXTO_MARCAR_COMPLETA = 'Marcar como completa';
+export const TEXTO_VOLVER_A_EN_CURSO = 'Volver a en curso';
+export const TEXTO_GUARDANDO_ESTADO = 'Guardando…';
+export const AVISO_RENDICION_COMPLETA = 'La rendición quedó completa.';
+export const AVISO_RENDICION_EN_CURSO = 'La rendición volvió a En curso.';
+
 // ─── Orden de compra (HU2.11) ─────────────────────────────────────────────────
 
 /** Una OC sin cargar: se dice en tono neutro, no como un error. */

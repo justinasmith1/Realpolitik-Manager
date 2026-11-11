@@ -32,20 +32,30 @@ import { HistorialDeItemSheet } from '@/modules/documentos/components/HistorialD
 import { useDescargas } from '@/modules/documentos/hooks/useDocumentos';
 import {
   esRendicionInexistente,
+  interpretarFalloCambioDeEstado,
   interpretarFalloPreparacionEnvio,
 } from '@/modules/rendiciones/api/rendiciones.api';
 import { CambiarCanalDialog } from '@/modules/rendiciones/components/CambiarCanalDialog';
 import { EditarOcSheet } from '@/modules/rendiciones/components/EditarOcSheet';
 import { EnvioDialog, type Envio } from '@/modules/rendiciones/components/EnvioDialog';
-import { mensajeFalloPreparacionEnvio } from '@/modules/rendiciones/components/erroresDeRendicion';
+import {
+  mensajeFalloCambioDeEstado,
+  mensajeFalloPreparacionEnvio,
+} from '@/modules/rendiciones/components/erroresDeRendicion';
 import { EstadoRendicionBadge } from '@/modules/rendiciones/components/EstadoRendicionBadge';
 import { HistorialDeEstados } from '@/modules/rendiciones/components/HistorialDeEstados';
 import {
   ItemChecklistFila,
   type AccionesDeDocumento,
 } from '@/modules/rendiciones/components/ItemChecklistFila';
-import { usePrepararEnvio, useRendicion } from '@/modules/rendiciones/hooks/useRendiciones';
 import {
+  useMarcarEstadoDeRendicion,
+  usePrepararEnvio,
+  useRendicion,
+} from '@/modules/rendiciones/hooks/useRendiciones';
+import {
+  AVISO_RENDICION_COMPLETA,
+  AVISO_RENDICION_EN_CURSO,
   avanceDelChecklist,
   checklistCompleto,
   etiquetaDeEmisor,
@@ -54,6 +64,9 @@ import {
   etiquetaDePeriodo,
   motivoParaNoEnviar,
   nombreDeItem,
+  TEXTO_GUARDANDO_ESTADO,
+  TEXTO_MARCAR_COMPLETA,
+  TEXTO_VOLVER_A_EN_CURSO,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 import { rutaDeMatriz, type EstadoDeDetalle } from '@/modules/rendiciones/rendiciones.rutas';
 
@@ -199,6 +212,7 @@ function DetalleDeRendicion({
     texto: string;
   } | null>(null);
   const preparacion = usePrepararEnvio();
+  const cambioDeEstado = useMarcarEstadoDeRendicion();
   const [pedidoDeDocumento, setPedidoDeDocumento] = useState<PedidoDeDocumento | null>(null);
   const [historialDe, setHistorialDe] = useState<string | null>(null);
   const { idsDescargando, descargar } = useDescargas((documento) =>
@@ -292,6 +306,32 @@ function DetalleDeRendicion({
     }
   }
 
+  /**
+   * Marca la rendición como completa o la vuelve a en curso (HU3.6). Los botones no se bloquean por
+   * el avance: el servidor decide con los datos de ahora y, si faltan documentos, el aviso dice
+   * cuántos. El detalle y los listados se actualizan solos (el hook).
+   */
+  async function cambiarEstado(estado: 'EN_CURSO' | 'COMPLETA') {
+    if (cambioDeEstado.isPending) return;
+    setAvisoDelChecklist(null);
+    try {
+      await cambioDeEstado.mutateAsync({
+        clienteId: rendicion.clienteId,
+        rendicionId: rendicion.id,
+        datos: { estado },
+      });
+      setAvisoDelChecklist({
+        variant: 'success',
+        texto: estado === 'COMPLETA' ? AVISO_RENDICION_COMPLETA : AVISO_RENDICION_EN_CURSO,
+      });
+    } catch (fallo) {
+      setAvisoDelChecklist({
+        variant: 'warning',
+        texto: mensajeFalloCambioDeEstado(interpretarFalloCambioDeEstado(fallo)),
+      });
+    }
+  }
+
   return (
     <>
       <header className="flex flex-col gap-2">
@@ -345,8 +385,32 @@ function DetalleDeRendicion({
           {/* En qué paso está (HU3.1) y si está anulada: son independientes. */}
           <div className="flex items-center gap-1.5">
             <dt className="text-content-secondary">Estado</dt>
-            <dd>
+            <dd className="flex flex-wrap items-center gap-2">
               <EstadoRendicionBadge estado={rendicion.estado} />
+              {/* Pasar de En curso a Completa y volver (HU3.6): solo en una rendición activa. */}
+              {!anulada && rendicion.estado === 'EN_CURSO' && (
+                <LoadingButton
+                  type="button"
+                  size="xs"
+                  loading={cambioDeEstado.isPending}
+                  loadingText={TEXTO_GUARDANDO_ESTADO}
+                  onClick={() => void cambiarEstado('COMPLETA')}
+                >
+                  {TEXTO_MARCAR_COMPLETA}
+                </LoadingButton>
+              )}
+              {!anulada && rendicion.estado === 'COMPLETA' && (
+                <LoadingButton
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  loading={cambioDeEstado.isPending}
+                  loadingText={TEXTO_GUARDANDO_ESTADO}
+                  onClick={() => void cambiarEstado('EN_CURSO')}
+                >
+                  {TEXTO_VOLVER_A_EN_CURSO}
+                </LoadingButton>
+              )}
             </dd>
           </div>
           <div className="flex items-center gap-1.5">

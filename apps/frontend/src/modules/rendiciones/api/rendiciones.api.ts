@@ -13,6 +13,7 @@ import {
   ResultadoPropagarCanalSchema,
   UltimaOcSchema,
   type CanalEntregaType,
+  type ActualizarEstadoRendicionDto,
   type ActualizarRendicionDto,
   type ClienteEstadoType,
   type CreateRendicionDto,
@@ -425,6 +426,58 @@ export function interpretarFalloPreparacionEnvio(error: unknown): FalloPreparaci
       const itemId =
         typeof details.itemId === 'string' && details.itemId !== '' ? details.itemId : null;
       return { tipo: 'item-no-enviable', motivo: motivo.data, itemId };
+    }
+  }
+  return { tipo: 'inesperado' };
+}
+
+// ─── Estado de la rendición (HU3.6) ───────────────────────────────────────────────────────
+
+/** `PATCH /rendiciones/:id/estado`: marca la rendición como completa o la vuelve a en curso. */
+export async function cambiarEstadoDeRendicion(
+  rendicionId: string,
+  datos: ActualizarEstadoRendicionDto,
+): Promise<RendicionDetalle> {
+  const response = await http(
+    `/rendiciones/${encodeURIComponent(rendicionId)}/estado`,
+    pedidoJson('PATCH', { ...datos }),
+  );
+  return RendicionDetalleSchema.parse(await response.json());
+}
+
+/**
+ * Por qué no se pudo cambiar el estado. `faltantes` es la cantidad que informa el servidor en un
+ * `ITEMS_PENDIENTES` (`null` si no vino o no es un entero válido).
+ */
+export type FalloCambioDeEstado =
+  | { tipo: 'items-pendientes'; faltantes: number | null }
+  | { tipo: 'rendicion-anulada' }
+  | { tipo: 'transicion-invalida' }
+  | { tipo: 'no-existe' }
+  | { tipo: 'inesperado' };
+
+/** Traduce el error de cambiar el estado. Mismo criterio que `interpretarFalloAgregado`. */
+export function interpretarFalloCambioDeEstado(error: unknown): FalloCambioDeEstado {
+  const respuesta = respuestaDeError(error);
+  if (respuesta === null) {
+    return { tipo: 'inesperado' };
+  }
+  if (respuesta.status === 404 && respuesta.cuerpo?.code === 'NOT_FOUND') {
+    return { tipo: 'no-existe' };
+  }
+  const details = respuesta.cuerpo?.details;
+  if (respuesta.status === 409 && respuesta.cuerpo?.code === 'CONFLICT' && esObjeto(details)) {
+    switch (details.motivo) {
+      case 'ITEMS_PENDIENTES':
+        return {
+          tipo: 'items-pendientes',
+          faltantes:
+            esEntero(details.faltantes) && details.faltantes >= 0 ? details.faltantes : null,
+        };
+      case 'RENDICION_ANULADA':
+        return { tipo: 'rendicion-anulada' };
+      case 'TRANSICION_INVALIDA':
+        return { tipo: 'transicion-invalida' };
     }
   }
   return { tipo: 'inesperado' };

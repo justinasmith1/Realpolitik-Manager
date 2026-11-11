@@ -1,4 +1,5 @@
 import type {
+  ActualizarEstadoRendicionDto,
   ActualizarRendicionDto,
   CanalEntregaType,
   CreateRendicionDto,
@@ -12,6 +13,7 @@ import {
   actualizarOcDeRendicion,
   agregarRequisitoARendicion,
   anularRendicion,
+  cambiarEstadoDeRendicion,
   corregirCanalDeItem,
   listarRendiciones,
   listarRendicionesAtrasadas,
@@ -191,6 +193,33 @@ export function usePrepararEnvio() {
     retry: false,
     onError: (_error, { clienteId }) =>
       queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) }),
+  });
+}
+
+// ─── Estado de la rendición (HU3.6) ───────────────────────────────────────────────────────
+
+/**
+ * Marca la rendición como completa o la vuelve a en curso. Sin reintentos. Si sale bien, el detalle
+ * queda con la rendición que devolvió el servidor (sin otro pedido). Al terminar, bien o mal, se
+ * vuelve a pedir todo lo que muestra el estado: el listado del cliente, el del mes y las atrasadas.
+ * Un 409 significa que algo cambió (faltan documentos, se anuló): hay que volver a mirar.
+ */
+export function useMarcarEstadoDeRendicion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      rendicionId,
+      datos,
+    }: {
+      clienteId: string;
+      rendicionId: string;
+      datos: ActualizarEstadoRendicionDto;
+    }) => cambiarEstadoDeRendicion(rendicionId, datos),
+    retry: false,
+    onSuccess: (detalle, { clienteId, rendicionId }) => {
+      queryClient.setQueryData(rendicionesKeys.detalle(clienteId, rendicionId), detalle);
+    },
+    onSettled: (_resultado, _error, { clienteId }) => invalidarRendiciones(queryClient, clienteId),
   });
 }
 
