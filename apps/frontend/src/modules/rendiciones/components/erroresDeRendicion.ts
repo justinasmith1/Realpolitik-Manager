@@ -8,6 +8,7 @@ import type {
   FalloAnulacion,
   FalloActualizacionOc,
   FalloApertura,
+  FalloCambioDeEstado,
   FalloCorreccionDeCanal,
   FalloPreparacionEnvio,
   FalloPropagacion,
@@ -174,6 +175,32 @@ export function mensajeFalloPreparacionEnvio(
       return 'La rendición o algún ítem ya no existe. Volvé a cargar la página.';
     case 'inesperado':
       return 'No pudimos preparar el envío. Probá de nuevo en unos segundos.';
+  }
+}
+
+// ─── Estado de la rendición (HU3.6) ───────────────────────────────────────────────────────
+
+/** Por qué no se pudo cambiar el estado: se avisa en el checklist, que ya se volvió a pedir. */
+export function mensajeFalloCambioDeEstado(fallo: FalloCambioDeEstado): string {
+  switch (fallo.tipo) {
+    case 'items-pendientes':
+      if (fallo.faltantes === null) {
+        return 'No se puede marcar como completa: faltan documentos.';
+      }
+      if (fallo.faltantes === 0) {
+        return 'No se puede marcar como completa: la rendición no tiene documentos.';
+      }
+      return fallo.faltantes === 1
+        ? 'No se puede marcar como completa: falta 1 documento.'
+        : `No se puede marcar como completa: faltan ${fallo.faltantes} documentos.`;
+    case 'rendicion-anulada':
+      return 'La rendición está anulada: ya no se puede modificar.';
+    case 'transicion-invalida':
+      return 'Ese cambio de estado no está permitido desde el estado actual.';
+    case 'no-existe':
+      return 'La rendición ya no existe. Volvé a cargar la página.';
+    case 'inesperado':
+      return 'No pudimos cambiar el estado de la rendición. Probá de nuevo en unos segundos.';
   }
 }
 

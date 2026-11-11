@@ -867,12 +867,12 @@ describe('PATCH /rendiciones/:id/vigencia', () => {
     },
   );
 
-  it('la ruta vieja PATCH /rendiciones/:id/estado ya no existe (404), sin escribir', async () => {
+  it('el cuerpo viejo { estado: ANULADA } en PATCH /rendiciones/:id/estado ya no anula (400, HU3.6), sin escribir', async () => {
     const res = await request(app)
       .patch(`/rendiciones/${RENDICION}/estado`)
       .send({ estado: 'ANULADA' });
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
     expect(prismaMock.rendicion.update).not.toHaveBeenCalled();
   });
 });

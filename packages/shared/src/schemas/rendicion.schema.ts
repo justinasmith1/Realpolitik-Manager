@@ -183,6 +183,18 @@ export const ActualizarVigenciaRendicionSchema = z.object({
 
 export type ActualizarVigenciaRendicionDto = z.infer<typeof ActualizarVigenciaRendicionSchema>;
 
+/**
+ * Cuerpo de `PATCH /rendiciones/:id/estado` (HU3.6): marca la rendición como completa o la vuelve
+ * a en curso. Los demás estados (Enviada, Aprobada, Rechazada) se suman con sus HU.
+ */
+export const ActualizarEstadoRendicionSchema = z.object({
+  estado: z.enum(['EN_CURSO', 'COMPLETA'], {
+    errorMap: () => ({ message: 'El estado debe ser EN_CURSO o COMPLETA.' }),
+  }),
+});
+
+export type ActualizarEstadoRendicionDto = z.infer<typeof ActualizarEstadoRendicionSchema>;
+
 export const MENSAJE_ACTUALIZAR_OC_VACIO = 'Indicá al menos un dato de la OC para actualizar.';
 
 /**

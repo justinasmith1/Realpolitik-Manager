@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Emisor } from './cliente.schema.js';
 import {
+  ActualizarEstadoRendicionSchema,
   ActualizarVigenciaRendicionSchema,
   CreateRendicionSchema,
   ItemChecklistSchema,
@@ -294,6 +295,23 @@ describe('ActualizarVigenciaRendicionSchema', () => {
         message: 'La vigencia solo puede ser ANULADA: una rendición anulada no se reactiva.',
       },
     ]);
+  });
+});
+
+describe('ActualizarEstadoRendicionSchema', () => {
+  it.each(['EN_CURSO', 'COMPLETA'])("acepta '%s'", (estado) => {
+    expect(ActualizarEstadoRendicionSchema.parse({ estado })).toEqual({ estado });
+  });
+
+  it.each([
+    { estado: 'ENVIADA' },
+    { estado: 'APROBADA' },
+    { estado: 'completa' },
+    { estado: null },
+    {},
+  ])('rechaza %j con un mensaje en español', (cuerpo) => {
+    const e = errores(ActualizarEstadoRendicionSchema.safeParse(cuerpo));
+    expect(e).toEqual([{ path: ['estado'], message: 'El estado debe ser EN_CURSO o COMPLETA.' }]);
   });
 });
 

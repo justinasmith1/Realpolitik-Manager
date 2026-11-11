@@ -1,5 +1,6 @@
 import {
   ActualizarCanalDeItemSchema,
+  ActualizarEstadoRendicionSchema,
   ActualizarVigenciaRendicionSchema,
   ActualizarRendicionSchema,
   CreateRendicionSchema,
@@ -19,6 +20,7 @@ import {
   actualizarRendicionController,
   agregarRequisitoARendicionController,
   anularRendicionController,
+  cambiarEstadoDeRendicionController,
   corregirCanalDeItemController,
   listarRendicionesAtrasadasController,
   listarRendicionesController,
@@ -84,6 +86,12 @@ rendicionesRouter.patch(
   '/:id/vigencia',
   validate({ params: IdParamsSchema, body: ActualizarVigenciaRendicionSchema }),
   anularRendicionController,
+);
+// Marcar como Completa o volver a En curso (HU3.6).
+rendicionesRouter.patch(
+  '/:id/estado',
+  validate({ params: IdParamsSchema, body: ActualizarEstadoRendicionSchema }),
+  cambiarEstadoDeRendicionController,
 );
 
 export const RequisitoDeRendicionParamsSchema = z.object({
