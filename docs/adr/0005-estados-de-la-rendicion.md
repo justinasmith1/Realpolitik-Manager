@@ -6,7 +6,7 @@ Proposed
 
 ## Fecha
 
-2026-11-03 (actualizada el 2026-11-04 con la pantalla Rendiciones, HU3.2: ver punto 6; el 2026-11-06 con su resumen y filtros, HU3.3: ver punto 7; y el 2026-11-08 con las atrasadas, HU3.4: ver punto 8)
+2026-11-03 (actualizada el 2026-11-04 con la pantalla Rendiciones, HU3.2: ver punto 6; el 2026-11-06 con su resumen y filtros, HU3.3: ver punto 7; el 2026-11-08 con las atrasadas, HU3.4: ver punto 8; y el 2026-11-11 con el cambio a Completa, HU3.6: ver punto 9)
 
 ## Contexto
 
@@ -39,6 +39,11 @@ Restricciones:
    - **Por qué no se guarda:** cambia sola con el calendario. Guardarla obligaría a un proceso programado que la actualice todos los meses, y entre corridas quedaría desfasada. Calcularla en cada consulta cuesta una comparación de períodos.
    - **Orden del listado del mes:** primero las atrasadas (hay que mandarlas ya), después las Rechazadas (hay que corregirlas), después el resto por avance, como en el punto 6. El listado de atrasadas va de la más vieja a la más nueva y, a igual período, por cliente.
    - **En la pantalla:** la tarjeta Atrasadas (en rojo, el único rojo de la pantalla; token `atrasada`) cuenta todas, sin importar el mes elegido ni los filtros, y abre la vista de atrasadas (`?vista=atrasadas`), donde el tipo y la búsqueda siguen aplicando y el estado no.
+9. **Marcar como Completa (HU3.6, 2026-11-11).** Es el primer cambio de estado con endpoint; no modifica ninguna decisión anterior.
+   - **Un endpoint genérico, no uno por transición.** `PATCH /rendiciones/:id/estado` con `{ "estado": ... }` (`ActualizarEstadoRendicionSchema`), igual que `PATCH /clientes/:id/estado`. El punto 4 dejó `/estado` libre justamente para esto. Un `/completar` obligaría a sumar un endpoint por cada transición (Completa, Volver a En curso, Enviada, Aprobada, Rechazada) y la HU ya pide dos. Cada HU siguiente amplía los valores del schema y las transiciones que acepta `cambiarEstadoDeRendicion` (en `rendiciones.service.ts`), que concentra las reglas en una tabla de transiciones. Hoy: `EN_CURSO → COMPLETA` (solo con ítems y todos completados; si no, `409 ITEMS_PENDIENTES` con `faltantes`) y `COMPLETA → EN_CURSO`. Cualquier otra, `409 TRANSICION_INVALIDA`.
+   - **`registrarCambioDeEstadoEnTx`.** `registrarCambioDeEstado` (punto 2) conserva su firma y ahora delega en una función interna que recibe la transacción. Así una operación puede cambiar el estado **de forma atómica con su propia escritura**: sin eso, cambiar el estado después de la transacción dejaría una ventana en la que una caída deja una rendición `COMPLETA` con un ítem sin documento. Sigue sin validar transiciones ni vigencia: lo decide cada llamador.
+   - **Auto-revert.** Una `COMPLETA` a la que se le agrega un ítem sin documento vuelve sola a `EN_CURSO`, con el motivo `Revertida a En curso al agregar requisito` en el historial. **El alcance inicial es solo `agregarRequisitoARendicion`**: es el único camino que hoy puede dejar un ítem pendiente en una rendición. Ningún servicio pone `completado` en `false` (reemplazar un documento deja el ítem completado). Si una HU futura permite quitar un documento, tendrá que revertir de la misma forma.
+   - **Resuelve parte de "A resolver" (Consecuencias):** pedir el mismo estado es idempotente (200, sin escribir ni agregar historial); una rendición anulada es `409 RENDICION_ANULADA`; el estado del cliente no se mira.
 
 ## Alternativas consideradas
 
@@ -54,4 +59,4 @@ Restricciones:
 - **Positivas**: el estado actual se filtra y se muestra con una columna; el historial guarda cada cambio con su fecha; hay un solo lugar donde se cambia el estado, así la columna y el historial no se desincronizan; la anulación y el estado no se confunden.
 - **Negativas**: el estado se guarda dos veces (columna y última entrada del historial). Un cambio escrito por fuera de `registrarCambioDeEstado` (SQL manual, Prisma Studio) los desincronizaría: la base no lo impide.
 - **Cambio de contrato**: el campo, el filtro y el endpoint de anulación de la baja lógica pasaron a llamarse `vigencia` (resuelto en la revisión de la HU3.1: el endpoint ya no ocupa `/estado`). El frontend y el backend se actualizaron juntos; no hay otros consumidores de la API.
-- **A resolver** (en las HU que cambian el estado): qué transiciones se permiten, si se puede cambiar el estado de una rendición anulada o de un cliente inactivo, si se rechaza un cambio al mismo estado, y el largo máximo del motivo del rechazo.
+- **A resolver** (en las HU que cambian el estado): qué transiciones se permiten, si se puede cambiar el estado de una rendición anulada o de un cliente inactivo, si se rechaza un cambio al mismo estado, y el largo máximo del motivo del rechazo. La HU3.6 resolvió lo de Completa (punto 9); quedan las transiciones de las HU3.7 a HU3.9 y el largo del motivo.

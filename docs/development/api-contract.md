@@ -637,7 +637,7 @@ Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y e
   - **El número de OC no es único:** se repite entre meses (la misma OC de febrero a diciembre), entre facturas del mismo mes y entre clientes, porque cada organismo numera sus OC. No hay ningún `409` por número de OC.
 - **Vigencia (`vigencia`, `anuladaEn`):** `ACTIVA` o `ANULADA`, derivada de la baja lógica; `anuladaEn` es la fecha de anulación (`deletedAt`) o `null`. El listado devuelve por defecto solo `ACTIVA` y muestra las anuladas solo si se piden con el filtro `vigencia`; el detalle devuelve también una anulada, que se conserva como historial.
 - **Estado (`estado`, HU3.1):** en qué paso está la rendición: `EN_CURSO`, `COMPLETA`, `ENVIADA`, `APROBADA` o `RECHAZADA` (en pantalla: "En curso", "Completa", "Enviada", "Aprobada" y "Rechazada"). Toda rendición nace `EN_CURSO`. La clave siempre está presente en la respuesta (alta, detalle, listado y anulación). Es **independiente de la vigencia**: una rendición anulada conserva el último estado que tenía. "Atrasada" no es un estado: la calcula el sistema (HU3.4). Ver [ADR-0005](../adr/0005-estados-de-la-rendicion.md).
-  - **Por ahora no hay ningún endpoint que cambie el estado:** lo cambian las HU3.6 (Completa), HU3.7 (Enviada), HU3.8 (Aprobada o Rechazada) y HU3.9 (corregir una rechazada).
+  - **Cómo cambia:** `PATCH /rendiciones/:id/estado` (4.6.1) marca la rendición como Completa o la vuelve a En curso (HU3.6). Los demás cambios los traen las HU3.7 (Enviada), HU3.8 (Aprobada o Rechazada) y HU3.9 (corregir una rechazada), que todavía no tienen endpoint.
 - **Historial (`historial`, HU3.1):** solo en el detalle y en la respuesta de alta (y en las demás que devuelven la rendición con su checklist). Cada cambio de estado, del más viejo al más nuevo: `{ "estadoAnterior", "estadoNuevo", "fecha" }`. La primera entrada es la del alta, con `estadoAnterior: null`. `fecha` es cuándo ocurrió el cambio. Las rendiciones anteriores a HU3.1 tienen una sola entrada (`null` → `EN_CURSO`) con la fecha en que se crearon. Anular no agrega una entrada: no es un cambio de estado.
 - **Ítems (`items`):** solo en el detalle y en la respuesta de alta. Cada ítem es un documento a presentar, ordenados por `nombreTipoDocumento` y luego por `ordinal`. `completadoEn` es la columna `completadoAt`, con el mismo criterio de nombres que `creadoEn`. El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
 
@@ -820,7 +820,8 @@ Para cuando un cliente empieza a pedir un documento nuevo justo en un mes cuya r
 - **Qué hace:** agrega a la rendición **activa** los ítems de ese requisito, uno por unidad de `cantidad`, con el mismo snapshot que al abrirla (ver `POST /clientes/:id/rendiciones`, pasos 2 a 4): ordinal, nombre del tipo, día y canal efectivo del momento en que se agregan. Los ítems que la rendición ya tenía no cambian.
 - **Se compara por tipo de documento:** si la rendición ya tiene ítems de ese tipo de documento, no se agrega nada, aunque vengan de otro requisito (por ejemplo, uno dado de baja y vuelto a crear, que tiene otro id).
 - **Acción explícita:** la hace la operadora; nunca es automática. El alta en la matriz (`POST /clientes/:id/requisitos`) no cambia y no agrega nada a rendiciones abiertas.
-- **Respuesta 200:** la rendición actualizada, con su checklist (`items`).
+- **Si la rendición estaba `COMPLETA` (HU3.6):** el ítem nuevo no tiene documento, así que la rendición **vuelve sola a `EN_CURSO`**, en la misma transacción que agrega los ítems. El historial registra el cambio (`COMPLETA` → `EN_CURSO`, con el motivo `Revertida a En curso al agregar requisito`). En cualquier otro estado, el estado no cambia.
+- **Respuesta 200:** la rendición actualizada, con su checklist (`items`) y, si volvió a En curso, ya con el estado nuevo.
 - **Errores:**
   - `400 VALIDATION_ERROR`: ids que no son uuid.
   - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado; el requisito no existe, está dado de baja o es de otro cliente.
@@ -888,7 +889,7 @@ Para cuando cambia el canal de un requisito (por ejemplo, Print pasa de WhatsApp
 
 ### 4.6 Anular una rendición (HU2.5)
 
-Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo cambia la vigencia. Hasta la HU3.1 era `PATCH /rendiciones/:id/estado` con `{ "estado": "ANULADA" }`; se renombró porque "estado" pasó a ser el paso del proceso (4.5). La ruta vieja no existe más (`404`).
+Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo cambia la vigencia. Hasta la HU3.1 era `PATCH /rendiciones/:id/estado` con `{ "estado": "ANULADA" }`; se renombró porque "estado" pasó a ser el paso del proceso (4.5). La ruta vieja con ese cuerpo ya no anula nada: `PATCH /rendiciones/:id/estado` existe desde la HU3.6 (4.6.1) con otro significado, y `{ "estado": "ANULADA" }` es `400 VALIDATION_ERROR`.
 
 #### `PATCH /rendiciones/:id/vigencia`
 
@@ -899,6 +900,36 @@ Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo c
 - **Respuesta 200:** la rendición con `"vigencia": "ANULADA"` y `anuladaEn`, sin `items`. Conserva su `estado` (HU3.1): anular no lo cambia ni agrega una entrada al historial.
 - **Errores:** `400 VALIDATION_ERROR` (`vigencia` ausente, `ACTIVA` o un valor desconocido, id que no es uuid), `404 NOT_FOUND` (la rendición no existe o su cliente está borrado).
 - **Cómo lo usa el front:** "Anular" pide confirmación antes de llamar, como "Desactivar" un cliente.
+
+### 4.6.1 Cambiar el estado de una rendición (HU3.6)
+
+Marca una rendición como Completa cuando la operadora terminó de armarla, y la vuelve a En curso si hay que cambiar algo. Es el único endpoint que cambia el **estado** (el paso del proceso, 4.5); la **vigencia** se cambia aparte (4.6). Se llama desde el detalle de la rendición, no desde el panel de resumen. Las HU3.7 a HU3.9 agregan sus transiciones a este mismo endpoint.
+
+#### `PATCH /rendiciones/:id/estado`
+
+- **Pedido:** `{ "estado": "COMPLETA" }` o `{ "estado": "EN_CURSO" }` (`ActualizarEstadoRendicionSchema` de `@realpolitik/shared`). Cualquier otro valor, también `ENVIADA`, `APROBADA` o `RECHAZADA` mientras no tengan su HU, es `400 VALIDATION_ERROR`, con el mensaje "El estado debe ser EN_CURSO o COMPLETA."
+- **Transiciones permitidas en esta HU:**
+
+  | Estado actual  | Estado pedido         | Resultado                                                                          |
+  | -------------- | --------------------- | ---------------------------------------------------------------------------------- |
+  | `EN_CURSO`     | `COMPLETA`            | Solo si tiene ítems y todos están completados; si no, `409 ITEMS_PENDIENTES`.      |
+  | `COMPLETA`     | `EN_CURSO`            | Siempre (en una rendición activa), aunque falte algún documento.                   |
+  | el mismo       | el mismo              | Idempotente: 200 con la rendición tal cual, **sin escribir** ni agregar historial. |
+  | cualquier otro | cualquiera de los dos | `409 TRANSICION_INVALIDA`.                                                         |
+
+- **Qué hace:** actualiza `estado` y agrega la entrada del historial (`estadoAnterior`, `estadoNuevo`, `fecha`) en una sola transacción serializable. La comprobación de los ítems va en esa misma transacción: si un documento cambia en el medio, se reintenta con los datos nuevos. Una rendición sin ítems no se puede marcar como completa.
+- **Auto-revert:** una `COMPLETA` que recibe un ítem sin documento vuelve sola a `EN_CURSO`. Hoy lo dispara solo `POST /rendiciones/:id/requisitos/:requisitoId` (4.5). Reemplazar el documento de un ítem no puede dejarlo sin documento, así que no lo dispara.
+- **Se puede seguir editando una `COMPLETA`:** cambiar el canal de un ítem, la OC o reemplazar un documento no cambia el estado.
+- **No mira el estado del cliente:** se puede cambiar el estado de una rendición de un cliente `INACTIVO` o `SUSPENDIDO`.
+- **Respuesta 200:** `RendicionDetalleSchema`: la rendición con su checklist (`items`) y el `historial` ya con el cambio.
+- **Errores:**
+  - `400 VALIDATION_ERROR`: `estado` ausente o fuera de `EN_CURSO` y `COMPLETA`; id que no es uuid.
+  - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado.
+  - `409 CONFLICT`:
+    - `motivo: "ITEMS_PENDIENTES"`, con `faltantes` (entero): cuántos ítems no tienen documento. Con una rendición **sin ítems**, `faltantes` es `0`.
+    - `motivo: "RENDICION_ANULADA"`: la rendición está anulada; una anulada no cambia de estado, tampoco con el mismo estado que ya tiene.
+    - `motivo: "TRANSICION_INVALIDA"`, con `estadoActual` y `estadoNuevo`: la transición no está permitida.
+- **Cómo lo usa el front:** en la cabecera del detalle, junto al estado: "Marcar como completa" (con la rendición En curso) y "Volver a en curso" (con la Completa), solo en una rendición activa. Los botones no se deshabilitan según el avance: el servidor decide y, ante `ITEMS_PENDIENTES`, el aviso dice cuántos documentos faltan. Al terminar se actualiza el detalle y se vuelve a pedir el listado del cliente, el del mes y las atrasadas.
 
 ### 4.7 Extensión de `GET /clientes`
 
@@ -932,9 +963,10 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 8. **Hecho.** `ActualizarCanalDeItemSchema` (corregir el canal de un ítem), `PropagarCanalDeRequisitoSchema` (pedido de la propagación) y `ResultadoPropagarCanalSchema` (su respuesta). Todos usan el enum `CanalEntrega` del cliente. `ListarRendicionesQuerySchema` suma `estado` y `requisitoId`.
 9. **Hecho (HU2.10).** `ObservacionesClienteSchema` (cuerpo de `PUT /clientes/:id/observaciones`, admite saltos de línea) y `ObservacionesClienteLecturaSchema` (respuesta del `GET`, que no rechaza caracteres de control ya guardados), con el tope `OBSERVACIONES_CLIENTE_MAX` (1000).
 10. **Hecho (HU2.11).** `NumeroOcSchema` (texto recortado, de 1 a `NUMERO_OC_MAX` = 100 caracteres) y `MontoOcSchema` (de 0 a `MONTO_OC_MAX` = 999999999999.99, hasta 2 decimales). `CreateRendicionSchema` suma los tres datos de la OC, opcionales; `ActualizarRendicionSchema` es el cuerpo de `PATCH /rendiciones/:id` (cada campo opcional y anulable, al menos uno); `UltimaOcSchema` es la respuesta de `GET /clientes/:id/ultima-oc`. `RendicionSchema` suma `numeroOc`, `montoMensual` y `montoTotal`, `null` si no se cargaron (una clave ausente también es `null`).
-11. **Hecho (HU3.1).** `EstadoRendicion` (los cinco estados, con `ETIQUETAS_ESTADO_RENDICION` para pantalla) y `HistorialEstadoRendicionSchema` (`estadoAnterior`, `estadoNuevo`, `fecha`). `RendicionSchema` suma `estado` (también el resumen) y `RendicionDetalleSchema` suma `historial`. `ListarRendicionesQuerySchema` suma el filtro `estado`. El valor derivado de la baja lógica (`ACTIVA`/`ANULADA`) se llama `vigencia` (`VigenciaRendicion` y el filtro `FiltroVigenciaRendiciones`).
+11. **Hecho (HU3.1).** `EstadoRendicion` (los cinco estados, con `ETIQUETAS_ESTADO_RENDICION` para pantalla) y `HistorialEstadoRendicionSchema` (`estadoAnterior`, `estadoNuevo`, `fecha`). `RendicionSchema` suma `estado` (también el resumen) y `RendicionDetalleSchema` suma `historial`. `ListarRendicionesQuerySchema` suma el filtro `estado`. El valor derivado de la baja lógica (`ACTIVA`/`ANULADA`) se llama `vigencia` (`VigenciaRendicion` y el filtro `FiltroVigenciaRendiciones`). El nombre `ActualizarEstadoRendicionSchema`, que tenía el schema de la anulación, vuelve en la HU3.6 con otro significado (punto 14).
 12. **Hecho (HU3.2).** `ListarRendicionesDelMesQuerySchema` (`anio` y `mes`, obligatorios) y `RendicionDelMesSchema` (la fila de la pantalla Rendiciones), con `ESTADOS_CON_FECHA`.
 13. **Hecho (HU3.4).** `atrasada` en `RendicionDelMesSchema`, `RendicionAtrasadaSchema` (la fila más `anio` y `mes`) y la regla en `utils/atrasada.ts`: `esAtrasada(periodo, estado, hoy)`, `ultimoPeriodoAtrasado(hoy)` y `ESTADOS_SIN_ENVIAR`.
+14. **Hecho (HU3.6).** `ActualizarEstadoRendicionSchema` (cuerpo de `PATCH /rendiciones/:id/estado`: `estado` solo `EN_CURSO` o `COMPLETA`, con el mensaje "El estado debe ser EN_CURSO o COMPLETA.") y su tipo `ActualizarEstadoRendicionDto`. Cada HU que agrega una transición (HU3.7 a HU3.9) amplía los valores aceptados.
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 
