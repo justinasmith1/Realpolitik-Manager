@@ -1,5 +1,6 @@
 import type {
   ActualizarCanalDeItemSchema,
+  ActualizarEstadoRendicionSchema,
   ActualizarVigenciaRendicionSchema,
   ActualizarRendicionSchema,
   CreateRendicionSchema,
@@ -31,6 +32,7 @@ import {
   actualizarRendicion,
   agregarRequisitoARendicion,
   anularRendicion,
+  cambiarEstadoDeRendicion,
   corregirCanalDeItem,
   listarRendiciones,
   listarRendicionesAtrasadas,
@@ -106,6 +108,21 @@ export async function anularRendicionController(
   res: Response<Rendicion, AnularRendicionLocals>,
 ): Promise<void> {
   const rendicion = await anularRendicion(res.locals.validated.params.id);
+  res.status(200).json(rendicion);
+}
+
+type CambiarEstadoRendicionLocals = ValidatedLocals<{
+  params: typeof IdParamsSchema;
+  body: typeof ActualizarEstadoRendicionSchema;
+}>;
+
+export async function cambiarEstadoDeRendicionController(
+  _req: Request,
+  res: Response<RendicionDetalle, CambiarEstadoRendicionLocals>,
+): Promise<void> {
+  const { id } = res.locals.validated.params;
+  const { estado } = res.locals.validated.body;
+  const rendicion = await cambiarEstadoDeRendicion(id, estado);
   res.status(200).json(rendicion);
 }
 

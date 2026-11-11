@@ -508,24 +508,89 @@ export async function registrarCambioDeEstado(
   estadoNuevo: EstadoRendicionType,
   motivo: string | null = null,
 ): Promise<RendicionDetalle> {
+  return enTransaccionSerializable((tx) =>
+    registrarCambioDeEstadoEnTx(tx, rendicionId, estadoNuevo, motivo),
+  );
+}
+
+/**
+ * Lo que hace `registrarCambioDeEstado`, dentro de una transacción que abre quien llama (HU3.6):
+ * así otra operación puede cambiar el estado de forma atómica con su propia escritura (el
+ * auto-revert al sumar un requisito). Quien llama la corre en serializable. Mismas reglas: no valida
+ * transiciones ni la vigencia.
+ */
+async function registrarCambioDeEstadoEnTx(
+  tx: Prisma.TransactionClient,
+  rendicionId: string,
+  estadoNuevo: EstadoRendicionType,
+  motivo: string | null = null,
+): Promise<RendicionDetalle> {
+  const rendicion = await tx.rendicion.findFirst({
+    where: { id: rendicionId, cliente: { isDeleted: false } },
+    select: { estado: true },
+  });
+  if (rendicion === null) {
+    throw notFound('Rendición no encontrada');
+  }
+
+  const actualizada = await tx.rendicion.update({
+    where: { id: rendicionId },
+    data: {
+      estado: estadoNuevo,
+      historial: { create: { estadoAnterior: rendicion.estado, estadoNuevo, motivo } },
+    },
+    include: CON_ITEMS,
+  });
+  return toRendicionDetalleDto(conItemsEnOrden(actualizada));
+}
+
+/**
+ * Cambia el estado de una rendición a pedido de la operadora (HU3.6): `PATCH /rendiciones/:id/estado`.
+ * Por ahora solo dos transiciones, que se suman con cada HU:
+ * - `EN_CURSO → COMPLETA`: solo si tiene ítems y todos están completados; si no, `409
+ *   ITEMS_PENDIENTES` con los `faltantes` (0 si no tiene ítems).
+ * - `COMPLETA → EN_CURSO`: siempre.
+ * Pedir el estado que ya tiene responde igual, sin escribir ni agregar historial. Una anulada es
+ * `409 RENDICION_ANULADA`; cualquier otra transición, `409 TRANSICION_INVALIDA`. El chequeo y el
+ * cambio van en la misma transacción serializable: si un documento cambia en el medio, se reintenta.
+ */
+export async function cambiarEstadoDeRendicion(
+  rendicionId: string,
+  estadoNuevo: EstadoRendicionType,
+): Promise<RendicionDetalle> {
   return enTransaccionSerializable(async (tx) => {
     const rendicion = await tx.rendicion.findFirst({
       where: { id: rendicionId, cliente: { isDeleted: false } },
-      select: { estado: true },
+      select: { estado: true, isDeleted: true, items: { select: { completado: true } } },
     });
     if (rendicion === null) {
       throw notFound('Rendición no encontrada');
     }
+    if (rendicion.isDeleted) {
+      throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
+    }
+    if (rendicion.estado === estadoNuevo) {
+      const actual = await tx.rendicion.findUniqueOrThrow({
+        where: { id: rendicionId },
+        include: CON_ITEMS,
+      });
+      return toRendicionDetalleDto(conItemsEnOrden(actual));
+    }
 
-    const actualizada = await tx.rendicion.update({
-      where: { id: rendicionId },
-      data: {
-        estado: estadoNuevo,
-        historial: { create: { estadoAnterior: rendicion.estado, estadoNuevo, motivo } },
-      },
-      include: CON_ITEMS,
-    });
-    return toRendicionDetalleDto(conItemsEnOrden(actualizada));
+    if (rendicion.estado === 'EN_CURSO' && estadoNuevo === 'COMPLETA') {
+      const faltantes = rendicion.items.filter((item) => !item.completado).length;
+      if (rendicion.items.length === 0 || faltantes > 0) {
+        throw conflict('ITEMS_PENDIENTES', { faltantes }, 'Faltan documentos');
+      }
+    } else if (!(rendicion.estado === 'COMPLETA' && estadoNuevo === 'EN_CURSO')) {
+      throw conflict(
+        'TRANSICION_INVALIDA',
+        { estadoActual: rendicion.estado, estadoNuevo },
+        'Transición no permitida',
+      );
+    }
+
+    return registrarCambioDeEstadoEnTx(tx, rendicionId, estadoNuevo, null);
   });
 }
 
@@ -651,6 +716,7 @@ async function insertarItemsDeRequisito(
     select: {
       id: true,
       clienteId: true,
+      estado: true,
       isDeleted: true,
       cliente: { select: { estado: true, canalEntrega: true } },
     },
@@ -694,6 +760,17 @@ async function insertarItemsDeRequisito(
   await tx.itemChecklist.createMany({
     data: items.map((item) => ({ ...item, rendicionId })),
   });
+
+  // Una Completa con un ítem pendiente deja de estar completa (HU3.6): vuelve a En curso en esta
+  // misma transacción. El resultado ya trae los ítems nuevos.
+  if (rendicion.estado === 'COMPLETA') {
+    return registrarCambioDeEstadoEnTx(
+      tx,
+      rendicionId,
+      'EN_CURSO',
+      'Revertida a En curso al agregar requisito',
+    );
+  }
 
   const actualizada = await tx.rendicion.findUniqueOrThrow({
     where: { id: rendicionId },
