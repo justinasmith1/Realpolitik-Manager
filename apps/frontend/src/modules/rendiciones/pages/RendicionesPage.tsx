@@ -4,20 +4,25 @@ import {
   type RendicionAtrasada,
   type RendicionDelMes,
 } from '@realpolitik/shared';
+import { cn } from 'cn';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { Link } from 'react-router';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { Link, type To } from 'react-router';
 
 import { Alert } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { esRendicionInexistente } from '@/modules/rendiciones/api/rendiciones.api';
 import { FiltrosActivos } from '@/modules/rendiciones/components/FiltrosActivos';
 import { FiltrosRendicionesDelMes } from '@/modules/rendiciones/components/FiltrosRendicionesDelMes';
 import { RendicionDelMesFila } from '@/modules/rendiciones/components/RendicionDelMesFila';
 import { ResumenPorEstado } from '@/modules/rendiciones/components/ResumenPorEstado';
+import { ResumenRendicionPanel } from '@/modules/rendiciones/components/ResumenRendicionPanel';
 import { useFiltrosRendicionesDelMes } from '@/modules/rendiciones/hooks/useFiltrosRendicionesDelMes';
 import { useMesDeRendiciones } from '@/modules/rendiciones/hooks/useMesDeRendiciones';
+import { useRendicionAbierta } from '@/modules/rendiciones/hooks/useRendicionAbierta';
 import {
+  useRendicion,
   useRendicionesAtrasadas,
   useRendicionesDelMes,
 } from '@/modules/rendiciones/hooks/useRendiciones';
@@ -37,8 +42,7 @@ import {
 /**
  * Pantalla Rendiciones (`/rendiciones`, HU3.2): todas las rendiciones activas del mes elegido, de
  * todos los clientes, con su estado y su avance, para ver de un vistazo qué falta. Es la pantalla
- * de entrada del sistema. El mes queda en la URL; sin él, el mes actual. Cada fila abre el detalle
- * de su rendición.
+ * de entrada del sistema. El mes queda en la URL; sin él, el mes actual.
  *
  * HU3.3: tarjetas con cuántas hay en cada estado (todas las del mes), y filtros por estado, tipo de
  * cliente y búsqueda, que se combinan y quedan en la URL. Se aplican acá, sobre el listado del mes.
@@ -46,6 +50,12 @@ import {
  * HU3.4: la tarjeta Atrasadas cuenta las atrasadas de cualquier mes y abre su vista
  * (`vista=atrasadas`): el listado pasa a ser el de todas las atrasadas, de la más vieja a la más
  * nueva, y el tipo y la búsqueda se aplican sobre él.
+ *
+ * HU3.5: tocar una fila abre el resumen de su rendición en un panel al costado (`?rendicion=<id>`,
+ * junto con el mes y los filtros). Solo la zona del listado se divide en dos columnas, con el panel
+ * a la derecha; el encabezado, las tarjetas y los filtros no cambian. El detalle se abre desde el
+ * panel. Si la rendición no está en el listado que se ve (otro mes, un filtro, un id que no
+ * existe), el panel se cierra y el parámetro se quita.
  */
 export function RendicionesPage() {
   const { periodo, anterior, siguiente, elegir } = useMesDeRendiciones();
@@ -64,6 +74,37 @@ export function RendicionesPage() {
     quitarAtrasadas,
   } = useFiltrosRendicionesDelMes();
   const atrasadas = consultaAtrasadas.data;
+  const { rendicionId, destinoDe, cerrar, descartar } = useRendicionAbierta();
+
+  // El listado que se ve, ya filtrado: el del mes o, en su vista, el de atrasadas.
+  const base = vistaAtrasadas ? atrasadas : consulta.data;
+  const visibles = base === undefined ? undefined : filtrarRendicionesDelMes(base, filtros);
+  const fila =
+    rendicionId === null ? undefined : visibles?.find((rendicion) => rendicion.id === rendicionId);
+  const consultaDetalle = useRendicion(fila?.clienteId, fila?.id);
+
+  // La rendición abierta tiene que estar en el listado que se ve; si no (o si ya no existe), el
+  // panel se cierra. Mientras el listado carga, se espera.
+  const fueraDelListado = rendicionId !== null && visibles !== undefined && fila === undefined;
+  const inexistente = consultaDetalle.isError && esRendicionInexistente(consultaDetalle.error);
+  useEffect(() => {
+    if (fueraDelListado || inexistente) descartar();
+  }, [fueraDelListado, inexistente, descartar]);
+
+  // Al abrirse (o al cambiar de rendición), el foco va al panel; al cerrarlo, vuelve a la fila.
+  const panelRef = useRef<HTMLElement>(null);
+  const filaAbierta = fila?.id;
+  useEffect(() => {
+    if (filaAbierta !== undefined) panelRef.current?.focus({ preventScroll: true });
+  }, [filaAbierta]);
+  const cerrarPanel = useCallback(() => {
+    cerrar();
+    if (filaAbierta !== undefined) {
+      document
+        .querySelector<HTMLElement>(`[data-rendicion-id="${filaAbierta}"]`)
+        ?.focus({ preventScroll: true });
+    }
+  }, [cerrar, filaAbierta]);
   const nombreDelMes = etiquetaDePeriodo(periodo);
   const hoy = new Date();
   // La cantidad, cuando ya llegó el listado del mes.
@@ -71,6 +112,19 @@ export function RendicionesPage() {
     consulta.data === undefined
       ? textoDeHoy(hoy)
       : `${textoDeHoy(hoy)} · ${cantidadDeRendicionesEnElMes(consulta.data.length, periodo, mesActual(hoy).anio)}`;
+
+  const panel =
+    fila === undefined ? null : (
+      <ResumenRendicionPanel
+        ref={panelRef}
+        fila={fila}
+        detalle={consultaDetalle.data}
+        error={consultaDetalle.isError && !inexistente}
+        reintentando={consultaDetalle.isFetching}
+        onReintentar={() => void consultaDetalle.refetch()}
+        onCerrar={cerrarPanel}
+      />
+    );
 
   let contenido: ReactNode;
   if (consulta.isError) {
@@ -125,6 +179,10 @@ export function RendicionesPage() {
       />
     );
     const comunes = {
+      visibles,
+      abierta: fila?.id,
+      destinoDe,
+      panel,
       filtros,
       textoBusqueda,
       cambiarTexto,
@@ -226,6 +284,13 @@ const conPeriodo = (
 interface ListadoFiltradoProps {
   /** El listado sobre el que se filtra: el del mes o, en su vista, el de atrasadas. */
   base: readonly (RendicionDelMes | RendicionAtrasada)[] | undefined;
+  /** `base` con los filtros aplicados. */
+  visibles: readonly (RendicionDelMes | RendicionAtrasada)[] | undefined;
+  /** La rendición abierta en el panel de resumen (HU3.5). */
+  abierta: string | undefined;
+  destinoDe: (rendicionId: string) => To;
+  /** El panel de resumen de la rendición abierta, o `null`: va a la derecha del listado. */
+  panel: ReactNode;
   error: boolean;
   onReintentar: () => void;
   vistaAtrasadas: boolean;
@@ -247,6 +312,10 @@ interface ListadoFiltradoProps {
  */
 function ListadoFiltrado({
   base,
+  visibles,
+  abierta,
+  destinoDe,
+  panel,
   error,
   onReintentar,
   vistaAtrasadas,
@@ -272,7 +341,7 @@ function ListadoFiltrado({
       </Alert>
     );
   }
-  if (base === undefined) {
+  if (base === undefined || visibles === undefined) {
     return (
       <div className="flex flex-col gap-2">
         <span className="sr-only" role="status">
@@ -284,7 +353,6 @@ function ListadoFiltrado({
     );
   }
 
-  const visibles = filtrarRendicionesDelMes(base, filtros);
   // El tipo filtrado conserva su opción aunque no esté en el listado, para verlo y poder quitarlo.
   const presentes = tiposPresentes(base);
   const tipos =
@@ -320,17 +388,32 @@ function ListadoFiltrado({
         onLimpiar={limpiar}
       />
       {aviso === undefined ? (
-        // Una sola tarjeta, con las filas separadas por una línea fina.
-        <ul aria-label={nombre} className="divide-y overflow-hidden rounded-card border bg-card">
-          {visibles.map((rendicion) => (
-            <li key={rendicion.id}>
-              <RendicionDelMesFila
-                rendicion={rendicion}
-                periodo={vistaAtrasadas && conPeriodo(rendicion) ? rendicion : undefined}
-              />
-            </li>
-          ))}
-        </ul>
+        // Una sola tarjeta, con las filas separadas por una línea fina. Con una rendición abierta,
+        // desde `lg` se divide en dos columnas: el listado y, a la derecha, su panel (debajo de
+        // `lg`, el panel cubre la pantalla). Las filas miden el ancho del listado para apilarse.
+        <div
+          className={cn(
+            panel !== null &&
+              'lg:grid lg:grid-cols-[minmax(0,1fr)_23.75rem] lg:items-start lg:gap-4',
+          )}
+        >
+          <ul
+            aria-label={nombre}
+            className="@container divide-y overflow-hidden rounded-card border bg-card"
+          >
+            {visibles.map((rendicion) => (
+              <li key={rendicion.id}>
+                <RendicionDelMesFila
+                  rendicion={rendicion}
+                  periodo={vistaAtrasadas && conPeriodo(rendicion) ? rendicion : undefined}
+                  destino={destinoDe(rendicion.id)}
+                  abierta={rendicion.id === abierta}
+                />
+              </li>
+            ))}
+          </ul>
+          {panel}
+        </div>
       ) : (
         // Solo el aviso: para limpiar está "Limpiar todo", en la línea de filtros activos.
         <div className="rounded-card border bg-card p-6">

@@ -2,7 +2,7 @@ import { ETIQUETAS_ESTADO_RENDICION, type RendicionDelMes } from '@realpolitik/s
 import { cn } from 'cn';
 import { ChevronRightIcon } from 'lucide-react';
 import { useId } from 'react';
-import { Link } from 'react-router';
+import { Link, type To } from 'react-router';
 
 import { ClienteMonogram } from '@/modules/clientes/components/ClienteMonogram';
 import {
@@ -11,12 +11,11 @@ import {
   textoDeEstado,
 } from '@/modules/rendiciones/estadoRendicion.colores';
 import {
-  diaYMes,
   etiquetaDePeriodo,
   textoDePendientes,
+  textoDeUltimoPaso,
   tipoDeCliente,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
-import { rutaDeRendicion } from '@/modules/rendiciones/rendiciones.rutas';
 
 interface RendicionDelMesFilaProps {
   rendicion: RendicionDelMes;
@@ -25,6 +24,10 @@ interface RendicionDelMesFilaProps {
    * atrasadas (HU3.4), donde el listado junta meses distintos.
    */
   periodo?: { anio: number; mes: number } | undefined;
+  /** Adónde lleva la fila: la misma pantalla con su panel de resumen abierto (HU3.5). */
+  destino: To;
+  /** Es la rendición abierta en el panel: la fila queda marcada. */
+  abierta: boolean;
 }
 
 /**
@@ -35,32 +38,41 @@ interface RendicionDelMesFilaProps {
  * - a la derecha, la barra de avance, el porcentaje, la fecha del último paso (si ya salió hacia el
  *   organismo) y una flecha, que es solo un indicador.
  *
- * Toda la fila es un único enlace al detalle, así que se abre tocando cualquier parte, flecha
- * incluida. Su nombre es el cliente y la factura (distingue dos del mismo cliente); el resto se
- * anuncia como descripción. Por debajo de `lg` (1024px) la parte derecha baja debajo del
- * cliente: con la barra lateral abierta, el contenido es bastante más angosto que la ventana.
+ * Toda la fila es un único enlace que abre el panel de resumen de la rendición (HU3.5), así que se
+ * abre tocando cualquier parte, flecha incluida; la abierta queda marcada (`aria-current`). Su
+ * nombre es el cliente y la factura (distingue dos del mismo cliente); el resto se anuncia como
+ * descripción.
+ *
+ * Si el listado tiene menos de 46rem de ancho, la parte derecha baja debajo del cliente. Se mide
+ * el listado (container query), no la ventana: con la barra lateral abierta o con el panel de
+ * resumen al costado, el listado es bastante más angosto que la ventana.
  */
-export function RendicionDelMesFila({ rendicion, periodo }: RendicionDelMesFilaProps) {
+export function RendicionDelMesFila({
+  rendicion,
+  periodo,
+  destino,
+  abierta,
+}: RendicionDelMesFilaProps) {
   const { cliente, avance, ultimoPaso, estado } = rendicion;
   // HU3.4: en el lugar de la fecha, "Atrasada" (o "Atrasada · Septiembre 2026" en su vista). Las
   // atrasadas están sin enviar, así que no tienen fecha de último paso.
   const marca = rendicion.atrasada
     ? `Atrasada${periodo === undefined ? '' : ` · ${etiquetaDePeriodo(periodo)}`}`
     : null;
-  const fecha =
-    ultimoPaso === null
-      ? null
-      : `${ETIQUETAS_ESTADO_RENDICION[ultimoPaso.estado]} ${diaYMes(ultimoPaso.fecha)}`;
+  const fecha = ultimoPaso === null ? null : textoDeUltimoPaso(ultimoPaso);
   const porcentaje = avance.total === 0 ? 0 : Math.round((avance.reunidos / avance.total) * 100);
   const idDescripcion = useId();
 
   return (
     <article>
       <Link
-        to={rutaDeRendicion(rendicion.clienteId, rendicion.id)}
+        to={destino}
+        preventScrollReset
+        aria-current={abierta ? 'true' : undefined}
+        data-rendicion-id={rendicion.id}
         aria-label={`${cliente.denominacion}, factura ${rendicion.numeroFactura}`}
         aria-describedby={idDescripcion}
-        className="group flex flex-col gap-x-5 gap-y-2.5 px-4 py-4 transition-colors outline-none hover:bg-panel-alt focus-visible:bg-panel-alt focus-visible:ring-3 focus-visible:ring-ring/30 focus-visible:ring-inset lg:flex-row lg:items-center lg:px-5"
+        className="group flex flex-col gap-x-5 gap-y-2.5 px-4 py-4 transition-colors outline-none hover:bg-panel-alt focus-visible:bg-panel-alt focus-visible:ring-3 focus-visible:ring-ring/30 focus-visible:ring-inset aria-[current]:bg-seleccion @min-[46rem]:flex-row @min-[46rem]:items-center @min-[46rem]:px-5"
       >
         <div className="flex min-w-0 flex-1 items-center gap-3.5">
           <ClienteMonogram
@@ -99,16 +111,16 @@ export function RendicionDelMesFila({ rendicion, periodo }: RendicionDelMesFilaP
           </div>
         </div>
 
-        {/* Apilada (debajo de `lg`), alineada con el texto del cliente (monograma de 2.5rem + gap). */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-13.5 lg:shrink-0 lg:flex-nowrap lg:pl-0">
+        {/* Apilada (listado angosto), alineada con el texto del cliente (monograma de 2.5rem + gap). */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-13.5 @min-[46rem]:shrink-0 @min-[46rem]:flex-nowrap @min-[46rem]:pl-0">
           <div
             role="progressbar"
             aria-label={`Avance de ${cliente.denominacion}`}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={porcentaje}
-            // De ancho fijo desde `lg`; apilada, ocupa el espacio que queda.
-            className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-pill bg-muted lg:w-30 lg:flex-none"
+            // De ancho fijo con el listado ancho; apilada, ocupa el espacio que queda.
+            className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-pill bg-muted group-aria-[current]:bg-seleccion-riel @min-[46rem]:w-30 @min-[46rem]:flex-none"
           >
             <div
               className={cn('h-full rounded-pill', rellenoDeEstado[estado])}
@@ -123,14 +135,14 @@ export function RendicionDelMesFila({ rendicion, periodo }: RendicionDelMesFilaP
           >
             {porcentaje}%
           </span>
-          {/* Ancho mínimo en escritorio, a la derecha, para que las barras queden alineadas. Con el
+          {/* Ancho mínimo con el listado ancho, a la derecha, para que las barras queden alineadas. Con el
               mes (vista de atrasadas), más ancho; y apilada, en su propia línea, debajo de la barra. */}
           <span
             className={cn(
               'text-[0.8125rem] whitespace-nowrap',
               periodo === undefined
-                ? 'text-right lg:min-w-28'
-                : 'order-last w-full lg:order-none lg:w-auto lg:min-w-44 lg:text-right',
+                ? 'text-right @min-[46rem]:min-w-28'
+                : 'order-last w-full @min-[46rem]:order-none @min-[46rem]:w-auto @min-[46rem]:min-w-44 @min-[46rem]:text-right',
               marca === null ? 'text-content-secondary' : 'font-semibold text-atrasada',
             )}
           >

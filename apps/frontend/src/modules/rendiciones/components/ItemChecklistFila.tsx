@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { etiquetasCanalEntrega } from '@/modules/clientes/clientes.etiquetas';
+import { ItemReunidoBadge } from '@/modules/rendiciones/components/ItemReunidoBadge';
 import { nombreDeItem } from '@/modules/rendiciones/rendiciones.etiquetas';
 
 /** Lo que se puede hacer con el documento del ítem. */
@@ -117,15 +118,7 @@ export function ItemChecklistFila({
             </Button>
           )}
         </span>
-        <Badge
-          className={
-            pendiente
-              ? 'border-warning bg-warning-soft text-foreground'
-              : 'border-success-border bg-success-soft text-success'
-          }
-        >
-          {pendiente ? 'Pendiente' : 'Reunido'}
-        </Badge>
+        <ItemReunidoBadge reunido={!pendiente} />
       </div>
 
       {conDocumento && (

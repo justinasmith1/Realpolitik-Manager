@@ -6,10 +6,12 @@ import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router';
 import { RendicionDelMesFila } from '@/modules/rendiciones/components/RendicionDelMesFila';
 
 // Una fila de la pantalla Rendiciones (HU3.2): cliente, factura, tipo de cliente, pendientes, estado,
-// avance y, solo si ya salió hacia el organismo, la fecha de su último paso.
+// avance y, solo si ya salió hacia el organismo, la fecha de su último paso. Tocarla abre su panel
+// de resumen (HU3.5).
 
 const CLIENTE_ID = 'a1b2c3d4-e5f6-4789-abcd-ef0123456789';
 const RENDICION_ID = 'e1f2a3b4-c5d6-4789-8abc-def012345678';
+const PANEL = { search: `?rendicion=${RENDICION_ID}` };
 
 function fila(cambios: Partial<RendicionDelMes> = {}): RendicionDelMes {
   return {
@@ -25,10 +27,10 @@ function fila(cambios: Partial<RendicionDelMes> = {}): RendicionDelMes {
   };
 }
 
-function renderFila(rendicion: RendicionDelMes) {
+function renderFila(rendicion: RendicionDelMes, abierta = false) {
   return render(
     <MemoryRouter>
-      <RendicionDelMesFila rendicion={rendicion} />
+      <RendicionDelMesFila rendicion={rendicion} destino={PANEL} abierta={abierta} />
     </MemoryRouter>,
   );
 }
@@ -58,12 +60,12 @@ describe('RendicionDelMesFila', () => {
     expect(document.querySelector('[data-slot="badge"]')).toBeNull();
   });
 
-  it('toda la fila lleva al detalle de la rendición', () => {
+  it('toda la fila abre el panel de resumen: la misma pantalla, con la rendición en la URL', () => {
     renderFila(fila());
 
     expect(screen.getByRole('link', { name: /Muni La Plata/ })).toHaveAttribute(
       'href',
-      `/clientes/${CLIENTE_ID}/rendiciones/${RENDICION_ID}`,
+      `/?rendicion=${RENDICION_ID}`,
     );
     // Un solo enlace por fila, con la factura en su nombre para distinguir dos del mismo cliente.
     expect(screen.getAllByRole('link')).toHaveLength(1);
@@ -78,14 +80,16 @@ describe('RendicionDelMesFila', () => {
     ['la línea del estado', () => screen.getByText('En curso')],
     ['el monograma', () => screen.getByText('MP')],
   ])(
-    'tocar %s abre el detalle: la flecha es un indicador dentro de la fila, no un botón',
+    'tocar %s abre el panel: la flecha es un indicador dentro de la fila, no un botón',
     async (_parte, elemento) => {
       const router = createMemoryRouter(
         [
-          { path: '/rendiciones', element: <RendicionDelMesFila rendicion={fila()} /> },
-          { path: '/clientes/:clienteId/rendiciones/:rendicionId', element: <h1>Detalle</h1> },
+          {
+            path: '/rendiciones',
+            element: <RendicionDelMesFila rendicion={fila()} destino={PANEL} abierta={false} />,
+          },
         ],
-        { initialEntries: ['/rendiciones'] },
+        { initialEntries: ['/rendiciones?anio=2026&mes=10'] },
       );
       render(<RouterProvider router={router} />);
       expect(screen.queryByRole('button')).toBeNull();
@@ -94,12 +98,24 @@ describe('RendicionDelMesFila', () => {
       expect(destino).not.toBeNull();
       await userEvent.setup().click(destino as Element);
 
-      expect(router.state.location.pathname).toBe(
-        `/clientes/${CLIENTE_ID}/rendiciones/${RENDICION_ID}`,
-      );
-      expect(screen.getByRole('heading', { name: 'Detalle' })).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe('/rendiciones');
+      expect(router.state.location.search).toBe(`?rendicion=${RENDICION_ID}`);
     },
   );
+
+  it('la rendición abierta en el panel queda marcada, con un fondo suave', () => {
+    renderFila(fila(), true);
+
+    const enlace = screen.getByRole('link', { name: /Muni La Plata/ });
+    expect(enlace).toHaveAttribute('aria-current', 'true');
+    expect(enlace).toHaveClass('aria-[current]:bg-seleccion');
+  });
+
+  it('sin abrir, no está marcada', () => {
+    renderFila(fila());
+
+    expect(screen.getByRole('link', { name: /Muni La Plata/ })).not.toHaveAttribute('aria-current');
+  });
 
   it('el monograma va en el color del estado', () => {
     renderFila(fila({ estado: 'APROBADA' }));
@@ -201,6 +217,8 @@ describe('RendicionDelMesFila', () => {
           <RendicionDelMesFila
             rendicion={fila({ atrasada: true })}
             periodo={{ anio: 2026, mes: 9 }}
+            destino={PANEL}
+            abierta={false}
           />
         </MemoryRouter>,
       );
