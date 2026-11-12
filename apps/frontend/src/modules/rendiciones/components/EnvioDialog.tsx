@@ -19,7 +19,11 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button';
 import { etiquetasCanalEntrega } from '@/modules/clientes/clientes.etiquetas';
 import { useContactos } from '@/modules/clientes/hooks/useContactos';
-import { nombreDeItem, numeroDeWhatsappLegible } from '@/modules/rendiciones/rendiciones.etiquetas';
+import {
+  nombreDeItem,
+  numeroDeWhatsappLegible,
+  TEXTO_YA_LA_ENVIE,
+} from '@/modules/rendiciones/rendiciones.etiquetas';
 
 /** Ítems elegidos que van todos por el mismo canal. */
 export interface Envio {
@@ -35,6 +39,11 @@ interface EnvioDialogProps {
   onCerrar: () => void;
   /** Falta un dato del canal: lleva a completarlo en el cliente. */
   onEditarCliente: () => void;
+  /**
+   * "Ya la envié" (HU3.7): registra el envío de la rendición. Solo se pasa si está Completa; sin
+   * esto, el diálogo no lo ofrece.
+   */
+  onYaLaEnvie?: () => void;
   focoAlCerrar: RefObject<HTMLElement | null>;
 }
 
@@ -42,7 +51,8 @@ type Copiado = 'ok' | 'error' | null;
 
 /**
  * Datos para enviar los ítems elegidos por su canal (HU2.5). El sistema todavía no envía nada:
- * muestra a quién o adónde mandarlo, para que la operadora lo haga. Nunca muestra ni pide
+ * muestra a quién o adónde mandarlo, para que la operadora lo haga. Si la rendición está Completa,
+ * al final ofrece "Ya la envié" para registrar el envío (HU3.7). Nunca muestra ni pide
  * credenciales del portal: el sistema no las guarda.
  */
 export function EnvioDialog({
@@ -50,6 +60,7 @@ export function EnvioDialog({
   cliente,
   onCerrar,
   onEditarCliente,
+  onYaLaEnvie,
   focoAlCerrar,
 }: EnvioDialogProps) {
   // Se conserva lo último mostrado para que el contenido no desaparezca durante el cierre.
@@ -120,6 +131,11 @@ export function EnvioDialog({
 
         <AlertDialogFooter>
           <AlertDialogCancel>Cerrar</AlertDialogCancel>
+          {onYaLaEnvie !== undefined && (
+            <Button type="button" onClick={onYaLaEnvie}>
+              {TEXTO_YA_LA_ENVIE}
+            </Button>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

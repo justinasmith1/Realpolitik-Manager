@@ -58,6 +58,21 @@ export function itemJson(extra: Record<string, unknown> = {}) {
   };
 }
 
+/** Un documento vigente de un ítem (HU2.8): un ítem reunido lo tiene. */
+export const documentoJson = (extra: Record<string, unknown> = {}) => ({
+  aplicacionId: 'b1c2d3e4-f5a6-4789-8abc-000000000101',
+  documentoId: 'b1c2d3e4-f5a6-4789-8abc-000000000201',
+  nombreOriginal: 'factura.pdf',
+  tipoContenido: 'application/pdf',
+  tamanioBytes: 1024,
+  aplicadaEn: FECHA,
+  ...extra,
+});
+
+/** Un ítem reunido: completado y con su documento vigente. */
+export const itemReunidoJson = (extra: Record<string, unknown> = {}) =>
+  itemJson({ completado: true, completadoEn: FECHA, documento: documentoJson(), ...extra });
+
 export const resumenJson = (extra: Record<string, unknown> = {}) => ({
   ...rendicionJson(),
   resumen: { totalItems: 4, completados: 1 },

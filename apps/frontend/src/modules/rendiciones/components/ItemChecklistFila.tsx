@@ -37,6 +37,11 @@ interface ItemChecklistFilaProps {
   onCambiarCanal?: () => void;
   /** Sin esto (la API no informa el documento del ítem), la fila no muestra documentos. */
   documento?: AccionesDeDocumento;
+  /**
+   * La rendición ya no se modifica (Enviada, HU3.7): el id del texto que explica por qué. Las
+   * acciones que cambian el canal o el documento se ven deshabilitadas y lo citan.
+   */
+  bloqueadoPor?: string;
 }
 
 /**
@@ -51,6 +56,7 @@ export function ItemChecklistFila({
   seleccion,
   onCambiarCanal,
   documento,
+  bloqueadoPor,
 }: ItemChecklistFilaProps) {
   const idCasilla = useId();
   const idMotivo = useId();
@@ -61,7 +67,14 @@ export function ItemChecklistFila({
   const claseDelNombre = cn('text-sm text-foreground', pendiente && 'font-semibold');
   const vigente = item.documento ?? null;
   const conDocumento = documento !== undefined && vigente !== null;
-  const paraAsociar = documento?.onAsociar !== undefined && pendiente && vigente === null;
+  const bloqueada = bloqueadoPor !== undefined;
+  const paraAsociar =
+    (documento?.onAsociar !== undefined || (bloqueada && documento !== undefined)) &&
+    pendiente &&
+    vigente === null;
+  const conReemplazo = documento?.onReemplazar !== undefined || bloqueada;
+  /** Atributos de una acción que cambia el ítem: deshabilitada y explicada si está bloqueada. */
+  const accion = bloqueada ? { disabled: true, 'aria-describedby': bloqueadoPor } : {};
   return (
     <li
       data-estado={pendiente ? 'pendiente' : 'reunido'}
@@ -105,12 +118,13 @@ export function ItemChecklistFila({
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-0.5">
           <Badge tone="neutral">{etiquetasCanalEntrega[item.canalEntrega]}</Badge>
-          {onCambiarCanal !== undefined && (
+          {(onCambiarCanal !== undefined || bloqueada) && (
             <Button
               type="button"
               variant="ghost"
               size="icon-xs"
               onClick={onCambiarCanal}
+              {...accion}
               aria-label={`Cambiar el canal de ${nombre}`}
               title="Cambiar el canal"
             >
@@ -145,12 +159,13 @@ export function ItemChecklistFila({
             <DownloadIcon aria-hidden="true" />
           </LoadingButton>
           <span className="ml-auto inline-flex flex-wrap items-center gap-1">
-            {documento.onReemplazar !== undefined && (
+            {conReemplazo && (
               <Button
                 type="button"
                 variant="ghost"
                 size="xs"
                 onClick={documento.onReemplazar}
+                {...accion}
                 aria-label={`Reemplazar documento de ${nombre}`}
               >
                 Reemplazar documento
@@ -181,6 +196,7 @@ export function ItemChecklistFila({
             variant="outline"
             size="xs"
             onClick={documento.onAsociar}
+            {...accion}
             aria-label={`Asociar documento existente a ${nombre}`}
           >
             Asociar documento existente

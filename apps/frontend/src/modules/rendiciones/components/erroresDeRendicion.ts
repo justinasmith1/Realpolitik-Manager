@@ -102,6 +102,8 @@ export function motivoFalloAgregado(fallo: FalloAgregado): string {
       return 'ya tenía ese documento';
     case 'rendicion-anulada':
       return 'la rendición está anulada';
+    case 'rendicion-enviada':
+      return 'la rendición ya fue enviada';
     case 'cliente-no-activo':
       return fallo.estado === null
         ? 'el cliente no está activo'
@@ -118,6 +120,8 @@ export function mensajeFalloCorreccionDeCanal(fallo: FalloCorreccionDeCanal): st
   switch (fallo.tipo) {
     case 'rendicion-anulada':
       return 'La rendición está anulada: ya no se puede modificar.';
+    case 'rendicion-enviada':
+      return MENSAJE_RENDICION_ENVIADA;
     case 'no-existe':
       return 'Este documento ya no está en la rendición. Volvé a cargar la página.';
     case 'inesperado':
@@ -140,6 +144,8 @@ export function mensajeFalloPropagacion(
     switch (fallo.tipo) {
       case 'rendicion-anulada':
         return `${quien(fallo.rendicionId)} está anulada. Destildala y probá de nuevo.`;
+      case 'rendicion-enviada':
+        return `${quien(fallo.rendicionId)} ya fue enviada. Destildala y probá de nuevo.`;
       case 'requisito-no-en-rendicion':
         return `${quien(fallo.rendicionId)} ya no tiene documentos de este requisito. Destildala y probá de nuevo.`;
       case 'no-existe':
@@ -180,19 +186,33 @@ export function mensajeFalloPreparacionEnvio(
 
 // ─── Estado de la rendición (HU3.6) ───────────────────────────────────────────────────────
 
-/** Por qué no se pudo cambiar el estado: se avisa en el checklist, que ya se volvió a pedir. */
-export function mensajeFalloCambioDeEstado(fallo: FalloCambioDeEstado): string {
+/** Una rendición Enviada no se modifica (HU3.7): documentos, canales y requisitos. */
+export const MENSAJE_RENDICION_ENVIADA = 'La rendición ya fue enviada: no se puede modificar.';
+
+/**
+ * Por qué no se pudo cambiar el estado: se avisa en el checklist (o en el diálogo del envío), que
+ * ya se volvió a pedir. `destino` es el estado pedido: el aviso de faltantes dice si era para
+ * completarla o para marcarla como enviada.
+ */
+export function mensajeFalloCambioDeEstado(
+  fallo: FalloCambioDeEstado,
+  destino: 'COMPLETA' | 'ENVIADA' = 'COMPLETA',
+): string {
+  const noSePuede =
+    destino === 'ENVIADA' ? 'No se puede marcar como enviada' : 'No se puede marcar como completa';
   switch (fallo.tipo) {
     case 'items-pendientes':
       if (fallo.faltantes === null) {
-        return 'No se puede marcar como completa: faltan documentos.';
+        return `${noSePuede}: faltan documentos.`;
       }
       if (fallo.faltantes === 0) {
-        return 'No se puede marcar como completa: la rendición no tiene documentos.';
+        return `${noSePuede}: la rendición no tiene documentos.`;
       }
       return fallo.faltantes === 1
-        ? 'No se puede marcar como completa: falta 1 documento.'
-        : `No se puede marcar como completa: faltan ${fallo.faltantes} documentos.`;
+        ? `${noSePuede}: falta 1 documento.`
+        : `${noSePuede}: faltan ${fallo.faltantes} documentos.`;
+    case 'fecha-invalida':
+      return mensajeDelServidor(fallo.mensaje) ?? 'Revisá la fecha de envío.';
     case 'rendicion-anulada':
       return 'La rendición está anulada: ya no se puede modificar.';
     case 'transicion-invalida':

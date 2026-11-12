@@ -1,4 +1,8 @@
-import type { RendicionResumen, RequisitoCliente } from '@realpolitik/shared';
+import {
+  esRendicionModificable,
+  type RendicionResumen,
+  type RequisitoCliente,
+} from '@realpolitik/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -88,6 +92,10 @@ export function MatrizPage() {
   const requisitosQuery = useRequisitos(id, { enabled: idValido && !clienteQuery.isError });
   // Todas las abiertas, sin los filtros del listado: para ofrecer sumar un requisito nuevo.
   const rendicionesAbiertas = useRendiciones(idValido ? id : undefined);
+  // Una Enviada ya no se modifica (HU3.7): no se le ofrece sumar el requisito.
+  const rendicionesModificables = (rendicionesAbiertas.data ?? []).filter((rendicion) =>
+    esRendicionModificable(rendicion.estado),
+  );
 
   const cliente = clienteQuery.data;
   // A qué título llevar el foco. Cambia al pasar de carga a cliente, de error a éxito y de un
@@ -160,6 +168,8 @@ export function MatrizPage() {
     } catch {
       return;
     }
+    // Una Enviada ya no se modifica (HU3.7): no se ofrece propagarle el canal.
+    rendiciones = rendiciones.filter((rendicion) => esRendicionModificable(rendicion.estado));
     if (rendiciones.length > 0) {
       setPropagacion({ clienteId: cliente.id, requisito: actualizado, canal, rendiciones });
     }
@@ -333,7 +343,7 @@ export function MatrizPage() {
             onGuardado={(texto, guardado) => {
               aviso.avisar('success', texto);
               setModo(null);
-              if (guardado.tipo === 'alta' && (rendicionesAbiertas.data?.length ?? 0) > 0) {
+              if (guardado.tipo === 'alta' && rendicionesModificables.length > 0) {
                 setRequisitoASumar(guardado.creado);
               }
               if (guardado.tipo === 'edicion') {
@@ -349,7 +359,7 @@ export function MatrizPage() {
           />
           <SumarRequisitoDialog
             requisito={requisitoASumar}
-            rendiciones={rendicionesAbiertas.data ?? []}
+            rendiciones={rendicionesModificables}
             onCerrar={() => setRequisitoASumar(null)}
             onTerminado={(variante, texto) => {
               aviso.avisar(variante, texto);
