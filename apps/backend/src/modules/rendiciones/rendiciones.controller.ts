@@ -121,8 +121,8 @@ export async function cambiarEstadoDeRendicionController(
   res: Response<RendicionDetalle, CambiarEstadoRendicionLocals>,
 ): Promise<void> {
   const { id } = res.locals.validated.params;
-  const { estado } = res.locals.validated.body;
-  const rendicion = await cambiarEstadoDeRendicion(id, estado);
+  const { estado, fechaEnvio } = res.locals.validated.body;
+  const rendicion = await cambiarEstadoDeRendicion(id, estado, { fechaEnvio });
   res.status(200).json(rendicion);
 }
 

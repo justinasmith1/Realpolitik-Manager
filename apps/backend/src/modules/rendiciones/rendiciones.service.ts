@@ -3,10 +3,14 @@ import {
   canalDeSeleccion,
   compararItemsDeChecklist,
   esChecklistError,
+  esRendicionModificable,
   ESTADOS_SIN_ENVIAR,
+  faltantesParaEnviar,
   FILTRO_VIGENCIA_POR_DEFECTO,
   generarChecklist,
+  hoyEnBuenosAires,
   motivoNoEnviable,
+  problemaDeFechaEnvio,
   PreparacionEnvioSchema,
   ultimoPeriodoAtrasado,
   UltimaOcSchema,
@@ -34,6 +38,7 @@ import { prisma } from '../../lib/prisma';
 
 import {
   APLICACION_VIGENTE,
+  columnaDateDeDia,
   HISTORIAL_EN_ORDEN,
   SELECT_DEL_MES,
   toItemChecklistDto,
@@ -524,6 +529,8 @@ async function registrarCambioDeEstadoEnTx(
   rendicionId: string,
   estadoNuevo: EstadoRendicionType,
   motivo: string | null = null,
+  /** El día en que ocurrió (`AAAA-MM-DD`), si no es el del registro: la fecha de envío (HU3.7). */
+  fechaEfectiva: string | null = null,
 ): Promise<RendicionDetalle> {
   const rendicion = await tx.rendicion.findFirst({
     where: { id: rendicionId, cliente: { isDeleted: false } },
@@ -537,31 +544,69 @@ async function registrarCambioDeEstadoEnTx(
     where: { id: rendicionId },
     data: {
       estado: estadoNuevo,
-      historial: { create: { estadoAnterior: rendicion.estado, estadoNuevo, motivo } },
+      historial: {
+        create: {
+          estadoAnterior: rendicion.estado,
+          estadoNuevo,
+          motivo,
+          ...(fechaEfectiva !== null && { fechaEfectiva: columnaDateDeDia(fechaEfectiva) }),
+        },
+      },
     },
     include: CON_ITEMS,
   });
   return toRendicionDetalleDto(conItemsEnOrden(actualizada));
 }
 
+/** Qué exige una transición, además de que la rendición esté activa. */
+interface ReglaDeTransicion {
+  /** Tiene que tener ítems y ninguno faltante; si no, `409 ITEMS_PENDIENTES`. */
+  exigeTodoReunido: boolean;
+}
+
 /**
- * Cambia el estado de una rendición a pedido de la operadora (HU3.6): `PATCH /rendiciones/:id/estado`.
- * Por ahora solo dos transiciones, que se suman con cada HU:
- * - `EN_CURSO → COMPLETA`: solo si tiene ítems y todos están completados; si no, `409
- *   ITEMS_PENDIENTES` con los `faltantes` (0 si no tiene ítems).
- * - `COMPLETA → EN_CURSO`: siempre.
- * Pedir el estado que ya tiene responde igual, sin escribir ni agregar historial. Una anulada es
- * `409 RENDICION_ANULADA`; cualquier otra transición, `409 TRANSICION_INVALIDA`. El chequeo y el
- * cambio van en la misma transacción serializable: si un documento cambia en el medio, se reintenta.
+ * Las transiciones que la operadora puede pedir con `PATCH /rendiciones/:id/estado` (ADR-0005,
+ * punto 9): estado actual → estado nuevo → regla. Lo que no está acá es `409 TRANSICION_INVALIDA`.
+ * Cada HU de la épica 3 suma las suyas.
+ */
+const TRANSICIONES_PERMITIDAS: Readonly<
+  Partial<Record<EstadoRendicionType, Partial<Record<EstadoRendicionType, ReglaDeTransicion>>>>
+> = {
+  EN_CURSO: { COMPLETA: { exigeTodoReunido: true } },
+  COMPLETA: { EN_CURSO: { exigeTodoReunido: false }, ENVIADA: { exigeTodoReunido: true } },
+};
+
+/**
+ * Cambia el estado de una rendición a pedido de la operadora (HU3.6 y HU3.7):
+ * `PATCH /rendiciones/:id/estado`.
+ * - Las transiciones y lo que exige cada una están en `TRANSICIONES_PERMITIDAS`; cualquier otra es
+ *   `409 TRANSICION_INVALIDA`.
+ * - Si exige todo reunido y falta algo, `409 ITEMS_PENDIENTES` con los `faltantes` (0 si no tiene
+ *   ítems). Falta un ítem pendiente o uno reunido sin documento vigente: la regla del envío
+ *   (`faltantesParaEnviar`).
+ * - A `ENVIADA` (HU3.7), con la fecha de envío elegida (por defecto, hoy en Buenos Aires) como
+ *   fecha efectiva de la entrada del historial. No futura ni anterior al primer día del período:
+ *   si no, `400 VALIDATION_ERROR` en `fechaEnvio`.
+ * - Pedir el estado que ya tiene responde igual, sin escribir ni agregar historial (en una Enviada,
+ *   tampoco cambia la fecha de envío). Una anulada es `409 RENDICION_ANULADA`.
+ * El chequeo y el cambio van en la misma transacción serializable: si un documento cambia en el
+ * medio, se reintenta.
  */
 export async function cambiarEstadoDeRendicion(
   rendicionId: string,
   estadoNuevo: EstadoRendicionType,
+  { fechaEnvio, ahora = new Date() }: { fechaEnvio?: string | undefined; ahora?: Date } = {},
 ): Promise<RendicionDetalle> {
   return enTransaccionSerializable(async (tx) => {
     const rendicion = await tx.rendicion.findFirst({
       where: { id: rendicionId, cliente: { isDeleted: false } },
-      select: { estado: true, isDeleted: true, items: { select: { completado: true } } },
+      select: {
+        estado: true,
+        isDeleted: true,
+        anio: true,
+        mes: true,
+        items: { include: { aplicaciones: APLICACION_VIGENTE } },
+      },
     });
     if (rendicion === null) {
       throw notFound('Rendición no encontrada');
@@ -577,21 +622,51 @@ export async function cambiarEstadoDeRendicion(
       return toRendicionDetalleDto(conItemsEnOrden(actual));
     }
 
-    if (rendicion.estado === 'EN_CURSO' && estadoNuevo === 'COMPLETA') {
-      const faltantes = rendicion.items.filter((item) => !item.completado).length;
-      if (rendicion.items.length === 0 || faltantes > 0) {
-        throw conflict('ITEMS_PENDIENTES', { faltantes }, 'Faltan documentos');
-      }
-    } else if (!(rendicion.estado === 'COMPLETA' && estadoNuevo === 'EN_CURSO')) {
+    const regla = TRANSICIONES_PERMITIDAS[rendicion.estado]?.[estadoNuevo];
+    if (regla === undefined) {
       throw conflict(
         'TRANSICION_INVALIDA',
         { estadoActual: rendicion.estado, estadoNuevo },
         'Transición no permitida',
       );
     }
+    if (regla.exigeTodoReunido) {
+      const faltantes = faltantesParaEnviar(rendicion.items.map(toItemChecklistDto)).length;
+      if (rendicion.items.length === 0 || faltantes > 0) {
+        throw conflict('ITEMS_PENDIENTES', { faltantes }, 'Faltan documentos');
+      }
+    }
 
-    return registrarCambioDeEstadoEnTx(tx, rendicionId, estadoNuevo, null);
+    let fechaEfectiva: string | null = null;
+    if (estadoNuevo === 'ENVIADA') {
+      fechaEfectiva = fechaEnvio ?? hoyEnBuenosAires(ahora);
+      const problema = problemaDeFechaEnvio(fechaEfectiva, rendicion, ahora);
+      if (problema !== null) {
+        throw validationError([{ campo: 'fechaEnvio', mensaje: problema }]);
+      }
+    }
+
+    return registrarCambioDeEstadoEnTx(tx, rendicionId, estadoNuevo, null, fechaEfectiva);
   });
+}
+
+/**
+ * Por qué no se puede modificar una rendición (documentos, canales o requisitos), o `null` si se
+ * puede: anulada (`RENDICION_ANULADA`, es historial) o ya enviada (`RENDICION_ENVIADA`, HU3.7:
+ * lo que se mandó no cambia). `datos` va en los `details` del 409 (p. ej. el `itemId` o el
+ * `rendicionId` del conflicto).
+ */
+export function motivoParaNoModificar(
+  rendicion: { isDeleted: boolean; estado: EstadoRendicionType },
+  datos: Record<string, unknown> = {},
+): AppError | null {
+  if (rendicion.isDeleted) {
+    return conflict('RENDICION_ANULADA', datos, 'La rendición está anulada');
+  }
+  if (!esRendicionModificable(rendicion.estado)) {
+    return conflict('RENDICION_ENVIADA', datos, 'La rendición ya fue enviada');
+  }
+  return null;
 }
 
 /**
@@ -724,8 +799,9 @@ async function insertarItemsDeRequisito(
   if (rendicion === null) {
     throw notFound('Rendición no encontrada');
   }
-  if (rendicion.isDeleted) {
-    throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
+  const noModificable = motivoParaNoModificar(rendicion);
+  if (noModificable !== null) {
+    throw noModificable;
   }
   if (rendicion.cliente.estado !== 'ACTIVO') {
     throw conflict(
@@ -781,7 +857,8 @@ async function insertarItemsDeRequisito(
 
 /**
  * Suma a una rendición activa los ítems de un requisito nuevo de la matriz del cliente
- * (contrato 4.5). Es una acción explícita de la operadora, nunca automática.
+ * (contrato 4.5). Es una acción explícita de la operadora, nunca automática. No en una anulada
+ * (`409 RENDICION_ANULADA`) ni en una Enviada (`409 RENDICION_ENVIADA`, HU3.7).
  *
  * En una transacción serializable: dos pedidos simultáneos del mismo requisito no pueden sumar
  * dos veces. Si chocan, el reintento ve los ítems confirmados y responde 409; si la base rechaza
@@ -806,8 +883,8 @@ export async function agregarRequisitoARendicion(
 /**
  * Corrige el canal de un ítem del checklist (contrato 4.5). Es la única parte del snapshot que se
  * puede corregir: si el requisito tenía un canal equivocado al abrir la rendición, el ítem quedó
- * con ese canal. Solo en una rendición activa (anulada: `409 RENDICION_ANULADA`); no toca el
- * requisito del cliente ni otras rendiciones. Con el mismo canal responde sin escribir.
+ * con ese canal. Solo en una rendición activa (anulada: `409 RENDICION_ANULADA`) y no enviada
+ * (`409 RENDICION_ENVIADA`, HU3.7); no toca el requisito del cliente ni otras rendiciones. Con el mismo canal responde sin escribir.
  */
 export async function corregirCanalDeItem(
   rendicionId: string,
@@ -817,13 +894,14 @@ export async function corregirCanalDeItem(
   return enTransaccionSerializable(async (tx) => {
     const rendicion = await tx.rendicion.findFirst({
       where: { id: rendicionId, cliente: { isDeleted: false } },
-      select: { id: true, isDeleted: true },
+      select: { id: true, isDeleted: true, estado: true },
     });
     if (rendicion === null) {
       throw notFound('Rendición no encontrada');
     }
-    if (rendicion.isDeleted) {
-      throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
+    const noModificable = motivoParaNoModificar(rendicion);
+    if (noModificable !== null) {
+      throw noModificable;
     }
 
     // Un ítem de otra rendición no existe para esta.
@@ -854,7 +932,8 @@ export async function corregirCanalDeItem(
  * después de editar el canal del requisito, nunca automática.
  *
  * Todo o nada, en una transacción serializable: cada rendición tiene que ser del cliente (si no,
- * 404), estar activa (409 `RENDICION_ANULADA`) y tener ítems del requisito (409
+ * 404), estar activa (409 `RENDICION_ANULADA`), no estar enviada (409 `RENDICION_ENVIADA`, HU3.7)
+ * y tener ítems del requisito (409
  * `REQUISITO_NO_EN_RENDICION`); si una no cumple, no se cambia ninguna. Los conflictos llevan el
  * `rendicionId` de la primera que no cumple, en el orden pedido. Solo cambia el canal de esos
  * ítems: el resto del snapshot y los otros ítems no se tocan. Como la corrección de un ítem, se
@@ -886,15 +965,20 @@ export async function propagarCanalDeRequisito(
     // Una rendición de otro cliente no existe para este.
     const rendiciones = await tx.rendicion.findMany({
       where: { id: { in: [...rendicionIds] }, clienteId },
-      select: { id: true, isDeleted: true },
+      select: { id: true, isDeleted: true, estado: true },
     });
     const porId = new Map(rendiciones.map((rendicion) => [rendicion.id, rendicion]));
     if (rendicionIds.some((id) => !porId.has(id))) {
       throw notFound('Rendición no encontrada');
     }
-    const anulada = rendicionIds.find((id) => porId.get(id)?.isDeleted === true);
-    if (anulada !== undefined) {
-      throw conflict('RENDICION_ANULADA', { rendicionId: anulada }, 'La rendición está anulada');
+    // La primera que no se puede modificar, en el orden pedido: anulada o ya enviada (HU3.7).
+    for (const id of rendicionIds) {
+      const rendicion = porId.get(id);
+      const noModificable =
+        rendicion === undefined ? null : motivoParaNoModificar(rendicion, { rendicionId: id });
+      if (noModificable !== null) {
+        throw noModificable;
+      }
     }
     const conItems = await tx.itemChecklist.groupBy({
       by: ['rendicionId'],

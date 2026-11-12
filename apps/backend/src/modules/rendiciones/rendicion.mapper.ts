@@ -6,6 +6,7 @@ import type {
 import {
   esAtrasada,
   ESTADOS_CON_FECHA,
+  fechaDelPaso,
   ItemChecklistSchema,
   periodoAMeses,
   RendicionAtrasadaSchema,
@@ -50,10 +51,31 @@ type AplicacionVigenteRow = Prisma.AplicacionDocumentoGetPayload<typeof APLICACI
  */
 export const HISTORIAL_EN_ORDEN = {
   orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }],
-  select: { estadoAnterior: true, estadoNuevo: true, fecha: true },
+  select: { estadoAnterior: true, estadoNuevo: true, fecha: true, fechaEfectiva: true },
 } satisfies Prisma.Rendicion$historialArgs;
 
 type HistorialRow = Prisma.HistorialEstadoRendicionGetPayload<typeof HISTORIAL_EN_ORDEN>;
+
+/**
+ * Una columna `DATE` de PostgreSQL → día del contrato (`AAAA-MM-DD`). Prisma la lee como la
+ * medianoche UTC de ese día, así que el día es la parte de la fecha en UTC (no en Buenos Aires,
+ * que sería el día anterior).
+ */
+export const diaDeColumnaDate = (fecha: Date): string => fecha.toISOString().slice(0, 10);
+
+/** Un día del contrato (`AAAA-MM-DD`) → valor para una columna `DATE` de Prisma. */
+export const columnaDateDeDia = (dia: string): Date => new Date(`${dia}T00:00:00.000Z`);
+
+/** La fecha efectiva de una entrada como día, o `null` si no tiene. */
+const diaEfectivoDe = (fecha: Date | null | undefined): string | null =>
+  fecha instanceof Date ? diaDeColumnaDate(fecha) : null;
+
+const entradaDeHistorial = (row: HistorialRow) => ({
+  estadoAnterior: row.estadoAnterior,
+  estadoNuevo: row.estadoNuevo,
+  fecha: row.fecha,
+  fechaEfectiva: diaEfectivoDe(row.fechaEfectiva),
+});
 
 /** Un ítem y, si se cargó, su aplicación vigente. */
 export type ItemConDocumento = ItemChecklistRow & { aplicaciones?: AplicacionVigenteRow[] };
@@ -131,7 +153,7 @@ export function toRendicionDetalleDto(row: RendicionConItems): RendicionDetalle 
   return RendicionDetalleSchema.parse({
     ...camposDeRendicion(row),
     items: row.items.map(camposDeItem),
-    historial: row.historial,
+    historial: row.historial.map(entradaDeHistorial),
   });
 }
 
@@ -160,7 +182,7 @@ export const SELECT_DEL_MES = {
   historial: {
     orderBy: [{ fecha: 'desc' }, { createdAt: 'desc' }],
     take: 1,
-    select: { estadoNuevo: true, fecha: true },
+    select: { estadoNuevo: true, fecha: true, fechaEfectiva: true },
   },
 } satisfies Prisma.RendicionSelect;
 
@@ -172,10 +194,17 @@ const tieneFecha = (estado: string): estado is (typeof ESTADOS_CON_FECHA)[number
 /** Los datos de una fila de la pantalla Rendiciones, sin validar (los valida quien la arma). */
 function datosDeFila(row: RendicionDelMesRow, avance: ResumenDeAvance, hoy: Date) {
   const [ultima] = row.historial;
-  // La fecha es la de la entrada que la llevó al estado actual: la última, si coincide.
+  // La fecha es la de la entrada que la llevó al estado actual: la última, si coincide. En una
+  // Enviada, la fecha de envío elegida (HU3.7), no la del registro.
   const ultimoPaso =
     tieneFecha(row.estado) && ultima !== undefined && ultima.estadoNuevo === row.estado
-      ? { estado: row.estado, fecha: ultima.fecha }
+      ? {
+          estado: row.estado,
+          fecha: fechaDelPaso({
+            fecha: ultima.fecha,
+            fechaEfectiva: diaEfectivoDe(ultima.fechaEfectiva),
+          }),
+        }
       : null;
   return {
     id: row.id,

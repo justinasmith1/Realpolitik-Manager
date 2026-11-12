@@ -50,7 +50,7 @@ function fila(
     estado?: string;
     anio?: number;
     mes?: number;
-    historial?: { estadoNuevo: string; fecha: Date }[];
+    historial?: { estadoNuevo: string; fecha: Date; fechaEfectiva?: Date | null }[];
   } = {},
 ) {
   return {
@@ -204,6 +204,30 @@ describe('GET /rendiciones?anio=&mes= (pantalla Rendiciones, HU3.2)', () => {
       },
     );
 
+    it('ENVIADA con fecha de envío elegida (HU3.7): esa fecha, no la del registro', async () => {
+      prismaMock.rendicion.findMany.mockResolvedValue([
+        fila(1, {
+          estado: 'ENVIADA',
+          // Prisma lee una columna DATE como la medianoche UTC de ese día.
+          historial: [
+            {
+              estadoNuevo: 'ENVIADA',
+              fecha: ENVIO,
+              fechaEfectiva: new Date('2026-10-03T00:00:00Z'),
+            },
+          ],
+        }),
+      ]);
+
+      const res = await listar();
+
+      // El inicio del 03/10 en Buenos Aires: "Enviada 03/10" en la pantalla.
+      expect((res.body as { ultimoPaso: unknown }[])[0]?.ultimoPaso).toEqual({
+        estado: 'ENVIADA',
+        fecha: '2026-10-03T03:00:00.000Z',
+      });
+    });
+
     it('pide solo la última entrada del historial, la más reciente', async () => {
       await listar();
 
@@ -213,7 +237,7 @@ describe('GET /rendiciones?anio=&mes= (pantalla Rendiciones, HU3.2)', () => {
             historial: {
               orderBy: [{ fecha: 'desc' }, { createdAt: 'desc' }],
               take: 1,
-              select: { estadoNuevo: true, fecha: true },
+              select: { estadoNuevo: true, fecha: true, fechaEfectiva: true },
             },
           }) as unknown,
         }),
