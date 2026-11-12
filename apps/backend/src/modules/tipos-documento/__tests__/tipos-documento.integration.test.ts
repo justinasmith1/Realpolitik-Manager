@@ -18,10 +18,10 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { normalizarNombreTipoDocumento as normalizar } from '@realpolitik/shared';
 import type { Express } from 'express';
-import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // La misma guarda de base descartable que usan todas las suites de integración (no se copia).
+import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 
 const url = urlDeBaseDescartable();
@@ -37,10 +37,14 @@ const MARCA_NORMALIZADA = normalizar(MARCA);
 /** Un nombre de prueba: la marca + un texto. */
 const n = (texto: string) => `${MARCA} ${texto}`;
 
+/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
+const sesiones = sesionesDePrueba();
+
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
   process.env.DATABASE_URL = url;
+  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -56,6 +60,7 @@ afterAll(async () => {
   await prisma.tipoDocumento.deleteMany({
     where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
   });
+  await sesiones.limpiar();
   await prisma.$disconnect();
 });
 
@@ -75,12 +80,12 @@ interface ErrorJson {
 /** Las claves exactas de un tipo en la API: ni `nombreNormalizado` ni nada de Prisma. */
 const CAMPOS_DEL_CONTRATO = ['activo', 'actualizadoEn', 'creadoEn', 'descripcion', 'id', 'nombre'];
 
-const listar = (query = '') => request(app).get(`/tipos-documento${query}`);
-const alta = (body: object) => request(app).post('/tipos-documento').send(body);
+const listar = (query = '') => sesiones.cliente(app).get(`/tipos-documento${query}`);
+const alta = (body: object) => sesiones.cliente(app).post('/tipos-documento').send(body);
 const editar = (id: string, body: object) =>
-  request(app).patch(`/tipos-documento/${id}`).send(body);
+  sesiones.cliente(app).patch(`/tipos-documento/${id}`).send(body);
 const cambiarEstado = (id: string, activo: boolean) =>
-  request(app).patch(`/tipos-documento/${id}/estado`).send({ activo });
+  sesiones.cliente(app).patch(`/tipos-documento/${id}/estado`).send({ activo });
 
 async function crearTipo(nombre: string): Promise<TipoJson> {
   const respuesta = await alta({ nombre });
@@ -442,7 +447,8 @@ describe.skipIf(url === undefined)('Tipos de documento contra PostgreSQL real', 
     it('responde 400 si activo no es booleano', async () => {
       const tipo = await crearTipo(n('Estado inválido'));
 
-      const respuesta = await request(app)
+      const respuesta = await sesiones
+        .cliente(app)
         .patch(`/tipos-documento/${tipo.id}/estado`)
         .send({ activo: 'no' });
 

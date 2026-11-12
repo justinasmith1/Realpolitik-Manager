@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client';
-import request from 'supertest';
+import type request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
+import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Igual que en requisitos: la base está simulada y se recorre route → validate → controller →
 // service → mapper → errorHandler. El mock no puede demostrar el índice parcial ni el aislamiento
@@ -29,7 +30,10 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../../../lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas(prismaMock) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -128,12 +132,12 @@ function errorPrisma(code: string, meta?: Record<string, unknown>) {
 const silenciarConsoleError = () => vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
 const abrir = (body: object, id = CLIENTE) =>
-  request(app).post(`/clientes/${id}/rendiciones`).send(body);
+  clienteDePrueba(app).post(`/clientes/${id}/rendiciones`).send(body);
 const listar = (query = '', id = CLIENTE) =>
-  request(app).get(`/clientes/${id}/rendiciones${query}`);
-const obtener = (id = RENDICION) => request(app).get(`/rendiciones/${id}`);
+  clienteDePrueba(app).get(`/clientes/${id}/rendiciones${query}`);
+const obtener = (id = RENDICION) => clienteDePrueba(app).get(`/rendiciones/${id}`);
 const anular = (body: object = { vigencia: 'ANULADA' }, id = RENDICION) =>
-  request(app).patch(`/rendiciones/${id}/vigencia`).send(body);
+  clienteDePrueba(app).patch(`/rendiciones/${id}/vigencia`).send(body);
 
 interface CuerpoDeError {
   error: { code: string; details: unknown };
@@ -868,7 +872,7 @@ describe('PATCH /rendiciones/:id/vigencia', () => {
   );
 
   it('el cuerpo viejo { estado: ANULADA } en PATCH /rendiciones/:id/estado ya no anula (400, HU3.6), sin escribir', async () => {
-    const res = await request(app)
+    const res = await clienteDePrueba(app)
       .patch(`/rendiciones/${RENDICION}/estado`)
       .send({ estado: 'ANULADA' });
 

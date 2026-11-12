@@ -1,9 +1,17 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createApp, LIMITE_CUERPO_JSON } from './app';
+import { clienteDePrueba, ORIGEN_DE_PRUEBA } from './modules/auth/__tests__/sesionSimulada';
+
+// Solo la tabla de sesiones, simulada: estos tests no llegan a ninguna otra.
+vi.mock('./lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('./modules/auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas({}) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
+const api = clienteDePrueba(app);
 
 describe('GET /health', () => {
   it('responde OK', async () => {
@@ -14,17 +22,23 @@ describe('GET /health', () => {
 });
 
 describe('rutas inexistentes', () => {
-  it('devuelven 404 con el formato de error', async () => {
-    const res = await request(app).get('/no-existe');
+  it('con sesión, devuelven 404 con el formato de error', async () => {
+    const res = await api.get('/no-existe');
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: { code: 'NOT_FOUND', message: 'Recurso no encontrado' } });
+  });
+
+  it('sin sesión, 401: un anónimo no averigua qué rutas existen', async () => {
+    const res = await request(app).get('/no-existe');
+    expect(res.status).toBe(401);
+    expect(res.body).toMatchObject({ error: { details: { motivo: 'SESION_REQUERIDA' } } });
   });
 });
 
 describe('JSON mal formado', () => {
   it('devuelve 400 VALIDATION_ERROR', async () => {
-    const res = await request(app)
-      .post('/health')
+    const res = await api
+      .post('/clientes')
       .set('Content-Type', 'application/json')
       .send('{"cuit": ');
     expect(res.status).toBe(400);
@@ -51,7 +65,7 @@ describe('cuerpo demasiado grande', () => {
   });
 
   it('pasado el límite responde 413 PAYLOAD_TOO_LARGE, sin detalles internos', async () => {
-    const res = await request(app)
+    const res = await api
       .post('/clientes')
       .set('Content-Type', 'application/json')
       .send(cuerpoDe(LIMITE + 1));
@@ -66,7 +80,7 @@ describe('cuerpo demasiado grande', () => {
   });
 
   it('justo en el límite el cuerpo se lee y sigue a la validación normal (400, no 413)', async () => {
-    const res = await request(app)
+    const res = await api
       .post('/clientes')
       .set('Content-Type', 'application/json')
       .send(cuerpoDe(LIMITE));
@@ -76,13 +90,34 @@ describe('cuerpo demasiado grande', () => {
   });
 
   it('el JSON mal formado sigue siendo 400, no 413', async () => {
-    const res = await request(app)
+    const res = await api
       .patch('/clientes/c3d4e5f6-a7b8-4901-8def-012345678901')
       .set('Content-Type', 'application/json')
       .send('{"razonSocial": ');
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+  });
+});
+
+describe('el cuerpo se lee recién después de la sesión', () => {
+  it('un anónimo con un cuerpo enorme recibe 401, no 413: el cuerpo no se leyó', async () => {
+    const res = await request(app)
+      .post('/clientes')
+      .set('Origin', ORIGEN_DE_PRUEBA)
+      .set('Content-Type', 'application/json')
+      .send(`{"razonSocial":"${'x'.repeat(200 * 1024)}"}`);
+
+    expect(res.status).toBe(401);
+  });
+
+  it('CONSULTA con un cuerpo enorme recibe 403, no 413', async () => {
+    const res = await clienteDePrueba(app, 'CONSULTA')
+      .post('/clientes')
+      .set('Content-Type', 'application/json')
+      .send(`{"razonSocial":"${'x'.repeat(200 * 1024)}"}`);
+
+    expect(res.status).toBe(403);
   });
 });
 

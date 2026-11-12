@@ -313,3 +313,28 @@ export {
 } from './utils/periodo.js';
 export type { Periodo } from './utils/periodo.js';
 export { ESTADOS_SIN_ENVIAR, esAtrasada, ultimoPeriodoAtrasado } from './utils/atrasada.js';
+
+export {
+  RolUsuario,
+  CONTRASENA_LARGO_MINIMO,
+  CONTRASENA_LARGO_MAXIMO,
+  MENSAJE_CONTRASENA_CORTA,
+  MENSAJE_CONTRASENA_LARGA,
+  MENSAJE_CONTRASENA_CARACTERES,
+  MENSAJE_CONTRASENA_PREVISIBLE,
+  ContrasenaNuevaSchema,
+  contarCaracteresDeContrasena,
+  esUnicodeBienFormado,
+  IniciarSesionSchema,
+  MENSAJE_CONTRASENA_REPETIDA,
+  CambiarContrasenaSchema,
+  UsuarioDeSesionSchema,
+  SesionActualSchema,
+} from './schemas/usuario.schema.js';
+export type {
+  RolUsuario as RolUsuarioType,
+  IniciarSesionDto,
+  CambiarContrasenaDto,
+  UsuarioDeSesion,
+  SesionActual,
+} from './schemas/usuario.schema.js';

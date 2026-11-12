@@ -9,9 +9,9 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { normalizarNombreTipoDocumento as normalizar } from '@realpolitik/shared';
 import type { Express } from 'express';
-import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 
 const url = urlDeBaseDescartable();
@@ -24,9 +24,13 @@ const clientesCreados: string[] = [];
 const MARCA = `TESTOC${Date.now().toString(36)}${randomBytes(3).toString('hex')}`.toUpperCase();
 const MARCA_NORMALIZADA = normalizar(MARCA);
 
+/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
+const sesiones = sesionesDePrueba();
+
 beforeAll(async () => {
   if (url === undefined) return;
   process.env.DATABASE_URL = url;
+  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -43,6 +47,7 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
+    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -87,7 +92,8 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
   it('abre sin OC (null por defecto), edita con PATCH /rendiciones/:id y permite borrar con null', async () => {
     const cliente = await crearClienteConRequisito();
 
-    const alta = await request(app)
+    const alta = await sesiones
+      .cliente(app)
       .post(`/clientes/${cliente.id}/rendiciones`)
       .send({ anio: 2026, mes: 9, numeroFactura: facturaUnica() });
 
@@ -99,7 +105,8 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
     });
     const rendicionId = (alta.body as { id: string }).id;
 
-    const edicion = await request(app)
+    const edicion = await sesiones
+      .cliente(app)
       .patch(`/rendiciones/${rendicionId}`)
       .send({ numeroOc: `OC-${MARCA}-1`, montoMensual: 1250000.5, montoTotal: 15000000 });
 
@@ -111,7 +118,8 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
       montoTotal: 15000000,
     });
 
-    const borrado = await request(app)
+    const borrado = await sesiones
+      .cliente(app)
       .patch(`/rendiciones/${rendicionId}`)
       .send({ numeroOc: null, montoMensual: null, montoTotal: null });
 
@@ -128,7 +136,7 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
     const clienteB = await crearClienteConRequisito();
     const numeroOc = `OC-${MARCA}-COMPARTIDA`;
 
-    const r1 = await request(app).post(`/clientes/${clienteA.id}/rendiciones`).send({
+    const r1 = await sesiones.cliente(app).post(`/clientes/${clienteA.id}/rendiciones`).send({
       anio: 2026,
       mes: 8,
       numeroFactura: facturaUnica(),
@@ -139,7 +147,7 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
     expect(r1.status).toBe(201);
 
     // Mismo cliente, otra factura / otro mes: permitido.
-    const r2 = await request(app).post(`/clientes/${clienteA.id}/rendiciones`).send({
+    const r2 = await sesiones.cliente(app).post(`/clientes/${clienteA.id}/rendiciones`).send({
       anio: 2026,
       mes: 9,
       numeroFactura: facturaUnica(),
@@ -150,22 +158,27 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
     expect(r2.status).toBe(201);
 
     // Otro cliente al abrir: también permitido (cada organismo numera sus OC).
-    const altaOtroCliente = await request(app).post(`/clientes/${clienteB.id}/rendiciones`).send({
-      anio: 2026,
-      mes: 9,
-      numeroFactura: facturaUnica(),
-      numeroOc,
-    });
+    const altaOtroCliente = await sesiones
+      .cliente(app)
+      .post(`/clientes/${clienteB.id}/rendiciones`)
+      .send({
+        anio: 2026,
+        mes: 9,
+        numeroFactura: facturaUnica(),
+        numeroOc,
+      });
     expect(altaOtroCliente.status).toBe(201);
     expect(altaOtroCliente.body).toMatchObject({ numeroOc });
 
     // Otro cliente al editar con PATCH: también permitido.
-    const rB = await request(app)
+    const rB = await sesiones
+      .cliente(app)
       .post(`/clientes/${clienteB.id}/rendiciones`)
       .send({ anio: 2026, mes: 9, numeroFactura: facturaUnica() });
     expect(rB.status).toBe(201);
 
-    const edicionOtroCliente = await request(app)
+    const edicionOtroCliente = await sesiones
+      .cliente(app)
       .patch(`/rendiciones/${(rB.body as { id: string }).id}`)
       .send({ numeroOc });
     expect(edicionOtroCliente.status).toBe(200);
@@ -175,12 +188,13 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
   it('GET /clientes/:id/ultima-oc devuelve la OC de la rendición activa más reciente con numeroOc no nulo, o null si no hay', async () => {
     const cliente = await crearClienteConRequisito();
 
-    const sinOc = await request(app).get(`/clientes/${cliente.id}/ultima-oc`);
+    const sinOc = await sesiones.cliente(app).get(`/clientes/${cliente.id}/ultima-oc`);
     expect(sinOc.status).toBe(200);
     expect(sinOc.body).toBeNull();
 
     // Rendición de agosto con OC vieja
-    await request(app)
+    await sesiones
+      .cliente(app)
       .post(`/clientes/${cliente.id}/rendiciones`)
       .send({
         anio: 2026,
@@ -192,7 +206,8 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
       });
 
     // Rendición de septiembre con OC más nueva
-    await request(app)
+    await sesiones
+      .cliente(app)
       .post(`/clientes/${cliente.id}/rendiciones`)
       .send({
         anio: 2026,
@@ -204,11 +219,12 @@ describe.skipIf(url === undefined)('Orden de Compra (HU2.11) contra PostgreSQL r
       });
 
     // Rendición de octubre sin OC (se ignora porque numeroOc es null)
-    await request(app)
+    await sesiones
+      .cliente(app)
       .post(`/clientes/${cliente.id}/rendiciones`)
       .send({ anio: 2026, mes: 10, numeroFactura: facturaUnica() });
 
-    const sugerencia = await request(app).get(`/clientes/${cliente.id}/ultima-oc`);
+    const sugerencia = await sesiones.cliente(app).get(`/clientes/${cliente.id}/ultima-oc`);
     expect(sugerencia.status).toBe(200);
     expect(sugerencia.body).toEqual({
       numeroOc: `OC-${MARCA}-SEP`,

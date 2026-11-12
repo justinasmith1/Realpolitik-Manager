@@ -1,9 +1,9 @@
 import type { Prisma, Cliente as ClienteRow } from '@prisma/client';
 import { ClienteSchema } from '@realpolitik/shared';
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
+import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Igual que en el alta: solo la base es simulada. Como el doble no filtra, se verifica qué
 // `where` y `orderBy` se le piden a Prisma y que la respuesta cumple el contrato.
@@ -19,7 +19,10 @@ const prismaMock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../../../lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas(prismaMock) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -80,7 +83,7 @@ afterEach(() => {
 
 describe('GET /clientes', () => {
   it('responde 200 con la lista según el contrato, sin campos internos', async () => {
-    const res = await request(app).get('/clientes');
+    const res = await clienteDePrueba(app).get('/clientes');
 
     expect(res.status).toBe(200);
     const clientes = res.body as unknown[];
@@ -91,7 +94,7 @@ describe('GET /clientes', () => {
   });
 
   it('por defecto pide solo ACTIVOS, excluye las bajas lógicas y ordena por razón social', async () => {
-    await request(app).get('/clientes');
+    await clienteDePrueba(app).get('/clientes');
 
     expect(prismaMock.cliente.findMany).toHaveBeenCalledWith({
       where: { isDeleted: false, estado: 'ACTIVO' },
@@ -102,14 +105,14 @@ describe('GET /clientes', () => {
   it('responde 200 con una lista vacía si no hay resultados', async () => {
     prismaMock.cliente.findMany.mockResolvedValue([]);
 
-    const res = await request(app).get('/clientes?sector=PRIVADO');
+    const res = await clienteDePrueba(app).get('/clientes?sector=PRIVADO');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
   });
 
   it('filtra por estado', async () => {
-    await request(app).get('/clientes?estado=INACTIVO');
+    await clienteDePrueba(app).get('/clientes?estado=INACTIVO');
 
     expect(whereEnviado()).toEqual({ isDeleted: false, estado: 'INACTIVO' });
   });
@@ -117,14 +120,16 @@ describe('GET /clientes', () => {
   it('con estado=INACTIVO devuelve los clientes identificados como inactivos', async () => {
     prismaMock.cliente.findMany.mockResolvedValue([{ ...publica, estado: 'INACTIVO' }]);
 
-    const res = await request(app).get('/clientes?estado=INACTIVO');
+    const res = await clienteDePrueba(app).get('/clientes?estado=INACTIVO');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([expect.objectContaining({ id: publica.id, estado: 'INACTIVO' })]);
   });
 
   it('combina el estado INACTIVO con sector, subtipo y búsqueda', async () => {
-    await request(app).get('/clientes?estado=INACTIVO&sector=PUBLICO&subtipo=MUNICIPAL&q=muni');
+    await clienteDePrueba(app).get(
+      '/clientes?estado=INACTIVO&sector=PUBLICO&subtipo=MUNICIPAL&q=muni',
+    );
 
     expect(whereEnviado()).toMatchObject({
       isDeleted: false,
@@ -135,19 +140,19 @@ describe('GET /clientes', () => {
   });
 
   it('filtra por sector', async () => {
-    await request(app).get('/clientes?sector=PRIVADO');
+    await clienteDePrueba(app).get('/clientes?sector=PRIVADO');
 
     expect(whereEnviado()).toEqual({ isDeleted: false, estado: 'ACTIVO', sector: 'PRIVADO' });
   });
 
   it('filtra por subtipo', async () => {
-    await request(app).get('/clientes?subtipo=MUNICIPAL');
+    await clienteDePrueba(app).get('/clientes?subtipo=MUNICIPAL');
 
     expect(whereEnviado()).toEqual({ isDeleted: false, estado: 'ACTIVO', subtipo: 'MUNICIPAL' });
   });
 
   it('combina sector, subtipo y búsqueda', async () => {
-    await request(app).get('/clientes?sector=PUBLICO&subtipo=MUNICIPAL&q=muni');
+    await clienteDePrueba(app).get('/clientes?sector=PUBLICO&subtipo=MUNICIPAL&q=muni');
 
     expect(whereEnviado()).toMatchObject({
       isDeleted: false,
@@ -162,7 +167,7 @@ describe('GET /clientes', () => {
   });
 
   it('q de texto busca solo en razón social y denominación, sin distinguir mayúsculas', async () => {
-    await request(app).get('/clientes?q=Muni');
+    await clienteDePrueba(app).get('/clientes?q=Muni');
 
     expect(whereEnviado()?.OR).toEqual([
       { razonSocial: { contains: 'Muni', mode: 'insensitive' } },
@@ -177,7 +182,7 @@ describe('GET /clientes', () => {
     ['un fragmento que cruza el primer guion', '05'],
     ['un fragmento que cruza el último guion', '45'],
   ])('q con un CUIT %s coincide con el CUIT guardado con guiones', async (_caso, q) => {
-    await request(app).get(`/clientes?q=${q}`);
+    await clienteDePrueba(app).get(`/clientes?q=${q}`);
 
     expect(condicionesDeCuit().some((fragmento) => publica.cuit.includes(fragmento))).toBe(true);
   });
@@ -190,7 +195,7 @@ describe('GET /clientes', () => {
     ['una barra invertida', '%5C', '\\\\'],
     ['50% y Plan_B', '50%25%20y%20Plan_B', '50\\% y Plan\\_B'],
   ])('q con %s se envía escapado a la base', async (_caso, qCodificado, escapado) => {
-    await request(app).get(`/clientes?q=${qCodificado}`);
+    await clienteDePrueba(app).get(`/clientes?q=${qCodificado}`);
 
     expect(whereEnviado()?.OR).toEqual([
       { razonSocial: { contains: escapado, mode: 'insensitive' } },
@@ -199,12 +204,12 @@ describe('GET /clientes', () => {
   });
 
   it('q acepta 150 caracteres y rechaza 151 con 400 sin llegar a la base', async () => {
-    const bien = await request(app).get(`/clientes?q=${'a'.repeat(150)}`);
+    const bien = await clienteDePrueba(app).get(`/clientes?q=${'a'.repeat(150)}`);
     expect(bien.status).toBe(200);
     expect(prismaMock.cliente.findMany).toHaveBeenCalledTimes(1);
 
     prismaMock.cliente.findMany.mockClear();
-    const mal = await request(app).get(`/clientes?q=${'a'.repeat(151)}`);
+    const mal = await clienteDePrueba(app).get(`/clientes?q=${'a'.repeat(151)}`);
     expect(mal.status).toBe(400);
     expect(mal.body).toMatchObject({
       error: { code: 'VALIDATION_ERROR', details: [{ campo: 'q' }] },
@@ -213,7 +218,7 @@ describe('GET /clientes', () => {
   });
 
   it('q con un NUL responde 400 sin llegar a la base', async () => {
-    const res = await request(app).get('/clientes?q=abc%00');
+    const res = await clienteDePrueba(app).get('/clientes?q=abc%00');
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: { details: [{ campo: 'q' }] } });
@@ -221,7 +226,7 @@ describe('GET /clientes', () => {
   });
 
   it('ignora q en blanco', async () => {
-    await request(app).get('/clientes?q=%20%20');
+    await clienteDePrueba(app).get('/clientes?q=%20%20');
 
     expect(whereEnviado()).toEqual({ isDeleted: false, estado: 'ACTIVO' });
   });
@@ -232,7 +237,7 @@ describe('GET /clientes', () => {
     ['un sector desconocido', '?sector=MIXTO'],
     ['un estado desconocido', '?estado=BORRADO'],
   ])('responde 400 VALIDATION_ERROR con %s', async (_caso, query) => {
-    const res = await request(app).get(`/clientes${query}`);
+    const res = await clienteDePrueba(app).get(`/clientes${query}`);
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
@@ -240,13 +245,13 @@ describe('GET /clientes', () => {
   });
 
   it('el 400 por subtipo incompatible señala el campo "subtipo"', async () => {
-    const res = await request(app).get('/clientes?sector=PRIVADO&subtipo=MUNICIPAL');
+    const res = await clienteDePrueba(app).get('/clientes?sector=PRIVADO&subtipo=MUNICIPAL');
 
     expect(res.body).toMatchObject({ error: { details: [{ campo: 'subtipo' }] } });
   });
 
   it('sin matrizConfigurada no filtra por ese campo', async () => {
-    await request(app).get('/clientes');
+    await clienteDePrueba(app).get('/clientes');
 
     expect(whereEnviado()).toEqual({ isDeleted: false, estado: 'ACTIVO' });
     expect(whereEnviado()).not.toHaveProperty('matrizConfigurada');
@@ -256,7 +261,7 @@ describe('GET /clientes', () => {
     ['true', true],
     ['false', false],
   ] as const)('filtra matrizConfigurada=%s', async (texto, valor) => {
-    await request(app).get(`/clientes?matrizConfigurada=${texto}`);
+    await clienteDePrueba(app).get(`/clientes?matrizConfigurada=${texto}`);
 
     expect(whereEnviado()).toEqual({
       isDeleted: false,
@@ -266,7 +271,7 @@ describe('GET /clientes', () => {
   });
 
   it('combina estado INACTIVO con matriz configurada y sigue excluyendo las bajas', async () => {
-    await request(app).get('/clientes?estado=INACTIVO&matrizConfigurada=true');
+    await clienteDePrueba(app).get('/clientes?estado=INACTIVO&matrizConfigurada=true');
 
     expect(whereEnviado()).toEqual({
       isDeleted: false,
@@ -276,7 +281,7 @@ describe('GET /clientes', () => {
   });
 
   it('combina sector PUBLICO con matriz no configurada', async () => {
-    await request(app).get('/clientes?sector=PUBLICO&matrizConfigurada=false');
+    await clienteDePrueba(app).get('/clientes?sector=PUBLICO&matrizConfigurada=false');
 
     expect(whereEnviado()).toEqual({
       isDeleted: false,
@@ -287,7 +292,7 @@ describe('GET /clientes', () => {
   });
 
   it('responde 400 si matrizConfigurada no es true ni false, sin llegar a la base', async () => {
-    const res = await request(app).get('/clientes?matrizConfigurada=otro');
+    const res = await clienteDePrueba(app).get('/clientes?matrizConfigurada=otro');
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({

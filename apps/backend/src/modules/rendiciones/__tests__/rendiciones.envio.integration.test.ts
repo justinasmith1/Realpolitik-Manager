@@ -22,9 +22,10 @@ import {
   ResultadoCargaDocumentoSchema,
 } from '@realpolitik/shared';
 import type { Express } from 'express';
-import request from 'supertest';
+import type request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 import { PDF } from '../../documentos/__tests__/archivosDePrueba';
 
@@ -43,10 +44,14 @@ const PERIODO = mesActual();
 const cuitDePrueba = () => `28-${String(randomInt(1e8)).padStart(8, '0')}-${randomInt(10)}`;
 const facturaDePrueba = () => `B 00028-${String(randomInt(1e8)).padStart(8, '0')}`;
 
+/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
+const sesiones = sesionesDePrueba();
+
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes, y pisa la de desarrollo.
   process.env.DATABASE_URL = url;
+  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   const { AlmacenamientoEnMemoria } = await import('../../../lib/almacenamiento/memoria');
@@ -70,6 +75,7 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
+    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -89,7 +95,8 @@ interface RendicionAbierta {
 }
 
 async function abrir(clienteId: string): Promise<RendicionAbierta> {
-  const res = await request(app)
+  const res = await sesiones
+    .cliente(app)
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...PERIODO, numeroFactura: facturaDePrueba() });
   expect(res.status).toBe(201);
@@ -106,7 +113,8 @@ function item(rendicion: RendicionAbierta, tipoId: string, ordinal = 1): string 
 
 /** Carga un documento por la API y lo aplica a los ítems. Contenido distinto cada vez. */
 async function cargarYAplicar(tipoDocumentoId: string, itemIds: string[]): Promise<string> {
-  const carga = await request(app)
+  const carga = await sesiones
+    .cliente(app)
     .post('/documentos')
     .field({ tipoDocumentoId, anio: String(PERIODO.anio), mes: String(PERIODO.mes) })
     .attach('archivo', Buffer.concat([PDF, randomBytes(16)]), {
@@ -115,7 +123,8 @@ async function cargarYAplicar(tipoDocumentoId: string, itemIds: string[]): Promi
     });
   expect(carga.status).toBe(201);
   const documentoId = ResultadoCargaDocumentoSchema.parse(carga.body).documento.id;
-  const aplicacion = await request(app)
+  const aplicacion = await sesiones
+    .cliente(app)
     .post(`/documentos/${documentoId}/aplicaciones`)
     .send({ itemIds });
   expect(aplicacion.status).toBe(200);
@@ -123,7 +132,7 @@ async function cargarYAplicar(tipoDocumentoId: string, itemIds: string[]): Promi
 }
 
 const preparar = (rendicionId: string, itemIds: unknown) =>
-  request(app).post(`/rendiciones/${rendicionId}/preparar-envio`).send({ itemIds });
+  sesiones.cliente(app).post(`/rendiciones/${rendicionId}/preparar-envio`).send({ itemIds });
 
 const conflicto = (res: request.Response) =>
   (res.body as { error: { details: { motivo: string } & Record<string, unknown> } }).error.details;
@@ -196,8 +205,12 @@ describe.skipIf(url === undefined)('preparar el envío contra PostgreSQL', () =>
       data: { completado: true, completadoAt: new Date() },
     });
     expect(
-      (await request(app).patch(`/rendiciones/${r3.id}/vigencia`).send({ vigencia: 'ANULADA' }))
-        .status,
+      (
+        await sesiones
+          .cliente(app)
+          .patch(`/rendiciones/${r3.id}/vigencia`)
+          .send({ vigencia: 'ANULADA' })
+      ).status,
     ).toBe(200);
 
     Object.assign(e, { print: print.id, factura: factura.id, r1, r2, r3, dPrint });
@@ -277,7 +290,8 @@ describe.skipIf(url === undefined)('preparar el envío contra PostgreSQL', () =>
     const pendiente = item(e.r1, e.print, 2);
     expect((await preparar(e.r1.id, [pendiente])).status).toBe(409);
 
-    await request(app)
+    await sesiones
+      .cliente(app)
       .post(`/documentos/${e.dPrint}/aplicaciones`)
       .send({ itemIds: [pendiente] })
       .expect(200);

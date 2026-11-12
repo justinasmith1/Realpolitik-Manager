@@ -14,8 +14,9 @@
 import type { PrismaClient } from '@prisma/client';
 import { validateCuit } from '@realpolitik/shared';
 import type { Express } from 'express';
-import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 
 import { urlDeBaseDescartable } from './baseDescartable';
 
@@ -27,10 +28,14 @@ const clientesCreados: string[] = [];
 
 const MARCA = `TESTD${Date.now().toString(36).toUpperCase()}`;
 
+/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
+const sesiones = sesionesDePrueba();
+
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
   process.env.DATABASE_URL = url;
+  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -39,6 +44,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (url === undefined) return;
   await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+  await sesiones.limpiar();
   await prisma.$disconnect();
 });
 
@@ -64,7 +70,8 @@ interface ClienteJson {
 }
 
 async function crearCliente(): Promise<ClienteJson> {
-  const respuesta = await request(app)
+  const respuesta = await sesiones
+    .cliente(app)
     .post('/clientes')
     .send({
       razonSocial: `${MARCA} Cliente de prueba`,
@@ -92,7 +99,7 @@ async function versionDeLaFila(id: string): Promise<{ xmin: string; updatedAt: D
 }
 
 const cambiarEstado = (id: string, estado: string) =>
-  request(app).patch(`/clientes/${id}/estado`).send({ estado });
+  sesiones.cliente(app).patch(`/clientes/${id}/estado`).send({ estado });
 
 describe.skipIf(url === undefined)('Clientes contra PostgreSQL real: estado y edición', () => {
   describe('PATCH /clientes/:id/estado', () => {
@@ -192,7 +199,8 @@ describe.skipIf(url === undefined)('Clientes contra PostgreSQL real: estado y ed
     it('enviar solo el email modifica solo el email: la razón social y el resto se conservan', async () => {
       const cliente = await crearCliente();
 
-      const respuesta = await request(app)
+      const respuesta = await sesiones
+        .cliente(app)
         .patch(`/clientes/${cliente.id}`)
         .send({ emailContacto: 'nuevo@ejemplo.example' });
 
@@ -205,13 +213,15 @@ describe.skipIf(url === undefined)('Clientes contra PostgreSQL real: estado y ed
     it('dos editores: A guarda solo el email sobre un dato viejo y no pisa la razón social que cambió B', async () => {
       const cliente = await crearCliente();
       // A abrió el cliente (su copia es `cliente`). B cambia la razón social y guarda.
-      const deB = await request(app)
+      const deB = await sesiones
+        .cliente(app)
         .patch(`/clientes/${cliente.id}`)
         .send({ razonSocial: `${MARCA} Razón social de B` });
       expect(deB.status).toBe(200);
 
       // A cambió solo el email: su PATCH lleva únicamente ese campo.
-      const deA = await request(app)
+      const deA = await sesiones
+        .cliente(app)
         .patch(`/clientes/${cliente.id}`)
         .send({ emailContacto: 'de.a@ejemplo.example' });
 

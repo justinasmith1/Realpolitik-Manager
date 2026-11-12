@@ -44,6 +44,8 @@ const EnvSchema = z.object({
         .filter(Boolean),
     )
     .pipe(z.array(z.string().refine(isOrigin)).min(1)),
+  // Proxies confiables delante del backend para `req.ip` (ADR-0006 §4). 0: la IP del socket.
+  TRUST_PROXY_SALTOS: z.coerce.number().int().min(0).max(5).default(0),
 
   // Documentos (HU2.8, ADR-0004). Las reglas por entorno están en `resolverDocumentos`; acá solo
   // la forma de cada variable.

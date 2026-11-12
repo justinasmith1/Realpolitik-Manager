@@ -13,9 +13,10 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { mesActual, normalizarNombreTipoDocumento as normalizar } from '@realpolitik/shared';
 import type { Express } from 'express';
-import request from 'supertest';
+import type request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 
 const url = urlDeBaseDescartable();
@@ -28,9 +29,13 @@ const clientesCreados: string[] = [];
 const MARCA = `TESTRC${Date.now().toString(36)}${randomBytes(3).toString('hex')}`.toUpperCase();
 const MARCA_NORMALIZADA = normalizar(MARCA);
 
+/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
+const sesiones = sesionesDePrueba();
+
 beforeAll(async () => {
   if (url === undefined) return;
   process.env.DATABASE_URL = url;
+  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -47,6 +52,7 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
+    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -95,7 +101,8 @@ interface ItemJson {
 }
 
 async function abrir(clienteId: string, numeroFactura: string, periodo = mesActual()) {
-  const res = await request(app)
+  const res = await sesiones
+    .cliente(app)
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...periodo, numeroFactura });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -103,7 +110,10 @@ async function abrir(clienteId: string, numeroFactura: string, periodo = mesActu
 }
 
 const corregir = (rendicionId: string, itemId: string, canalEntrega: string) =>
-  request(app).patch(`/rendiciones/${rendicionId}/items/${itemId}/canal`).send({ canalEntrega });
+  sesiones
+    .cliente(app)
+    .patch(`/rendiciones/${rendicionId}/items/${itemId}/canal`)
+    .send({ canalEntrega });
 
 const motivo = (res: request.Response) =>
   (res.body as { error?: { details?: { motivo?: string } } }).error?.details?.motivo;
@@ -155,7 +165,10 @@ describe.skipIf(url === undefined)('corregir el canal de un ítem, contra Postgr
     const rendicion = await abrir(cliente.id, 'A 00001-00000104');
     const item = rendicion.items[0];
     if (item === undefined) throw new Error('falta el ítem');
-    await request(app).patch(`/rendiciones/${rendicion.id}/vigencia`).send({ vigencia: 'ANULADA' });
+    await sesiones
+      .cliente(app)
+      .patch(`/rendiciones/${rendicion.id}/vigencia`)
+      .send({ vigencia: 'ANULADA' });
 
     const res = await corregir(rendicion.id, item.id, 'WHATSAPP');
 

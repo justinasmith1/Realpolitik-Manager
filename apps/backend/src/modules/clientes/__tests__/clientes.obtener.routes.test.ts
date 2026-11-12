@@ -1,9 +1,9 @@
 import type { Cliente as ClienteRow } from '@prisma/client';
 import { ClienteSchema } from '@realpolitik/shared';
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
+import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Solo la base es simulada. Se recorre la cadena real
 // route → validate → controller → service → mapper → errorHandler.
@@ -14,7 +14,10 @@ const prismaMock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../../../lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas(prismaMock) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -61,7 +64,7 @@ afterEach(() => {
 
 describe('GET /clientes/:id', () => {
   it('responde 200 con el mismo DTO del listado, incluida matrizConfigurada', async () => {
-    const res = await request(app).get(`/clientes/${ID}`);
+    const res = await clienteDePrueba(app).get(`/clientes/${ID}`);
 
     expect(res.status).toBe(200);
     expect(ClienteSchema.safeParse(res.body).success).toBe(true);
@@ -89,7 +92,7 @@ describe('GET /clientes/:id', () => {
   it('copia matrizConfigurada true sin volver a calcularla', async () => {
     prismaMock.cliente.findFirst.mockResolvedValue({ ...fila, matrizConfigurada: true });
 
-    const res = await request(app).get(`/clientes/${ID}`);
+    const res = await clienteDePrueba(app).get(`/clientes/${ID}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ id: ID, matrizConfigurada: true });
@@ -101,7 +104,7 @@ describe('GET /clientes/:id', () => {
     async (estado) => {
       prismaMock.cliente.findFirst.mockResolvedValue({ ...fila, estado });
 
-      const res = await request(app).get(`/clientes/${ID}`);
+      const res = await clienteDePrueba(app).get(`/clientes/${ID}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ id: ID, estado, matrizConfigurada: false });
@@ -109,7 +112,7 @@ describe('GET /clientes/:id', () => {
   );
 
   it('no expone campos internos', async () => {
-    const res = await request(app).get(`/clientes/${ID}`);
+    const res = await clienteDePrueba(app).get(`/clientes/${ID}`);
 
     for (const campo of [
       'isDeleted',
@@ -126,7 +129,7 @@ describe('GET /clientes/:id', () => {
   it('responde 404 si el cliente no existe', async () => {
     prismaMock.cliente.findFirst.mockResolvedValue(null);
 
-    const res = await request(app).get(`/clientes/${ID}`);
+    const res = await clienteDePrueba(app).get(`/clientes/${ID}`);
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({
@@ -137,7 +140,7 @@ describe('GET /clientes/:id', () => {
   it('responde 404 si el cliente tiene baja lógica y no lo pide a la base', async () => {
     prismaMock.cliente.findFirst.mockResolvedValue(null);
 
-    const res = await request(app).get(`/clientes/${ID}`);
+    const res = await clienteDePrueba(app).get(`/clientes/${ID}`);
 
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
@@ -145,7 +148,7 @@ describe('GET /clientes/:id', () => {
   });
 
   it('responde 400 VALIDATION_ERROR si el id no es un UUID y no llega a la base', async () => {
-    const res = await request(app).get('/clientes/no-es-uuid');
+    const res = await clienteDePrueba(app).get('/clientes/no-es-uuid');
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({

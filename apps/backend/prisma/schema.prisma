@@ -57,6 +57,14 @@ enum EstadoRendicion {
   RECHAZADA
 }
 
+/// Rol fijo de negocio (épica 4, ADR-0006). Isomorfo con `RolUsuario` de shared. No depende del
+/// área de la persona; los permisos de cada rol se declaran en el código, no en la base.
+enum RolUsuario {
+  ADMINISTRADOR
+  ADMINISTRATIVO
+  CONSULTA
+}
+
 /// Periodicidad con la que se rinde al cliente (HU1.5).
 enum PeriodicidadTipo {
   MENSUAL
@@ -131,6 +139,15 @@ enum PeriodicidadTipo {
 //   ck_aplicacion_no_se_reemplaza_a_si_misma reemplazaAId distinto de id
 //   uq_aplicacion_documento_item_vigente índice único PARCIAL: una sola aplicación vigente por
 //                                     ítem (WHERE "reemplazadaEn" IS NULL)
+//
+// Usuarios y sesiones (HU4.1, ADR-0006): CHECK en la migración `20261111120000_hu4_1_usuarios_sesiones`.
+//   ck_usuario_email_normalizado      email en minúscula, sin espacios en los bordes y con forma x@y
+//   ck_usuario_nombre_no_vacio        nombre con algún carácter que no sea espacio
+//   ck_usuario_password_hash_argon2id passwordHash en formato PHC de argon2id: impide guardar una
+//                                     contraseña en claro o con otro algoritmo por error
+//   ck_sesion_token_hash_formato      tokenHash: SHA-256 en hexadecimal en minúscula
+//   ck_sesion_fechas_coherentes       expiraEn > createdAt; ultimaActividadEn y revocadaEn (si
+//                                     existe) no anteriores a createdAt
 
 model Cliente {
   id            String  @id @default(uuid()) @db.Uuid
@@ -489,4 +506,60 @@ model AplicacionDocumento {
   // Prisma exige que los campos de una relación 1 a 1 sean únicos en conjunto. Es redundante con
   // el @unique de `reemplazaAId`, que deja la regla escrita sin tener que deducirla de la FK.
   @@unique([reemplazaAId, itemChecklistId])
+}
+
+// ─── Usuarios y sesiones (épica 4, ADR-0006) ──────────────────────────────────
+
+/// Cuenta de una persona del equipo. Sin registro público: las crea un procedimiento técnico
+/// (HU4.1) y después un `ADMINISTRADOR` (HU4.5). No se borra: se desactiva, y así conserva la
+/// autoría de sus cambios (HU4.6). Sin área, teléfono ni otros datos personales: no hacen falta.
+model Usuario {
+  id                    String     @id @default(uuid()) @db.Uuid
+  /// Identifica la cuenta para iniciar sesión. Se guarda en minúscula y sin espacios en los
+  /// bordes, así la unicidad no distingue mayúsculas. CHECK ck_usuario_email_normalizado.
+  email                 String     @unique @db.VarChar(254)
+  /// Cómo se muestra la persona en la interfaz. CHECK ck_usuario_nombre_no_vacio.
+  nombre                String     @db.VarChar(150)
+  rol                   RolUsuario
+  /// PHC de argon2id generado por la biblioteca: algoritmo, parámetros y sal incluidos, así los
+  /// parámetros pueden cambiar sin invalidar los hashes existentes. Nunca la contraseña.
+  /// CHECK ck_usuario_password_hash_argon2id.
+  passwordHash          String     @db.VarChar(255)
+  /// Una cuenta inactiva no puede iniciar sesión y sus sesiones dejan de valer.
+  activo                Boolean    @default(true)
+  /// Contraseña temporal sin cambiar: obliga a elegir una propia antes de usar el sistema.
+  debeCambiarPassword   Boolean    @default(true)
+  passwordActualizadaEn DateTime
+  ultimoAccesoEn        DateTime?
+
+  // Auditoría
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  sesiones Sesion[]
+}
+
+/// Sesión opaca y revocable. El token aleatorio solo vive en la cookie del navegador; acá se guarda
+/// su SHA-256, que permite encontrar la sesión sin poder reconstruir el token. Una sesión vale si
+/// no está revocada, no venció por inactividad ni por tiempo absoluto y su usuario está activo:
+/// lo decide la aplicación con su propio reloj (las duraciones están pendientes de aprobación, P2).
+model Sesion {
+  id                String    @id @default(uuid()) @db.Uuid
+  usuarioId         String    @db.Uuid
+  usuario           Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  /// SHA-256 del token, en hexadecimal en minúscula. CHECK ck_sesion_token_hash_formato.
+  tokenHash         String    @unique @db.Char(64)
+  /// Última actividad registrada (como mucho una escritura por minuto).
+  ultimaActividadEn DateTime  @default(now())
+  /// Vencimiento absoluto, fijado al crearla. CHECK ck_sesion_fechas_coherentes.
+  expiraEn          DateTime
+  /// Cierre de sesión, cambio de contraseña, desactivación o cambio de rol. Nunca se "desrevoca".
+  revocadaEn        DateTime?
+
+  // Auditoría: `createdAt` es también el inicio de la sesión. Sin `updatedAt`: sus únicos cambios
+  // (actividad y revocación) tienen columna propia.
+  createdAt         DateTime  @default(now())
+
+  // Sesiones de un usuario: límite de vigentes, revocación de todas y limpieza.
+  @@index([usuarioId])
 }

@@ -100,8 +100,11 @@ services:
     working_dir: /app/apps/frontend
     environment:
       <<: *node-env
-      # El navegador (en el host) llama a la API publicada en localhost:3000.
-      VITE_API_URL: http://localhost:3000
+      # Por defecto el navegador (en el host) llama a la API publicada en localhost:3000. Con
+      # VITE_API_URL=/api en el .env de la raíz, pide a su propio origen y el proxy de Vite reenvía
+      # al backend por la red de compose (ADR-0006, mismo origen que en producción).
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+      API_PROXY_TARGET: http://backend:3000
     ports:
       - "5173:5173"
     command: pnpm exec vite --host 0.0.0.0 --port 5173
