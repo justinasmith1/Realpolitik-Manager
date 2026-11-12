@@ -28,8 +28,13 @@ describe('getApiBaseUrl', () => {
       ['un protocolo file', 'file:///tmp/api', /http or https/],
       ['un esquema javascript', 'javascript:alert(1)', /http or https/],
       ['un host con puerto sin esquema', 'localhost:3000', /http or https/],
-      ['un path relativo', '/api/v1', /absolute http\(s\) URL/],
-      ['un host sin esquema', 'example.com/api', /absolute http\(s\) URL/],
+      ['un path sin barra inicial', 'api/v1', /absolute http\(s\) URL or a same-origin path/],
+      ['un host sin esquema', 'example.com/api', /absolute http\(s\) URL or a same-origin path/],
+      [
+        'una URL protocol-relative',
+        '//example.com/api',
+        /absolute http\(s\) URL or a same-origin path/,
+      ],
       ['credenciales embebidas', 'https://usuario:clave@example.com/api', /credentials/],
       ['una query string', 'https://example.com/api?x=1', /query string or fragment/],
       ['un fragmento', 'https://example.com/api#seccion', /query string or fragment/],
@@ -52,6 +57,36 @@ describe('getApiBaseUrl', () => {
       expect(mensaje).toMatch(/credentials/); // sí falló, y por la razón correcta
       expect(mensaje).not.toContain('clave-secreta');
       expect(mensaje).not.toContain('usuario');
+    });
+  });
+
+  describe('base de mismo origen (proxy /api)', () => {
+    it.each([
+      ['/api', '/api'],
+      ['/api/v1', '/api/v1'],
+      ['/api/', '/api'],
+      ['  /api//  ', '/api'],
+    ])('acepta %j y la devuelve como %j', (valor, esperado) => {
+      vi.stubEnv('VITE_API_URL', valor);
+
+      expect(getApiBaseUrl()).toBe(esperado);
+    });
+
+    it.each([
+      ['la raíz, que compartiría las rutas de la SPA', '/', /at least one segment/],
+      ['solo barras (empieza con //: no es un path de mismo origen)', '///', /same-origin path/],
+      ['barras dobles intermedias', '/api//v1', /at least one segment/],
+      ['una barra invertida', '/api\\v1', /at least one segment/],
+      ['una query string', '/api?x=1', /without query/],
+      ['un fragmento', '/api#x', /without query/],
+      ['caracteres codificados', '/%61pi', /encoded/],
+      ['espacios internos', '/a pi', /at least one segment/],
+      ['un segmento ".."', '/api/../x', /dot segments/],
+      ['un segmento "."', '/./api', /dot segments/],
+    ])('rechaza %s', (_descripcion, valor, mensaje) => {
+      vi.stubEnv('VITE_API_URL', valor);
+
+      expect(() => getApiBaseUrl()).toThrow(mensaje);
     });
   });
 
