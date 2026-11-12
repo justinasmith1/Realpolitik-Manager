@@ -14,10 +14,9 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { CanalEntrega, PrismaClient } from '@prisma/client';
 import { normalizarNombreTipoDocumento as normalizar } from '@realpolitik/shared';
 import type { Express } from 'express';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 
 const url = urlDeBaseDescartable();
@@ -30,13 +29,9 @@ const clientesCreados: string[] = [];
 const MARCA = `TESTRP${Date.now().toString(36)}${randomBytes(3).toString('hex')}`.toUpperCase();
 const MARCA_NORMALIZADA = normalizar(MARCA);
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -53,7 +48,6 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
-    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -104,8 +98,7 @@ let siguienteFactura = 300;
 
 async function abrir(clienteId: string) {
   siguienteFactura += 1;
-  const res = await sesiones
-    .cliente(app)
+  const res = await request(app)
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({
       anio: 2026,
@@ -120,8 +113,7 @@ const cambiarCanalDelRequisito = (requisitoId: string, canalEntrega: CanalEntreg
   prisma.requisitoCliente.update({ where: { id: requisitoId }, data: { canalEntrega } });
 
 const propagar = (clienteId: string, requisitoId: string, rendicionIds: string[]) =>
-  sesiones
-    .cliente(app)
+  request(app)
     .post(`/clientes/${clienteId}/requisitos/${requisitoId}/propagar-canal`)
     .send({ rendicionIds });
 
@@ -223,10 +215,7 @@ describe.skipIf(url === undefined)(
       const { cliente, print } = await clienteConPrint();
       const activa = await abrir(cliente.id);
       const anulada = await abrir(cliente.id);
-      await sesiones
-        .cliente(app)
-        .patch(`/rendiciones/${anulada.id}/vigencia`)
-        .send({ vigencia: 'ANULADA' });
+      await request(app).patch(`/rendiciones/${anulada.id}/vigencia`).send({ vigencia: 'ANULADA' });
       await cambiarCanalDelRequisito(print.id, 'PORTAL_WEB');
 
       const res = await propagar(cliente.id, print.id, [activa.id, anulada.id]);
@@ -259,9 +248,7 @@ describe.skipIf(url === undefined)(
       const nota = await prisma.requisitoCliente.create({
         data: { clienteId: cliente.id, tipoDocumentoId: (await tipo('Nota')).id },
       });
-      const agregado = await sesiones
-        .cliente(app)
-        .post(`/rendiciones/${conNota.id}/requisitos/${nota.id}`);
+      const agregado = await request(app).post(`/rendiciones/${conNota.id}/requisitos/${nota.id}`);
       expect(agregado.status).toBe(200);
       await cambiarCanalDelRequisito(nota.id, 'WHATSAPP');
 
@@ -284,16 +271,13 @@ describe.skipIf(url === undefined)(
         data: { clienteId: cliente.id, tipoDocumentoId: (await tipo('Nota')).id },
       });
       for (const rendicion of [conNota, anulada]) {
-        await sesiones.cliente(app).post(`/rendiciones/${rendicion.id}/requisitos/${nota.id}`);
+        await request(app).post(`/rendiciones/${rendicion.id}/requisitos/${nota.id}`);
       }
-      await sesiones
-        .cliente(app)
-        .patch(`/rendiciones/${anulada.id}/vigencia`)
-        .send({ vigencia: 'ANULADA' });
+      await request(app).patch(`/rendiciones/${anulada.id}/vigencia`).send({ vigencia: 'ANULADA' });
 
-      const res = await sesiones
-        .cliente(app)
-        .get(`/clientes/${cliente.id}/rendiciones?vigencia=ACTIVA&requisitoId=${nota.id}`);
+      const res = await request(app).get(
+        `/clientes/${cliente.id}/rendiciones?vigencia=ACTIVA&requisitoId=${nota.id}`,
+      );
 
       expect(res.status).toBe(200);
       expect((res.body as { id: string }[]).map((r) => r.id)).toEqual([conNota.id]);

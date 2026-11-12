@@ -1,11 +1,8 @@
 export type ErrorCode =
   | 'VALIDATION_ERROR'
-  | 'UNAUTHENTICATED'
-  | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'PAYLOAD_TOO_LARGE'
-  | 'TOO_MANY_REQUESTS'
   | 'SERVICE_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
@@ -29,8 +26,6 @@ export class AppError extends Error {
     readonly status: number,
     message: string,
     readonly details?: ErrorDetails | undefined,
-    /** Segundos para `Retry-After` (429 y 503 que se pueden reintentar). */
-    readonly retryAfterSegundos?: number | undefined,
   ) {
     super(message);
     this.name = 'AppError';
@@ -51,23 +46,8 @@ export const payloadTooLarge = (message: string): AppError =>
  * Un servicio del que depende el pedido (el almacenamiento de documentos) no respondió. Se puede
  * reintentar. Nunca lleva detalles: ni endpoints, ni credenciales, ni rutas.
  */
-export const serviceUnavailable = (message: string, retryAfterSegundos?: number): AppError =>
-  new AppError('SERVICE_UNAVAILABLE', 503, message, undefined, retryAfterSegundos);
-
-/** Sin sesión válida o credenciales incorrectas. `motivo` lo distingue para el frontend. */
-export const unauthenticated = (motivo: string, message: string): AppError =>
-  new AppError('UNAUTHENTICATED', 401, message, { motivo });
-
-/** Autenticado, pero sin permiso para la operación (o un origen no permitido). */
-export const forbidden = (motivo: string, message: string): AppError =>
-  new AppError('FORBIDDEN', 403, message, { motivo });
-
-/** Demasiados intentos: se puede reintentar pasados `retryAfterSegundos`. */
-export const tooManyRequests = (
-  motivo: string,
-  message: string,
-  retryAfterSegundos: number,
-): AppError => new AppError('TOO_MANY_REQUESTS', 429, message, { motivo }, retryAfterSegundos);
+export const serviceUnavailable = (message: string): AppError =>
+  new AppError('SERVICE_UNAVAILABLE', 503, message);
 
 export const conflict = (
   motivo: string,

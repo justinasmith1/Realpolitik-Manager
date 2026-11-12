@@ -25,10 +25,9 @@ import {
   ResultadoCargaDocumentoSchema,
 } from '@realpolitik/shared';
 import type { Express } from 'express';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 
 import { PDF } from './archivosDePrueba';
@@ -51,14 +50,10 @@ const MES_ANTERIOR =
 const cuitDePrueba = () => `29-${String(randomInt(1e8)).padStart(8, '0')}-${randomInt(10)}`;
 const facturaDePrueba = () => `B 00029-${String(randomInt(1e8)).padStart(8, '0')}`;
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes, y pisa la de desarrollo.
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   const { AlmacenamientoEnMemoria } = await import('../../../lib/almacenamiento/memoria');
@@ -85,7 +80,6 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
-    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -122,8 +116,7 @@ interface RendicionAbierta {
 }
 
 async function abrir(clienteId: string, periodo = PERIODO): Promise<RendicionAbierta> {
-  const res = await sesiones
-    .cliente(app)
+  const res = await request(app)
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...periodo, numeroFactura: facturaDePrueba() });
   expect(res.status).toBe(201);
@@ -141,8 +134,7 @@ function item(rendicion: RendicionAbierta, tipoId: string, ordinal = 1): string 
 
 /** Carga un documento por la API. Contenido distinto cada vez, para que no sea un duplicado. */
 async function cargar(tipoDocumentoId: string, periodo = PERIODO): Promise<string> {
-  const res = await sesiones
-    .cliente(app)
+  const res = await request(app)
     .post('/documentos')
     .field({ tipoDocumentoId, anio: String(periodo.anio), mes: String(periodo.mes) })
     .attach('archivo', Buffer.concat([PDF, randomBytes(16)]), {
@@ -154,7 +146,7 @@ async function cargar(tipoDocumentoId: string, periodo = PERIODO): Promise<strin
 }
 
 const aplicar = (documentoId: string, itemIds: string[]) =>
-  sesiones.cliente(app).post(`/documentos/${documentoId}/aplicaciones`).send({ itemIds });
+  request(app).post(`/documentos/${documentoId}/aplicaciones`).send({ itemIds });
 
 const reemplazar = (
   rendicionId: string,
@@ -162,8 +154,7 @@ const reemplazar = (
   documentoId: string,
   aplicacionVigenteId: string,
 ) =>
-  sesiones
-    .cliente(app)
+  request(app)
     .post(`/rendiciones/${rendicionId}/items/${itemId}/reemplazo`)
     .send({ documentoId, aplicacionVigenteId });
 
@@ -232,12 +223,8 @@ describe.skipIf(url === undefined)('aplicar y reemplazar documentos contra Postg
     const rA5 = await abrir(clienteA.id);
     const rB1 = await abrir(clienteB.id);
     expect(
-      (
-        await sesiones
-          .cliente(app)
-          .patch(`/rendiciones/${rA3.id}/vigencia`)
-          .send({ vigencia: 'ANULADA' })
-      ).status,
+      (await request(app).patch(`/rendiciones/${rA3.id}/vigencia`).send({ vigencia: 'ANULADA' }))
+        .status,
     ).toBe(200);
     await prisma.cliente.update({ where: { id: clienteB.id }, data: { estado: 'INACTIVO' } });
 
@@ -287,7 +274,7 @@ describe.skipIf(url === undefined)('aplicar y reemplazar documentos contra Postg
     });
 
     it('el checklist muestra el documento vigente de cada ítem (y null en los pendientes)', async () => {
-      const res = await sesiones.cliente(app).get(`/rendiciones/${e.rA1.id}`);
+      const res = await request(app).get(`/rendiciones/${e.rA1.id}`);
       const detalle = RendicionDetalleSchema.parse(res.body);
       const print1 = detalle.items.find((i) => i.id === item(e.rA1, e.print, 1));
       const factura = detalle.items.find((i) => i.id === item(e.rA1, e.factura));
@@ -367,10 +354,7 @@ describe.skipIf(url === undefined)('aplicar y reemplazar documentos contra Postg
 
       const [aplicacion, anulacion] = await Promise.all([
         aplicar(e.dPrint, itemIds),
-        sesiones
-          .cliente(app)
-          .patch(`/rendiciones/${e.rA5.id}/vigencia`)
-          .send({ vigencia: 'ANULADA' }),
+        request(app).patch(`/rendiciones/${e.rA5.id}/vigencia`).send({ vigencia: 'ANULADA' }),
       ]);
 
       expect(anulacion.status).toBe(200);
@@ -416,7 +400,7 @@ describe.skipIf(url === undefined)('aplicar y reemplazar documentos contra Postg
 
     it('las aplicaciones del documento anterior en otros ítems no cambian', async () => {
       const documento = DocumentoConAplicacionesSchema.parse(
-        (await sesiones.cliente(app).get(`/documentos/${e.dPrint}`)).body,
+        (await request(app).get(`/documentos/${e.dPrint}`)).body,
       );
       const vigentes = documento.aplicaciones.filter((a) => a.estado === 'VIGENTE');
       expect(vigentes.map((a) => a.itemChecklistId)).toEqual(
@@ -472,8 +456,7 @@ describe.skipIf(url === undefined)('aplicar y reemplazar documentos contra Postg
       expect(res.status).toBe(409);
       expect(conflicto(res).motivo).toBe('RENDICION_ANULADA');
       const historial = HistorialDeItemSchema.parse(
-        (await sesiones.cliente(app).get(`/rendiciones/${e.rA3.id}/items/${itemId}/aplicaciones`))
-          .body,
+        (await request(app).get(`/rendiciones/${e.rA3.id}/items/${itemId}/aplicaciones`)).body,
       );
       expect(historial.aplicaciones.map((a) => a.id)).toEqual([enAnulada.id]);
     });
@@ -505,9 +488,7 @@ describe.skipIf(url === undefined)('aplicar y reemplazar documentos contra Postg
     it('devuelve todas las aplicaciones del ítem, la vigente primero, con su documento', async () => {
       const itemId = item(e.rA1, e.print, 1);
 
-      const res = await sesiones
-        .cliente(app)
-        .get(`/rendiciones/${e.rA1.id}/items/${itemId}/aplicaciones`);
+      const res = await request(app).get(`/rendiciones/${e.rA1.id}/items/${itemId}/aplicaciones`);
 
       expect(res.status).toBe(200);
       const historial = HistorialDeItemSchema.parse(res.body);
@@ -521,9 +502,7 @@ describe.skipIf(url === undefined)('aplicar y reemplazar documentos contra Postg
 
     it('un ítem sin documentos tiene el historial vacío', async () => {
       const itemId = item(e.rA1, e.factura);
-      const res = await sesiones
-        .cliente(app)
-        .get(`/rendiciones/${e.rA1.id}/items/${itemId}/aplicaciones`);
+      const res = await request(app).get(`/rendiciones/${e.rA1.id}/items/${itemId}/aplicaciones`);
       expect(HistorialDeItemSchema.parse(res.body).aplicaciones).toEqual([]);
     });
   });

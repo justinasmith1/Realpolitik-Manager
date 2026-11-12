@@ -9,10 +9,10 @@ import {
   PrepararEnvioSchema,
   PropagarCanalDeRequisitoSchema,
 } from '@realpolitik/shared';
+import { Router } from 'express';
 import { z } from 'zod';
 
 import { validate } from '../../middleware/validate';
-import { autorizar, crearRouter } from '../auth/autorizacion';
 import { RequisitoParamsSchema } from '../clientes/clientes.routes';
 
 import {
@@ -39,74 +39,57 @@ export const IdParamsSchema = z.object({
  * Rendiciones de un cliente (contrato 4.5). Se monta en `/clientes`, junto al router de clientes:
  * las rutas cuelgan de `/:id/rendiciones`, donde `:id` es el cliente.
  */
-export const rendicionesDeClienteRouter = crearRouter();
+export const rendicionesDeClienteRouter = Router();
 
 rendicionesDeClienteRouter.post(
   '/:id/rendiciones',
-  autorizar('rendiciones:operar'),
   validate({ params: IdParamsSchema, body: CreateRendicionSchema }),
   abrirRendicionController,
 );
 rendicionesDeClienteRouter.get(
   '/:id/rendiciones',
-  autorizar('rendiciones:ver'),
   validate({ params: IdParamsSchema, query: ListarRendicionesQuerySchema }),
   listarRendicionesController,
 );
 // Sugerencia de OC: la de la última rendición del cliente que tenga una (HU2.11).
 rendicionesDeClienteRouter.get(
   '/:id/ultima-oc',
-  autorizar('rendiciones:operar'),
   validate({ params: IdParamsSchema }),
   obtenerUltimaOcController,
 );
 // Pasar el canal actual de un requisito a sus ítems en rendiciones abiertas (contrato 4.5).
 rendicionesDeClienteRouter.post(
   '/:id/requisitos/:requisitoId/propagar-canal',
-  autorizar('rendiciones:operar'),
   validate({ params: RequisitoParamsSchema, body: PropagarCanalDeRequisitoSchema }),
   propagarCanalDeRequisitoController,
 );
 
 /** Una rendición por su id (contrato 4.5 y 4.6). Se monta en `/rendiciones`. */
-export const rendicionesRouter = crearRouter();
+export const rendicionesRouter = Router();
 
 // Las rendiciones activas de un mes, de todos los clientes: la pantalla Rendiciones (HU3.2).
 rendicionesRouter.get(
   '/',
-  autorizar('rendiciones:ver'),
   validate({ query: ListarRendicionesDelMesQuerySchema }),
   listarRendicionesDelMesController,
 );
 // Las atrasadas de cualquier mes (HU3.4). Antes de `/:id`, para que "atrasadas" no se lea como id.
-rendicionesRouter.get(
-  '/atrasadas',
-  autorizar('rendiciones:ver'),
-  listarRendicionesAtrasadasController,
-);
-rendicionesRouter.get(
-  '/:id',
-  autorizar('rendiciones:ver'),
-  validate({ params: IdParamsSchema }),
-  obtenerRendicionController,
-);
+rendicionesRouter.get('/atrasadas', listarRendicionesAtrasadasController);
+rendicionesRouter.get('/:id', validate({ params: IdParamsSchema }), obtenerRendicionController);
 // Editar los datos de la OC (HU2.11).
 rendicionesRouter.patch(
   '/:id',
-  autorizar('rendiciones:operar'),
   validate({ params: IdParamsSchema, body: ActualizarRendicionSchema }),
   actualizarRendicionController,
 );
 rendicionesRouter.patch(
   '/:id/vigencia',
-  autorizar('rendiciones:operar'),
   validate({ params: IdParamsSchema, body: ActualizarVigenciaRendicionSchema }),
   anularRendicionController,
 );
 // Marcar como Completa o volver a En curso (HU3.6).
 rendicionesRouter.patch(
   '/:id/estado',
-  autorizar('rendiciones:operar'),
   validate({ params: IdParamsSchema, body: ActualizarEstadoRendicionSchema }),
   cambiarEstadoDeRendicionController,
 );
@@ -119,7 +102,6 @@ export const RequisitoDeRendicionParamsSchema = z.object({
 // Sumar un requisito nuevo de la matriz a una rendición abierta (contrato 4.5).
 rendicionesRouter.post(
   '/:id/requisitos/:requisitoId',
-  autorizar('rendiciones:operar'),
   validate({ params: RequisitoDeRendicionParamsSchema }),
   agregarRequisitoARendicionController,
 );
@@ -132,7 +114,6 @@ export const ItemDeRendicionParamsSchema = z.object({
 // Preparar el envío de los ítems elegidos: solo valida y devuelve sus datos (contrato 4.5).
 rendicionesRouter.post(
   '/:id/preparar-envio',
-  autorizar('rendiciones:operar'),
   validate({ params: IdParamsSchema, body: PrepararEnvioSchema }),
   prepararEnvioController,
 );
@@ -140,7 +121,6 @@ rendicionesRouter.post(
 // Corregir el canal de un ítem de una rendición activa (contrato 4.5).
 rendicionesRouter.patch(
   '/:id/items/:itemId/canal',
-  autorizar('rendiciones:operar'),
   validate({ params: ItemDeRendicionParamsSchema, body: ActualizarCanalDeItemSchema }),
   corregirCanalDeItemController,
 );

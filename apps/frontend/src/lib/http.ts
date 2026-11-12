@@ -20,7 +20,6 @@ interface ApiClientErrorOptions {
   status?: number;
   statusText?: string;
   payload?: unknown;
-  retryAfterSegundos?: number | undefined;
   cause?: unknown;
 }
 
@@ -35,35 +34,15 @@ export class ApiClientError extends Error {
    * `Content-Type` es JSON, el texto en otro caso, o `undefined` si no hay cuerpo.
    */
   readonly payload: unknown;
-  /**
-   * Segundos de `Retry-After` de un error `http` (429 y 503 que se pueden reintentar), si el
-   * servidor lo informó como un entero de segundos. Una fecha HTTP u otro formato: `undefined`.
-   */
-  readonly retryAfterSegundos: number | undefined;
 
-  constructor({
-    kind,
-    message,
-    status,
-    statusText,
-    payload,
-    retryAfterSegundos,
-    cause,
-  }: ApiClientErrorOptions) {
+  constructor({ kind, message, status, statusText, payload, cause }: ApiClientErrorOptions) {
     super(message, cause === undefined ? undefined : { cause });
     this.name = 'ApiClientError';
     this.kind = kind;
     this.status = status;
     this.statusText = statusText;
     this.payload = payload;
-    this.retryAfterSegundos = retryAfterSegundos;
   }
-}
-
-/** `Retry-After` en segundos enteros (el formato que usa la API); cualquier otro valor se ignora. */
-function leerRetryAfter(response: Response): number | undefined {
-  const valor = response.headers.get('Retry-After')?.trim() ?? '';
-  return /^\d{1,9}$/.test(valor) ? Number(valor) : undefined;
 }
 
 function resolveBaseUrl(): string {
@@ -94,21 +73,15 @@ function assertValidPath(path: string): void {
   }
 }
 
-// Origen ficticio para resolver una base de mismo origen (`/api`) al validarla. Solo se usa para
-// comparar paths: lo que se envía es la URL relativa, que el navegador resuelve contra su propio
-// origen con el mismo parser.
-const ORIGEN_DE_VALIDACION = 'https://mismo-origen.invalid';
-
 // Une base y path, y comprueba contra la URL que `fetch` realmente va a pedir: el parser
 // normaliza (trata "\" como "/", descarta TAB/LF/CR, resuelve "..") y por eso una lista de
 // caracteres prohibidos nunca termina de cubrir los casos. Si la URL normalizada cambia de
-// origin o deja de estar bajo el pathname del base, el path no es válido. Vale igual para una
-// base absoluta y para una de mismo origen.
+// origin o deja de estar bajo el pathname del base, el path no es válido.
 function buildUrl(base: string, path: string): string {
   const url = `${base}${path}`;
 
-  const baseUrl = new URL(base, ORIGEN_DE_VALIDACION);
-  const finalUrl = new URL(url, ORIGEN_DE_VALIDACION);
+  const baseUrl = new URL(base);
+  const finalUrl = new URL(url);
   const basePathname = baseUrl.pathname.replace(/\/+$/, '');
   const isUnderBase =
     finalUrl.pathname === basePathname || finalUrl.pathname.startsWith(`${basePathname}/`);
@@ -159,12 +132,6 @@ async function readErrorPayload(response: Response): Promise<unknown> {
  *
  * Solo agrega `Accept: application/json` (si el llamador no lo definió). No agrega
  * `Content-Type`, credenciales, timeouts ni reintentos.
- *
- * Credenciales: se deja el modo por defecto de `fetch`, `same-origin`. Con una base de mismo
- * origen (`/api`) el navegador envía las cookies de la app sin configurar nada; con una base
- * absoluta de otro origen no las envía. Es lo buscado: la cookie de sesión (ADR-0006) solo viaja
- * por el proxy de mismo origen, y nunca hace falta `credentials: 'include'` ni un token en
- * `localStorage`.
  */
 export async function http(path: string, init: RequestInit = {}): Promise<Response> {
   assertValidPath(path);
@@ -192,7 +159,6 @@ export async function http(path: string, init: RequestInit = {}): Promise<Respon
       status: response.status,
       statusText: response.statusText,
       payload: await readErrorPayload(response),
-      retryAfterSegundos: leerRetryAfter(response),
     });
   }
 

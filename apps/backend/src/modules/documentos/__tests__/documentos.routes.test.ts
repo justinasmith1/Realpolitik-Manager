@@ -8,13 +8,12 @@ import {
   TAMANIO_MAXIMO_DOCUMENTO_BYTES,
 } from '@realpolitik/shared';
 import type { Express } from 'express';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
 import { generarClaveDocumento } from '../../../lib/almacenamiento/almacenamiento';
 import { AlmacenamientoEnMemoria } from '../../../lib/almacenamiento/memoria';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 import { DOCM, DOCX, EJECUTABLE, MIME_DOCX, PDF, PNG, ZIP_GENERICO } from './archivosDePrueba';
 
@@ -35,10 +34,7 @@ const prismaMock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const TIPO_ID = 'a1b2c3d4-e5f6-4789-8abc-000000000001';
 const DOCUMENTO_ID = 'a1b2c3d4-e5f6-4789-8abc-000000000002';
@@ -79,7 +75,7 @@ interface Archivo {
 const PDF_VALIDO: Archivo = { contenido: PDF, nombre: 'constancia.pdf', tipo: 'application/pdf' };
 
 function cargar(archivo: Archivo | null = PDF_VALIDO, campos: Record<string, string> = CAMPOS) {
-  let pedido = clienteDePrueba(app).post('/documentos');
+  let pedido = request(app).post('/documentos');
   for (const [nombre, valor] of Object.entries(campos)) pedido = pedido.field(nombre, valor);
   return archivo === null
     ? pedido
@@ -96,10 +92,10 @@ describe('documentos deshabilitados (producción sin protección)', () => {
   it('sin almacenamiento configurado, /documentos no existe: 404 en todas las rutas', async () => {
     const sinDocumentos = createApp({ corsOrigins: ['http://localhost:5173'] });
     const respuestas = await Promise.all([
-      clienteDePrueba(sinDocumentos).get('/documentos?anio=2026&mes=10'),
-      clienteDePrueba(sinDocumentos).post('/documentos').field('anio', '2026'),
-      clienteDePrueba(sinDocumentos).get(`/documentos/${DOCUMENTO_ID}/archivo`),
-      clienteDePrueba(sinDocumentos).get(`/documentos/${DOCUMENTO_ID}/candidatos`),
+      request(sinDocumentos).get('/documentos?anio=2026&mes=10'),
+      request(sinDocumentos).post('/documentos').field('anio', '2026'),
+      request(sinDocumentos).get(`/documentos/${DOCUMENTO_ID}/archivo`),
+      request(sinDocumentos).get(`/documentos/${DOCUMENTO_ID}/candidatos`),
     ]);
     for (const res of respuestas) {
       expect(res.status).toBe(404);
@@ -264,7 +260,7 @@ describe('POST /documentos', () => {
         contentType: 'application/pdf',
       });
       expect(dos.status).toBe(400);
-      const otroCampo = await clienteDePrueba(app)
+      const otroCampo = await request(app)
         .post('/documentos')
         .field(CAMPOS)
         .attach('adjunto', PDF, { filename: 'a.pdf', contentType: 'application/pdf' });
@@ -285,7 +281,7 @@ describe('POST /documentos', () => {
     });
 
     it('un cuerpo JSON (no multipart) es 400: falta el archivo', async () => {
-      const res = await clienteDePrueba(app).post('/documentos').send(CAMPOS);
+      const res = await request(app).post('/documentos').send(CAMPOS);
       expect(res.status).toBe(400);
     });
   });
@@ -374,7 +370,7 @@ describe('GET /documentos', () => {
       },
     ]);
 
-    const res = await clienteDePrueba(app).get('/documentos?anio=2026&mes=10');
+    const res = await request(app).get('/documentos?anio=2026&mes=10');
 
     expect(res.status).toBe(200);
     const [documento] = DocumentoResumenSchema.array().parse(res.body);
@@ -384,7 +380,7 @@ describe('GET /documentos', () => {
   });
 
   it('exige el período', async () => {
-    const res = await clienteDePrueba(app).get('/documentos?anio=2026');
+    const res = await request(app).get('/documentos?anio=2026');
     expect(res.status).toBe(400);
     expect(error(res).details).toEqual([expect.objectContaining({ campo: 'mes' })]);
   });
@@ -412,7 +408,7 @@ describe('GET /documentos/:id/archivo', () => {
   it('descarga los mismos bytes, como adjunto y con las cabeceras de seguridad', async () => {
     await guardado('Constancia año.pdf');
 
-    const res = await clienteDePrueba(app)
+    const res = await request(app)
       .get(`/documentos/${DOCUMENTO_ID}/archivo`)
       .buffer(true)
       .parse(comoBytes);
@@ -431,7 +427,7 @@ describe('GET /documentos/:id/archivo', () => {
 
   it('un documento inexistente es 404', async () => {
     prismaMock.documento.findUnique.mockResolvedValue(null);
-    const res = await clienteDePrueba(app).get(`/documentos/${DOCUMENTO_ID}/archivo`);
+    const res = await request(app).get(`/documentos/${DOCUMENTO_ID}/archivo`);
     expect(res.status).toBe(404);
   });
 
@@ -439,7 +435,7 @@ describe('GET /documentos/:id/archivo', () => {
     await guardado('a.pdf');
     almacenamiento.fallarLaProxima('obtener');
 
-    const res = await clienteDePrueba(app).get(`/documentos/${DOCUMENTO_ID}/archivo`);
+    const res = await request(app).get(`/documentos/${DOCUMENTO_ID}/archivo`);
 
     expect(res.status).toBe(503);
     expect(res.headers['content-type']).toMatch(/application\/json/);
@@ -454,23 +450,19 @@ describe('GET /documentos/:id/archivo', () => {
       tamanioBytes: 1,
       claveAlmacenamiento: generarClaveDocumento(),
     });
-    expect((await clienteDePrueba(app).get(`/documentos/${DOCUMENTO_ID}/archivo`)).status).toBe(
-      500,
-    );
+    expect((await request(app).get(`/documentos/${DOCUMENTO_ID}/archivo`)).status).toBe(500);
   });
 
   it('un id que no es UUID es 400', async () => {
-    expect((await clienteDePrueba(app).get('/documentos/no-es-uuid/archivo')).status).toBe(400);
+    expect((await request(app).get('/documentos/no-es-uuid/archivo')).status).toBe(400);
   });
 });
 
 describe('GET /documentos/:id y /candidatos', () => {
   it('un documento inexistente es 404', async () => {
     prismaMock.documento.findUnique.mockResolvedValue(null);
-    expect((await clienteDePrueba(app).get(`/documentos/${DOCUMENTO_ID}`)).status).toBe(404);
-    expect((await clienteDePrueba(app).get(`/documentos/${DOCUMENTO_ID}/candidatos`)).status).toBe(
-      404,
-    );
+    expect((await request(app).get(`/documentos/${DOCUMENTO_ID}`)).status).toBe(404);
+    expect((await request(app).get(`/documentos/${DOCUMENTO_ID}/candidatos`)).status).toBe(404);
   });
 });
 
@@ -488,13 +480,13 @@ describe('aplicaciones, reemplazo e historial (validación, sin base)', () => {
   it('deshabilitados (producción sin protección): las rutas nuevas tampoco existen', async () => {
     const sinDocumentos = createApp({ corsOrigins: ['http://localhost:5173'] });
     const respuestas = await Promise.all([
-      clienteDePrueba(sinDocumentos)
+      request(sinDocumentos)
         .post(`/documentos/${DOCUMENTO_ID}/aplicaciones`)
         .send({ itemIds: [ITEM] }),
-      clienteDePrueba(sinDocumentos)
+      request(sinDocumentos)
         .post(`/rendiciones/${RENDICION}/items/${ITEM}/reemplazo`)
         .send({ documentoId: DOCUMENTO_ID, aplicacionVigenteId: id(1) }),
-      clienteDePrueba(sinDocumentos).get(`/rendiciones/${RENDICION}/items/${ITEM}/aplicaciones`),
+      request(sinDocumentos).get(`/rendiciones/${RENDICION}/items/${ITEM}/aplicaciones`),
     ]);
     for (const res of respuestas) {
       expect(res.status).toBe(404);
@@ -509,9 +501,7 @@ describe('aplicaciones, reemplazo e historial (validación, sin base)', () => {
     ['más de 500 ítems', { itemIds: Array.from({ length: 501 }, (_, n) => id(n)) }],
     ['sin el campo', {}],
   ])('aplicar rechaza %s con 400, sin tocar la base', async (_caso, cuerpo) => {
-    const res = await clienteDePrueba(app)
-      .post(`/documentos/${DOCUMENTO_ID}/aplicaciones`)
-      .send(cuerpo);
+    const res = await request(app).post(`/documentos/${DOCUMENTO_ID}/aplicaciones`).send(cuerpo);
     expect(res.status).toBe(400);
     expect(error(res).details).toEqual([
       expect.objectContaining({ campo: expect.stringMatching(/^itemIds/) as unknown }),
@@ -527,7 +517,7 @@ describe('aplicaciones, reemplazo e historial (validación, sin base)', () => {
     ],
     ['sin la aplicación vigente esperada', { documentoId: DOCUMENTO_ID }, 'aplicacionVigenteId'],
   ])('reemplazar rechaza %s con 400', async (_caso, cuerpo, campo) => {
-    const res = await clienteDePrueba(app)
+    const res = await request(app)
       .post(`/rendiciones/${RENDICION}/items/${ITEM}/reemplazo`)
       .send(cuerpo);
     expect(res.status).toBe(400);
@@ -535,8 +525,6 @@ describe('aplicaciones, reemplazo e historial (validación, sin base)', () => {
   });
 
   it('el historial rechaza ids que no son UUID', async () => {
-    expect(
-      (await clienteDePrueba(app).get(`/rendiciones/x/items/${ITEM}/aplicaciones`)).status,
-    ).toBe(400);
+    expect((await request(app).get(`/rendiciones/x/items/${ITEM}/aplicaciones`)).status).toBe(400);
   });
 });

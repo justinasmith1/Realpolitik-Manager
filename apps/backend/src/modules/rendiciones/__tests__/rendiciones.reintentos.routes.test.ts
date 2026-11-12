@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Reintentos del alta de una rendición (`POST /clientes/:id/rendiciones`), con la base simulada.
 // Un conflicto de serialización se reintenta siempre, en cualquier punto del alta: también antes
@@ -27,10 +27,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -46,7 +43,7 @@ const AHORA = new Date('2026-10-15T15:00:00.000Z');
 
 const pedido = { anio: 2026, mes: 10, numeroFactura: 'B 00002-00001482' };
 const abrir = (body: object = pedido) =>
-  clienteDePrueba(app).post(`/clientes/${CLIENTE}/rendiciones`).send(body);
+  request(app).post(`/clientes/${CLIENTE}/rendiciones`).send(body);
 
 function errorPrisma(code: string, meta?: Record<string, unknown>) {
   return new Prisma.PrismaClientKnownRequestError(`error ${code}`, {

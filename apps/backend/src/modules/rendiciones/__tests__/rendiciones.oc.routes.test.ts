@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
+import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Orden de compra (HU2.11), con la base simulada:
 // - `POST /clientes/:id/rendiciones` con datos de OC opcionales
@@ -29,10 +29,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -126,7 +123,7 @@ beforeEach(() => {
 
 describe('POST /clientes/:id/rendiciones — Orden de Compra (HU2.11)', () => {
   it('persiste numeroOc, montoMensual y montoTotal cuando vienen en el payload y los devuelve como número', async () => {
-    const res = await clienteDePrueba(app).post(`/clientes/${CLIENTE}/rendiciones`).send({
+    const res = await request(app).post(`/clientes/${CLIENTE}/rendiciones`).send({
       anio: 2026,
       mes: 10,
       numeroFactura: 'B 00002-00001482',
@@ -167,7 +164,7 @@ describe('PATCH /rendiciones/:id — Actualizar OC (HU2.11)', () => {
   });
 
   it('actualiza los tres campos de la OC y devuelve el detalle de la rendición', async () => {
-    const res = await clienteDePrueba(app)
+    const res = await request(app)
       .patch(`/rendiciones/${RENDICION}`)
       .send({ numeroOc: ' OC-999 ', montoMensual: 1250000, montoTotal: 15000000 });
 
@@ -187,7 +184,7 @@ describe('PATCH /rendiciones/:id — Actualizar OC (HU2.11)', () => {
   });
 
   it('permite borrar datos enviando null', async () => {
-    const res = await clienteDePrueba(app)
+    const res = await request(app)
       .patch(`/rendiciones/${RENDICION}`)
       .send({ numeroOc: null, montoMensual: null, montoTotal: null });
 
@@ -200,10 +197,10 @@ describe('PATCH /rendiciones/:id — Actualizar OC (HU2.11)', () => {
   });
 
   it('rechaza con 400 un body vacío o con monto negativo', async () => {
-    const vacio = await clienteDePrueba(app).patch(`/rendiciones/${RENDICION}`).send({});
+    const vacio = await request(app).patch(`/rendiciones/${RENDICION}`).send({});
     expect(vacio.status).toBe(400);
 
-    const negativo = await clienteDePrueba(app)
+    const negativo = await request(app)
       .patch(`/rendiciones/${RENDICION}`)
       .send({ montoMensual: -10 });
     expect(negativo.status).toBe(400);
@@ -212,9 +209,7 @@ describe('PATCH /rendiciones/:id — Actualizar OC (HU2.11)', () => {
   it('responde 404 si la rendición no existe', async () => {
     transaccion.rendicion.findFirst.mockReset().mockResolvedValueOnce(null);
 
-    const res = await clienteDePrueba(app)
-      .patch(`/rendiciones/${RENDICION}`)
-      .send({ numeroOc: 'OC-1' });
+    const res = await request(app).patch(`/rendiciones/${RENDICION}`).send({ numeroOc: 'OC-1' });
     expect(res.status).toBe(404);
   });
 
@@ -223,9 +218,7 @@ describe('PATCH /rendiciones/:id — Actualizar OC (HU2.11)', () => {
       .mockReset()
       .mockResolvedValueOnce({ id: RENDICION, isDeleted: true });
 
-    const res = await clienteDePrueba(app)
-      .patch(`/rendiciones/${RENDICION}`)
-      .send({ numeroOc: 'OC-1' });
+    const res = await request(app).patch(`/rendiciones/${RENDICION}`).send({ numeroOc: 'OC-1' });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({
       error: { code: 'CONFLICT', details: { motivo: 'RENDICION_ANULADA' } },
@@ -233,9 +226,7 @@ describe('PATCH /rendiciones/:id — Actualizar OC (HU2.11)', () => {
   });
 
   it('acepta un numeroOc que ya usa otra rendición del mismo cliente: el número no es único', async () => {
-    const res = await clienteDePrueba(app)
-      .patch(`/rendiciones/${RENDICION}`)
-      .send({ numeroOc: 'OC-342' });
+    const res = await request(app).patch(`/rendiciones/${RENDICION}`).send({ numeroOc: 'OC-342' });
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ numeroOc: 'OC-342' });
@@ -252,7 +243,7 @@ describe('GET /clientes/:id/ultima-oc — Sugerencia de OC (HU2.11)', () => {
       montoTotal: decimal(15000000),
     });
 
-    const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE}/ultima-oc`);
+    const res = await request(app).get(`/clientes/${CLIENTE}/ultima-oc`);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -270,7 +261,7 @@ describe('GET /clientes/:id/ultima-oc — Sugerencia de OC (HU2.11)', () => {
   it('devuelve null si el cliente no tiene ninguna rendición con OC', async () => {
     prismaMock.rendicion.findFirst.mockResolvedValueOnce(null);
 
-    const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE}/ultima-oc`);
+    const res = await request(app).get(`/clientes/${CLIENTE}/ultima-oc`);
 
     expect(res.status).toBe(200);
     expect(res.body).toBeNull();
@@ -279,7 +270,7 @@ describe('GET /clientes/:id/ultima-oc — Sugerencia de OC (HU2.11)', () => {
   it('responde 404 si el cliente no existe', async () => {
     prismaMock.cliente.findFirst.mockResolvedValueOnce(null);
 
-    const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE}/ultima-oc`);
+    const res = await request(app).get(`/clientes/${CLIENTE}/ultima-oc`);
     expect(res.status).toBe(404);
   });
 });

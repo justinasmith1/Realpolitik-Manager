@@ -1,9 +1,8 @@
 import { Prisma } from '@prisma/client';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Carga masiva (HU2.3): la base está simulada y se recorre route → validate → controller →
 // service → errorHandler. El mock no puede demostrar el índice parcial ni el aislamiento real
@@ -34,10 +33,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -46,7 +42,7 @@ const A = 'a1b2c3d4-e5f6-4789-abcd-ef0123456789';
 const B = 'b2c3d4e5-f6a7-4890-bcde-f01234567890';
 const C = 'c3d4e5f6-a7b8-4901-8cde-f12345678901';
 
-const masivo = (body: object) => clienteDePrueba(app).post('/requisitos/masivo').send(body);
+const masivo = (body: object) => request(app).post('/requisitos/masivo').send(body);
 
 const clienteDe = (id: string, extra: Record<string, unknown> = {}) => ({
   id,

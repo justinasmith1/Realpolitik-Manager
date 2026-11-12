@@ -1,8 +1,7 @@
-import type request from 'supertest';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Pantalla Rendiciones (HU3.2), con la base simulada: `GET /rendiciones?anio=&mes=` lista las
 // rendiciones activas del período, de todos los clientes, con su avance, la fecha de su último
@@ -19,10 +18,7 @@ const { prismaMock } = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -73,7 +69,7 @@ function conteos(avances: Record<number, [reunidos: number, total: number]>) {
   ]);
 }
 
-const listar = (query = '?anio=2026&mes=11') => clienteDePrueba(app).get(`/rendiciones${query}`);
+const listar = (query = '?anio=2026&mes=11') => request(app).get(`/rendiciones${query}`);
 const ids = (res: request.Response) => (res.body as { id: string }[]).map((r) => r.id);
 
 // "Hoy" fijo: mediados de noviembre de 2026 en Buenos Aires. Atrasadas: septiembre o antes.
@@ -297,7 +293,7 @@ describe('GET /rendiciones?anio=&mes= (pantalla Rendiciones, HU3.2)', () => {
   it('no choca con el detalle: GET /rendiciones/:id sigue siendo una rendición', async () => {
     prismaMock.rendicion.findFirst.mockResolvedValue(null);
 
-    const res = await clienteDePrueba(app).get(`/rendiciones/${id(1)}`);
+    const res = await request(app).get(`/rendiciones/${id(1)}`);
 
     expect(res.status).toBe(404);
     expect(prismaMock.rendicion.findFirst).toHaveBeenCalled();

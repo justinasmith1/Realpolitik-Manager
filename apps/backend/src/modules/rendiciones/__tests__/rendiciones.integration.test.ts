@@ -20,10 +20,9 @@ import {
   validateCuit,
 } from '@realpolitik/shared';
 import type { Express } from 'express';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 
 const url = urlDeBaseDescartable();
@@ -40,14 +39,10 @@ const MARCA_NORMALIZADA = normalizar(MARCA);
 /** Un período siempre válido: el mes actual (el máximo admitido es el siguiente). */
 const PERIODO = mesActual();
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes, y pisa la de desarrollo.
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -65,7 +60,6 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
-    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -145,12 +139,11 @@ const abrir = (
   periodo = PERIODO,
   emisor?: EmisorDePrueba,
 ) =>
-  sesiones
-    .cliente(app)
+  request(app)
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...periodo, numeroFactura, ...(emisor === undefined ? {} : { emisor }) });
 const anular = (id: string) =>
-  sesiones.cliente(app).patch(`/rendiciones/${id}/vigencia`).send({ vigencia: 'ANULADA' });
+  request(app).patch(`/rendiciones/${id}/vigencia`).send({ vigencia: 'ANULADA' });
 
 interface ItemJson {
   nombreTipoDocumento: string;
@@ -196,7 +189,7 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
     ]);
     expect(await prisma.itemChecklist.count({ where: { rendicionId: cuerpo(res).id } })).toBe(3);
 
-    const lista = await sesiones.cliente(app).get(`/clientes/${cliente.id}/rendiciones`);
+    const lista = await request(app).get(`/clientes/${cliente.id}/rendiciones`);
     expect(lista.status).toBe(200);
     expect((lista.body as RendicionJson[]).map((r) => r.resumen)).toEqual([
       { totalItems: 3, completados: 0 },
@@ -214,7 +207,7 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
     }
 
     const apertura = await abrir(cliente.id, 'A 00001-00000010');
-    const detalle = await sesiones.cliente(app).get(`/rendiciones/${cuerpo(apertura).id}`);
+    const detalle = await request(app).get(`/rendiciones/${cuerpo(apertura).id}`);
 
     const nombres = (res: request.Response) =>
       (cuerpo(res).items ?? []).map((item) => item.nombreTipoDocumento.replace(`${MARCA} `, ''));
@@ -275,7 +268,7 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
         detalles(conflicto) as { rendicionExistente: { id: string; clienteId: string } }
       ).rendicionExistente;
 
-      const detalle = await sesiones.cliente(app).get(`/rendiciones/${existente.id}`);
+      const detalle = await request(app).get(`/rendiciones/${existente.id}`);
 
       expect(detalle.status).toBe(200);
       expect(cuerpo(detalle)).toMatchObject({
@@ -377,8 +370,8 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
       const cliente = await clienteConMatriz('PERSONA_FISICA');
 
       const alta = await abrir(cliente.id, 'B 00007-00000007');
-      const detalle = await sesiones.cliente(app).get(`/rendiciones/${cuerpo(alta).id}`);
-      const lista = await sesiones.cliente(app).get(`/clientes/${cliente.id}/rendiciones`);
+      const detalle = await request(app).get(`/rendiciones/${cuerpo(alta).id}`);
+      const lista = await request(app).get(`/clientes/${cliente.id}/rendiciones`);
 
       expect(alta.status, JSON.stringify(alta.body)).toBe(201);
       expect(cuerpo(alta).emisor).toBe('PERSONA_FISICA');
@@ -417,19 +410,15 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
       const cliente = await clienteConMatriz('SOCIEDAD');
       const abierta = cuerpo(await abrir(cliente.id, 'B 00007-00000010'));
 
-      const cambio = await sesiones
-        .cliente(app)
+      const cambio = await request(app)
         .patch(`/clientes/${cliente.id}`)
         .send({ emisor: 'PERSONA_FISICA' });
-      const quitado = await sesiones
-        .cliente(app)
-        .patch(`/clientes/${cliente.id}`)
-        .send({ emisor: null });
+      const quitado = await request(app).patch(`/clientes/${cliente.id}`).send({ emisor: null });
 
       expect(cambio.status).toBe(200);
       expect(quitado.status).toBe(200);
-      const detalle = await sesiones.cliente(app).get(`/rendiciones/${abierta.id}`);
-      const lista = await sesiones.cliente(app).get(`/clientes/${cliente.id}/rendiciones`);
+      const detalle = await request(app).get(`/rendiciones/${abierta.id}`);
+      const lista = await request(app).get(`/clientes/${cliente.id}/rendiciones`);
       expect(cuerpo(detalle).emisor).toBe('SOCIEDAD');
       expect((lista.body as RendicionJson[]).map((r) => r.emisor)).toEqual(['SOCIEDAD']);
       const fila = await prisma.rendicion.findUniqueOrThrow({ where: { id: abierta.id } });
@@ -462,12 +451,11 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
     expect(cuerpo(primera)).toMatchObject({ vigencia: 'ANULADA' });
     expect(cuerpo(segunda).anuladaEn).toBe(cuerpo(primera).anuladaEn);
     expect(await prisma.itemChecklist.count({ where: { rendicionId: abierta.id } })).toBe(3);
-    const detalle = await sesiones.cliente(app).get(`/rendiciones/${abierta.id}`);
+    const detalle = await request(app).get(`/rendiciones/${abierta.id}`);
     expect(detalle.status).toBe(200);
     expect(cuerpo(detalle)).toMatchObject({ vigencia: 'ANULADA' });
     expect(
-      ((await sesiones.cliente(app).get(`/clientes/${cliente.id}/rendiciones`)).body as unknown[])
-        .length,
+      ((await request(app).get(`/clientes/${cliente.id}/rendiciones`)).body as unknown[]).length,
     ).toBe(0);
     expect((await abrir(cliente.id, 'a 1-5')).status).toBe(201);
   });
@@ -484,7 +472,7 @@ describe.skipIf(url === undefined)('rendiciones contra PostgreSQL real', () => {
     await anular(anulada.id);
     const listar = async (query: string) =>
       (
-        (await sesiones.cliente(app).get(`/clientes/${cliente.id}/rendiciones${query}`))
+        (await request(app).get(`/clientes/${cliente.id}/rendiciones${query}`))
           .body as RendicionJson[]
       ).map(({ id, vigencia }) => ({ id, vigencia }));
 

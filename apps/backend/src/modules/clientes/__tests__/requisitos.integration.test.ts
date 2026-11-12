@@ -18,9 +18,8 @@ import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { normalizarNombreTipoDocumento as normalizar, validateCuit } from '@realpolitik/shared';
 import type { Express } from 'express';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 
 import { urlDeBaseDescartable } from './baseDescartable';
 import { exigirBaseDeEstaSuite } from './requisitosIntegrationEntorno';
@@ -41,15 +40,11 @@ const MARCA_NORMALIZADA = normalizar(MARCA);
 
 const n = (texto: string) => `${MARCA} ${texto}`;
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   exigirBaseDeEstaSuite(url);
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes, y pisa la de desarrollo.
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const [info] = await prisma.$queryRaw<{ db: string; version: string }[]>`
     SELECT current_database() AS db, version() AS version`;
@@ -92,7 +87,6 @@ afterAll(async () => {
     expect(clientes).toBe(0);
     expect(tipos).toBe(0);
   } finally {
-    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -128,16 +122,14 @@ const CAMPOS_DEL_CONTRATO = [
 ];
 
 const ruta = (clienteId: string) => `/clientes/${clienteId}/requisitos`;
-const listar = (clienteId: string) => sesiones.cliente(app).get(ruta(clienteId));
-const alta = (clienteId: string, body: object) =>
-  sesiones.cliente(app).post(ruta(clienteId)).send(body);
+const listar = (clienteId: string) => request(app).get(ruta(clienteId));
+const alta = (clienteId: string, body: object) => request(app).post(ruta(clienteId)).send(body);
 const editar = (clienteId: string, requisitoId: string, body: object) =>
-  sesiones
-    .cliente(app)
+  request(app)
     .patch(`${ruta(clienteId)}/${requisitoId}`)
     .send(body);
 const baja = (clienteId: string, requisitoId: string) =>
-  sesiones.cliente(app).delete(`${ruta(clienteId)}/${requisitoId}`);
+  request(app).delete(`${ruta(clienteId)}/${requisitoId}`);
 
 /**
  * CUIT único. La base no valida el dígito verificador. El prefijo 37 no lo usa otra suite
@@ -177,14 +169,13 @@ async function crearCliente(
 }
 
 async function crearTipo(nombre: string): Promise<TipoJson> {
-  const respuesta = await sesiones.cliente(app).post('/tipos-documento').send({ nombre });
+  const respuesta = await request(app).post('/tipos-documento').send({ nombre });
   expect(respuesta.status, JSON.stringify(respuesta.body)).toBe(201);
   return respuesta.body as TipoJson;
 }
 
 async function desactivarTipo(id: string): Promise<void> {
-  const respuesta = await sesiones
-    .cliente(app)
+  const respuesta = await request(app)
     .patch(`/tipos-documento/${id}/estado`)
     .send({ activo: false });
   expect(respuesta.status, JSON.stringify(respuesta.body)).toBe(200);
@@ -480,11 +471,11 @@ describe.skipIf(url === undefined)('Requisitos de cliente contra PostgreSQL real
           (item) => item.matrizConfigurada === valor,
         );
       const listarFlag = (valor: 'true' | 'false') =>
-        sesiones
-          .cliente(app)
-          .get(`/clientes?q=${encodeURIComponent(marcaLista)}&matrizConfigurada=${valor}`);
+        request(app).get(
+          `/clientes?q=${encodeURIComponent(marcaLista)}&matrizConfigurada=${valor}`,
+        );
 
-      const antes = await sesiones.cliente(app).get(`/clientes/${cliente.id}`);
+      const antes = await request(app).get(`/clientes/${cliente.id}`);
       expect(antes.status, JSON.stringify(antes.body)).toBe(200);
       expect(antes.body).toMatchObject({ id: cliente.id, matrizConfigurada: false });
       expect(antes.body).not.toHaveProperty('isDeleted');
@@ -500,14 +491,14 @@ describe.skipIf(url === undefined)('Requisitos de cliente contra PostgreSQL real
       expect(ids(conMatriz.body)).not.toContain(cliente.id);
 
       const creado = await crearRequisito(cliente.id, tipo.id);
-      const configurado = await sesiones.cliente(app).get(`/clientes/${cliente.id}`);
+      const configurado = await request(app).get(`/clientes/${cliente.id}`);
       expect(configurado.status).toBe(200);
       expect(configurado.body).toMatchObject({ id: cliente.id, matrizConfigurada: true });
       expect(ids((await listarFlag('true')).body)).toContain(cliente.id);
       expect(ids((await listarFlag('false')).body)).not.toContain(cliente.id);
 
       expect((await baja(cliente.id, creado.id)).status).toBe(204);
-      const vacio = await sesiones.cliente(app).get(`/clientes/${cliente.id}`);
+      const vacio = await request(app).get(`/clientes/${cliente.id}`);
       expect(vacio.status).toBe(200);
       expect(vacio.body).toMatchObject({ id: cliente.id, matrizConfigurada: false });
       expect(ids((await listarFlag('false')).body)).toContain(cliente.id);

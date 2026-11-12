@@ -15,9 +15,9 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { mesActual, normalizarNombreTipoDocumento as normalizar } from '@realpolitik/shared';
 import type { Express } from 'express';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 
 const url = urlDeBaseDescartable();
@@ -30,13 +30,9 @@ const clientesCreados: string[] = [];
 const MARCA = `TESTRR${Date.now().toString(36)}${randomBytes(3).toString('hex')}`.toUpperCase();
 const MARCA_NORMALIZADA = normalizar(MARCA);
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -53,7 +49,6 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
-    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -94,8 +89,7 @@ async function rendicionAbierta(factura: string) {
   });
   clientesCreados.push(cliente.id);
   await crearRequisito(cliente.id, 'Factura', 1);
-  const res = await sesiones
-    .cliente(app)
+  const res = await request(app)
     .post(`/clientes/${cliente.id}/rendiciones`)
     .send({ ...mesActual(), numeroFactura: factura });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -103,7 +97,7 @@ async function rendicionAbierta(factura: string) {
 }
 
 const sumar = (rendicionId: string, requisitoId: string) =>
-  sesiones.cliente(app).post(`/rendiciones/${rendicionId}/requisitos/${requisitoId}`);
+  request(app).post(`/rendiciones/${rendicionId}/requisitos/${requisitoId}`);
 
 describe.skipIf(url === undefined)(
   'sumar un requisito a una rendición, contra PostgreSQL real',
@@ -168,8 +162,7 @@ describe.skipIf(url === undefined)(
     it('con la rendición anulada es 409 RENDICION_ANULADA', async () => {
       const { cliente, rendicionId } = await rendicionAbierta('A 00001-00000204');
       const nuevo = await crearRequisito(cliente.id, 'Print', 1);
-      await sesiones
-        .cliente(app)
+      await request(app)
         .patch(`/rendiciones/${rendicionId}/vigencia`)
         .send({ vigencia: 'ANULADA' });
 

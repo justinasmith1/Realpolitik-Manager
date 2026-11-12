@@ -14,9 +14,8 @@
 import type { PrismaClient } from '@prisma/client';
 import { validateCuit } from '@realpolitik/shared';
 import type { Express } from 'express';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 
 import { urlDeBaseDescartable } from './baseDescartable';
 
@@ -29,14 +28,10 @@ const clientesCreados: string[] = [];
 const MARCA = `TESTO${Date.now().toString(36).toUpperCase()}`;
 const ID_INEXISTENTE = '00000000-0000-4000-8000-000000000000';
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -45,7 +40,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (url === undefined) return;
   await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
-  await sesiones.limpiar();
   await prisma.$disconnect();
 });
 
@@ -63,8 +57,7 @@ function cuitUnico(): string {
 }
 
 async function crearCliente(): Promise<string> {
-  const respuesta = await sesiones
-    .cliente(app)
+  const respuesta = await request(app)
     .post('/clientes')
     .send({
       razonSocial: `${MARCA} Cliente de prueba`,
@@ -80,9 +73,9 @@ async function crearCliente(): Promise<string> {
   return id;
 }
 
-const leer = (id: string) => sesiones.cliente(app).get(`/clientes/${id}/observaciones`);
+const leer = (id: string) => request(app).get(`/clientes/${id}/observaciones`);
 const guardar = (id: string, observaciones: string | null) =>
-  sesiones.cliente(app).put(`/clientes/${id}/observaciones`).send({ observaciones });
+  request(app).put(`/clientes/${id}/observaciones`).send({ observaciones });
 
 describe.skipIf(url === undefined)('Observaciones del cliente contra PostgreSQL real', () => {
   it('un cliente nuevo no tiene observaciones', async () => {
@@ -133,10 +126,7 @@ describe.skipIf(url === undefined)('Observaciones del cliente contra PostgreSQL 
 
   it('se puede guardar con el cliente inactivo', async () => {
     const id = await crearCliente();
-    const baja = await sesiones
-      .cliente(app)
-      .patch(`/clientes/${id}/estado`)
-      .send({ estado: 'INACTIVO' });
+    const baja = await request(app).patch(`/clientes/${id}/estado`).send({ estado: 'INACTIVO' });
     expect(baja.status).toBe(200);
 
     const res = await guardar(id, 'Pausó la pauta.');
@@ -150,7 +140,7 @@ describe.skipIf(url === undefined)('Observaciones del cliente contra PostgreSQL 
     const id = await crearCliente();
     await guardar(id, 'Nota interna.');
 
-    const res = await sesiones.cliente(app).get(`/clientes/${id}`);
+    const res = await request(app).get(`/clientes/${id}`);
 
     expect(res.status).toBe(200);
     expect(res.body).not.toHaveProperty('observaciones');

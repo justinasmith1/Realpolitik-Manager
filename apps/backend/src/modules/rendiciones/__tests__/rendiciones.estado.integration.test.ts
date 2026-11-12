@@ -14,9 +14,9 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { mesActual, normalizarNombreTipoDocumento as normalizar } from '@realpolitik/shared';
 import type { Express } from 'express';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 import type * as Servicio from '../rendiciones.service';
 
@@ -32,13 +32,9 @@ const MARCA = `TESTER${Date.now().toString(36)}${randomBytes(3).toString('hex')}
 const MARCA_NORMALIZADA = normalizar(MARCA);
 const PERIODO = mesActual();
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   ({ registrarCambioDeEstado } = await import('../rendiciones.service'));
   const { createApp } = await import('../../../app');
@@ -57,7 +53,6 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
-    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -113,8 +108,7 @@ interface RendicionJson {
 }
 
 async function abrir(clienteId: string): Promise<RendicionJson> {
-  const res = await sesiones
-    .cliente(app)
+  const res = await request(app)
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...PERIODO, numeroFactura: facturaUnica() });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -122,11 +116,10 @@ async function abrir(clienteId: string): Promise<RendicionJson> {
 }
 
 const listar = async (clienteId: string, query: string) =>
-  (await sesiones.cliente(app).get(`/clientes/${clienteId}/rendiciones${query}`))
-    .body as RendicionJson[];
+  (await request(app).get(`/clientes/${clienteId}/rendiciones${query}`)).body as RendicionJson[];
 
 const detalle = async (id: string) =>
-  (await sesiones.cliente(app).get(`/rendiciones/${id}`)).body as RendicionJson;
+  (await request(app).get(`/rendiciones/${id}`)).body as RendicionJson;
 
 describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra PostgreSQL real', () => {
   it('una rendición nueva nace EN_CURSO, con su entrada inicial de historial', async () => {
@@ -167,9 +160,7 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
       'EN_CURSO',
     ]);
 
-    const invalido = await sesiones
-      .cliente(app)
-      .get(`/clientes/${cliente.id}/rendiciones?estado=ATRASADA`);
+    const invalido = await request(app).get(`/clientes/${cliente.id}/rendiciones?estado=ATRASADA`);
     expect(invalido.status).toBe(400);
     expect(invalido.body).toMatchObject({
       error: { code: 'VALIDATION_ERROR', details: [{ campo: 'estado' }] },
@@ -199,8 +190,7 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
     const abierta = await abrir(cliente.id);
     await registrarCambioDeEstado(abierta.id, 'COMPLETA');
 
-    const anulacion = await sesiones
-      .cliente(app)
+    const anulacion = await request(app)
       .patch(`/rendiciones/${abierta.id}/vigencia`)
       .send({ vigencia: 'ANULADA' });
 

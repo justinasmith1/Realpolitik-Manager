@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/button';
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -22,7 +21,6 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { CuentaMenu } from '@/modules/auth/components/CuentaMenu';
 
 interface NavDestination {
   to: string;
@@ -165,9 +163,6 @@ export function AppSidebar() {
           </SidebarGroup>
         </nav>
       </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border">
-        <CuentaMenu />
-      </SidebarFooter>
     </Sidebar>
   );
 }

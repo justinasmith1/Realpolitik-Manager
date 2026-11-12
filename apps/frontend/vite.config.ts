@@ -2,8 +2,6 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
-import { crearProxyApi } from './src/lib/proxy-desarrollo';
-
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -16,10 +14,6 @@ export default defineConfig({
     // Solo se activa dentro de Docker (docker-compose define CHOKIDAR_USEPOLLING); con `pnpm dev`
     // en el host no hay polling. El `--host 0.0.0.0` lo pasa el comando del servicio en compose.
     watch: process.env.CHOKIDAR_USEPOLLING === 'true' ? { usePolling: true, interval: 300 } : null,
-    // `/api` → backend de desarrollo, sin el prefijo (como el rewrite de Vercel). Solo actúa con
-    // VITE_API_URL=/api. Destino: API_PROXY_TARGET, por defecto http://localhost:3000; solo backends
-    // locales (ver src/lib/proxy-desarrollo.ts).
-    proxy: crearProxyApi(process.env.API_PROXY_TARGET),
   },
   test: {
     environment: 'jsdom',

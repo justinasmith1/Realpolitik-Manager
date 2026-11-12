@@ -1,9 +1,8 @@
 import { Prisma } from '@prisma/client';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // `POST /rendiciones/:id/requisitos/:requisitoId` (contrato 4.5), con la base simulada: se
 // recorre route → validate → controller → service → mapper → errorHandler.
@@ -24,10 +23,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -88,7 +84,7 @@ function errorPrisma(code: string, meta?: Record<string, unknown>) {
 }
 
 const sumar = (rendicionId = RENDICION, requisitoId = REQUISITO) =>
-  clienteDePrueba(app).post(`/rendiciones/${rendicionId}/requisitos/${requisitoId}`);
+  request(app).post(`/rendiciones/${rendicionId}/requisitos/${requisitoId}`);
 
 const detalles = (res: request.Response) =>
   (res.body as { error: { details: unknown } }).error.details;

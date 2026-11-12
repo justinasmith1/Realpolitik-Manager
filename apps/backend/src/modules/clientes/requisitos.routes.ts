@@ -1,16 +1,15 @@
 import { CargaMasivaRequisitoSchema } from '@realpolitik/shared';
+import { Router } from 'express';
 
 import { validate } from '../../middleware/validate';
-import { autorizar, crearRouter } from '../auth/autorizacion';
 
 import { cargarRequisitosMasivoController } from './requisitos.controller';
 
 /** Operaciones sobre requisitos que no cuelgan de un cliente concreto (contrato 4.3). */
-export const requisitosRouter = crearRouter();
+export const requisitosRouter = Router();
 
 requisitosRouter.post(
   '/masivo',
-  autorizar('requisitos:editar'),
   validate({ body: CargaMasivaRequisitoSchema }),
   cargarRequisitosMasivoController,
 );

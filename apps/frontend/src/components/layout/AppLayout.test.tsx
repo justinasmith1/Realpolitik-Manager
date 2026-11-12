@@ -4,7 +4,6 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 
 import { AppProviders } from '@/app/providers';
 import { routes } from '@/app/router';
-import { conSesionDePrueba } from '@/modules/auth/test/sesionDePrueba';
 
 // Igual que main.tsx: el router dentro de los providers de la app.
 function renderRoute(path: string) {
@@ -34,10 +33,6 @@ function mockMobileViewport() {
 // consultas del Sidebar se hacen dentro de su `<nav>`.
 const enlaceDelSidebar = (nombre: string) =>
   within(screen.getByRole('navigation', { name: 'Principal' })).getByRole('link', { name: nombre });
-
-beforeEach(() => {
-  conSesionDePrueba();
-});
 
 afterEach(() => {
   vi.restoreAllMocks();

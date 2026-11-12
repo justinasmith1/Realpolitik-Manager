@@ -1,8 +1,7 @@
-import type request from 'supertest';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 const { transaccion, prismaMock } = vi.hoisted(() => {
   const delegado = () => ({
@@ -19,10 +18,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -70,7 +66,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
 
   describe('GET /clientes/:id/indicaciones-armado', () => {
     it('responde 400 VALIDATION_ERROR si el id no es un UUID', async () => {
-      const res = await clienteDePrueba(app).get('/clientes/invalido/indicaciones-armado');
+      const res = await request(app).get('/clientes/invalido/indicaciones-armado');
 
       expect(res.status).toBe(400);
       expect(errorGenerico(res).code).toBe('VALIDATION_ERROR');
@@ -81,7 +77,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
     it('responde 404 NOT_FOUND si el cliente no existe o tiene baja lógica', async () => {
       prismaMock.cliente.findFirst.mockResolvedValue(null);
 
-      const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
+      const res = await request(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
 
       expect(res.status).toBe(404);
       expect(errorGenerico(res).code).toBe('NOT_FOUND');
@@ -96,7 +92,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
         indicacionesArmado: null,
       });
 
-      const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
+      const res = await request(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ indicacionesArmado: null });
@@ -108,7 +104,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
         indicacionesArmado: texto,
       });
 
-      const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
+      const res = await request(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ indicacionesArmado: texto });
@@ -118,7 +114,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
       const texto = 'Factura\tprimero.\nTodo en un solo PDF.';
       prismaMock.cliente.findFirst.mockResolvedValue({ indicacionesArmado: texto });
 
-      const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
+      const res = await request(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ indicacionesArmado: texto });
@@ -131,7 +127,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
           indicacionesArmado: 'Indicaciones históricas de cliente inactivo',
         });
 
-        const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
+        const res = await request(app).get(`/clientes/${CLIENTE_ID}/indicaciones-armado`);
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
@@ -143,7 +139,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
 
   describe('PUT /clientes/:id/indicaciones-armado', () => {
     it('responde 400 VALIDATION_ERROR si el id no es un UUID', async () => {
-      const res = await clienteDePrueba(app)
+      const res = await request(app)
         .put('/clientes/no-uuid/indicaciones-armado')
         .send({ indicacionesArmado: 'Texto de prueba' });
 
@@ -154,9 +150,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
     });
 
     it('responde 400 VALIDATION_ERROR si falta la clave indicacionesArmado', async () => {
-      const res = await clienteDePrueba(app)
-        .put(`/clientes/${CLIENTE_ID}/indicaciones-armado`)
-        .send({});
+      const res = await request(app).put(`/clientes/${CLIENTE_ID}/indicaciones-armado`).send({});
 
       expect(res.status).toBe(400);
       expect(errorGenerico(res).code).toBe('VALIDATION_ERROR');
@@ -166,7 +160,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
 
     it('responde 400 VALIDATION_ERROR si supera los 1000 caracteres', async () => {
       const textoLargo = 'a'.repeat(1001);
-      const res = await clienteDePrueba(app)
+      const res = await request(app)
         .put(`/clientes/${CLIENTE_ID}/indicaciones-armado`)
         .send({ indicacionesArmado: textoLargo });
 
@@ -178,7 +172,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
     });
 
     it('responde 400 VALIDATION_ERROR si contiene caracteres de control prohibidos (ej. tabulación)', async () => {
-      const res = await clienteDePrueba(app)
+      const res = await request(app)
         .put(`/clientes/${CLIENTE_ID}/indicaciones-armado`)
         .send({ indicacionesArmado: 'Texto con\ttabulación' });
 
@@ -191,7 +185,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
     it('responde 404 NOT_FOUND si el cliente no existe o tiene baja lógica', async () => {
       transaccion.cliente.findFirst.mockResolvedValue(null);
 
-      const res = await clienteDePrueba(app)
+      const res = await request(app)
         .put(`/clientes/${CLIENTE_ID}/indicaciones-armado`)
         .send({ indicacionesArmado: 'Texto de prueba' });
 
@@ -208,7 +202,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
           estado,
         });
 
-        const res = await clienteDePrueba(app)
+        const res = await request(app)
           .put(`/clientes/${CLIENTE_ID}/indicaciones-armado`)
           .send({ indicacionesArmado: 'Nuevo texto' });
 
@@ -233,7 +227,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
         indicacionesArmado: textoEsperado,
       });
 
-      const res = await clienteDePrueba(app)
+      const res = await request(app)
         .put(`/clientes/${CLIENTE_ID}/indicaciones-armado`)
         .send({ indicacionesArmado: texto });
 
@@ -259,7 +253,7 @@ describe('Rutas de indicaciones de armado (HU2.4)', () => {
         indicacionesArmado: null,
       });
 
-      const res = await clienteDePrueba(app)
+      const res = await request(app)
         .put(`/clientes/${CLIENTE_ID}/indicaciones-armado`)
         .send({ indicacionesArmado: valor });
 

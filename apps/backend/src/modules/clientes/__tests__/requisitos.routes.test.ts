@@ -1,10 +1,9 @@
 import { Prisma } from '@prisma/client';
 import { problemaDeDias } from '@realpolitik/shared';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Igual que en contactos: la base está simulada y se recorre route → validate → controller →
 // service → mapper → errorHandler. El mock no puede demostrar el índice parcial ni el aislamiento
@@ -32,10 +31,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -112,13 +108,13 @@ const errorDesconocido = (message: string) =>
 
 const silenciarConsoleError = () => vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-const listar = (id = CLIENTE) => clienteDePrueba(app).get(`/clientes/${id}/requisitos`);
+const listar = (id = CLIENTE) => request(app).get(`/clientes/${id}/requisitos`);
 const crear = (body: object, id = CLIENTE) =>
-  clienteDePrueba(app).post(`/clientes/${id}/requisitos`).send(body);
+  request(app).post(`/clientes/${id}/requisitos`).send(body);
 const editar = (body: object, id = CLIENTE, requisitoId = REQUISITO) =>
-  clienteDePrueba(app).patch(`/clientes/${id}/requisitos/${requisitoId}`).send(body);
+  request(app).patch(`/clientes/${id}/requisitos/${requisitoId}`).send(body);
 const borrar = (id = CLIENTE, requisitoId = REQUISITO) =>
-  clienteDePrueba(app).delete(`/clientes/${id}/requisitos/${requisitoId}`);
+  request(app).delete(`/clientes/${id}/requisitos/${requisitoId}`);
 
 const detalles = (res: request.Response) =>
   (res.body as { error: { details: { campo: string; mensaje: string }[] } }).error.details;

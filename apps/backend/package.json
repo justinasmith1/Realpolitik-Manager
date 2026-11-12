@@ -22,9 +22,7 @@
     "db:migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
     "predb:seed": "pnpm run build:shared",
     "db:seed": "node --env-file=.env --import tsx prisma/seed.ts",
-    "db:studio": "prisma studio --schema=prisma/schema.prisma",
-    "preadmin:crear": "pnpm run build:deps",
-    "admin:crear": "node --import tsx src/scripts/crear-primer-administrador.ts"
+    "db:studio": "prisma studio --schema=prisma/schema.prisma"
   },
   "prisma": {
     "seed": "pnpm run db:seed"
@@ -33,7 +31,6 @@
     "@aws-sdk/client-s3": "^3.1160.0",
     "@prisma/client": "^5.22.0",
     "@realpolitik/shared": "workspace:^",
-    "argon2": "0.45.1",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "multer": "~2.5.0",

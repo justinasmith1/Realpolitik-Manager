@@ -3,9 +3,6 @@ import { createBrowserRouter, redirect, type RouteObject } from 'react-router';
 import { NotFoundPage } from '@/app/NotFoundPage';
 import type { AppRouteHandle } from '@/components/layout/AppHeader';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { RequiereSesion } from '@/modules/auth/components/RequiereSesion';
-import { CambiarContrasenaPage } from '@/modules/auth/pages/CambiarContrasenaPage';
-import { LoginPage } from '@/modules/auth/pages/LoginPage';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
 import { MatricesPage } from '@/modules/clientes/pages/MatricesPage';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
@@ -15,18 +12,9 @@ import { RendicionesPage } from '@/modules/rendiciones/pages/RendicionesPage';
 import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
 
 export const routes: RouteObject[] = [
-  // Pantallas de acceso, fuera del shell y de la guarda (HU4.1).
-  { path: '/login', element: <LoginPage /> },
-  { path: '/cambiar-contrasena', element: <CambiarContrasenaPage /> },
   {
     path: '/',
-    // Todo lo demás exige una sesión habilitada: sin ella no se monta el shell ni ninguna página
-    // (ni sus pedidos). También las rutas desconocidas: no se revela qué existe sin sesión.
-    element: (
-      <RequiereSesion>
-        <AppLayout />
-      </RequiereSesion>
-    ),
+    element: <AppLayout />,
     children: [
       // Al entrar al sistema se abre la pantalla Rendiciones del mes actual (HU3.2).
       { index: true, loader: () => redirect('/rendiciones') },

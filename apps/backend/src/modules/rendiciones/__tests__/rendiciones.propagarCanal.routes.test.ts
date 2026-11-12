@@ -1,9 +1,8 @@
 import { Prisma } from '@prisma/client';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // `POST /clientes/:id/requisitos/:requisitoId/propagar-canal` (contrato 4.5), con la base
 // simulada: se recorre route → validate → controller → service → errorHandler.
@@ -18,10 +17,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -31,7 +27,7 @@ const UNA = 'e1f2a3b4-c5d6-4789-8abc-def012345671';
 const OTRA = 'e1f2a3b4-c5d6-4789-8abc-def012345672';
 
 const propagar = (cuerpo: unknown, clienteId = CLIENTE, requisitoId = REQUISITO) =>
-  clienteDePrueba(app)
+  request(app)
     .post(`/clientes/${clienteId}/requisitos/${requisitoId}/propagar-canal`)
     .send(cuerpo as object);
 

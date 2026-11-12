@@ -1,9 +1,8 @@
 import { Prisma } from '@prisma/client';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
@@ -15,10 +14,7 @@ const { prismaMock } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -54,7 +50,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
 
   describe('GET /clientes/:id/observaciones', () => {
     it('responde 400 VALIDATION_ERROR si el id no es un UUID', async () => {
-      const res = await clienteDePrueba(app).get('/clientes/invalido/observaciones');
+      const res = await request(app).get('/clientes/invalido/observaciones');
 
       expect(res.status).toBe(400);
       expect(error(res).code).toBe('VALIDATION_ERROR');
@@ -65,7 +61,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     it('responde 404 NOT_FOUND si el cliente no existe o tiene baja lógica', async () => {
       prismaMock.cliente.findFirst.mockResolvedValue(null);
 
-      const res = await clienteDePrueba(app).get(RUTA);
+      const res = await request(app).get(RUTA);
 
       expect(res.status).toBe(404);
       expect(error(res).code).toBe('NOT_FOUND');
@@ -78,7 +74,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     it('responde 200 con null si el cliente no tiene observaciones', async () => {
       prismaMock.cliente.findFirst.mockResolvedValue({ observaciones: null });
 
-      const res = await clienteDePrueba(app).get(RUTA);
+      const res = await request(app).get(RUTA);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ observaciones: null });
@@ -88,7 +84,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
       const texto = 'Cambió el mail.\nPausó la pauta hasta marzo.';
       prismaMock.cliente.findFirst.mockResolvedValue({ observaciones: texto });
 
-      const res = await clienteDePrueba(app).get(RUTA);
+      const res = await request(app).get(RUTA);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ observaciones: texto });
@@ -98,7 +94,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
       const texto = 'Cambió\tel mail.\nAvisar a Compras.';
       prismaMock.cliente.findFirst.mockResolvedValue({ observaciones: texto });
 
-      const res = await clienteDePrueba(app).get(RUTA);
+      const res = await request(app).get(RUTA);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ observaciones: texto });
@@ -107,7 +103,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     it('lee solo el texto: el pedido no incluye otros campos del cliente', async () => {
       prismaMock.cliente.findFirst.mockResolvedValue({ observaciones: null });
 
-      await clienteDePrueba(app).get(RUTA);
+      await request(app).get(RUTA);
 
       expect(prismaMock.cliente.findFirst).toHaveBeenCalledTimes(1);
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
@@ -116,7 +112,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
 
   describe('PUT /clientes/:id/observaciones', () => {
     it('responde 400 VALIDATION_ERROR si el id no es un UUID', async () => {
-      const res = await clienteDePrueba(app).put('/clientes/invalido/observaciones').send({
+      const res = await request(app).put('/clientes/invalido/observaciones').send({
         observaciones: 'Texto',
       });
 
@@ -127,7 +123,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     });
 
     it('responde 400 VALIDATION_ERROR si falta la clave observaciones', async () => {
-      const res = await clienteDePrueba(app).put(RUTA).send({});
+      const res = await request(app).put(RUTA).send({});
 
       expect(res.status).toBe(400);
       expect(error(res).code).toBe('VALIDATION_ERROR');
@@ -136,7 +132,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     });
 
     it.each([5, true, ['a']])('responde 400 si no es texto ni null (%j)', async (valor) => {
-      const res = await clienteDePrueba(app).put(RUTA).send({ observaciones: valor });
+      const res = await request(app).put(RUTA).send({ observaciones: valor });
 
       expect(res.status).toBe(400);
       expect(campos(res)).toContain('observaciones');
@@ -144,7 +140,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     });
 
     it('responde 400 VALIDATION_ERROR si supera los 1000 caracteres', async () => {
-      const res = await clienteDePrueba(app)
+      const res = await request(app)
         .put(RUTA)
         .send({ observaciones: 'a'.repeat(1001) });
 
@@ -154,7 +150,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     });
 
     it('responde 400 VALIDATION_ERROR si tiene caracteres de control que no son saltos de línea', async () => {
-      const res = await clienteDePrueba(app).put(RUTA).send({ observaciones: 'Cambió\tel mail' });
+      const res = await request(app).put(RUTA).send({ observaciones: 'Cambió\tel mail' });
 
       expect(res.status).toBe(400);
       expect(campos(res)).toContain('observaciones');
@@ -164,7 +160,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     it('responde 404 NOT_FOUND si el cliente no existe o tiene baja lógica', async () => {
       prismaMock.cliente.update.mockRejectedValue(sinFila());
 
-      const res = await clienteDePrueba(app).put(RUTA).send({ observaciones: 'Texto de prueba' });
+      const res = await request(app).put(RUTA).send({ observaciones: 'Texto de prueba' });
 
       expect(res.status).toBe(404);
       expect(error(res).code).toBe('NOT_FOUND');
@@ -173,7 +169,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     it('un error inesperado de la base no se confunde con un 404', async () => {
       prismaMock.cliente.update.mockRejectedValue(new Error('conexión caída'));
 
-      const res = await clienteDePrueba(app).put(RUTA).send({ observaciones: 'Texto de prueba' });
+      const res = await request(app).put(RUTA).send({ observaciones: 'Texto de prueba' });
 
       expect(res.status).toBe(500);
     });
@@ -182,7 +178,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
       const textoEsperado = 'Cambió el mail.\nPausó la pauta.';
       prismaMock.cliente.update.mockResolvedValue({ observaciones: textoEsperado });
 
-      const res = await clienteDePrueba(app)
+      const res = await request(app)
         .put(RUTA)
         .send({ observaciones: `  ${textoEsperado}  ` });
 
@@ -204,7 +200,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
         // El servicio no lee el estado; la fila devuelta lo trae solo para dejar claro el caso.
         prismaMock.cliente.update.mockResolvedValue({ estado, observaciones: 'Pausó la pauta.' });
 
-        const res = await clienteDePrueba(app).put(RUTA).send({ observaciones: 'Pausó la pauta.' });
+        const res = await request(app).put(RUTA).send({ observaciones: 'Pausó la pauta.' });
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ observaciones: 'Pausó la pauta.' });
@@ -217,8 +213,8 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
         .mockResolvedValueOnce({ observaciones: 'Primera nota.' })
         .mockResolvedValueOnce({ observaciones: 'Segunda nota.' });
 
-      const primera = await clienteDePrueba(app).put(RUTA).send({ observaciones: 'Primera nota.' });
-      const segunda = await clienteDePrueba(app).put(RUTA).send({ observaciones: 'Segunda nota.' });
+      const primera = await request(app).put(RUTA).send({ observaciones: 'Primera nota.' });
+      const segunda = await request(app).put(RUTA).send({ observaciones: 'Segunda nota.' });
 
       expect(primera.body).toEqual({ observaciones: 'Primera nota.' });
       expect(segunda.body).toEqual({ observaciones: 'Segunda nota.' });
@@ -232,8 +228,8 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     it('guardar el mismo texto otra vez también escribe: no se compara con lo guardado', async () => {
       prismaMock.cliente.update.mockResolvedValue({ observaciones: 'Igual.' });
 
-      await clienteDePrueba(app).put(RUTA).send({ observaciones: 'Igual.' });
-      await clienteDePrueba(app).put(RUTA).send({ observaciones: 'Igual.' });
+      await request(app).put(RUTA).send({ observaciones: 'Igual.' });
+      await request(app).put(RUTA).send({ observaciones: 'Igual.' });
 
       expect(prismaMock.cliente.update).toHaveBeenCalledTimes(2);
     });
@@ -245,7 +241,7 @@ describe('Rutas de observaciones del cliente (HU2.10)', () => {
     ])('guarda null al enviar %s', async (_descripcion, valor) => {
       prismaMock.cliente.update.mockResolvedValue({ observaciones: null });
 
-      const res = await clienteDePrueba(app).put(RUTA).send({ observaciones: valor });
+      const res = await request(app).put(RUTA).send({ observaciones: valor });
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ observaciones: null });

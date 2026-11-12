@@ -238,9 +238,7 @@ TEST_DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik
   pnpm --filter @realpolitik/frontend test:api
 ```
 
-En el CI todo esto lo hace el workflow con una base efímera. Esos archivos (`EditarClienteSheet.api.test.tsx`, `MatrizPage.api.test.tsx` y `TiposDocumentoPage.api.test.tsx`) corren en jsdom contra ese backend: no son una prueba de navegador real.
-
-**Sesión (desde HU4.1).** La API exige sesión, así que cada archivo inicia una de verdad con `src/test/sesionDeApi.ts`: crea una cuenta `ADMINISTRATIVO` de prueba en la base de `TEST_DATABASE_URL` (script `usuarioDeApiDeTest.ts` del backend, con la misma guarda `*_audit` / `*_test`; la contraseña es al azar y viaja por stdin), entra por `POST /auth/login`, manda la cookie y un `Origin` permitido en cada pedido, y al terminar cierra la sesión y borra la cuenta. No hay ningún atajo de autenticación. El `Origin` es `http://localhost:5173` (el del CI): el backend de prueba tiene que tenerlo en `CORS_ORIGINS`, o se cambia con `TEST_API_ORIGIN`.
+En el CI todo esto lo hace el workflow con una base efímera. Esos archivos (`EditarClienteSheet.api.test.tsx` y `TiposDocumentoPage.api.test.tsx`) corren en jsdom contra ese backend: no son una prueba de navegador real.
 
 > **El seed no es para estas bases.** `db:seed` borra todos los clientes de la base a la que apunta, y su guarda solo exige un host local: no distingue la base de desarrollo de la de tests. Nunca lo corras con `DATABASE_URL` apuntando a `realpolitik_test`. Para probar el seed, creá otra base descartable (p. ej. `realpolitik_seed_audit`), migrala y corré el seed con `DATABASE_URL` apuntando explícitamente a ella.
 

@@ -55,35 +55,5 @@ module.exports = {
     'no-console': ['warn', { allow: ['warn', 'error'] }],
     eqeqeq: ['error', 'always'],
   },
-  overrides: [
-    {
-      // Denegado por defecto (ADR-0006 §5): las rutas se declaran con crearRouter() (negocio, con
-      // autorizar(PERMISO) obligatorio) o crearRouterPublico() (/health y /auth). Un Router suelto
-      // de express podría montar rutas sin permiso.
-      files: ['apps/backend/src/**/*.ts'],
-      excludedFiles: ['apps/backend/src/modules/auth/autorizacion.ts'],
-      rules: {
-        'no-restricted-imports': [
-          'error',
-          {
-            paths: [
-              {
-                name: 'express',
-                importNames: ['Router'],
-                message: 'Usá crearRouter() o crearRouterPublico() de modules/auth/autorizacion.',
-              },
-            ],
-          },
-        ],
-        'no-restricted-syntax': [
-          'error',
-          {
-            selector: "MemberExpression[object.name='express'][property.name='Router']",
-            message: 'Usá crearRouter() o crearRouterPublico() de modules/auth/autorizacion.',
-          },
-        ],
-      },
-    },
-  ],
   ignorePatterns: ['dist/', 'node_modules/', '*.js', '*.cjs', '*.mjs', 'coverage/'],
 };

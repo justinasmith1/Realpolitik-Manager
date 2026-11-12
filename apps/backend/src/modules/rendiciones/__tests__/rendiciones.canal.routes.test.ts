@@ -1,9 +1,8 @@
 import { Prisma } from '@prisma/client';
-import type request from 'supertest';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // `PATCH /rendiciones/:id/items/:itemId/canal` (contrato 4.5), con la base simulada: se recorre
 // route → validate → controller → service → mapper → errorHandler.
@@ -23,10 +22,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -67,7 +63,7 @@ const rendicionCon = (canalEntrega: string) => ({
 });
 
 const corregir = (cuerpo: unknown, rendicionId = RENDICION, itemId = ITEM) =>
-  clienteDePrueba(app)
+  request(app)
     .patch(`/rendiciones/${rendicionId}/items/${itemId}/canal`)
     .send(cuerpo as object);
 

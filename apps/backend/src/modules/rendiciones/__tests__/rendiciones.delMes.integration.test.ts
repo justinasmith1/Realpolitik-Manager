@@ -16,9 +16,9 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { normalizarNombreTipoDocumento as normalizar } from '@realpolitik/shared';
 import type { Express } from 'express';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 import type * as Servicio from '../rendiciones.service';
 
@@ -35,13 +35,9 @@ const MARCA_NORMALIZADA = normalizar(MARCA);
 const MARZO = { anio: 2021, mes: 3 };
 const ABRIL = { anio: 2021, mes: 4 };
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   ({ registrarCambioDeEstado } = await import('../rendiciones.service'));
   const { createApp } = await import('../../../app');
@@ -59,7 +55,6 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
-    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -102,8 +97,7 @@ async function cliente(denominacion: string) {
 }
 
 async function abrir(clienteId: string, periodo: { anio: number; mes: number }) {
-  const res = await sesiones
-    .cliente(app)
+  const res = await request(app)
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...periodo, numeroFactura: facturaUnica() });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -134,9 +128,7 @@ interface FilaJson {
 
 /** Las filas del período, solo de los clientes de esta suite. */
 async function filasDe(periodo: { anio: number; mes: number }) {
-  const res = await sesiones
-    .cliente(app)
-    .get(`/rendiciones?anio=${periodo.anio}&mes=${periodo.mes}`);
+  const res = await request(app).get(`/rendiciones?anio=${periodo.anio}&mes=${periodo.mes}`);
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return (res.body as FilaJson[]).filter((fila) => clientesCreados.includes(fila.clienteId));
 }
@@ -148,8 +140,7 @@ describe.skipIf(url === undefined)('Pantalla Rendiciones (HU3.2) contra PostgreS
     const segunda = await abrir(muni.id, MARZO);
     const anulada = await abrir(muni.id, MARZO);
     const deAbril = await abrir(muni.id, ABRIL);
-    const anulacion = await sesiones
-      .cliente(app)
+    const anulacion = await request(app)
       .patch(`/rendiciones/${anulada}/vigencia`)
       .send({ vigencia: 'ANULADA' });
     expect(anulacion.status).toBe(200);
@@ -216,7 +207,7 @@ describe.skipIf(url === undefined)('Pantalla Rendiciones (HU3.2) contra PostgreS
   });
 
   it('sin el período, o con uno inválido, es 400', async () => {
-    expect((await sesiones.cliente(app).get('/rendiciones')).status).toBe(400);
-    expect((await sesiones.cliente(app).get('/rendiciones?anio=2021&mes=13')).status).toBe(400);
+    expect((await request(app).get('/rendiciones')).status).toBe(400);
+    expect((await request(app).get('/rendiciones?anio=2021&mes=13')).status).toBe(400);
   });
 });

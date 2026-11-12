@@ -26,11 +26,11 @@ import {
   type CandidatoAplicacion,
 } from '@realpolitik/shared';
 import type { Express } from 'express';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type * as ModuloAlmacenamiento from '../../../lib/almacenamiento/almacenamiento';
 import type { AlmacenamientoEnMemoria as Memoria } from '../../../lib/almacenamiento/memoria';
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 
 import { PDF } from './archivosDePrueba';
@@ -73,14 +73,10 @@ const MES_ANTERIOR =
 const cuitDePrueba = () => `36-${String(randomInt(1e8)).padStart(8, '0')}-${randomInt(10)}`;
 const facturaDePrueba = () => `B 00036-${String(randomInt(1e8)).padStart(8, '0')}`;
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes, y pisa la de desarrollo.
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   const { AlmacenamientoEnMemoria } = await import('../../../lib/almacenamiento/memoria');
@@ -109,7 +105,6 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
-    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -142,8 +137,7 @@ async function crearCliente(denominacion: string) {
 
 /** Abre una rendición por la API: el checklist lo genera el backend (el snapshot real). */
 async function abrir(clienteId: string, periodo = PERIODO) {
-  const res = await sesiones
-    .cliente(app)
+  const res = await request(app)
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...periodo, numeroFactura: facturaDePrueba() });
   expect(res.status).toBe(201);
@@ -155,8 +149,7 @@ async function abrir(clienteId: string, periodo = PERIODO) {
 }
 
 function cargar(tipoDocumentoId: string, nombre = 'constancia.pdf', contenido: Buffer = PDF) {
-  return sesiones
-    .cliente(app)
+  return request(app)
     .post('/documentos')
     .field({ tipoDocumentoId, anio: String(PERIODO.anio), mes: String(PERIODO.mes) })
     .attach('archivo', contenido, { filename: nombre, contentType: 'application/pdf' });
@@ -169,7 +162,7 @@ async function cargarOk(tipoDocumentoId: string, nombre?: string, contenido?: Bu
 }
 
 async function candidatos(documentoId: string): Promise<CandidatoAplicacion[]> {
-  const res = await sesiones.cliente(app).get(`/documentos/${documentoId}/candidatos`);
+  const res = await request(app).get(`/documentos/${documentoId}/candidatos`);
   expect(res.status).toBe(200);
   return CandidatoAplicacionSchema.array().parse(res.body);
 }
@@ -246,12 +239,8 @@ describe.skipIf(url === undefined)('documentos contra PostgreSQL', () => {
     const rA4 = await abrir(clienteA.id, MES_ANTERIOR);
     const rB1 = await abrir(clienteB.id);
     expect(
-      (
-        await sesiones
-          .cliente(app)
-          .patch(`/rendiciones/${rA3.id}/vigencia`)
-          .send({ vigencia: 'ANULADA' })
-      ).status,
+      (await request(app).patch(`/rendiciones/${rA3.id}/vigencia`).send({ vigencia: 'ANULADA' }))
+        .status,
     ).toBe(200);
 
     // Cambios DESPUÉS de abrir: no tocan el snapshot.
@@ -291,8 +280,7 @@ describe.skipIf(url === undefined)('documentos contra PostgreSQL', () => {
         tamanioBytes: PDF.length,
       });
       expect(fila.sha256).toMatch(/^[0-9a-f]{64}$/);
-      const res = await sesiones
-        .cliente(app)
+      const res = await request(app)
         .get(`/documentos/${documento.id}/archivo`)
         .buffer(true)
         .parse((respuesta, callback) => {
@@ -328,8 +316,7 @@ describe.skipIf(url === undefined)('documentos contra PostgreSQL', () => {
       const otro = new AlmacenamientoEnMemoria();
       forzar.clave = existente.claveAlmacenamiento;
 
-      const res = await sesiones
-        .cliente(crearApp(otro))
+      const res = await request(crearApp(otro))
         .post('/documentos')
         .field({
           tipoDocumentoId: escenario.factura.id,
@@ -452,7 +439,7 @@ describe.skipIf(url === undefined)('documentos contra PostgreSQL', () => {
       });
 
       const detalle = DocumentoConAplicacionesSchema.parse(
-        (await sesiones.cliente(app).get(`/documentos/${original.id}`)).body,
+        (await request(app).get(`/documentos/${original.id}`)).body,
       );
       expect(
         detalle.aplicaciones.map((a) => [
@@ -467,11 +454,9 @@ describe.skipIf(url === undefined)('documentos contra PostgreSQL', () => {
       ]);
       expect(detalle.aplicaciones[0]?.ubicacion.cliente.id).toBe(escenario.clienteA.id);
 
-      const res = await sesiones
-        .cliente(app)
-        .get(
-          `/documentos?anio=${PERIODO.anio}&mes=${PERIODO.mes}&tipoDocumentoId=${escenario.print.id}`,
-        );
+      const res = await request(app).get(
+        `/documentos?anio=${PERIODO.anio}&mes=${PERIODO.mes}&tipoDocumentoId=${escenario.print.id}`,
+      );
       expect(res.status).toBe(200);
       const porId = new Map(
         DocumentoResumenSchema.array()

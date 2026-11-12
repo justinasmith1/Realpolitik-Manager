@@ -1,9 +1,8 @@
 import { Prisma } from '@prisma/client';
-import type request from 'supertest';
+import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 import { cambiarEstadoDeRendicion } from '../rendiciones.service';
 
 // Marcar una rendición como Completa y volverla a En curso (HU3.6, ADR-0005), con la base
@@ -25,10 +24,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -88,7 +84,7 @@ const lecturaDe = (
 });
 
 const pedir = (estado: unknown) =>
-  clienteDePrueba(app).patch(`/rendiciones/${RENDICION}/estado`).send({ estado });
+  request(app).patch(`/rendiciones/${RENDICION}/estado`).send({ estado });
 
 const detalles = (res: request.Response) =>
   (res.body as { error: { details: unknown } }).error.details;
@@ -231,7 +227,7 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
   it.each([{ estado: 'ENVIADA' }, { estado: 'APROBADA' }, {}])(
     '400 VALIDATION_ERROR con el cuerpo %j',
     async (cuerpo) => {
-      const res = await clienteDePrueba(app).patch(`/rendiciones/${RENDICION}/estado`).send(cuerpo);
+      const res = await request(app).patch(`/rendiciones/${RENDICION}/estado`).send(cuerpo);
 
       expect(res.status).toBe(400);
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
@@ -271,9 +267,7 @@ describe('POST /rendiciones/:id/requisitos/:requisitoId — auto-revert (HU3.6)'
   it('sobre una COMPLETA vuelve a EN_CURSO, con el motivo, en la misma transacción', async () => {
     transaccion.rendicion.findFirst.mockResolvedValue(rendicionDe('COMPLETA'));
 
-    const res = await clienteDePrueba(app).post(
-      `/rendiciones/${RENDICION}/requisitos/${REQUISITO}`,
-    );
+    const res = await request(app).post(`/rendiciones/${RENDICION}/requisitos/${REQUISITO}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ estado: 'EN_CURSO' });
@@ -297,9 +291,7 @@ describe('POST /rendiciones/:id/requisitos/:requisitoId — auto-revert (HU3.6)'
   it('sobre una EN_CURSO no cambia el estado ni agrega historial', async () => {
     transaccion.rendicion.findFirst.mockResolvedValue(rendicionDe('EN_CURSO'));
 
-    const res = await clienteDePrueba(app).post(
-      `/rendiciones/${RENDICION}/requisitos/${REQUISITO}`,
-    );
+    const res = await request(app).post(`/rendiciones/${RENDICION}/requisitos/${REQUISITO}`);
 
     expect(res.status).toBe(200);
     expect(transaccion.rendicion.update).not.toHaveBeenCalled();

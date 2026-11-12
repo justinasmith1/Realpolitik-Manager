@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 import { registrarCambioDeEstado } from '../rendiciones.service';
 
 // Estado de la rendición (HU3.1, ADR-0005), con la base simulada: nace EN_CURSO con su entrada
@@ -30,10 +30,7 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', async () => {
-  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
-  return { prisma: conSesionesSimuladas(prismaMock) };
-});
+vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -87,7 +84,7 @@ const MATRIZ = [
   },
 ];
 
-const listar = (query = '') => clienteDePrueba(app).get(`/clientes/${CLIENTE}/rendiciones${query}`);
+const listar = (query = '') => request(app).get(`/clientes/${CLIENTE}/rendiciones${query}`);
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -116,7 +113,7 @@ afterEach(() => {
 
 describe('POST /clientes/:id/rendiciones: nace en curso', () => {
   it('crea la rendición EN_CURSO y su entrada inicial de historial en la misma escritura', async () => {
-    const res = await clienteDePrueba(app)
+    const res = await request(app)
       .post(`/clientes/${CLIENTE}/rendiciones`)
       .send({ anio: 2026, mes: 10, numeroFactura: 'B 00002-00001482' });
 
@@ -195,7 +192,7 @@ describe('GET /rendiciones/:id: estado e historial', () => {
       }),
     );
 
-    const res = await clienteDePrueba(app).get(`/rendiciones/${RENDICION}`);
+    const res = await request(app).get(`/rendiciones/${RENDICION}`);
 
     expect(res.status).toBe(200);
     expect(prismaMock.rendicion.findFirst).toHaveBeenCalledWith(
@@ -224,7 +221,7 @@ describe('GET /rendiciones/:id: estado e historial', () => {
       filaRendicion({ estado: 'ENVIADA', isDeleted: true, deletedAt: DESPUES }),
     );
 
-    const res = await clienteDePrueba(app).get(`/rendiciones/${RENDICION}`);
+    const res = await request(app).get(`/rendiciones/${RENDICION}`);
 
     expect(res.body).toMatchObject({ estado: 'ENVIADA', vigencia: 'ANULADA' });
   });

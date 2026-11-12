@@ -24,9 +24,9 @@ import {
   type Periodo,
 } from '@realpolitik/shared';
 import type { Express } from 'express';
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
 import type * as Servicio from '../rendiciones.service';
 
@@ -49,13 +49,9 @@ const DOS_ATRAS = mesesAtras(2);
 const TRES_ATRAS = mesesAtras(3);
 const MUY_VIEJO = { anio: 2021, mes: 6 };
 
-/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
-const sesiones = sesionesDePrueba();
-
 beforeAll(async () => {
   if (url === undefined) return;
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   ({ registrarCambioDeEstado } = await import('../rendiciones.service'));
   const { createApp } = await import('../../../app');
@@ -73,7 +69,6 @@ afterAll(async () => {
       where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
     });
   } finally {
-    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -116,8 +111,7 @@ async function cliente(denominacion: string) {
 }
 
 async function abrir(clienteId: string, periodo: Periodo) {
-  const res = await sesiones
-    .cliente(app)
+  const res = await request(app)
     .post(`/clientes/${clienteId}/rendiciones`)
     .send({ ...periodo, numeroFactura: facturaUnica() });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -137,13 +131,13 @@ const deEstaSuite = (filas: FilaJson[]) =>
   filas.filter((fila) => clientesCreados.includes(fila.clienteId));
 
 async function atrasadas(): Promise<FilaJson[]> {
-  const res = await sesiones.cliente(app).get('/rendiciones/atrasadas');
+  const res = await request(app).get('/rendiciones/atrasadas');
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return deEstaSuite(res.body as FilaJson[]);
 }
 
 async function delMes({ anio, mes }: Periodo): Promise<FilaJson[]> {
-  const res = await sesiones.cliente(app).get(`/rendiciones?anio=${anio}&mes=${mes}`);
+  const res = await request(app).get(`/rendiciones?anio=${anio}&mes=${mes}`);
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return deEstaSuite(res.body as FilaJson[]);
 }
@@ -172,8 +166,7 @@ describe.skipIf(url === undefined)('Rendiciones atrasadas (HU3.4, integración)'
     ids.dosAtrasEnviada = await abrir(a.id, DOS_ATRAS);
     await registrarCambioDeEstado(ids.dosAtrasEnviada, 'ENVIADA');
     ids.dosAtrasAnulada = await abrir(b.id, DOS_ATRAS);
-    const anulada = await sesiones
-      .cliente(app)
+    const anulada = await request(app)
       .patch(`/rendiciones/${ids.dosAtrasAnulada}/vigencia`)
       .send({ vigencia: 'ANULADA' });
     expect(anulada.status).toBe(200);
