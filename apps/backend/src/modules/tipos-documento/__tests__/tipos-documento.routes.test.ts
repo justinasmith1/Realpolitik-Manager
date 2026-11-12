@@ -1,9 +1,10 @@
 import { Prisma, type TipoDocumento as TipoDocumentoRow } from '@prisma/client';
 import { normalizarNombreTipoDocumento, TipoDocumentoSchema } from '@realpolitik/shared';
-import request from 'supertest';
+import type request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
+import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Igual que en clientes: solo la base es simulada y se recorre la cadena real
 // route → validate → controller → service → mapper → errorHandler. Lo que solo PostgreSQL puede
@@ -36,7 +37,10 @@ const prismaMock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../../../lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas(prismaMock) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -119,12 +123,12 @@ const camposDe = (cuerpo: unknown) => Object.keys(cuerpo as object).sort();
 /** Silencia el log del errorHandler en los casos 500. */
 const silenciarConsoleError = () => vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-const listar = (query = '') => request(app).get(`/tipos-documento${query}`);
-const crear = (body: object) => request(app).post('/tipos-documento').send(body);
+const listar = (query = '') => clienteDePrueba(app).get(`/tipos-documento${query}`);
+const crear = (body: object) => clienteDePrueba(app).post('/tipos-documento').send(body);
 const editar = (id: string, body: object) =>
-  request(app).patch(`/tipos-documento/${id}`).send(body);
+  clienteDePrueba(app).patch(`/tipos-documento/${id}`).send(body);
 const cambiarEstado = (id: string, body: object) =>
-  request(app).patch(`/tipos-documento/${id}/estado`).send(body);
+  clienteDePrueba(app).patch(`/tipos-documento/${id}/estado`).send(body);
 
 afterEach(() => {
   vi.resetAllMocks();
@@ -433,7 +437,7 @@ describe('POST /tipos-documento', () => {
     });
 
     it('responde 400 con campo "body" si el JSON está mal formado', async () => {
-      const res = await request(app)
+      const res = await clienteDePrueba(app)
         .post('/tipos-documento')
         .set('Content-Type', 'application/json')
         .send('{"nombre": ');
@@ -787,7 +791,7 @@ describe('PATCH /tipos-documento/:id/estado', () => {
 
 describe('rutas que no existen', () => {
   it('DELETE /tipos-documento/:id no existe: responde 404', async () => {
-    const res = await request(app).delete(`/tipos-documento/${ID}`);
+    const res = await clienteDePrueba(app).delete(`/tipos-documento/${ID}`);
 
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: { code: 'NOT_FOUND' } });

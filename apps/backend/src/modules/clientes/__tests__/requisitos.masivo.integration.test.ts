@@ -13,8 +13,9 @@ import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { normalizarNombreTipoDocumento as normalizar } from '@realpolitik/shared';
 import type { Express } from 'express';
-import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 
 import { urlDeBaseDescartable } from './baseDescartable';
 import { exigirBaseDeEstaSuite } from './requisitosIntegrationEntorno';
@@ -31,10 +32,14 @@ const MARCA_NORMALIZADA = normalizar(MARCA);
 
 const suite = url === undefined ? describe.skip : describe;
 
+/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
+const sesiones = sesionesDePrueba();
+
 beforeAll(async () => {
   if (url === undefined) return;
   exigirBaseDeEstaSuite(url);
   process.env.DATABASE_URL = url;
+  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const [info] = await prisma.$queryRaw<{ db: string }[]>`SELECT current_database() AS db`;
   if (info?.db !== 'realpolitik_test') {
@@ -58,6 +63,7 @@ afterAll(async () => {
     ).toBe(0);
     expect(await prisma.cliente.count({ where: { id: { in: clientesCreados } } })).toBe(0);
   } finally {
+    await sesiones.limpiar();
     await prisma.$disconnect();
   }
 });
@@ -67,7 +73,7 @@ interface ResultadoJson {
   omitidos: { clienteId: string; motivo: string }[];
 }
 
-const masivo = (body: object) => request(app).post('/requisitos/masivo').send(body);
+const masivo = (body: object) => sesiones.cliente(app).post('/requisitos/masivo').send(body);
 
 /** CUIT único; la base no valida el dígito verificador. */
 const cuitDePrueba = () => `37-${String(randomInt(1e8)).padStart(8, '0')}-${randomInt(10)}`;
@@ -89,7 +95,8 @@ async function crearCliente(estado: 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO' = 'ACTI
 }
 
 async function crearTipo(nombre: string): Promise<string> {
-  const res = await request(app)
+  const res = await sesiones
+    .cliente(app)
     .post('/tipos-documento')
     .send({ nombre: `${MARCA} ${nombre}` });
   expect(res.status, JSON.stringify(res.body)).toBe(201);

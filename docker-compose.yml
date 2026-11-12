@@ -100,8 +100,12 @@ services:
     working_dir: /app/apps/frontend
     environment:
       <<: *node-env
-      # El navegador (en el host) llama a la API publicada en localhost:3000.
-      VITE_API_URL: http://localhost:3000
+      # Por defecto /api: el navegador pide a su propio origen y el proxy de Vite reenvía al backend
+      # por la red de compose (ADR-0006, mismo origen que en producción). Es lo que necesita la cookie
+      # de sesión para iniciar sesión. Con VITE_API_URL=http://localhost:3000 en el .env de la raíz
+      # se llama directo al backend, pero así no se puede iniciar sesión.
+      VITE_API_URL: ${VITE_API_URL:-/api}
+      API_PROXY_TARGET: http://backend:3000
     ports:
       - "5173:5173"
     command: pnpm exec vite --host 0.0.0.0 --port 5173

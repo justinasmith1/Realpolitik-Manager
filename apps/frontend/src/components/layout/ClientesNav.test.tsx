@@ -4,6 +4,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 
 import { AppProviders } from '@/app/providers';
 import { routes } from '@/app/router';
+import { conSesionDePrueba } from '@/modules/auth/test/sesionDePrueba';
 
 // Las rutas reales de la app, dentro de sus providers (como main.tsx). Solo `fetch` es simulado:
 // cualquier listado responde vacío, que acá no es el tema.
@@ -40,6 +41,7 @@ function simularMobile() {
 }
 
 beforeEach(() => {
+  conSesionDePrueba();
   vi.stubEnv('VITE_API_URL', 'https://api.example');
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockImplementation(() =>

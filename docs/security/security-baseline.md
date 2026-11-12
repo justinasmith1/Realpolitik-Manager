@@ -42,8 +42,8 @@ Se mantienen abiertas y no se resuelven en este documento:
 - período y política de retención documental (decisión de negocio a validar con el cliente);
 - estrategia de backups;
 - estrategia concreta de auditoría;
-- mecanismo de autenticación;
+- mecanismo de autenticación: propuesta en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) (`Proposed`). Los roles (`ADMINISTRADOR`, `ADMINISTRATIVO`, `CONSULTA`) y su alcance están aprobados en la [matriz de permisos](matriz-permisos.md). Hasta que la autenticación esté implementada y verificada, no se cargan datos ni documentos reales en producción;
 - almacenamiento de archivos;
 - proveedores de infraestructura;
 - configuración en GitHub de secret scanning, push protection y reglas de protección de ramas: verificar y dejar constancia cuando se confirmen;
-- hardening HTTP del backend: headers de seguridad (Helmet o equivalente, con CSP definida junto al frontend) y rate limiting. Hoy la API no tiene autenticación, `x-powered-by` está deshabilitado, CORS es una lista explícita y el cuerpo JSON está limitado a 100 KB (`413 PAYLOAD_TOO_LARGE`); se suma cuando haya autenticación y un entorno desplegado que lo justifique.
+- hardening HTTP del backend: headers de seguridad (Helmet o equivalente, con CSP definida junto al frontend) y rate limiting. Hoy la API no tiene autenticación, `x-powered-by` está deshabilitado, CORS es una lista explícita y el cuerpo JSON está limitado a 100 KB (`413 PAYLOAD_TOO_LARGE`); se suma cuando haya autenticación y un entorno desplegado que lo justifique. Las cabeceras, la limitación de intentos del login y la protección CSRF están propuestas en ADR-0006 y entran con HU4.1.

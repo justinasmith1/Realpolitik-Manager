@@ -19,5 +19,6 @@ Si un documento contradice al código, el código manda y el documento debe corr
 - [Convenciones](development/conventions.md): Git, Pull Requests y criterios de desarrollo.
 - [Despliegue](deployment.md): CI, configuración de Vercel y Railway, variables y migraciones.
 - [Baseline de seguridad](security/security-baseline.md): reglas mínimas y decisiones pendientes.
+- [Matriz de permisos](security/matriz-permisos.md): qué puede hacer cada rol en cada ruta (roles aprobados; permisos propuestos en ADR-0006).
 - [Decisiones de arquitectura (ADR)](adr/README.md): qué son, cuándo escribirlas e índice.
 - [Contrato de API](development/api-contract.md): endpoints, schemas y respuestas.

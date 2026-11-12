@@ -29,6 +29,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { crearQueryClient } from '@/app/providers';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
 import { elegirOpcion } from '@/test/select';
+import { sesionDeApi } from '@/test/sesionDeApi';
 
 import { exigirBaseDeEstaSuite } from '../../../../../backend/src/modules/clientes/__tests__/requisitosIntegrationEntorno';
 
@@ -37,7 +38,9 @@ vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera')
 const API = process.env.TEST_API_URL ?? (import.meta.env.TEST_API_URL as string | undefined);
 const MARCA = `HU22${Date.now().toString(36)}`.toUpperCase();
 const BACKEND = resolve(process.cwd(), '../backend');
-const fetchReal = globalThis.fetch.bind(globalThis);
+// Desde HU4.1 la API exige sesión: una cuenta de prueba inicia sesión de verdad (ver sesionDeApi).
+const sesion = sesionDeApi(API);
+const fetchReal = sesion.fetch;
 const ESPERA = { timeout: 15_000 };
 
 const clientesCreados: string[] = [];
@@ -164,8 +167,13 @@ async function panel(nombre: string) {
 describe.skipIf(API === undefined)('MatrizPage contra la API real', () => {
   const espia = vi.fn<typeof fetch>((...args) => fetchReal(...args));
 
-  beforeAll(() => {
+  beforeAll(async () => {
     exigirDestino();
+    await sesion.iniciar();
+  });
+
+  afterAll(async () => {
+    await sesion.cerrar();
   });
 
   afterAll(() => {

@@ -25,6 +25,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 
 import { crearQueryClient } from '@/app/providers';
 import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
+import { sesionDeApi } from '@/test/sesionDeApi';
 
 // La pausa de 500 ms se prueba en los tests de éxito. Acá el tema es la ida y vuelta real.
 vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
@@ -41,7 +42,9 @@ const DESCRIPCION_EDITADA = 'Nota editada por la prueba';
 const idsCreados: string[] = [];
 
 const BACKEND = resolve(process.cwd(), '../backend');
-const fetchReal = globalThis.fetch.bind(globalThis);
+// Desde HU4.1 la API exige sesión: una cuenta de prueba inicia sesión de verdad (ver sesionDeApi).
+const sesion = sesionDeApi(API);
+const fetchReal = sesion.fetch;
 
 function borrarTipos(ids: readonly string[]): number {
   const salida = execFileSync(
@@ -149,12 +152,18 @@ describe.skipIf(API === undefined)('TiposDocumentoPage contra la API real', () =
 
   beforeAll(async () => {
     afirmarDestinoDescartable();
+    await sesion.iniciar();
     const crudo = (await api('/tipos-documento', {
       method: 'POST',
       body: JSON.stringify({ nombre: NOMBRE_EXISTENTE, descripcion: null }),
     })) as { id: string };
     registrar(crudo.id);
     TipoDocumentoSchema.parse(crudo);
+  });
+
+  // Registrado antes: Vitest corre los `afterAll` en orden inverso, y la limpieza usa la sesión.
+  afterAll(async () => {
+    await sesion.cerrar();
   });
 
   afterAll(async () => {

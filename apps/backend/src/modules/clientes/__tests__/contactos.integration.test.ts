@@ -13,10 +13,10 @@
 
 import type { PrismaClient } from '@prisma/client';
 import type { Express } from 'express';
-import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppError } from '../../../errors/app-error';
+import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import type * as ContactosService from '../contactos.service';
 
 import { urlDeBaseDescartable } from './baseDescartable';
@@ -28,10 +28,14 @@ let prisma: PrismaClient;
 let app: Express;
 const clientesCreados: string[] = [];
 
+/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
+const sesiones = sesionesDePrueba();
+
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
   process.env.DATABASE_URL = url;
+  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   service = await import('../contactos.service');
   const { createApp } = await import('../../../app');
@@ -42,6 +46,7 @@ afterAll(async () => {
   if (url === undefined) return;
   // Los contactos caen en cascada con su cliente.
   await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+  await sesiones.limpiar();
   await prisma.$disconnect();
 });
 
@@ -186,7 +191,8 @@ describe.skipIf(url === undefined)('contactos contra PostgreSQL real', () => {
     expect(antes.filter((fila) => fila.isDeleted)).toHaveLength(1);
     await new Promise((resolver) => setTimeout(resolver, 20));
 
-    const res = await request(app)
+    const res = await sesiones
+      .cliente(app)
       .put(`/clientes/${cliente}/contactos`)
       .send({
         contactos: [

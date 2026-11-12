@@ -14,8 +14,10 @@
 import type { PrismaClient } from '@prisma/client';
 import { validateCuit } from '@realpolitik/shared';
 import type { Express } from 'express';
-import request from 'supertest';
+import type request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 
 import { urlDeBaseDescartable } from './baseDescartable';
 
@@ -27,10 +29,14 @@ const clientesCreados: string[] = [];
 
 const MARCA = `TESTE${Date.now().toString(36).toUpperCase()}`;
 
+/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
+const sesiones = sesionesDePrueba();
+
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
   process.env.DATABASE_URL = url;
+  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -39,6 +45,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (url === undefined) return;
   await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+  await sesiones.limpiar();
   await prisma.$disconnect();
 });
 
@@ -56,7 +63,8 @@ function cuitUnico(): string {
 }
 
 async function crearCliente(extra: Record<string, unknown> = {}) {
-  const respuesta = await request(app)
+  const respuesta = await sesiones
+    .cliente(app)
     .post('/clientes')
     .send({
       razonSocial: `${MARCA} Cliente de prueba`,
@@ -80,8 +88,9 @@ async function crearClienteOk(extra: Record<string, unknown> = {}): Promise<stri
 }
 
 const idDe = (res: request.Response) => (res.body as { id: string }).id;
-const editar = (id: string, body: object) => request(app).patch(`/clientes/${id}`).send(body);
-const leer = (id: string) => request(app).get(`/clientes/${id}`);
+const editar = (id: string, body: object) =>
+  sesiones.cliente(app).patch(`/clientes/${id}`).send(body);
+const leer = (id: string) => sesiones.cliente(app).get(`/clientes/${id}`);
 
 describe.skipIf(url === undefined)('Emisor del cliente contra PostgreSQL real', () => {
   it('un cliente sin emisor se guarda igual: no lo trae y la columna queda en NULL', async () => {
@@ -136,7 +145,7 @@ describe.skipIf(url === undefined)('Emisor del cliente contra PostgreSQL real', 
   it('el listado trae el emisor de cada cliente', async () => {
     const id = await crearClienteOk({ emisor: 'PERSONA_FISICA' });
 
-    const res = await request(app).get('/clientes');
+    const res = await sesiones.cliente(app).get('/clientes');
 
     expect(res.status).toBe(200);
     const propio = (res.body as { id: string; emisor?: string }[]).find((c) => c.id === id);

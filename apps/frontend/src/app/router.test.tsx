@@ -1,12 +1,17 @@
 import { act, render, screen, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+beforeEach(() => {
+  conSesionDePrueba();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 import { AppProviders } from '@/app/providers';
 import { routes } from '@/app/router';
+import { conSesionDePrueba } from '@/modules/auth/test/sesionDePrueba';
 
 // Igual que main.tsx: el router dentro de los providers de la app.
 function renderRoute(path: string) {

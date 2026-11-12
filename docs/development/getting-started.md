@@ -90,7 +90,7 @@ El servidor de desarrollo usa el puerto por defecto de Vite (`http://localhost:5
 
 ### Variables de entorno
 
-El frontend lee la URL de la API desde `VITE_API_URL`:
+El frontend lee la base de la API desde `VITE_API_URL`:
 
 1. Copiá `apps/frontend/.env.example` como `apps/frontend/.env.local` (Git ignora ese archivo).
 2. Completá el valor en `.env.local`:
@@ -99,11 +99,20 @@ El frontend lee la URL de la API desde `VITE_API_URL`:
    VITE_API_URL=
    ```
 
+Hay dos formas:
+
+- **`VITE_API_URL=/api` (mismo origen, como producción con el proxy activado).** El navegador pide `/api/...` a `http://localhost:5173` y el servidor de desarrollo de Vite lo reenvía al backend sin el prefijo. **Es la forma obligatoria desde HU4.1:** la app exige iniciar sesión y la cookie de sesión solo viaja por el mismo origen ([ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md)).
+  - El destino es `API_PROXY_TARGET`, una variable del proceso de Vite (no `VITE_*`: no llega al bundle). Por defecto, `http://localhost:3000`.
+  - Solo acepta backends locales por http (`localhost`, `127.0.0.1`, `[::1]` o un nombre sin puntos, como el servicio `backend` de Docker Compose). Nunca apunta a producción.
+  - Con `docker compose` es el valor por defecto: no hace falta definir nada. Compose ya define `API_PROXY_TARGET=http://backend:3000` para el frontend.
+  - **Git Bash:** no lo pases como variable en la línea de comandos (`VITE_API_URL=/api pnpm dev`). Git Bash convierte los valores que empiezan con `/` en rutas de Windows (`C:/Program Files/Git/api`) y el frontend responde con un error de configuración. Ponelo en `apps/frontend/.env.local` (o, con compose, en el `.env` de la raíz). Si igual necesitás pasarlo por la línea de comandos, excluilo de la conversión: `MSYS2_ENV_CONV_EXCL='VITE_API_URL' VITE_API_URL=/api pnpm dev`.
+- **`VITE_API_URL=http://localhost:3000` (directo al backend).** El navegador pide a otro origen y el backend responde con CORS (`CORS_ORIGINS`). Con `docker compose` hay que pedirlo explícitamente en el `.env` de la raíz. **Con esta forma no se puede iniciar sesión:** el navegador no envía la cookie a otro origen, así que después del login la app vuelve a pedir que ingreses. Sirve solo para llamar a la API sin interfaz.
+
 En desarrollo local el backend escucha en `http://localhost:3000` y sus rutas no llevan prefijo (ver [Backend](#backend)). El valor de producción lo define el proveedor de despliegue (ver [Despliegue](../deployment.md)). `.env.example` deja el valor vacío y no sugiere uno.
 
 Las variables `VITE_*` quedan dentro del bundle que se descarga en el navegador: **son públicas**. Nunca pongas en ellas tokens, contraseñas, claves ni credenciales.
 
-La pantalla actual no hace requests, así que el frontend arranca aunque `VITE_API_URL` no esté configurada. Las llamadas HTTP que se agreguen más adelante van a fallar de forma explícita (con un error de configuración) hasta que se la defina. Si cambiás su valor, hay que reiniciar el servidor de desarrollo o volver a generar el build.
+El frontend arranca aunque `VITE_API_URL` no esté configurada, pero cada llamada a la API falla de forma explícita (con un error de configuración) hasta que se la defina. Si cambiás su valor, hay que reiniciar el servidor de desarrollo o volver a generar el build.
 
 ### Paquete compartido
 

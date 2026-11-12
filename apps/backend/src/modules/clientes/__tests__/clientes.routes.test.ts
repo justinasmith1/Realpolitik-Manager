@@ -1,9 +1,9 @@
 import { Prisma, type Cliente as ClienteRow } from '@prisma/client';
 import { ClienteSchema } from '@realpolitik/shared';
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
+import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Prisma se reemplaza por dobles: el CI no tiene base de datos. Así se recorre la cadena real
 // route → validate → controller → service → mapper → errorHandler, y solo la base es simulada.
@@ -20,7 +20,10 @@ const prismaMock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../../../lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas(prismaMock) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -91,7 +94,7 @@ const ERROR_INTERNO = {
   error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado' },
 };
 
-const postClientes = (body: object) => request(app).post('/clientes').send(body);
+const postClientes = (body: object) => clienteDePrueba(app).post('/clientes').send(body);
 
 /** Silencia el log del errorHandler en los casos 500 y permite revisar qué registró. */
 const espiarConsoleError = () => vi.spyOn(console, 'error').mockImplementation(() => undefined);

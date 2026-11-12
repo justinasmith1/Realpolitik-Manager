@@ -1,8 +1,9 @@
 import { Prisma, type Contacto as ContactoRow } from '@prisma/client';
-import request from 'supertest';
+import type request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
+import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Prisma se reemplaza por dobles: el CI no tiene base de datos. Estos tests cubren validación,
 // errores y el ORDEN de las operaciones. Que el guardado sea realmente atómico y que el
@@ -28,7 +29,10 @@ const { transaccion, prismaMock } = vi.hoisted(() => {
   return { transaccion, prismaMock };
 });
 
-vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../../../lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas(prismaMock) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -73,7 +77,8 @@ function errorPrisma(code: string, meta?: Record<string, unknown>) {
 
 const errorDeEmail = () => errorPrisma('P2002', { target: ['clienteId', 'email'] });
 
-const put = (id: string, body: object) => request(app).put(`/clientes/${id}/contactos`).send(body);
+const put = (id: string, body: object) =>
+  clienteDePrueba(app).put(`/clientes/${id}/contactos`).send(body);
 
 const detalles = (res: request.Response) =>
   (res.body as { error: { details: { campo: string; mensaje: string }[] } }).error.details;
@@ -109,8 +114,8 @@ afterEach(() => {
 
 describe('contactos: params', () => {
   it.each([
-    ['GET', (id: string) => request(app).get(`/clientes/${id}/contactos`)],
-    ['POST', (id: string) => request(app).post(`/clientes/${id}/contactos`).send(nuevo())],
+    ['GET', (id: string) => clienteDePrueba(app).get(`/clientes/${id}/contactos`)],
+    ['POST', (id: string) => clienteDePrueba(app).post(`/clientes/${id}/contactos`).send(nuevo())],
     ['PUT', (id: string) => put(id, { contactos: [] })],
   ])('%s con el id del cliente mal formado responde 400 y no toca la base', async (_m, pedir) => {
     const res = await pedir('no-es-uuid');
@@ -126,9 +131,12 @@ describe('contactos: params', () => {
     [
       'PATCH',
       (c: string, k: string) =>
-        request(app).patch(`/clientes/${c}/contactos/${k}`).send({ nombre: 'Otro Nombre' }),
+        clienteDePrueba(app).patch(`/clientes/${c}/contactos/${k}`).send({ nombre: 'Otro Nombre' }),
     ],
-    ['DELETE', (c: string, k: string) => request(app).delete(`/clientes/${c}/contactos/${k}`)],
+    [
+      'DELETE',
+      (c: string, k: string) => clienteDePrueba(app).delete(`/clientes/${c}/contactos/${k}`),
+    ],
   ])('%s con el id del contacto mal formado responde 400', async (_m, pedir) => {
     const res = await pedir(CLIENTE, 'no-es-uuid');
 
@@ -139,7 +147,9 @@ describe('contactos: params', () => {
   });
 
   it('PATCH informa los dos ids si ambos están mal formados', async () => {
-    const res = await request(app).patch('/clientes/x/contactos/y').send({ nombre: 'Otro Nombre' });
+    const res = await clienteDePrueba(app)
+      .patch('/clientes/x/contactos/y')
+      .send({ nombre: 'Otro Nombre' });
 
     expect(res.status).toBe(400);
     expect(campos(res)).toEqual(['id', 'contactoId']);
@@ -154,17 +164,17 @@ describe('contactos: cliente inexistente o dado de baja', () => {
   });
 
   it.each([
-    ['GET', () => request(app).get(`/clientes/${CLIENTE}/contactos`)],
-    ['POST', () => request(app).post(`/clientes/${CLIENTE}/contactos`).send(nuevo())],
+    ['GET', () => clienteDePrueba(app).get(`/clientes/${CLIENTE}/contactos`)],
+    ['POST', () => clienteDePrueba(app).post(`/clientes/${CLIENTE}/contactos`).send(nuevo())],
     ['PUT', () => put(CLIENTE, { contactos: [nuevo()] })],
     [
       'PATCH',
       () =>
-        request(app)
+        clienteDePrueba(app)
           .patch(`/clientes/${CLIENTE}/contactos/${ID_A}`)
           .send({ nombre: 'Otro Nombre' }),
     ],
-    ['DELETE', () => request(app).delete(`/clientes/${CLIENTE}/contactos/${ID_A}`)],
+    ['DELETE', () => clienteDePrueba(app).delete(`/clientes/${CLIENTE}/contactos/${ID_A}`)],
   ])('%s responde 404 y no escribe', async (_m, pedir) => {
     const res = await pedir();
 
@@ -176,7 +186,7 @@ describe('contactos: cliente inexistente o dado de baja', () => {
   });
 
   it('busca el cliente excluyendo la baja lógica, sin mirar el estado', async () => {
-    await request(app).get(`/clientes/${CLIENTE}/contactos`);
+    await clienteDePrueba(app).get(`/clientes/${CLIENTE}/contactos`);
 
     expect(prismaMock.cliente.findFirst).toHaveBeenCalledWith({
       where: { id: CLIENTE, isDeleted: false },
@@ -189,7 +199,7 @@ describe('contactos: cliente inexistente o dado de baja', () => {
 
 describe('contactos: PATCH', () => {
   const patch = (body: object, contactoId = ID_A) =>
-    request(app).patch(`/clientes/${CLIENTE}/contactos/${contactoId}`).send(body);
+    clienteDePrueba(app).patch(`/clientes/${CLIENTE}/contactos/${contactoId}`).send(body);
 
   it('con {} responde 400 y no escribe', async () => {
     const res = await patch({});
@@ -252,7 +262,7 @@ describe('contactos: DELETE', () => {
   it('da de baja el contacto (baja lógica) y responde 204', async () => {
     prismaMock.contacto.update.mockResolvedValue({ ...filaA, isDeleted: true });
 
-    const res = await request(app).delete(`/clientes/${CLIENTE}/contactos/${ID_A}`);
+    const res = await clienteDePrueba(app).delete(`/clientes/${CLIENTE}/contactos/${ID_A}`);
 
     expect(res.status).toBe(204);
     expect(prismaMock.contacto.update).toHaveBeenCalledWith({
@@ -264,7 +274,7 @@ describe('contactos: DELETE', () => {
   it('un contacto inexistente o ya eliminado es un 404', async () => {
     prismaMock.contacto.update.mockRejectedValue(errorPrisma('P2025'));
 
-    const res = await request(app).delete(`/clientes/${CLIENTE}/contactos/${ID_A}`);
+    const res = await clienteDePrueba(app).delete(`/clientes/${CLIENTE}/contactos/${ID_A}`);
 
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
@@ -275,7 +285,7 @@ describe('contactos: GET y POST', () => {
   it('GET lista los contactos activos con el orden de la convención', async () => {
     prismaMock.contacto.findMany.mockResolvedValue([filaA, filaB]);
 
-    const res = await request(app).get(`/clientes/${CLIENTE}/contactos`);
+    const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE}/contactos`);
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
@@ -288,7 +298,7 @@ describe('contactos: GET y POST', () => {
   it('POST crea el contacto con el email normalizado', async () => {
     prismaMock.contacto.create.mockResolvedValue(fila(ID_C, { email: 'carla@ejemplo.example' }));
 
-    const res = await request(app)
+    const res = await clienteDePrueba(app)
       .post(`/clientes/${CLIENTE}/contactos`)
       .send(nuevo({ email: '  CARLA@Ejemplo.Example ' }));
 
@@ -302,7 +312,7 @@ describe('contactos: GET y POST', () => {
   });
 
   it('POST con un email de más de 254 caracteres responde 400 y no 500', async () => {
-    const res = await request(app)
+    const res = await clienteDePrueba(app)
       .post(`/clientes/${CLIENTE}/contactos`)
       .send(nuevo({ email: `${'a'.repeat(250)}@x.example` }));
 
@@ -740,7 +750,7 @@ describe('contactos: fechas de la respuesta', () => {
   it('GET expone creadoEn y actualizadoEn (como el cliente), no los nombres de la base', async () => {
     prismaMock.contacto.findMany.mockResolvedValue([filaA]);
 
-    const res = await request(app).get(`/clientes/${CLIENTE}/contactos`);
+    const res = await clienteDePrueba(app).get(`/clientes/${CLIENTE}/contactos`);
 
     expect(res.status).toBe(200);
     const [contacto] = res.body as Record<string, unknown>[];

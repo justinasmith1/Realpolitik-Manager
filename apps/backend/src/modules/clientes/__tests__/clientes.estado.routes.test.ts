@@ -1,9 +1,10 @@
 import { Prisma, type Cliente as ClienteRow } from '@prisma/client';
 import { ClienteSchema } from '@realpolitik/shared';
-import request from 'supertest';
+import type request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
+import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Igual que en el alta y la edición: solo la base es simulada y se recorre la cadena real
 // route → validate → controller → service → mapper → errorHandler.
@@ -21,7 +22,10 @@ const prismaMock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../../../lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas(prismaMock) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -59,7 +63,7 @@ const filaActiva: ClienteRow = {
 };
 
 const patchEstado = (id: string, body: object) =>
-  request(app).patch(`/clientes/${id}/estado`).send(body);
+  clienteDePrueba(app).patch(`/clientes/${id}/estado`).send(body);
 
 const errorDePrisma = (code: string) =>
   new Prisma.PrismaClientKnownRequestError('boom', {

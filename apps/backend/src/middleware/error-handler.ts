@@ -21,6 +21,8 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, next) 
   }
 
   if (err instanceof AppError) {
+    if (err.retryAfterSegundos !== undefined)
+      res.setHeader('Retry-After', String(err.retryAfterSegundos));
     res.status(err.status).json(buildBody(err.code, err.message, err.details));
     return;
   }

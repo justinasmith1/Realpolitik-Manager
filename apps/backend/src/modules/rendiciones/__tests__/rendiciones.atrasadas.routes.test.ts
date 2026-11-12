@@ -1,7 +1,8 @@
-import request from 'supertest';
+import type request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
+import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Rendiciones atrasadas (HU3.4), con la base simulada: `GET /rendiciones/atrasadas` lista las
 // rendiciones activas sin enviar (En curso o Completa) de dos meses atrás o más, de cualquier mes,
@@ -18,7 +19,10 @@ const { prismaMock } = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../../../lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas(prismaMock) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -51,7 +55,7 @@ function fila(
   };
 }
 
-const listar = () => request(app).get('/rendiciones/atrasadas');
+const listar = () => clienteDePrueba(app).get('/rendiciones/atrasadas');
 const ids = (res: request.Response) => (res.body as { id: string }[]).map((r) => r.id);
 
 // "Hoy" fijo: mediados de noviembre de 2026 en Buenos Aires. Atrasadas: septiembre o antes.
@@ -169,6 +173,6 @@ describe('GET /rendiciones/atrasadas (HU3.4)', () => {
     expect(prismaMock.rendicion.findFirst).not.toHaveBeenCalled();
     // Y el detalle por id sigue andando.
     prismaMock.rendicion.findFirst.mockResolvedValue(null);
-    expect((await request(app).get(`/rendiciones/${id(1)}`)).status).toBe(404);
+    expect((await clienteDePrueba(app).get(`/rendiciones/${id(1)}`)).status).toBe(404);
   });
 });

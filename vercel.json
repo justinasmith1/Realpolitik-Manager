@@ -6,8 +6,23 @@
   "outputDirectory": "apps/frontend/dist",
   "rewrites": [
     {
-      "source": "/((?!assets/).*)",
+      "source": "/((?!api/|api$|assets/).*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
     }
   ]
 }

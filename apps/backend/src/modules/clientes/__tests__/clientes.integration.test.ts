@@ -14,8 +14,9 @@
 import type { PrismaClient } from '@prisma/client';
 import { validateCuit } from '@realpolitik/shared';
 import type { Express } from 'express';
-import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 
 import { urlDeBaseDescartable } from './baseDescartable';
 
@@ -28,10 +29,14 @@ const clientesCreados: string[] = [];
 /** Marca única de esta corrida: permite reconocer los clientes propios entre los de la base. */
 const MARCA = `TESTB${Date.now().toString(36).toUpperCase()}`;
 
+/** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
+const sesiones = sesionesDePrueba();
+
 beforeAll(async () => {
   if (url === undefined) return;
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
   process.env.DATABASE_URL = url;
+  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
@@ -40,6 +45,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (url === undefined) return;
   await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+  await sesiones.limpiar();
   await prisma.$disconnect();
 });
 
@@ -89,7 +95,7 @@ function urlDeLargo(largo: number): string {
 }
 
 async function crear(body: object) {
-  const respuesta = await request(app).post('/clientes').send(body);
+  const respuesta = await sesiones.cliente(app).post('/clientes').send(body);
   if (respuesta.status === 201) {
     clientesCreados.push((respuesta.body as { id: string }).id);
   }
@@ -180,17 +186,20 @@ describe.skipIf(url === undefined)(
         );
         const { id } = creado.body as { id: string };
 
-        const email = await request(app)
+        const email = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailContacto: emailDeLargo(255) });
         expect(email.status).toBe(400);
 
-        const portal = await request(app)
+        const portal = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ portalUrl: urlDeLargo(501) });
         expect(portal.status).toBe(400);
 
-        const bien = await request(app)
+        const bien = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailContacto: emailDeLargo(254), portalUrl: urlDeLargo(500) });
         expect(bien.status).toBe(200);
@@ -203,12 +212,14 @@ describe.skipIf(url === undefined)(
         const { id } = creado.body as { id: string };
         const contacto = { nombre: 'Ana Pérez', area: 'Tesorería', recibeRendiciones: false };
 
-        const bien = await request(app)
+        const bien = await sesiones
+          .cliente(app)
           .post(`/clientes/${id}/contactos`)
           .send({ ...contacto, email: emailDeLargo(254) });
         expect(bien.status).toBe(201);
 
-        const mal = await request(app)
+        const mal = await sesiones
+          .cliente(app)
           .post(`/clientes/${id}/contactos`)
           .send({ ...contacto, email: emailDeLargo(255) });
         expect(mal.status).toBe(400);
@@ -220,17 +231,20 @@ describe.skipIf(url === undefined)(
         const ruta = `/clientes/${id}/contactos`;
         const base = { email: 'ana@ejemplo.example' };
 
-        const bien = await request(app)
+        const bien = await sesiones
+          .cliente(app)
           .post(ruta)
           .send({ ...base, nombre: 'n'.repeat(150), area: 'a'.repeat(100) });
         expect(bien.status).toBe(201);
 
-        const nombre = await request(app)
+        const nombre = await sesiones
+          .cliente(app)
           .post(ruta)
           .send({ email: 'b@ejemplo.example', nombre: 'n'.repeat(151), area: 'Tesorería' });
         expect(nombre.status).toBe(400);
 
-        const area = await request(app)
+        const area = await sesiones
+          .cliente(app)
           .post(ruta)
           .send({ email: 'c@ejemplo.example', nombre: 'Ana', area: 'a'.repeat(101) });
         expect(area.status).toBe(400);
@@ -264,7 +278,8 @@ describe.skipIf(url === undefined)(
       it('en la edición rechaza el mismo javascript: con 400', async () => {
         const creado = await crear(alta({ canalEntrega: 'PORTAL_WEB', portalUrl: urlDeLargo(60) }));
         const { id } = creado.body as { id: string };
-        const respuesta = await request(app)
+        const respuesta = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ portalUrl: 'javascript:alert(1)' });
         expect(respuesta.status).toBe(400);
@@ -285,7 +300,8 @@ describe.skipIf(url === undefined)(
       it('rechaza un NUL en nombre y área de un contacto con 400', async () => {
         const creado = await crear(alta());
         const { id } = creado.body as { id: string };
-        const respuesta = await request(app)
+        const respuesta = await sesiones
+          .cliente(app)
           .post(`/clientes/${id}/contactos`)
           .send({ nombre: 'Ana\u0000', area: 'Teso\u0000', email: 'ana@ejemplo.example' });
         expect(respuesta.status).toBe(400);
@@ -307,7 +323,7 @@ describe.skipIf(url === undefined)(
       });
 
       it('rechaza un NUL en la búsqueda con 400, no 500', async () => {
-        const respuesta = await request(app).get('/clientes').query({ q: 'abc\u0000' });
+        const respuesta = await sesiones.cliente(app).get('/clientes').query({ q: 'abc\u0000' });
         expect(respuesta.status).toBe(400);
         expect(camposInvalidos(respuesta.body)).toEqual(['q']);
       });
@@ -366,7 +382,7 @@ describe.skipIf(url === undefined)(
       });
 
       const buscar = async (q: string) => {
-        const respuesta = await request(app).get('/clientes').query({ q });
+        const respuesta = await sesiones.cliente(app).get('/clientes').query({ q });
         expect(respuesta.status).toBe(200);
         return (respuesta.body as { razonSocial: string }[]).map((c) => c.razonSocial);
       };
@@ -427,7 +443,8 @@ describe.skipIf(url === undefined)(
         const id = await clienteConEmails();
         const antes = await guardado(id);
 
-        const respuesta = await request(app)
+        const respuesta = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailContacto: secundario });
 
@@ -440,7 +457,8 @@ describe.skipIf(url === undefined)(
         const id = await clienteConEmails();
         const antes = await guardado(id);
 
-        const respuesta = await request(app)
+        const respuesta = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailContacto: `  ${secundario.toUpperCase()} ` });
 
@@ -452,7 +470,8 @@ describe.skipIf(url === undefined)(
         const id = await clienteConEmails();
         const antes = await guardado(id);
 
-        const respuesta = await request(app)
+        const respuesta = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailsAdicionales: [principal] });
 
@@ -463,7 +482,8 @@ describe.skipIf(url === undefined)(
 
       it('B (mayúsculas): se compara normalizado', async () => {
         const id = await clienteConEmails();
-        const respuesta = await request(app)
+        const respuesta = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailsAdicionales: [otro, principal.toUpperCase()] });
 
@@ -474,7 +494,10 @@ describe.skipIf(url === undefined)(
       it('cambiar solo el principal a un email libre es válido y conserva los adicionales', async () => {
         const id = await clienteConEmails();
 
-        const respuesta = await request(app).patch(`/clientes/${id}`).send({ emailContacto: otro });
+        const respuesta = await sesiones
+          .cliente(app)
+          .patch(`/clientes/${id}`)
+          .send({ emailContacto: otro });
 
         expect(respuesta.status).toBe(200);
         expect(await guardado(id)).toMatchObject({
@@ -486,7 +509,8 @@ describe.skipIf(url === undefined)(
       it('cambiar solo los adicionales (sin el principal) es válido y conserva el principal', async () => {
         const id = await clienteConEmails();
 
-        const respuesta = await request(app)
+        const respuesta = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailsAdicionales: [otro, secundario] });
 
@@ -500,7 +524,8 @@ describe.skipIf(url === undefined)(
       it('mover un email: el principal pasa a adicional y otro pasa a principal, en el mismo pedido', async () => {
         const id = await clienteConEmails();
 
-        const respuesta = await request(app)
+        const respuesta = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailContacto: secundario, emailsAdicionales: [principal] });
 
@@ -513,7 +538,8 @@ describe.skipIf(url === undefined)(
 
       it('enviar el mismo principal que ya tiene es válido', async () => {
         const id = await clienteConEmails();
-        const respuesta = await request(app)
+        const respuesta = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailContacto: principal });
         expect(respuesta.status).toBe(200);
@@ -528,13 +554,15 @@ describe.skipIf(url === undefined)(
           data: { emailContacto: principal, emailsAdicionales: [principal, otro, otro] },
         });
 
-        const otroCampo = await request(app)
+        const otroCampo = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ telefono: '351 4000000' });
         expect(otroCampo.status).toBe(200);
 
         // Cambiar solo el principal se compara con los adicionales guardados, no entre ellos.
-        const nuevoPrincipal = await request(app)
+        const nuevoPrincipal = await sesiones
+          .cliente(app)
           .patch(`/clientes/${id}`)
           .send({ emailContacto: `nuevo.${MARCA.toLowerCase()}@empresa.example` });
         expect(nuevoPrincipal.status).toBe(200);
@@ -543,11 +571,13 @@ describe.skipIf(url === undefined)(
 
     describe('límite de `q`', () => {
       it('acepta 150 caracteres y rechaza 151 con 400', async () => {
-        const bien = await request(app)
+        const bien = await sesiones
+          .cliente(app)
           .get('/clientes')
           .query({ q: 'a'.repeat(150) });
         expect(bien.status).toBe(200);
-        const mal = await request(app)
+        const mal = await sesiones
+          .cliente(app)
           .get('/clientes')
           .query({ q: 'a'.repeat(151) });
         expect(mal.status).toBe(400);
@@ -557,7 +587,7 @@ describe.skipIf(url === undefined)(
 
     describe('pedidos malformados', () => {
       it('un id con porcentaje mal formado en la ruta es 400, no 500', async () => {
-        const respuesta = await request(app).get('/clientes/%E0%A4%A/contactos');
+        const respuesta = await sesiones.cliente(app).get('/clientes/%E0%A4%A/contactos');
         expect(respuesta.status).toBeLessThan(500);
       });
     });

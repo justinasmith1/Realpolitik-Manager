@@ -1,9 +1,10 @@
 import { Prisma, type Cliente as ClienteRow } from '@prisma/client';
 import { ClienteSchema } from '@realpolitik/shared';
-import request from 'supertest';
+import type request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
+import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
 
 // Igual que en el alta: Prisma se reemplaza por dobles y se recorre la cadena real
 // route → validate → controller → service → mapper → errorHandler.
@@ -33,7 +34,10 @@ const prismaMock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../../../lib/prisma', async () => {
+  const { conSesionesSimuladas } = await import('../../auth/__tests__/sesionSimulada');
+  return { prisma: conSesionesSimuladas(prismaMock) };
+});
 
 const app = createApp({ corsOrigins: ['http://localhost:5173'] });
 
@@ -97,7 +101,8 @@ const guardado = (extra: Partial<ClienteGuardado> = {}): ClienteGuardado => ({
   ...extra,
 });
 
-const patchCliente = (id: string, body: object) => request(app).patch(`/clientes/${id}`).send(body);
+const patchCliente = (id: string, body: object) =>
+  clienteDePrueba(app).patch(`/clientes/${id}`).send(body);
 
 /** Los `data` con los que el service llamó a `update`. */
 const dataEnviada = () => prismaMock.cliente.update.mock.calls[0]?.[0].data;
