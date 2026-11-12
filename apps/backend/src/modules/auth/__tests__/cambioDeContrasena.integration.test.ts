@@ -291,7 +291,7 @@ describe.skipIf(url === undefined)('PUT /auth/password: rechazos sin efectos', (
 
   it.each([
     ['corta', 'corta', 'La contraseña tiene que tener al menos 8 caracteres.'],
-    ['común (lista de bloqueo)', '0011223344556677', MENSAJE_CONTRASENA_PREVISIBLE],
+    ['común (lista de bloqueo)', 'qwertyuiopasdfgh', MENSAJE_CONTRASENA_PREVISIBLE],
     ['derivada del nombre de la persona', 'Persona 2026 !!!!!', MENSAJE_CONTRASENA_PREVISIBLE],
     ['igual a la actual', TEMPORAL, MENSAJE_CONTRASENA_REPETIDA],
   ])('nueva %s → 400 en `nueva`', async (_caso, nueva, mensaje) => {
