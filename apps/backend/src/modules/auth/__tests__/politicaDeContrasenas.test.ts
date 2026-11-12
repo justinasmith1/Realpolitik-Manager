@@ -21,7 +21,7 @@ describe('evaluarContrasenaNueva', () => {
       ['con acentos y eñes', 'la cigüeña cruzó el río en canoa'],
       ['con emojis', 'mi 🐢 se llama Ramón y come 🍓'],
       ['sin mayúsculas, números ni símbolos', 'hoja verde sobre mesa de pino'],
-      ['exactamente el mínimo', 'trébol-kayak-81'],
+      ['exactamente el mínimo', 'trébol81'],
       ['exactamente el máximo', `${'kayak 81 v'.repeat(12)}trébolxy`],
       ['con pocos caracteres distintos pero sin repetir una unidad', 'aabbaabbbaabbab'],
     ])('%s', (_caso, contrasena) => {
@@ -32,7 +32,7 @@ describe('evaluarContrasenaNueva', () => {
   describe('caracteres y largo (las mismas reglas que shared)', () => {
     it.each([
       ['vacía', '', 'MUY_CORTA'],
-      ['un carácter menos que el mínimo', 'trébol-kayak-8', 'MUY_CORTA'],
+      ['un carácter menos que el mínimo', 'trébol8', 'MUY_CORTA'],
       ['un carácter más que el máximo', 'q'.repeat(CONTRASENA_LARGO_MAXIMO + 1), 'MUY_LARGA'],
       ['con salto de línea', 'el tren de las siete\nsale tarde', 'CARACTERES_INVALIDOS'],
       ['con un sustituto suelto', 'el tren de las siete \uD83D sale', 'CARACTERES_INVALIDOS'],
@@ -58,10 +58,6 @@ describe('evaluarContrasenaNueva', () => {
       ['fila del teclado', 'qwertyuiopasdfgh'],
       ['palabra repetida', 'passwordpassword'],
       ['en mayúsculas (la lista compara en minúsculas)', 'QWERTYUIOPASDFGH'],
-      [
-        'pocos caracteres distintos, agregada al cambiar la regla de repetición',
-        '1111222233334444',
-      ],
     ])('%s', (_caso, contrasena) => {
       expect(evaluarContrasenaNueva(contrasena, PERSONA)).toEqual({
         aceptada: false,

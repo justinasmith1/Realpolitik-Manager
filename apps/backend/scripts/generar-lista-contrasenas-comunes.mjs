@@ -43,6 +43,10 @@ const LICENCIA = {
 // Los mismos valores que `CONTRASENA_LARGO_MINIMO` y `CONTRASENA_LARGO_MAXIMO` de shared.
 const LARGO_MINIMO = 8;
 const LARGO_MAXIMO = 128;
+// Las dos fuentes vienen ordenadas de la más a la menos frecuente: se toman solo las primeras
+// `TOP_POR_FUENTE` líneas de cada una. Con el mínimo de 8 caracteres, el millón completo daba 847 489
+// entradas (12,8 MB): cargarlas tardaba segundos en los tests y sumaba ~74 MB de heap al servidor.
+const TOP_POR_FUENTE = 100_000;
 // La misma regla que `esRepeticionTrivial` de la política: una unidad de 1 a 4 caracteres repetida.
 const UNIDAD_MAXIMA = 4;
 
@@ -81,7 +85,7 @@ const INVALIDO = /[\u0000-\u001F\u007F-\u009F]|\p{Cs}/u;
 function filtrar(textos) {
   const conjunto = new Set();
   for (const texto of textos) {
-    for (const linea of texto.split(/\r?\n/)) {
+    for (const linea of texto.split(/\r?\n/).slice(0, TOP_POR_FUENTE)) {
       const normalizada = linea.normalize('NFC').toLowerCase();
       if (!normalizada || INVALIDO.test(normalizada)) continue;
       const largo = [...normalizada].length;
@@ -114,7 +118,7 @@ function modulo(entradas, licencia) {
 //
 // Origen: SecLists (https://github.com/danielmiessler/SecLists), commit ${COMMIT},
 ${FUENTES.map((f) => `//   ${f.ruta} (SHA-256 ${f.sha256})`).join('\n')}
-// Filtro, en este orden: NFC; minúsculas; sin caracteres de control ni sustitutos sueltos; de ${LARGO_MINIMO} a
+// Filtro, en este orden: las ${TOP_POR_FUENTE} líneas más frecuentes de cada fuente; NFC; minúsculas; sin caracteres de control ni sustitutos sueltos; de ${LARGO_MINIMO} a
 //   ${LARGO_MAXIMO} puntos de código; sin las repeticiones triviales que ya rechaza la política (una unidad de 1
 //   a ${UNIDAD_MAXIMA} caracteres repetida); sin repetidas; orden de código. Resultado: ${entradas.length} entradas.
 // Para regenerarla: \`node scripts/generar-lista-contrasenas-comunes.mjs\` (ver el script). El test

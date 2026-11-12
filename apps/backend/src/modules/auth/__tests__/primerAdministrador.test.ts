@@ -46,7 +46,7 @@ describe('validación de los datos del primer administrador', () => {
   });
 
   it('informa todos los campos inválidos a la vez y nunca repite la contraseña en el mensaje', () => {
-    const password = 'corta-secreta';
+    const password = 'clave-7';
     const resultado = validarDatosDelPrimerAdministrador({ email: 'x', nombre: '', password });
     expect(resultado.ok).toBe(false);
     if (resultado.ok) return;
