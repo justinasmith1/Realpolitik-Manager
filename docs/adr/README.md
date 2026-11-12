@@ -39,6 +39,7 @@ Secuencial, con cuatro dígitos y nombre descriptivo: `NNNN-titulo-en-kebab-case
 | [0003](0003-modelado-requisitos-y-rendiciones.md)         | Modelado de requisitos y rendiciones          | Proposed |
 | [0004](0004-reutilizacion-y-almacenamiento-documentos.md) | Reutilización y almacenamiento de documentos  | Proposed |
 | [0005](0005-estados-de-la-rendicion.md)                   | Estados de la rendición                       | Proposed |
+| [0006](0006-autenticacion-y-control-de-acceso.md)         | Autenticación y control de acceso             | Proposed |
 
 ## Decisiones todavía abiertas
 
@@ -49,7 +50,7 @@ Se listan sin resolverlas ni crear ADR todavía:
 - hosting del backend;
 - hosting de PostgreSQL;
 - almacenamiento de archivos (propuesta en [ADR-0004](0004-reutilizacion-y-almacenamiento-documentos.md), pendiente de aprobación);
-- autenticación;
+- autenticación y control de acceso (propuesta en [ADR-0006](0006-autenticacion-y-control-de-acceso.md): roles aprobados; arquitectura pendiente de validar el proxy, la biblioteca de contraseñas y los tiempos de sesión);
 - proveedor de correo;
 - estrategia de backup y auditoría;
 - retención documental (decisión de negocio a validar con el cliente).
