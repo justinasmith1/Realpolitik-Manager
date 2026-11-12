@@ -295,7 +295,12 @@ El mensaje es único y no dice qué regla falló: "Esa contraseña es muy común
 - **Sin bloqueos permanentes**: la espera máxima es de 15 minutos y vence sola. Ningún estado del login requiere intervención manual.
 - **Atomicidad**: Node atiende de a un evento, así que la reserva del intento (contar el intento en curso y verificar la espera) se hace de forma sincrónica **antes** de esperar al hash. Cincuenta pedidos simultáneos no pueden leer todos "cero fallos".
 - **Sin enumeración**: las claves son el email tal como se escribió (normalizado), exista o no la cuenta; las demoras y el 429 se comportan igual para cuentas existentes e inexistentes.
-- **Contadores en memoria acotados**: un mapa por control, con tope de 10 000 claves (se descartan las más viejas), vencimiento por tiempo y limpieza cada minuto: unos pocos MB como máximo. Supone **una sola instancia**; si se escala, los contadores pasan a una tabla de PostgreSQL (no a Redis). Un reinicio los pone en cero.
+- **Contadores en memoria acotados**: un mapa por control, con tope de 10 000 claves, vencimiento por tiempo y limpieza cada minuto: unos pocos MB como máximo. Supone **una sola instancia**; si se escala, los contadores pasan a una tabla de PostgreSQL (no a Redis). Un reinicio los pone en cero.
+- **Corregido en la revisión del PR #47: el tope nunca desaloja una entrada vigente.** El diseño original descartaba las más viejas al llenarse, y eso permitía un bypass: unos 10 000 intentos con emails inventados (unos minutos) desalojaban la entrada de una cuenta atacada, borraban su espera y le devolvían 5 intentos. Más grave en producción, donde el límite por origen está inactivo (`TRUST_PROXY_SALTOS=0`). Ahora:
+  - solo se podan las entradas **vencidas**: una cuenta con fallos dentro de la última hora, o con una espera vigente, se conserva; un origen, mientras dure su ventana o su bloqueo;
+  - si el mapa sigue lleno, una clave **nueva** recibe `429 DEMASIADOS_INTENTOS` (motivo interno `saturacion`, registrado en `auth.login.limitado`) **antes de calcular ningún hash**, con `Retry-After` hasta que vence la primera entrada (como mucho 1 h para cuentas, 15 min para orígenes). Las cuentas que ya tienen entrada siguen con sus reglas normales;
+  - los intentos en curso de claves nuevas reservan su lugar, así varios intentos simultáneos no pasan el tope. Mientras hay intentos en curso, el tope puede superarse en tantas claves como intentos simultáneos haya.
+  - **Costo aceptado:** quien mantenga el mapa lleno (10 000 emails distintos con fallos en la última hora) impide intentar a las cuentas que todavía no tienen entrada, hasta que vencen las entradas. Es una denegación temporal, visible en los logs, y se prefiere a perder penalizaciones. No es una protección contra ataques distribuidos ni reemplaza a una IP confiable (P15).
 - **El límite por origen depende de la IP**: si el Anexo A muestra que detrás del proxy todos llegan con la IP de Vercel, este límite frenaría a todos a la vez; en ese caso se sube su umbral o se desactiva, y queda la demora por cuenta (P15).
 - **Implementado (etapa 5):** en `production` el límite por origen solo se aplica con `TRUST_PROXY_SALTOS` > 0 (`limitePorOrigenAplicable`); con 0, todos comparten la IP del borde y un solo atacante bloquearía el login de todos. La demora por cuenta y la concurrencia siguen activas. Fuera de producción se aplica siempre. El arranque informa si está activo.
 
@@ -821,6 +826,14 @@ P2 y P5 siguen pendientes: los valores implementados son las propuestas. **Backe
 **Transporte de mismo origen (2026-11-11):** no se crean proyectos descartables: el proxy se activa en los proyectos existentes y la sonda queda como referencia (Anexo A reescrito con dónde y cuándo se verifica cada prueba). Implementado sin activar: `VITE_API_URL=/api`, URLs relativas en `http()`, proxy de Vite con destino local, y en `vercel.json` el fallback sin `/api` y la caché desactivada en `/api`. Pendiente: el rewrite hacia Railway (faltan el dominio del backend y los hosts de producción). Actualizados: comportamiento documentado de los rewrites de Vercel (caché por defecto, 120 s hasta el primer byte), verificación de `argon2` en el primer despliegue del núcleo, P1 resuelta.
 
 **Integración de HU3.5 y HU3.6 (2026-11-11):** contexto actualizado a `main` en `c53f0b1`; 44 endpoints de negocio (HU3.6 sumó `PATCH /rendiciones/:id/estado`, con `rendiciones:operar` en la matriz); HU4.6 distingue el cambio manual de la vuelta automática a En curso.
+
+**HU4.1 — correcciones del review del PR #47 (2026-11-12):**
+
+- Protección del login: el mapa de contadores ya no desaloja entradas vigentes al llenarse (§3). Clave nueva sin lugar → 429 sin calcular el hash. Tests de regresión con reloj controlado; uno de ellos falla con el algoritmo anterior.
+- `docker-compose.yml`: `VITE_API_URL` del frontend pasa a `${VITE_API_URL:-/api}` por defecto (antes `http://localhost:3000`, con el que no se puede iniciar sesión).
+- `api-contract.md`: sección 8 con `/auth/*` y las reglas globales (401, 403, 429, `Origin`, `no-store`).
+- Comentarios de `verificarOrigen.ts` y `apps/backend/.env.example`: la validación de `Origin` es global, no solo de `/auth`.
+- Alcance registrado: el cierre de sesión y la infraestructura de permisos (`crearRouter` + `autorizar`) quedan en HU4.1 aunque la tarjeta no los asigna (los necesitan "Salir sin cambiarla", la pantalla de `CONSULTA` y la denegación por defecto). HU4.2 queda sin "cierre de sesión" y HU4.3 como "habilitar `CONSULTA` e interfaz por rol".
 
 **HU4.1, etapa 5 — integración, primer administrador y preparación del despliegue (2026-11-12):**
 

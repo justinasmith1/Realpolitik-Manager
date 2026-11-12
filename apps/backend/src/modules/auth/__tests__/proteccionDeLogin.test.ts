@@ -185,13 +185,16 @@ describe('concurrencia por cuenta (reserva sincrónica)', () => {
 });
 
 describe('memoria acotada', () => {
-  it('no guarda más de maximoDeClaves entradas por mapa: descarta las más viejas', () => {
+  // Antes este test exigía que se descartaran las más viejas para hacer lugar: era el defecto del
+  // review del PR #47 (inundar el mapa borraba la demora de una cuenta). El tope se mantiene; lo que
+  // cambia es que las claves nuevas esperan en lugar de desalojar entradas vigentes.
+  it('no guarda más de maximoDeClaves entradas por mapa: las claves nuevas reciben saturación', () => {
     const reloj = { ahora: 1_000_000 };
     const proteccion = new ProteccionDeLogin({ ahora: () => reloj.ahora, maximoDeClaves: 100 });
 
-    for (let i = 0; i < 1000; i += 1)
-      fallar(proteccion, `c${i}@x.example`, 1, `10.0.${Math.floor(i / 250)}.${i % 250}`);
+    const { saturadas } = inundar(proteccion, 'c', 1000);
 
+    expect(saturadas).toBe(900);
     expect(proteccion.tamanio).toEqual({ cuentas: 100, origenes: 100, enCurso: 0 });
   });
 
@@ -205,6 +208,189 @@ describe('memoria acotada', () => {
     fallar(proteccion, 'nueva@x.example', 1, '10.9.9.9');
 
     expect(proteccion.tamanio).toEqual({ cuentas: 1, origenes: 1, enCurso: 0 });
+  });
+});
+
+/**
+ * Un fallo por cada email inventado, cada uno desde su IP. Devuelve cuántos intentos se rechazaron
+ * por saturación (y no por otro motivo: cualquier otro rechazo hace fallar el test).
+ */
+function inundar(proteccion: ProteccionDeLogin, prefijo: string, cantidad: number) {
+  let saturadas = 0;
+  let ultimaEspera = 0;
+  for (let i = 0; i < cantidad; i += 1) {
+    const ip = `172.16.${Math.floor(i / 250)}.${i % 250}`;
+    const resultado = proteccion.reservar(`${prefijo}${i}@inventado.example`, ip);
+    if (resultado.permitido) {
+      resultado.intento.fallo();
+    } else {
+      expect(resultado.motivo).toBe('saturacion');
+      saturadas += 1;
+      ultimaEspera = resultado.retryAfterMs;
+    }
+  }
+  return { saturadas, ultimaEspera };
+}
+
+describe('saturación de los contadores (review del PR #47)', () => {
+  const VICTIMA = 'victima@estudio.example';
+
+  function conCapacidad(maximoDeClaves: number, limitePorOrigen = false) {
+    const reloj = { ahora: 1_000_000 };
+    const proteccion = new ProteccionDeLogin({
+      ahora: () => reloj.ahora,
+      maximoDeClaves,
+      limitePorOrigen,
+    });
+    return { reloj, proteccion };
+  }
+
+  it('regresión: inundar el mapa con emails inventados no borra la demora de una cuenta penalizada', () => {
+    const { proteccion } = conCapacidad(100);
+    fallar(proteccion, VICTIMA, FALLOS_ANTES_DE_DEMORA);
+    const antes = proteccion.reservar(VICTIMA, '10.0.0.1');
+    expect(antes).toMatchObject({ permitido: false, motivo: 'demora-cuenta' });
+
+    // Con el algoritmo anterior, el email 100 desalojaba a la víctima y recuperaba sus intentos.
+    inundar(proteccion, 'ataque', 5000);
+
+    const despues = proteccion.reservar(VICTIMA, '10.0.0.1');
+    expect(despues).toMatchObject({ permitido: false, motivo: 'demora-cuenta' });
+    if (antes.permitido || despues.permitido) return;
+    expect(despues.retryAfterMs).toBe(antes.retryAfterMs);
+  });
+
+  it('los fallos contados sin espera tampoco se pierden: la cuenta sigue el escalonamiento', () => {
+    const { reloj, proteccion } = conCapacidad(50);
+    fallar(proteccion, VICTIMA, FALLOS_ANTES_DE_DEMORA - 1);
+
+    inundar(proteccion, 'ataque', 2000);
+    reloj.ahora += 10 * MINUTO; // menos que el olvido de 1 h
+
+    // El fallo siguiente es el 5.º: espera 30 s. Si el contador se hubiera perdido, no esperaría.
+    permitido(proteccion.reservar(VICTIMA, '10.0.0.1')).fallo();
+    expect(puede(proteccion, VICTIMA, '10.0.0.1')).toMatchObject({
+      permitido: false,
+      motivo: 'demora-cuenta',
+      retryAfterMs: DEMORAS_POR_CUENTA_MS[0],
+    });
+  });
+
+  it('una cuenta que vuelve tras su espera no reinicia el escalonamiento', () => {
+    const { reloj, proteccion } = conCapacidad(100);
+    fallar(proteccion, VICTIMA, FALLOS_ANTES_DE_DEMORA);
+    inundar(proteccion, 'ataque', 3000);
+
+    reloj.ahora += DEMORAS_POR_CUENTA_MS[0] ?? 0;
+    permitido(proteccion.reservar(VICTIMA, '10.0.0.1')).fallo(); // 6.º fallo
+
+    expect(puede(proteccion, VICTIMA, '10.0.0.1')).toMatchObject({
+      permitido: false,
+      motivo: 'demora-cuenta',
+      retryAfterMs: DEMORAS_POR_CUENTA_MS[1],
+    });
+  });
+
+  it('una clave nueva con el mapa lleno recibe 429 de saturación, con Retry-After hasta el primer vencimiento', () => {
+    const { reloj, proteccion } = conCapacidad(10);
+    inundar(proteccion, 'lleno', 10);
+    reloj.ahora += 5 * MINUTO;
+
+    expect(proteccion.reservar('nueva@estudio.example', '10.0.0.1')).toEqual({
+      permitido: false,
+      motivo: 'saturacion',
+      retryAfterMs: OLVIDO_DE_FALLOS_MS - 5 * MINUTO,
+    });
+    // Una cuenta que ya tiene entrada sigue pudiendo intentar.
+    expect(puede(proteccion, 'lleno3@inventado.example', '10.0.0.1').permitido).toBe(true);
+  });
+
+  it('las entradas vencidas se liberan: después del olvido vuelve a haber lugar', () => {
+    const { reloj, proteccion } = conCapacidad(10);
+    inundar(proteccion, 'lleno', 10);
+    expect(puede(proteccion, 'nueva@estudio.example', '10.0.0.1').permitido).toBe(false);
+
+    reloj.ahora += OLVIDO_DE_FALLOS_MS;
+
+    expect(puede(proteccion, 'nueva@estudio.example', '10.0.0.1').permitido).toBe(true);
+    permitido(proteccion.reservar('nueva@estudio.example', '10.0.0.1')).fallo();
+    expect(proteccion.tamanio.cuentas).toBe(1);
+  });
+
+  it('la poda respeta las entradas vigentes y libera solo las vencidas', () => {
+    const { reloj, proteccion } = conCapacidad(10);
+    inundar(proteccion, 'viejo', 5);
+    reloj.ahora += 50 * MINUTO;
+    inundar(proteccion, 'reciente', 5);
+    reloj.ahora += 10 * MINUTO; // las 5 viejas cumplen la hora; las recientes no
+
+    const { saturadas } = inundar(proteccion, 'otra', 10);
+
+    expect(saturadas).toBe(5);
+    expect(proteccion.tamanio.cuentas).toBe(10);
+    expect(puede(proteccion, 'reciente2@inventado.example', '10.0.0.1').permitido).toBe(true);
+  });
+
+  it('el mapa no crece: miles de claves distintas no pasan el tope', () => {
+    const { reloj, proteccion } = conCapacidad(200, true);
+    for (let ronda = 0; ronda < 5; ronda += 1) {
+      inundar(proteccion, `ronda${ronda}-`, 2000);
+      reloj.ahora += 20 * MINUTO;
+      expect(proteccion.tamanio.cuentas).toBeLessThanOrEqual(200);
+      expect(proteccion.tamanio.origenes).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it('concurrencia: los intentos en curso de claves nuevas reservan su lugar', () => {
+    const { proteccion } = conCapacidad(3);
+    const enCurso = [1, 2, 3].map((i) =>
+      permitido(proteccion.reservar(`simultaneo${i}@estudio.example`, `10.0.0.${i}`)),
+    );
+
+    // Las tres reservas ocupan el lugar aunque todavía no haya ningún fallo guardado.
+    expect(proteccion.reservar('cuarto@estudio.example', '10.0.0.4')).toMatchObject({
+      permitido: false,
+      motivo: 'saturacion',
+    });
+
+    for (const intento of enCurso) intento.fallo();
+    expect(proteccion.tamanio).toEqual({ cuentas: 3, origenes: 0, enCurso: 0 });
+  });
+
+  it('concurrencia: un intento liberado sin veredicto devuelve su lugar', () => {
+    const { proteccion } = conCapacidad(1);
+    const primero = permitido(proteccion.reservar('a@estudio.example', '10.0.0.1'));
+    expect(proteccion.reservar('b@estudio.example', '10.0.0.1')).toMatchObject({
+      motivo: 'saturacion',
+    });
+
+    primero.liberar();
+
+    expect(puede(proteccion, 'b@estudio.example', '10.0.0.1').permitido).toBe(true);
+  });
+
+  it('límite por origen: un origen bloqueado conserva el bloqueo aunque se llene el mapa de orígenes', () => {
+    const { proteccion } = conCapacidad(30, true);
+    for (let i = 0; i < FALLOS_POR_ORIGEN; i += 1) {
+      permitido(proteccion.reservar(`o${i}@x.example`, '10.9.9.9')).fallo();
+    }
+    expect(puede(proteccion, 'otra@x.example', '10.9.9.9')).toMatchObject({
+      motivo: 'limite-origen',
+    });
+
+    inundar(proteccion, 'ataque', 500);
+
+    expect(puede(proteccion, 'otra@x.example', '10.9.9.9')).toMatchObject({
+      permitido: false,
+      motivo: 'limite-origen',
+    });
+  });
+
+  it('sin saturación, los límites normales siguen igual', () => {
+    const { proteccion } = conCapacidad(10_000, true);
+    fallar(proteccion, VICTIMA, FALLOS_ANTES_DE_DEMORA);
+    expect(puede(proteccion, VICTIMA, '10.0.0.1')).toMatchObject({ motivo: 'demora-cuenta' });
+    expect(puede(proteccion, 'otra@estudio.example', '10.0.0.1').permitido).toBe(true);
   });
 });
 

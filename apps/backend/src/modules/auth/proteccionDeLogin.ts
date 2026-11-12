@@ -17,8 +17,17 @@
 // - **Sin enumeración**: la clave es el email escrito, exista o no la cuenta.
 // - **Sin bloqueos permanentes**: la espera máxima es de 15 minutos y vence sola. Un intento durante
 //   la espera no se verifica ni cuenta como fallo. Los fallos se olvidan tras 1 h sin fallos.
-// - **Memoria acotada**: cada mapa guarda como mucho `maximoDeClaves` (10 000) entradas; las vencidas
-//   se podan al escribir, sin temporizadores. Unos pocos MB como máximo.
+// - **Memoria acotada sin desalojar penalizaciones**: cada mapa guarda como mucho `maximoDeClaves`
+//   (10 000) claves. Solo se podan las entradas VENCIDAS (sin espera vigente y, en las cuentas, sin
+//   fallos en la última hora), sin temporizadores. Una cuenta con fallos contados o con una espera
+//   vigente nunca se descarta para hacer lugar: si el mapa sigue lleno, una clave NUEVA recibe 429
+//   (`saturacion`) antes de calcular ningún hash, con `Retry-After` hasta que vence la primera
+//   entrada. Antes se descartaba la más vieja aunque tuviera una espera vigente: inundar el mapa con
+//   emails inventados borraba la demora de una cuenta atacada (review del PR #47).
+//   Costo aceptado: mientras alguien mantiene el mapa lleno, las cuentas que todavía no tienen
+//   entrada no pueden intentar (denegación temporal, como mucho hasta que vencen las entradas). No
+//   es una protección contra ataques distribuidos. Unos pocos MB como máximo; durante los intentos
+//   en curso el tope puede pasarse en tantas claves como intentos simultáneos haya.
 // - **Una sola instancia**: no se comparte entre réplicas ni sobrevive a un reinicio. Si se escala,
 //   los contadores pasan a una tabla de PostgreSQL.
 // - **El límite por origen depende de `req.ip`**, que depende de `trust proxy` (ver
@@ -54,7 +63,11 @@ export const ESPERA_POR_CONCURRENCIA_MS = SEGUNDO;
 
 export const MAXIMO_DE_CLAVES = 10_000;
 
-export type MotivoDeLimite = 'demora-cuenta' | 'limite-origen' | 'concurrencia';
+/**
+ * `saturacion`: el mapa de la clave (cuenta u origen) está lleno de entradas vigentes y la clave es
+ * nueva. Se responde como un 429 más (`DEMASIADOS_INTENTOS`), sin decir si la cuenta existe.
+ */
+export type MotivoDeLimite = 'demora-cuenta' | 'limite-origen' | 'concurrencia' | 'saturacion';
 
 /** Un intento reservado. Se cierra UNA vez: con `fallo`, con `exito` o, si no se pudo decidir, con `liberar`. */
 export interface IntentoReservado {
@@ -109,13 +122,21 @@ export function limitePorOrigenAplicable(entorno: {
   return entorno.nodeEnv !== 'production' || entorno.saltosDeProxyConfiables > 0;
 }
 
-/** Mapa con orden de última escritura: lo más viejo queda al principio y se poda primero. */
+type Lugar = { hay: true } | { hay: false; libreEnMs: number };
+
+/**
+ * Mapa acotado que NUNCA descarta una entrada vigente para hacer lugar. `venceEn` dice desde cuándo
+ * una entrada ya no hace falta; solo esas se podan. Las claves nuevas con un intento en curso
+ * reservan su lugar (`reservar`/`soltar`), así varios intentos simultáneos no pasan el tope.
+ */
 class RegistroAcotado<V> {
   readonly #entradas = new Map<string, V>();
+  /** Claves que no estaban guardadas cuando empezó su intento, con cuántos intentos en curso tienen. */
+  readonly #reservadas = new Map<string, number>();
 
   constructor(
     private readonly maximo: number,
-    private readonly vencida: (valor: V, ahora: number) => boolean,
+    private readonly venceEn: (valor: V) => number,
   ) {}
 
   get tamanio(): number {
@@ -124,24 +145,66 @@ class RegistroAcotado<V> {
 
   leer(clave: string, ahora: number): V | undefined {
     const valor = this.#entradas.get(clave);
-    if (valor !== undefined && this.vencida(valor, ahora)) {
+    if (valor !== undefined && ahora >= this.venceEn(valor)) {
       this.#entradas.delete(clave);
       return undefined;
     }
     return valor;
   }
 
+  /** Si `clave` tiene lugar. Si el mapa está lleno, poda las vencidas; si sigue lleno, no lo hay. */
+  lugarPara(clave: string, ahora: number): Lugar {
+    if (this.#entradas.has(clave) || this.#reservadas.has(clave)) return { hay: true };
+    if (this.#ocupadas() < this.maximo) return { hay: true };
+    const proximoVencimiento = this.#podarVencidas(ahora);
+    if (this.#ocupadas() < this.maximo) return { hay: true };
+    return { hay: false, libreEnMs: Math.max(SEGUNDO, proximoVencimiento - ahora) };
+  }
+
+  reservar(clave: string): void {
+    if (this.#entradas.has(clave)) return;
+    this.#reservadas.set(clave, (this.#reservadas.get(clave) ?? 0) + 1);
+  }
+
+  soltar(clave: string): void {
+    const cantidad = this.#reservadas.get(clave);
+    if (cantidad === undefined) return;
+    if (cantidad <= 1) this.#reservadas.delete(clave);
+    else this.#reservadas.set(clave, cantidad - 1);
+  }
+
   escribir(clave: string, valor: V, ahora: number): void {
     this.#entradas.delete(clave);
     this.#entradas.set(clave, valor);
+    // Las más viejas primero (orden de escritura), hasta la primera vigente: nunca borra una vigente.
     for (const [vieja, valorViejo] of this.#entradas) {
-      if (this.#entradas.size <= this.maximo && !this.vencida(valorViejo, ahora)) break;
+      if (ahora < this.venceEn(valorViejo)) break;
       this.#entradas.delete(vieja);
     }
+    if (this.#ocupadas() > this.maximo) this.#podarVencidas(ahora);
   }
 
   borrar(clave: string): void {
     this.#entradas.delete(clave);
+  }
+
+  #ocupadas(): number {
+    let reservadasNuevas = 0;
+    for (const clave of this.#reservadas.keys()) {
+      if (!this.#entradas.has(clave)) reservadasNuevas += 1;
+    }
+    return this.#entradas.size + reservadasNuevas;
+  }
+
+  /** Borra todas las entradas vencidas y devuelve cuándo vence la próxima de las que quedan. */
+  #podarVencidas(ahora: number): number {
+    let proximo = Number.POSITIVE_INFINITY;
+    for (const [clave, valor] of this.#entradas) {
+      const vence = this.venceEn(valor);
+      if (ahora >= vence) this.#entradas.delete(clave);
+      else if (vence < proximo) proximo = vence;
+    }
+    return proximo;
   }
 }
 
@@ -159,13 +222,13 @@ export class ProteccionDeLogin {
   }: OpcionesDeProteccion = {}) {
     this.#ahora = ahora;
     this.#limitePorOrigen = limitePorOrigen;
-    this.#cuentas = new RegistroAcotado(
-      maximoDeClaves,
-      (c, t) => t - c.ultimoFallo >= OLVIDO_DE_FALLOS_MS && t >= c.esperaHasta,
+    // Una cuenta hace falta mientras tenga fallos sin olvidar o una espera vigente; un origen,
+    // mientras dure su ventana o su bloqueo.
+    this.#cuentas = new RegistroAcotado(maximoDeClaves, (c) =>
+      Math.max(c.ultimoFallo + OLVIDO_DE_FALLOS_MS, c.esperaHasta),
     );
-    this.#origenes = new RegistroAcotado(
-      maximoDeClaves,
-      (o, t) => t - o.desde >= VENTANA_POR_ORIGEN_MS && t >= o.bloqueadoHasta,
+    this.#origenes = new RegistroAcotado(maximoDeClaves, (o) =>
+      Math.max(o.desde + VENTANA_POR_ORIGEN_MS, o.bloqueadoHasta),
     );
   }
 
@@ -205,14 +268,34 @@ export class ProteccionDeLogin {
     if (this.#enCurso.has(email)) {
       return { permitido: false, motivo: 'concurrencia', retryAfterMs: ESPERA_POR_CONCURRENCIA_MS };
     }
+    // Sin lugar para registrar un posible fallo no se intenta: el hash no se calcula y ninguna
+    // entrada vigente se descarta.
+    const lugarDeCuenta = this.#cuentas.lugarPara(email, ahora);
+    const lugarDeOrigen: Lugar = this.#limitePorOrigen
+      ? this.#origenes.lugarPara(claveDeOrigen, ahora)
+      : { hay: true };
+    if (!lugarDeCuenta.hay || !lugarDeOrigen.hay) {
+      return {
+        permitido: false,
+        motivo: 'saturacion',
+        retryAfterMs: Math.max(
+          lugarDeCuenta.hay ? 0 : lugarDeCuenta.libreEnMs,
+          lugarDeOrigen.hay ? 0 : lugarDeOrigen.libreEnMs,
+        ),
+      };
+    }
 
     this.#enCurso.add(email);
+    this.#cuentas.reservar(email);
+    if (this.#limitePorOrigen) this.#origenes.reservar(claveDeOrigen);
     let cerrado = false;
     const cerrar = (accion: () => void) => {
       if (cerrado) return;
       cerrado = true;
       this.#enCurso.delete(email);
       accion();
+      this.#cuentas.soltar(email);
+      if (this.#limitePorOrigen) this.#origenes.soltar(claveDeOrigen);
     };
     return {
       permitido: true,

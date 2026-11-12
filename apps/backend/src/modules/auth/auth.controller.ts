@@ -8,6 +8,7 @@
 // | Sin sesión, revocada, inexistente, inactiva | 401 UNAUTHENTICATED, motivo SESION_REQUERIDA (borra la cookie) |
 // | Sesión vencida (duración o inactividad)     | 401 UNAUTHENTICATED, motivo SESION_VENCIDA (borra la cookie)   |
 // | Demora por cuenta o límite por origen       | 429 TOO_MANY_REQUESTS, motivo DEMASIADOS_INTENTOS, Retry-After |
+// | Contadores llenos y email sin entrada       | 429 TOO_MANY_REQUESTS, motivo DEMASIADOS_INTENTOS, Retry-After |
 // | Otro intento de la misma cuenta en curso    | 429 TOO_MANY_REQUESTS, motivo INTENTO_EN_CURSO, Retry-After    |
 // | Contraseña actual incorrecta (al cambiarla) | 400 VALIDATION_ERROR en `actual` (nunca 401)                   |
 // | Contraseña nueva rechazada por la política  | 400 VALIDATION_ERROR en `nueva`                                |

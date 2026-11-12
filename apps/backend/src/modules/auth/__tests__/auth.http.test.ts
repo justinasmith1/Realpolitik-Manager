@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../../app';
 import { mensajeDeEspera } from '../auth.controller';
 import { leerTokenDeSesion, NOMBRE_COOKIE_DE_SESION } from '../cookieDeSesion';
+import { limiteDeHash } from '../limiteDeHash';
 import { ProteccionDeLogin, type ResultadoDeReserva } from '../proteccionDeLogin';
 import { truncarIp } from '../registroDeEventos';
 
@@ -289,6 +290,34 @@ describe('429: código, mensaje y Retry-After coherentes', () => {
         details: { motivo: 'INTENTO_EN_CURSO' },
       },
     });
+  });
+
+  it('contadores llenos: una cuenta nueva recibe 429 DEMASIADOS_INTENTOS sin llegar a la base ni a argon2', async () => {
+    vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const hash = vi.spyOn(limiteDeHash, 'ejecutar');
+    const reloj = { ahora: 1_000_000 };
+    const proteccion = new ProteccionDeLogin({
+      ahora: () => reloj.ahora,
+      maximoDeClaves: 1,
+      limitePorOrigen: false,
+    });
+    const ocupa = proteccion.reservar('ocupa@ejemplo.example', '10.0.0.1');
+    if (!ocupa.permitido) throw new Error('debía permitir');
+    ocupa.intento.fallo();
+
+    const res = await request(createApp({ corsOrigins: [ORIGEN], proteccionDeLogin: proteccion }))
+      .post('/auth/login')
+      .set('Origin', ORIGEN)
+      .send(CREDENCIALES);
+
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBe('3600');
+    expect(errorDe(res)).toEqual({
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Demasiados intentos. Probá de nuevo en 60 minutos.',
+      details: { motivo: 'DEMASIADOS_INTENTOS' },
+    });
+    expect(hash).not.toHaveBeenCalled();
   });
 
   it('la espera se redondea hacia arriba igual en el mensaje y en Retry-After', async () => {

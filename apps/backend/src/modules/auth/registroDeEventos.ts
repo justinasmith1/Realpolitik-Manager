@@ -24,6 +24,7 @@ export type MotivoDeEvento =
   | 'demora-cuenta'
   | 'limite-origen'
   | 'concurrencia'
+  | 'saturacion'
   | 'capacidad'
   | 'solo-lectura'
   | 'rol-no-habilitado';

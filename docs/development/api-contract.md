@@ -24,6 +24,8 @@
 
 Un texto con caracteres de control (`NUL`, saltos de línea, tabulaciones, etc.) en el medio de un nombre, una URL o una búsqueda es `400 VALIDATION_ERROR`. `NUL` en particular no se puede guardar en PostgreSQL.
 
+**Autenticación (HU4.1).** Todas las rutas de este documento exigen una sesión iniciada y el permiso de la matriz ([`docs/security/matriz-permisos.md`](../security/matriz-permisos.md)); las únicas públicas son `GET /health` y `/auth/*`. Toda escritura (`POST`, `PUT`, `PATCH`, `DELETE`) exige además un `Origin` permitido. Todas las respuestas llevan `Cache-Control: no-store`. Los endpoints de sesión y las reglas globales (401, 403, 429) están en la [sección 8](#8-autenticación-auth-hu41).
+
 ### Formato de error
 
 Todos los errores responden con la misma forma:
@@ -38,14 +40,17 @@ Todos los errores responden con la misma forma:
 }
 ```
 
-| `code`                | Estado HTTP | Cuándo                                                                                                               | `details`                                                                                                                                                                                                                                                                 |
-| --------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VALIDATION_ERROR`    | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado                       | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`                                                                                                                                         |
-| `NOT_FOUND`           | 404         | El recurso pedido (cliente, contacto, tipo de documento, requisito, rendición o ítem) no existe, o la ruta no existe | No lleva                                                                                                                                                                                                                                                                  |
-| `CONFLICT`            | 409         | El pedido choca con datos existentes                                                                                 | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO`, `contactoExistente` para `EMAIL_DUPLICADO` o `tipoDocumentoExistente` para `TIPO_DOCUMENTO_DUPLICADO` (sección 4.1). Los motivos de requisitos y rendiciones están en la sección 4 |
-| `PAYLOAD_TOO_LARGE`   | 413         | El cuerpo de la solicitud supera los 100 KB                                                                          | No lleva                                                                                                                                                                                                                                                                  |
-| `SERVICE_UNAVAILABLE` | 503         | Un servicio del que depende el pedido (el almacenamiento de documentos, 4.10) no respondió. Se puede reintentar      | No lleva                                                                                                                                                                                                                                                                  |
-| `INTERNAL_ERROR`      | 500         | Error inesperado                                                                                                     | No lleva. Nunca expone detalles internos                                                                                                                                                                                                                                  |
+| `code`                | Estado HTTP | Cuándo                                                                                                                                                                  | `details`                                                                                                                                                                                                                                                                 |
+| --------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VALIDATION_ERROR`    | 400         | Falta un dato, un dato tiene mal formato, un parámetro no es válido o el JSON está mal formado                                                                          | Lista de `{ campo, mensaje }`. `campo` usa notación de puntos (`periodicidad.diaLimite`). Con JSON mal formado, `campo` es `body`                                                                                                                                         |
+| `NOT_FOUND`           | 404         | El recurso pedido (cliente, contacto, tipo de documento, requisito, rendición o ítem) no existe, o la ruta no existe                                                    | No lleva                                                                                                                                                                                                                                                                  |
+| `CONFLICT`            | 409         | El pedido choca con datos existentes                                                                                                                                    | Objeto con `motivo` y el registro existente: `clienteExistente` para `CUIT_DUPLICADO`, `contactoExistente` para `EMAIL_DUPLICADO` o `tipoDocumentoExistente` para `TIPO_DOCUMENTO_DUPLICADO` (sección 4.1). Los motivos de requisitos y rendiciones están en la sección 4 |
+| `PAYLOAD_TOO_LARGE`   | 413         | El cuerpo de la solicitud supera los 100 KB                                                                                                                             | No lleva                                                                                                                                                                                                                                                                  |
+| `UNAUTHENTICATED`     | 401         | Sin sesión válida, o credenciales incorrectas en el login (sección 8)                                                                                                   | `{ motivo }`: `SESION_REQUERIDA`, `SESION_VENCIDA` o `CREDENCIALES_INVALIDAS`                                                                                                                                                                                             |
+| `FORBIDDEN`           | 403         | La sesión es válida pero no alcanza, o el pedido no trae un `Origin` permitido (sección 8)                                                                              | `{ motivo }`: `PERMISO_INSUFICIENTE`, `CAMBIO_DE_PASSWORD_REQUERIDO`, `ROL_NO_HABILITADO` u `ORIGEN_NO_PERMITIDO`                                                                                                                                                         |
+| `TOO_MANY_REQUESTS`   | 429         | Demasiados intentos de inicio de sesión o de cambio de contraseña (sección 8). Lleva `Retry-After` en segundos                                                          | `{ motivo }`: `DEMASIADOS_INTENTOS` o `INTENTO_EN_CURSO`                                                                                                                                                                                                                  |
+| `SERVICE_UNAVAILABLE` | 503         | Un servicio del que depende el pedido (PostgreSQL, el almacenamiento de documentos de 4.10, o la capacidad de cálculo de contraseñas) no respondió. Se puede reintentar | No lleva. Puede llevar `Retry-After`                                                                                                                                                                                                                                      |
+| `INTERNAL_ERROR`      | 500         | Error inesperado                                                                                                                                                        | No lleva. Nunca expone detalles internos                                                                                                                                                                                                                                  |
 
 > Los textos de `mensaje` pueden estar en inglés cuando no los define `@realpolitik/shared`
 > (por ejemplo, `Required`). El front debe apoyarse en `campo` y mostrar sus propios textos.
@@ -1098,3 +1103,82 @@ Todos los puntos están implementados. Se conservan, con su numeración, como re
 | SUSPENDIDO                 | Existe en `shared` y en la base y se mantiene. Cuando se use, hay que definir en qué listados aparece un cliente suspendido.                                                                                                                                                                                                                                        |
 | PATCH sin cambios reales   | `PATCH /clientes/:id` con valores idénticos a los guardados puede actualizar `actualizadoEn`: no hay contrato de "sin cambios" para la edición general (sí lo hay para `PATCH /clientes/:id/estado`). No es bloqueante; si hace falta, comparar contra lo guardado antes de escribir.                                                                               |
 | Ediciones concurrentes     | `PATCH /clientes/:id` es _last write wins_ por campo: el front manda solo lo modificado, así dos personas que editan campos distintos no se pisan, pero si editan el mismo campo gana la última. Pendiente: control optimista con `actualizadoEn` como versión (`If-Match` o precondición en el cuerpo, `409`/`412` si cambió) y una UI para resolver el conflicto. |
+
+## 8. Autenticación (`/auth/*`, HU4.1)
+
+Diseño en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md); schemas en `packages/shared/src/schemas/usuario.schema.ts`. Esta sección describe el contrato HTTP.
+
+### Sesión y cookie
+
+- La sesión es un token opaco que viaja **solo** en la cookie `__Host-rp_sesion` (`HttpOnly; Secure; SameSite=Strict; Path=/`, sin `Domain`). Ninguna respuesta lo incluye en el cuerpo y JavaScript no lo puede leer.
+- Es una cookie de sesión del navegador (sin `Max-Age`). La vigencia la decide el servidor: vence tras **24 h sin actividad** o **7 días** desde el inicio, lo que ocurra primero (propuesta P2, sin confirmar). Una persona tiene como mucho **10 sesiones vigentes**: al iniciar una más se revoca la de actividad más vieja.
+- El frontend llama a la API por el mismo origen (`/api/...`, proxy de Vite en desarrollo y rewrite de Vercel en producción). Desde otro origen la cookie no viaja y no se puede iniciar sesión.
+
+### Reglas globales de la API de negocio
+
+En este orden, antes de leer el cuerpo del pedido:
+
+| Situación                                                                                                         | Respuesta                                              |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Escritura sin `Origin`, con `Origin: null`, con otro origen o `Sec-Fetch-Site: cross-site` (también en `/auth/*`) | `403 FORBIDDEN`, motivo `ORIGEN_NO_PERMITIDO`          |
+| Sin cookie, o sesión revocada, inexistente o de una cuenta desactivada                                            | `401 UNAUTHENTICATED`, motivo `SESION_REQUERIDA`       |
+| Sesión vencida (por inactividad o duración)                                                                       | `401 UNAUTHENTICATED`, motivo `SESION_VENCIDA`         |
+| Contraseña temporal sin cambiar (`debeCambiarPassword`): cualquier ruta fuera de `/auth/*`                        | `403 FORBIDDEN`, motivo `CAMBIO_DE_PASSWORD_REQUERIDO` |
+| Rol `CONSULTA` en cualquier ruta fuera de `/auth/*` (**regla temporal** hasta HU4.3)                              | `403 FORBIDDEN`, motivo `ROL_NO_HABILITADO`            |
+| El rol no tiene el permiso de la ruta (o `CONSULTA` intenta escribir)                                             | `403 FORBIDDEN`, motivo `PERMISO_INSUFICIENTE`         |
+| PostgreSQL no responde al validar la sesión                                                                       | `503 SERVICE_UNAVAILABLE` (la cookie no se borra)      |
+
+- Con una cookie inválida o vencida, la respuesta 401 además la borra.
+- Sin sesión, una ruta inexistente también responde 401 (y a `CONSULTA`, 403 `ROL_NO_HABILITADO`): no se puede usar para descubrir rutas. Con sesión, una ruta inexistente responde 404.
+
+### `POST /auth/login`
+
+Pública. Exige `Origin` permitido.
+
+**Pedido:** `{ "email": string, "password": string }` (`IniciarSesionSchema`). El email se recorta y pasa a minúsculas. La contraseña se verifica **tal como llega**: no se recorta ni pasa por la política de contraseñas nuevas (las temporales siguen sirviendo). Solo se exige que no esté vacía y que no supere 128 caracteres.
+
+**200:** `{ "usuario": { "id", "email", "nombre", "rol", "debeCambiarPassword" } }` (`SesionActualSchema`) y `Set-Cookie` con una sesión nueva. Si el navegador traía otra sesión, se revoca en la misma operación (sin fijación de sesión). Con `debeCambiarPassword: true` solo responden `/auth/*` hasta cambiar la contraseña.
+
+**Errores:**
+
+| Estado | `code` / motivo                              | Cuándo                                                                                                                                                                                                                                                                                                               |
+| ------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR`                           | Email con formato inválido, contraseña vacía o de más de 128 caracteres                                                                                                                                                                                                                                              |
+| 401    | `UNAUTHENTICATED` / `CREDENCIALES_INVALIDAS` | Email inexistente, contraseña incorrecta o cuenta desactivada: **la misma respuesta y un tiempo similar** en los tres casos ("Email o contraseña incorrectos.")                                                                                                                                                      |
+| 429    | `TOO_MANY_REQUESTS` / `DEMASIADOS_INTENTOS`  | Espera por cuenta (desde el 5.º fallo seguido: 30 s, 1, 2, 4, 8 y 15 min), límite por origen (20 fallos en 15 min, solo con una IP confiable) o contadores llenos para un email sin registro. Durante la espera no se verifica la contraseña ni se cuenta un fallo. `Retry-After` y el mensaje dicen la misma espera |
+| 429    | `TOO_MANY_REQUESTS` / `INTENTO_EN_CURSO`     | Ya hay otro intento de la misma cuenta en curso. `Retry-After: 1`                                                                                                                                                                                                                                                    |
+| 503    | `SERVICE_UNAVAILABLE`                        | PostgreSQL no responde, o no hay capacidad para verificar la contraseña (`Retry-After: 5`). No cuenta como fallo                                                                                                                                                                                                     |
+
+### `GET /auth/sesion`
+
+Exige sesión. Responde aunque la contraseña sea temporal y para cualquier rol (también `CONSULTA`).
+
+**200:** `{ "usuario": { … } }`, igual que el login, con los datos leídos de la base en cada pedido.
+
+**Errores:** `401` `SESION_REQUERIDA` o `SESION_VENCIDA` (borra la cookie); `503` si PostgreSQL no responde (no la borra). El frontend trata el 401 como "sin sesión", no como un error.
+
+### `PUT /auth/password`
+
+Exige sesión y `Origin` permitido. Es el cambio obligatorio del primer acceso (y el de la propia contraseña).
+
+**Pedido:** `{ "actual": string, "nueva": string }` (`CambiarContrasenaSchema`). `actual` se verifica como en el login. `nueva`, después de normalizar a NFC: de 8 a 128 caracteres (P5), sin caracteres de control, distinta de `actual`, que no esté en la lista de contraseñas comunes y que no sea un derivado trivial del nombre o del email de la cuenta.
+
+**204:** sin cuerpo. Se guarda la contraseña nueva, `debeCambiarPassword` pasa a `false`, se revocan **todas** las sesiones de la cuenta (también la de este pedido) y se borra la cookie: hay que volver a iniciar sesión con la contraseña nueva.
+
+**Errores:**
+
+| Estado | `code` / motivo                                           | Cuándo                                                                                                                                                                            |
+| ------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR` en `actual`                            | Vacía, o no es la contraseña vigente ("La contraseña actual no es correcta."). Nunca 401: la sesión es válida. Cuenta como un fallo de inicio de sesión para la espera por cuenta |
+| 400    | `VALIDATION_ERROR` en `nueva`                             | No cumple la política: corta, larga, caracteres inválidos, igual a la actual o previsible ("Esa contraseña es muy común o fácil de adivinar. Elegí otra.")                        |
+| 401    | `UNAUTHENTICATED` / `SESION_REQUERIDA` o `SESION_VENCIDA` | Sin sesión válida, o la sesión dejó de valer mientras se procesaba (borra la cookie)                                                                                              |
+| 429    | `TOO_MANY_REQUESTS`                                       | Las mismas esperas que el login, sobre el email de la cuenta                                                                                                                      |
+| 503    | `SERVICE_UNAVAILABLE`                                     | PostgreSQL no responde o no hay capacidad para el cálculo. No se borra la cookie ni se cambia nada                                                                                |
+
+### `POST /auth/logout`
+
+Exige `Origin` permitido. No exige una sesión válida.
+
+**204:** con cookie, revoca esa sesión en la base y borra la cookie; sin cookie, solo la borra. Es idempotente: repetirlo, o hacerlo con una sesión ya revocada o vencida, también responde 204.
+
+**Errores:** `503` si PostgreSQL no responde. En ese caso **no** se borra la cookie ni se informa que la sesión se cerró: el frontend mantiene la sesión local y muestra el error.

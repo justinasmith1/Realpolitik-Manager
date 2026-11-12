@@ -15,7 +15,10 @@
 // Referer cuando falta Origin solo agregaría un camino más. `Host` y `X-Forwarded-Host` tampoco: los
 // controla quien hace el pedido o el proxy, no prueban de dónde salió.
 //
-// Hoy se aplica solo a `/auth` (Backend 2C). Extenderlo a toda la API es de Backend 2D.
+// Se aplica a TODA la API, no solo a `/auth`: `createApp` lo monta global, antes de leer cualquier
+// cuerpo, así que toda escritura de negocio (y también login, logout y cambio de contraseña) exige
+// un `Origin` permitido. No es redundante con la sesión: es lo que frena un pedido de otro sitio
+// que viaja con la cookie del navegador.
 
 import type { RequestHandler } from 'express';
 
