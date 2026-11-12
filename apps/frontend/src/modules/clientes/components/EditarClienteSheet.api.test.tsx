@@ -30,6 +30,7 @@ import userEvent from '@testing-library/user-event';
 
 import { crearQueryClient } from '@/app/providers';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
+import { sesionDeApi } from '@/test/sesionDeApi';
 
 const API = import.meta.env.TEST_API_URL as string | undefined;
 const MARCA = `TESTF${Date.now().toString(36).toUpperCase()}`;
@@ -64,7 +65,9 @@ function cuitUnico(): string {
 }
 
 // El `fetch` real, sin pasar por el espía, para preparar y verificar los datos.
-const fetchReal = globalThis.fetch.bind(globalThis);
+// Desde HU4.1 la API exige sesión: una cuenta de prueba inicia sesión de verdad (ver sesionDeApi).
+const sesion = sesionDeApi(API);
+const fetchReal = sesion.fetch;
 
 async function api(ruta: string, init?: RequestInit): Promise<unknown> {
   const respuesta = await fetchReal(`${API}${ruta}`, {
@@ -124,7 +127,7 @@ async function editarEmail(cliente: Cliente, email: string) {
 describe.skipIf(API === undefined)('EditarClienteSheet contra la API real', () => {
   const espia = vi.fn<typeof fetch>((...args) => fetchReal(...args));
 
-  beforeAll(() => {
+  beforeAll(async () => {
     // Antes de crear nada: sin una base descartable donde limpiar, el test no corre. Es la
     // misma guarda del script de limpieza, pero ese solo actuaría DESPUÉS de haber creado.
     const base = process.env.TEST_DATABASE_URL;
@@ -139,6 +142,11 @@ describe.skipIf(API === undefined)('EditarClienteSheet contra la API real', () =
         `TEST_DATABASE_URL apunta a "${nombre}": solo se permiten bases descartables (*_audit o *_test).`,
       );
     }
+    await sesion.iniciar();
+  });
+
+  afterAll(async () => {
+    await sesion.cerrar();
   });
 
   afterAll(() => {
