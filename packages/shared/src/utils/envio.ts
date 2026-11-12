@@ -23,6 +23,17 @@ export function motivoNoEnviable(item: {
   return null;
 }
 
+/**
+ * Los ítems que todavía no se pueden enviar (`motivoNoEnviable` distinto de `null`): pendientes o
+ * reunidos sin un documento vigente. Es lo que falta para marcar la rendición como Completa o
+ * Enviada (HU3.6 y HU3.7): el backend lo exige y el detalle muestra cuántos faltan.
+ */
+export function faltantesParaEnviar<
+  T extends { completado: boolean; documento?: DocumentoDeItem | null | undefined },
+>(items: readonly T[]): T[] {
+  return items.filter((item) => motivoNoEnviable(item) !== null);
+}
+
 /** Cómo se envía una selección de ítems. */
 export type CanalDeSeleccion =
   | { tipo: 'vacia' }

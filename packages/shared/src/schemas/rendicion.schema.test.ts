@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  MENSAJE_FECHA_ENVIO_FUTURA,
+  MENSAJE_FECHA_ENVIO_INVALIDA,
+  MENSAJE_FECHA_ENVIO_SIN_ENVIADA,
+} from '../utils/envioDeRendicion.js';
+
 import { Emisor } from './cliente.schema.js';
 import {
   ActualizarEstadoRendicionSchema,
@@ -299,19 +305,56 @@ describe('ActualizarVigenciaRendicionSchema', () => {
 });
 
 describe('ActualizarEstadoRendicionSchema', () => {
-  it.each(['EN_CURSO', 'COMPLETA'])("acepta '%s'", (estado) => {
+  it.each(['EN_CURSO', 'COMPLETA', 'ENVIADA'])("acepta '%s'", (estado) => {
     expect(ActualizarEstadoRendicionSchema.parse({ estado })).toEqual({ estado });
   });
 
-  it.each([
-    { estado: 'ENVIADA' },
-    { estado: 'APROBADA' },
-    { estado: 'completa' },
-    { estado: null },
-    {},
-  ])('rechaza %j con un mensaje en español', (cuerpo) => {
-    const e = errores(ActualizarEstadoRendicionSchema.safeParse(cuerpo));
-    expect(e).toEqual([{ path: ['estado'], message: 'El estado debe ser EN_CURSO o COMPLETA.' }]);
+  it.each([{ estado: 'APROBADA' }, { estado: 'completa' }, { estado: null }, {}])(
+    'rechaza %j con un mensaje en español',
+    (cuerpo) => {
+      const e = errores(ActualizarEstadoRendicionSchema.safeParse(cuerpo));
+      expect(e).toEqual([
+        { path: ['estado'], message: 'El estado debe ser EN_CURSO, COMPLETA o ENVIADA.' },
+      ]);
+    },
+  );
+
+  describe('fechaEnvio (HU3.7)', () => {
+    it('acepta ENVIADA con una fecha pasada o de hoy (en Buenos Aires)', () => {
+      // 23:30 del 12/11 en Buenos Aires: en UTC ya es 13/11, pero hoy sigue siendo el 12.
+      vi.useFakeTimers({ now: new Date('2026-11-13T02:30:00.000Z') });
+      for (const fechaEnvio of ['2026-10-01', '2026-11-12']) {
+        expect(ActualizarEstadoRendicionSchema.parse({ estado: 'ENVIADA', fechaEnvio })).toEqual({
+          estado: 'ENVIADA',
+          fechaEnvio,
+        });
+      }
+    });
+
+    it('rechaza una fecha futura', () => {
+      vi.useFakeTimers({ now: new Date('2026-11-13T02:30:00.000Z') });
+      const e = errores(
+        ActualizarEstadoRendicionSchema.safeParse({ estado: 'ENVIADA', fechaEnvio: '2026-11-13' }),
+      );
+      expect(e).toEqual([{ path: ['fechaEnvio'], message: MENSAJE_FECHA_ENVIO_FUTURA }]);
+    });
+
+    it.each(['2026-02-30', '12/11/2026', '2026-11-12T10:00:00Z', '', 20261112])(
+      'rechaza %j: no es un día AAAA-MM-DD',
+      (fechaEnvio) => {
+        const e = errores(
+          ActualizarEstadoRendicionSchema.safeParse({ estado: 'ENVIADA', fechaEnvio }),
+        );
+        expect(e).toEqual([{ path: ['fechaEnvio'], message: MENSAJE_FECHA_ENVIO_INVALIDA }]);
+      },
+    );
+
+    it.each(['EN_CURSO', 'COMPLETA'])('rechaza fechaEnvio con %s', (estado) => {
+      const e = errores(
+        ActualizarEstadoRendicionSchema.safeParse({ estado, fechaEnvio: '2026-11-01' }),
+      );
+      expect(e).toEqual([{ path: ['fechaEnvio'], message: MENSAJE_FECHA_ENVIO_SIN_ENVIADA }]);
+    });
   });
 });
 

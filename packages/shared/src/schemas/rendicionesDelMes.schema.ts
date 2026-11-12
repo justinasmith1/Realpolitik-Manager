@@ -33,7 +33,9 @@ export const ESTADOS_CON_FECHA = ['ENVIADA', 'APROBADA', 'RECHAZADA'] as const;
  * - `cliente`: el nombre corto (`denominacion`) y la tipología (sector y, si es público, subtipo).
  * - `avance`: ítems reunidos, el total y los que faltan (`total - reunidos`).
  * - `ultimoPaso`: en una rendición Enviada, Aprobada o Rechazada, ese estado y la fecha de la
- *   entrada del historial que la llevó ahí. `null` en las En curso y Completa.
+ *   entrada del historial que la llevó ahí (`fechaDelPaso`: en una Enviada, la fecha de envío
+ *   elegida, como el instante en que empieza ese día en Buenos Aires). `null` en las En curso y
+ *   Completa.
  * - `atrasada` (HU3.4): sin enviar y de dos meses atrás o más (`esAtrasada`). Se calcula, no se
  *   guarda.
  */

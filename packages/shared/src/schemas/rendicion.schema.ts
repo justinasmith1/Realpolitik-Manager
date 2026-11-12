@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+import { esDiaValido, hoyEnBuenosAires } from '../utils/dia.js';
+import {
+  MENSAJE_FECHA_ENVIO_FUTURA,
+  MENSAJE_FECHA_ENVIO_INVALIDA,
+  MENSAJE_FECHA_ENVIO_SIN_ENVIADA,
+} from '../utils/envioDeRendicion.js';
 import { ANIO_MAX, ANIO_MIN, periodoMuyFuturo } from '../utils/periodo.js';
 
 import { CanalEntrega, Emisor } from './cliente.schema.js';
@@ -184,14 +190,39 @@ export const ActualizarVigenciaRendicionSchema = z.object({
 export type ActualizarVigenciaRendicionDto = z.infer<typeof ActualizarVigenciaRendicionSchema>;
 
 /**
- * Cuerpo de `PATCH /rendiciones/:id/estado` (HU3.6): marca la rendición como completa o la vuelve
- * a en curso. Los demás estados (Enviada, Aprobada, Rechazada) se suman con sus HU.
+ * Cuerpo de `PATCH /rendiciones/:id/estado`: marca la rendición como completa o la vuelve a en
+ * curso (HU3.6), o registra que se envió (HU3.7). Aprobada y Rechazada se suman con sus HU.
+ *
+ * `fechaEnvio` (`AAAA-MM-DD`) solo con `ENVIADA`: el día en que se mandó, que puede ser anterior al
+ * registro. Opcional: sin ella, hoy en Buenos Aires. No puede ser futura. Que no sea anterior al
+ * período lo comprueba el servidor, que conoce la rendición (`problemaDeFechaEnvio`).
  */
-export const ActualizarEstadoRendicionSchema = z.object({
-  estado: z.enum(['EN_CURSO', 'COMPLETA'], {
-    errorMap: () => ({ message: 'El estado debe ser EN_CURSO o COMPLETA.' }),
-  }),
-});
+export const ActualizarEstadoRendicionSchema = z
+  .object({
+    estado: z.enum(['EN_CURSO', 'COMPLETA', 'ENVIADA'], {
+      errorMap: () => ({ message: 'El estado debe ser EN_CURSO, COMPLETA o ENVIADA.' }),
+    }),
+    fechaEnvio: z
+      .string({ invalid_type_error: MENSAJE_FECHA_ENVIO_INVALIDA })
+      .refine(esDiaValido, MENSAJE_FECHA_ENVIO_INVALIDA)
+      .optional(),
+  })
+  .superRefine(({ estado, fechaEnvio }, ctx) => {
+    if (fechaEnvio === undefined) return;
+    if (estado !== 'ENVIADA') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['fechaEnvio'],
+        message: MENSAJE_FECHA_ENVIO_SIN_ENVIADA,
+      });
+    } else if (esDiaValido(fechaEnvio) && fechaEnvio > hoyEnBuenosAires()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['fechaEnvio'],
+        message: MENSAJE_FECHA_ENVIO_FUTURA,
+      });
+    }
+  });
 
 export type ActualizarEstadoRendicionDto = z.infer<typeof ActualizarEstadoRendicionSchema>;
 
@@ -268,12 +299,17 @@ export const ETIQUETAS_ESTADO_RENDICION: Record<EstadoRendicion, string> = {
 
 /**
  * Un cambio de estado. `estadoAnterior` es `null` solo en la primera entrada, la del alta.
- * `fecha` es cuándo ocurrió el cambio.
+ * `fecha` es cuándo se registró el cambio (y ordena el historial). `fechaEfectiva` (HU3.7) es el
+ * día en que ocurrió, si la operadora lo indicó y puede ser anterior al registro: hoy, solo la
+ * fecha de envío de la entrada `ENVIADA` (`AAAA-MM-DD`); `null` en las demás. El backend
+ * siempre la manda; es opcional en el contrato para no exigirla a quien no la usa. Para mostrar la fecha
+ * de un paso, `fechaDelPaso`.
  */
 export const HistorialEstadoRendicionSchema = z.object({
   estadoAnterior: EstadoRendicion.nullable(),
   estadoNuevo: EstadoRendicion,
   fecha: z.coerce.date(),
+  fechaEfectiva: z.string().refine(esDiaValido).nullable().optional(),
 });
 
 export type HistorialEstadoRendicion = z.infer<typeof HistorialEstadoRendicionSchema>;
