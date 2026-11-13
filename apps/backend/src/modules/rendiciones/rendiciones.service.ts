@@ -506,7 +506,7 @@ export async function obtenerRendicion(id: string): Promise<RendicionDetalle> {
  * simultáneos no pueden registrar el mismo estado anterior). Es el punto único que van a usar las
  * HU que cambian el estado (Completa, Enviada, Aprobada, Rechazada y la corrección de una
  * rechazada): no tiene endpoint. No valida transiciones ni la vigencia: eso lo decide cada una de
- * esas HU. `motivo` lo usa el rechazo (HU3.8).
+ * esas HU. `motivo` acompaña el cambio: el rechazo (HU3.8) guarda qué pidió corregir el cliente.
  */
 export async function registrarCambioDeEstado(
   rendicionId: string,
@@ -574,10 +574,12 @@ const TRANSICIONES_PERMITIDAS: Readonly<
 > = {
   EN_CURSO: { COMPLETA: { exigeTodoReunido: true } },
   COMPLETA: { EN_CURSO: { exigeTodoReunido: false }, ENVIADA: { exigeTodoReunido: true } },
+  // La respuesta del cliente (HU3.8): lo que se mandó ya no se vuelve a revisar.
+  ENVIADA: { APROBADA: { exigeTodoReunido: false }, RECHAZADA: { exigeTodoReunido: false } },
 };
 
 /**
- * Cambia el estado de una rendición a pedido de la operadora (HU3.6 y HU3.7):
+ * Cambia el estado de una rendición a pedido de la operadora (HU3.6, HU3.7 y HU3.8):
  * `PATCH /rendiciones/:id/estado`.
  * - Las transiciones y lo que exige cada una están en `TRANSICIONES_PERMITIDAS`; cualquier otra es
  *   `409 TRANSICION_INVALIDA`.
@@ -587,6 +589,8 @@ const TRANSICIONES_PERMITIDAS: Readonly<
  * - A `ENVIADA` (HU3.7), con la fecha de envío elegida (por defecto, hoy en Buenos Aires) como
  *   fecha efectiva de la entrada del historial. No futura ni anterior al primer día del período:
  *   si no, `400 VALIDATION_ERROR` en `fechaEnvio`.
+ * - A `APROBADA` o `RECHAZADA` (HU3.8), solo desde `ENVIADA`. El `motivo` (obligatorio con
+ *   `RECHAZADA`, lo exige el schema) se guarda en la entrada del historial; sin fecha efectiva.
  * - Pedir el estado que ya tiene responde igual, sin escribir ni agregar historial (en una Enviada,
  *   tampoco cambia la fecha de envío). Una anulada es `409 RENDICION_ANULADA`.
  * El chequeo y el cambio van en la misma transacción serializable: si un documento cambia en el
@@ -595,7 +599,11 @@ const TRANSICIONES_PERMITIDAS: Readonly<
 export async function cambiarEstadoDeRendicion(
   rendicionId: string,
   estadoNuevo: EstadoRendicionType,
-  { fechaEnvio, ahora = new Date() }: { fechaEnvio?: string | undefined; ahora?: Date } = {},
+  {
+    fechaEnvio,
+    motivo,
+    ahora = new Date(),
+  }: { fechaEnvio?: string | undefined; motivo?: string | undefined; ahora?: Date } = {},
 ): Promise<RendicionDetalle> {
   return enTransaccionSerializable(async (tx) => {
     const rendicion = await tx.rendicion.findFirst({
@@ -646,14 +654,14 @@ export async function cambiarEstadoDeRendicion(
       }
     }
 
-    return registrarCambioDeEstadoEnTx(tx, rendicionId, estadoNuevo, null, fechaEfectiva);
+    return registrarCambioDeEstadoEnTx(tx, rendicionId, estadoNuevo, motivo ?? null, fechaEfectiva);
   });
 }
 
 /**
  * Por qué no se puede modificar una rendición (documentos, canales o requisitos), o `null` si se
- * puede: anulada (`RENDICION_ANULADA`, es historial) o ya enviada (`RENDICION_ENVIADA`, HU3.7:
- * lo que se mandó no cambia). `datos` va en los `details` del 409 (p. ej. el `itemId` o el
+ * puede: anulada (`RENDICION_ANULADA`, es historial) o ya enviada o aprobada (`RENDICION_ENVIADA`,
+ * HU3.7 y HU3.8: lo que se mandó no cambia). El código no cambió, el texto sí. `datos` va en los `details` del 409 (p. ej. el `itemId` o el
  * `rendicionId` del conflicto).
  */
 export function motivoParaNoModificar(
@@ -664,7 +672,7 @@ export function motivoParaNoModificar(
     return conflict('RENDICION_ANULADA', datos, 'La rendición está anulada');
   }
   if (!esRendicionModificable(rendicion.estado)) {
-    return conflict('RENDICION_ENVIADA', datos, 'La rendición ya fue enviada');
+    return conflict('RENDICION_ENVIADA', datos, 'La rendición ya no se puede modificar.');
   }
   return null;
 }

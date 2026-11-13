@@ -103,6 +103,8 @@ interface HistorialJson {
   estadoAnterior: string | null;
   estadoNuevo: string;
   fecha: string;
+  fechaEfectiva?: string | null;
+  motivo?: string | null;
 }
 interface RendicionJson {
   id: string;
@@ -141,6 +143,7 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
         estadoNuevo: 'EN_CURSO',
         fecha: expect.any(String) as unknown,
         fechaEfectiva: null,
+        motivo: null,
       },
     ]);
     // La entrada se escribió en la misma alta: es del momento en que se creó la rendición.
@@ -217,5 +220,76 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
     expect(
       (await listar(cliente.id, '?vigencia=ANULADA&estado=COMPLETA')).map((r) => r.id),
     ).toEqual([abierta.id]);
+  });
+
+  // integración: corre Agus
+  it('aprobar una ENVIADA (HU3.8): historial con APROBADA, motivo null y fechaEfectiva null', async () => {
+    const cliente = await clienteConMatriz();
+    const abierta = await abrir(cliente.id);
+    await registrarCambioDeEstado(abierta.id, 'COMPLETA');
+    await registrarCambioDeEstado(abierta.id, 'ENVIADA');
+
+    const res = await sesiones
+      .cliente(app)
+      .patch(`/rendiciones/${abierta.id}/estado`)
+      .send({ estado: 'APROBADA' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ estado: 'APROBADA' });
+    const filas = await prisma.historialEstadoRendicion.findMany({
+      where: { rendicionId: abierta.id, estadoNuevo: 'APROBADA' },
+    });
+    expect(filas).toEqual([
+      expect.objectContaining({
+        estadoAnterior: 'ENVIADA',
+        estadoNuevo: 'APROBADA',
+        motivo: null,
+        fechaEfectiva: null,
+      }),
+    ]);
+  });
+
+  // integración: corre Agus
+  it('rechazar una ENVIADA con motivo (HU3.8): historial con RECHAZADA y ese motivo', async () => {
+    const cliente = await clienteConMatriz();
+    const abierta = await abrir(cliente.id);
+    await registrarCambioDeEstado(abierta.id, 'COMPLETA');
+    await registrarCambioDeEstado(abierta.id, 'ENVIADA');
+    const motivo = 'Faltó el CUIT 20-12345678-4';
+
+    const res = await sesiones
+      .cliente(app)
+      .patch(`/rendiciones/${abierta.id}/estado`)
+      .send({ estado: 'RECHAZADA', motivo });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ estado: 'RECHAZADA' });
+    const filas = await prisma.historialEstadoRendicion.findMany({
+      where: { rendicionId: abierta.id, estadoNuevo: 'RECHAZADA' },
+    });
+    expect(filas).toEqual([
+      expect.objectContaining({ estadoAnterior: 'ENVIADA', motivo, fechaEfectiva: null }),
+    ]);
+    const visto = await detalle(abierta.id);
+    expect(visto.historial?.at(-1)).toMatchObject({ estadoNuevo: 'RECHAZADA', motivo });
+  });
+
+  // integración: corre Agus
+  it('rechazar sin motivo (HU3.8): 400 en motivo y la rendición sigue ENVIADA', async () => {
+    const cliente = await clienteConMatriz();
+    const abierta = await abrir(cliente.id);
+    await registrarCambioDeEstado(abierta.id, 'COMPLETA');
+    await registrarCambioDeEstado(abierta.id, 'ENVIADA');
+
+    const res = await sesiones
+      .cliente(app)
+      .patch(`/rendiciones/${abierta.id}/estado`)
+      .send({ estado: 'RECHAZADA' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: { code: 'VALIDATION_ERROR', details: [{ campo: 'motivo' }] },
+    });
+    expect((await detalle(abierta.id)).estado).toBe('ENVIADA');
   });
 });
