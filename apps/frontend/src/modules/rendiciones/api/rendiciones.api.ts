@@ -458,6 +458,8 @@ export type FalloCambioDeEstado =
   | { tipo: 'items-pendientes'; faltantes: number | null }
   /** La fecha de envío no vale (HU3.7): el mensaje del servidor, si vino. */
   | { tipo: 'fecha-invalida'; mensaje: string | null }
+  /** El motivo del rechazo no vale (HU3.8): el mensaje del servidor, si vino. */
+  | { tipo: 'motivo-invalido'; mensaje: string | null }
   | { tipo: 'rendicion-anulada' }
   | { tipo: 'transicion-invalida' }
   | { tipo: 'no-existe' }
@@ -474,6 +476,10 @@ export function interpretarFalloCambioDeEstado(error: unknown): FalloCambioDeEst
       (detalle) => detalle.campo === 'fechaEnvio',
     );
     if (fecha !== undefined) return { tipo: 'fecha-invalida', mensaje: fecha.mensaje };
+    const motivo = leerDetallesInvalidos(respuesta.cuerpo.details).find(
+      (detalle) => detalle.campo === 'motivo',
+    );
+    if (motivo !== undefined) return { tipo: 'motivo-invalido', mensaje: motivo.mensaje };
   }
   if (respuesta.status === 404 && respuesta.cuerpo?.code === 'NOT_FOUND') {
     return { tipo: 'no-existe' };

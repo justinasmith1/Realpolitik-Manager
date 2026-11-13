@@ -120,9 +120,30 @@ export const TEXTO_CONFIRMAR_ENVIO = 'Confirmar';
 export const TEXTO_RENDICION_YA_ENVIADA =
   'La rendición ya fue enviada: no se pueden cambiar sus documentos ni sus canales.';
 
+/**
+ * Por qué las acciones sobre documentos y canales están deshabilitadas en una Aprobada (HU3.8):
+ * como una Enviada, ya no se modifica.
+ */
+export const TEXTO_RENDICION_YA_APROBADA =
+  'La rendición ya fue aprobada: no se pueden cambiar sus documentos ni sus canales.';
+
 /** El aviso al registrar el envío: "La rendición quedó enviada (08/11/2026)." */
 export const avisoRendicionEnviada = (fechaEnvio: string): string =>
   `La rendición quedó enviada (${diaLegible(fechaEnvio)}).`;
+
+// ─── Respuesta del cliente: aprobar o rechazar (HU3.8) ────────────────────────────────────
+
+export const TEXTO_APROBAR_RENDICION = 'Aprobar';
+export const TEXTO_RECHAZAR_RENDICION = 'Rechazar';
+export const TITULO_CONFIRMAR_APROBACION = '¿Confirmar aprobación?';
+export const DESCRIPCION_CONFIRMAR_APROBACION =
+  'Esta acción cierra la rendición. No se puede deshacer.';
+export const TITULO_RECHAZAR_DIALOG = 'Rechazar rendición';
+export const ETIQUETA_MOTIVO_RECHAZO = 'Motivo del rechazo';
+export const PLACEHOLDER_MOTIVO_RECHAZO = 'Describí qué pidió corregir el cliente...';
+export const TEXTO_CONFIRMAR_RECHAZO = 'Confirmar rechazo';
+export const AVISO_RENDICION_APROBADA = 'La rendición fue aprobada.';
+export const AVISO_RENDICION_RECHAZADA = 'La rendición fue rechazada.';
 
 // ─── Orden de compra (HU2.11) ─────────────────────────────────────────────────
 

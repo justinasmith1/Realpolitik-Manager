@@ -32,7 +32,7 @@ export function mensajeFalloCarga(fallo: FalloDeCarga): string {
 const porMotivo: Record<MotivoDeRechazoDeAplicacion, (item: string) => string> = {
   ITEM_NO_PENDIENTE: (item) => `${item} ya tiene un documento: lo aplicaron mientras tanto.`,
   RENDICION_ANULADA: (item) => `La rendición de ${item} se anuló.`,
-  RENDICION_ENVIADA: (item) => `La rendición de ${item} ya fue enviada.`,
+  RENDICION_ENVIADA: (item) => `La rendición de ${item} ya no se puede modificar.`,
   TIPO_DOCUMENTO_DISTINTO: (item) => `${item} pide otro tipo de documento.`,
   PERIODO_DISTINTO: (item) => `${item} es de otro período.`,
 };
@@ -69,7 +69,7 @@ const rechazoDeUnItem: Record<MotivoDeRechazoDeAplicacion, string> = {
   ITEM_NO_PENDIENTE:
     'Este ítem ya tiene un documento: lo asociaron mientras tanto. Actualizamos el checklist.',
   RENDICION_ANULADA: 'La rendición se anuló: ya no se puede modificar.',
-  RENDICION_ENVIADA: 'La rendición ya fue enviada: no se puede modificar.',
+  RENDICION_ENVIADA: 'La rendición ya no se puede modificar.',
   TIPO_DOCUMENTO_DISTINTO: 'Ese documento ya no corresponde a este ítem. Elegí otro.',
   PERIODO_DISTINTO: 'Ese documento ya no corresponde a este ítem. Elegí otro.',
 };

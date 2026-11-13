@@ -152,3 +152,76 @@ describe('verboDelPaso', () => {
     expect(verboDelPaso({ estadoAnterior, estadoNuevo })).toBe(texto);
   });
 });
+
+describe('HistorialDeEstados: motivo (HU3.8)', () => {
+  const ENVIO = {
+    estadoAnterior: 'COMPLETA',
+    estadoNuevo: 'ENVIADA',
+    fecha: new Date('2026-10-23T15:00:00.000Z'),
+  } as const;
+
+  it('una entrada con motivo lo muestra debajo del paso', async () => {
+    const user = userEvent.setup();
+    render(
+      <HistorialDeEstados
+        historial={[
+          ALTA,
+          ENVIO,
+          {
+            estadoAnterior: 'ENVIADA',
+            estadoNuevo: 'RECHAZADA',
+            fecha: new Date('2026-10-30T15:00:00.000Z'),
+            motivo: 'Faltó el CUIT 20-12345678-4',
+          },
+        ]}
+      />,
+    );
+
+    await user.click(seccion().getByRole('button', { name: 'Historial (3)' }));
+
+    const rechazo = seccion().getAllByRole('listitem').at(-1);
+    expect(rechazo).toHaveTextContent('Fue rechazada');
+    expect(within(rechazo as HTMLElement).getByText('Faltó el CUIT 20-12345678-4')).toBeVisible();
+  });
+
+  it('una entrada con motivo null no muestra texto de motivo', async () => {
+    const user = userEvent.setup();
+    render(
+      <HistorialDeEstados
+        historial={[
+          ALTA,
+          ENVIO,
+          {
+            estadoAnterior: 'ENVIADA',
+            estadoNuevo: 'APROBADA',
+            fecha: new Date('2026-10-30T15:00:00.000Z'),
+            motivo: null,
+          },
+        ]}
+      />,
+    );
+
+    await user.click(seccion().getByRole('button', { name: 'Historial (3)' }));
+
+    expect(
+      seccion()
+        .getAllByRole('listitem')
+        .map((entrada) => entrada.textContent),
+    ).toEqual([
+      '01/10/2026Se abrió enEn curso',
+      '23/10/2026Pasó aEnviada',
+      '30/10/2026Fue aprobadaAprobada',
+    ]);
+  });
+
+  it('un motivo vacío o de solo espacios no deja un renglón vacío', async () => {
+    const user = userEvent.setup();
+    render(<HistorialDeEstados historial={[ALTA, { ...ENVIO, motivo: '   ' }]} />);
+
+    await user.click(seccion().getByRole('button', { name: 'Historial (2)' }));
+
+    expect(seccion().getAllByRole('listitem').at(-1)).toHaveTextContent(
+      /^23\/10\/2026Pasó aEnviada$/,
+    );
+  });
+});

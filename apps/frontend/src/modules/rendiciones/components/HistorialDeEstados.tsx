@@ -59,6 +59,10 @@ export function HistorialDeEstados({ historial }: HistorialDeEstadosProps) {
             </time>
             <span className="text-content-secondary">{verboDelPaso(paso)}</span>
             <EstadoRendicionBadge estado={paso.estadoNuevo} />
+            {/* Lo que pidió corregir el cliente (HU3.8), debajo del paso. */}
+            {paso.motivo !== undefined && paso.motivo !== null && paso.motivo.trim() !== '' && (
+              <p className="basis-full pl-1 text-sm text-content-secondary">{paso.motivo}</p>
+            )}
           </li>
         ))}
       </ol>

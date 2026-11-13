@@ -38,6 +38,7 @@ import {
   interpretarFalloCambioDeEstado,
   interpretarFalloPreparacionEnvio,
 } from '@/modules/rendiciones/api/rendiciones.api';
+import { AprobarRendicionDialog } from '@/modules/rendiciones/components/AprobarRendicionDialog';
 import { CambiarCanalDialog } from '@/modules/rendiciones/components/CambiarCanalDialog';
 import { EditarOcSheet } from '@/modules/rendiciones/components/EditarOcSheet';
 import { EnvioDialog, type Envio } from '@/modules/rendiciones/components/EnvioDialog';
@@ -52,6 +53,7 @@ import {
   type AccionesDeDocumento,
 } from '@/modules/rendiciones/components/ItemChecklistFila';
 import { MarcarEnviadaDialog } from '@/modules/rendiciones/components/MarcarEnviadaDialog';
+import { RechazarDialog } from '@/modules/rendiciones/components/RechazarDialog';
 import {
   useMarcarEstadoDeRendicion,
   usePrepararEnvio,
@@ -71,7 +73,10 @@ import {
   nombreDeItem,
   TEXTO_GUARDANDO_ESTADO,
   TEXTO_MARCAR_COMPLETA,
+  TEXTO_APROBAR_RENDICION,
   TEXTO_MARCAR_ENVIADA,
+  TEXTO_RECHAZAR_RENDICION,
+  TEXTO_RENDICION_YA_APROBADA,
   TEXTO_RENDICION_YA_ENVIADA,
   TEXTO_VOLVER_A_EN_CURSO,
   textoDeFaltantes,
@@ -207,10 +212,13 @@ function DetalleDeRendicion({
 }: DetalleDeRendicionProps) {
   const idSoloFaltantes = useId();
   const idFaltantes = useId();
-  const idYaEnviada = useId();
+  const idRendicionBloqueada = useId();
   const enviarRef = useRef<HTMLButtonElement>(null);
   // El diálogo de la fecha de envío (HU3.7): desde "Marcar como enviada" o desde "Ya la envié".
   const [registrandoEnvio, setRegistrandoEnvio] = useState(false);
+  // La respuesta del cliente (HU3.8): los diálogos de aprobar y de rechazar una Enviada.
+  const [aprobando, setAprobando] = useState(false);
+  const [rechazando, setRechazando] = useState(false);
   const [soloFaltantes, setSoloFaltantes] = useState(false);
   const [seleccion, setSeleccion] = useState<ReadonlySet<string>>(new Set());
   // El aviso de canales mezclados se pidió al tocar "Enviar"; los canales se calculan con los
@@ -238,17 +246,25 @@ function DetalleDeRendicion({
   const avance = calcularFaltantes(rendicion.items);
   const anulada = rendicion.vigencia === 'ANULADA';
   const enviada = rendicion.estado === 'ENVIADA';
-  // Documentos y canales se cambian solo en una activa que todavía no se envió (HU3.7).
-  const modificable = !anulada && esRendicionModificable(rendicion.estado);
+  // Documentos y canales se cambian solo en una activa que todavía no se envió (HU3.7) ni se
+  // aprobó (HU3.8): el motivo que se muestra es el del estado real.
+  const cerrada = !esRendicionModificable(rendicion.estado);
+  const modificable = !anulada && !cerrada;
+  const textoDeCerrada =
+    rendicion.estado === 'APROBADA' ? TEXTO_RENDICION_YA_APROBADA : TEXTO_RENDICION_YA_ENVIADA;
   // Lo que falta para completarla, con la regla del envío (HU3.6): pendientes y reunidos sin
   // documento vigente. Sin ítems tampoco se puede completar.
   const faltantesParaCompletar = faltantesParaEnviar(rendicion.items).length;
   const sinDocumentos = rendicion.items.length === 0;
   const puedeCompletarse = !sinDocumentos && faltantesParaCompletar === 0;
   const fechaDeEnvio = enviada ? fechaDeEnvioDe(rendicion) : null;
-  // Los cambios de estado (HU3.6 y HU3.7): solo en una rendición activa, En curso o Completa.
+  // Los cambios de estado (HU3.6 a HU3.8): solo en una rendición activa, En curso, Completa o
+  // Enviada (esperando la respuesta del cliente).
   const conAccionesDeEstado =
-    !anulada && (rendicion.estado === 'EN_CURSO' || rendicion.estado === 'COMPLETA');
+    !anulada &&
+    (rendicion.estado === 'EN_CURSO' ||
+      rendicion.estado === 'COMPLETA' ||
+      rendicion.estado === 'ENVIADA');
   const completo = checklistCompleto(avance);
   const visibles = soloFaltantes ? avance.faltantes : rendicion.items;
   // Solo cuentan los que se pueden enviar con los datos de ahora: si un ítem marcado deja de
@@ -425,6 +441,35 @@ function DetalleDeRendicion({
                   </Button>
                 </>
               )}
+              {/* La respuesta del cliente (HU3.8): aprobar o rechazar, cada una con su diálogo. */}
+              {rendicion.estado === 'ENVIADA' && (
+                <>
+                  <Button
+                    type="button"
+                    variant="rechazar"
+                    className="w-full sm:w-auto"
+                    onClick={() => {
+                      setAvisoDelChecklist(null);
+                      setRechazando(true);
+                    }}
+                    disabled={cambioDeEstado.isPending}
+                  >
+                    {TEXTO_RECHAZAR_RENDICION}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="aprobar"
+                    className="w-full sm:w-auto"
+                    onClick={() => {
+                      setAvisoDelChecklist(null);
+                      setAprobando(true);
+                    }}
+                    disabled={cambioDeEstado.isPending}
+                  >
+                    {TEXTO_APROBAR_RENDICION}
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -505,12 +550,12 @@ function DetalleDeRendicion({
           conserva como historial: no se puede modificar.
         </Alert>
       )}
-      {enviada && !anulada && (
+      {cerrada && !anulada && (
         <Alert variant="warning">
-          <span id={idYaEnviada}>{TEXTO_RENDICION_YA_ENVIADA}</span>
+          <span id={idRendicionBloqueada}>{textoDeCerrada}</span>
         </Alert>
       )}
-      {completo && !enviada && (
+      {completo && !cerrada && (
         <Alert variant="success">Checklist completo: están todos los documentos.</Alert>
       )}
 
@@ -586,7 +631,7 @@ function DetalleDeRendicion({
                       setItemACorregir(item);
                     },
                   })}
-                  {...(enviada && !anulada && { bloqueadoPor: idYaEnviada })}
+                  {...(cerrada && !anulada && { bloqueadoPor: idRendicionBloqueada })}
                   {...(item.documento !== undefined && {
                     documento: accionesDeDocumento(item),
                   })}
@@ -651,6 +696,25 @@ function DetalleDeRendicion({
         }}
         // El botón "Marcar como enviada" desaparece al enviarla: el foco vuelve a "Enviar".
         focoAlCerrar={enviarRef}
+      />
+      {/* Los botones "Aprobar" y "Rechazar" desaparecen al responder: el foco vuelve al título. */}
+      <AprobarRendicionDialog
+        rendicion={aprobando ? rendicion : null}
+        onCerrar={() => setAprobando(false)}
+        onAprobada={(texto) => {
+          setAprobando(false);
+          setAvisoDelChecklist({ variant: 'success', texto });
+        }}
+        focoAlCerrar={tituloRef}
+      />
+      <RechazarDialog
+        rendicion={rechazando ? rendicion : null}
+        onCerrar={() => setRechazando(false)}
+        onRechazada={(texto) => {
+          setRechazando(false);
+          setAvisoDelChecklist({ variant: 'success', texto });
+        }}
+        focoAlCerrar={tituloRef}
       />
       {cliente !== undefined && (
         <EditarClienteSheet

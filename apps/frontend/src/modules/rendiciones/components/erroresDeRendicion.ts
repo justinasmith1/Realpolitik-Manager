@@ -1,6 +1,8 @@
 // Traduce un fallo de rendiciones (ya interpretado por `rendiciones.api`) a texto de la interfaz.
 // Nunca muestra detalles técnicos.
 
+import { MENSAJE_MOTIVO_OBLIGATORIO } from '@realpolitik/shared';
+
 import { mensajeDelServidor } from '@/lib/errores-api';
 import { etiquetasEstado } from '@/modules/clientes/clientes.etiquetas';
 import type {
@@ -103,7 +105,7 @@ export function motivoFalloAgregado(fallo: FalloAgregado): string {
     case 'rendicion-anulada':
       return 'la rendición está anulada';
     case 'rendicion-enviada':
-      return 'la rendición ya fue enviada';
+      return 'la rendición ya no se puede modificar';
     case 'cliente-no-activo':
       return fallo.estado === null
         ? 'el cliente no está activo'
@@ -145,7 +147,7 @@ export function mensajeFalloPropagacion(
       case 'rendicion-anulada':
         return `${quien(fallo.rendicionId)} está anulada. Destildala y probá de nuevo.`;
       case 'rendicion-enviada':
-        return `${quien(fallo.rendicionId)} ya fue enviada. Destildala y probá de nuevo.`;
+        return `${quien(fallo.rendicionId)} ya no se puede modificar. Destildala y probá de nuevo.`;
       case 'requisito-no-en-rendicion':
         return `${quien(fallo.rendicionId)} ya no tiene documentos de este requisito. Destildala y probá de nuevo.`;
       case 'no-existe':
@@ -186,8 +188,15 @@ export function mensajeFalloPreparacionEnvio(
 
 // ─── Estado de la rendición (HU3.6) ───────────────────────────────────────────────────────
 
-/** Una rendición Enviada no se modifica (HU3.7): documentos, canales y requisitos. */
-export const MENSAJE_RENDICION_ENVIADA = 'La rendición ya fue enviada: no se puede modificar.';
+/**
+ * Una rendición Enviada o Aprobada no se modifica (HU3.7 y HU3.8): documentos, canales y requisitos.
+ * El servidor responde `RENDICION_ENVIADA` en los dos casos, así que el texto no dice "enviada".
+ */
+export const MENSAJE_RENDICION_ENVIADA = 'La rendición ya no se puede modificar.';
+
+/** Aprobar o rechazar una rendición que ya no está Enviada (otra persona respondió antes). */
+export const MENSAJE_RENDICION_CAMBIO_DE_ESTADO =
+  'La rendición ya cambió de estado. Volvé a cargar la página.';
 
 /**
  * Por qué no se pudo cambiar el estado: se avisa en el checklist (o en el diálogo del envío), que
@@ -196,7 +205,7 @@ export const MENSAJE_RENDICION_ENVIADA = 'La rendición ya fue enviada: no se pu
  */
 export function mensajeFalloCambioDeEstado(
   fallo: FalloCambioDeEstado,
-  destino: 'COMPLETA' | 'ENVIADA' = 'COMPLETA',
+  destino: 'COMPLETA' | 'ENVIADA' | 'APROBADA' | 'RECHAZADA' = 'COMPLETA',
 ): string {
   const noSePuede =
     destino === 'ENVIADA' ? 'No se puede marcar como enviada' : 'No se puede marcar como completa';
@@ -213,10 +222,14 @@ export function mensajeFalloCambioDeEstado(
         : `${noSePuede}: faltan ${fallo.faltantes} documentos.`;
     case 'fecha-invalida':
       return mensajeDelServidor(fallo.mensaje) ?? 'Revisá la fecha de envío.';
+    case 'motivo-invalido':
+      return mensajeDelServidor(fallo.mensaje) ?? MENSAJE_MOTIVO_OBLIGATORIO;
     case 'rendicion-anulada':
       return 'La rendición está anulada: ya no se puede modificar.';
     case 'transicion-invalida':
-      return 'Ese cambio de estado no está permitido desde el estado actual.';
+      return destino === 'APROBADA' || destino === 'RECHAZADA'
+        ? MENSAJE_RENDICION_CAMBIO_DE_ESTADO
+        : 'Ese cambio de estado no está permitido desde el estado actual.';
     case 'no-existe':
       return 'La rendición ya no existe. Volvé a cargar la página.';
     case 'inesperado':
