@@ -131,19 +131,45 @@ export const TEXTO_RENDICION_YA_APROBADA =
 export const avisoRendicionEnviada = (fechaEnvio: string): string =>
   `La rendición quedó enviada (${diaLegible(fechaEnvio)}).`;
 
-// ─── Respuesta del cliente: aprobar o rechazar (HU3.8) ────────────────────────────────────
+// ─── Respuesta del cliente: aprobada o rechazada (HU3.8) ──────────────────────────────────
+// Quien aprueba o rechaza es el cliente: la operadora solo registra lo que respondió. Los textos lo
+// dicen así, sin verbos que suenen a que decide ella.
 
-export const TEXTO_APROBAR_RENDICION = 'Aprobar';
-export const TEXTO_RECHAZAR_RENDICION = 'Rechazar';
-export const TITULO_CONFIRMAR_APROBACION = '¿Confirmar aprobación?';
+export const TEXTO_RESPUESTA_APROBADA = 'Aprobada';
+export const TEXTO_RESPUESTA_RECHAZADA = 'Rechazada';
+/**
+ * Nombres accesibles de los botones: empiezan con el texto visible (así funciona el control por voz,
+ * "Rechazada") y aclaran que se registra la respuesta del cliente.
+ */
+export const ARIA_RESPUESTA_APROBADA = 'Aprobada: registrar que el cliente la aprobó';
+export const ARIA_RESPUESTA_RECHAZADA = 'Rechazada: registrar que el cliente la rechazó';
+export const TITULO_APROBADA_DIALOG = 'Aprobada por el cliente';
 export const DESCRIPCION_CONFIRMAR_APROBACION =
   'Esta acción cierra la rendición. No se puede deshacer.';
-export const TITULO_RECHAZAR_DIALOG = 'Rechazar rendición';
-export const ETIQUETA_MOTIVO_RECHAZO = 'Motivo del rechazo';
+export const TITULO_RECHAZADA_DIALOG = 'Rechazada por el cliente';
+export const DESCRIPCION_RECHAZADA_DIALOG = 'Anotá lo que observó el cliente.';
+export const ETIQUETA_MOTIVO_RECHAZO = '¿Qué observó el cliente?';
 export const PLACEHOLDER_MOTIVO_RECHAZO = 'Describí qué pidió corregir el cliente...';
-export const TEXTO_CONFIRMAR_RECHAZO = 'Confirmar rechazo';
-export const AVISO_RENDICION_APROBADA = 'La rendición fue aprobada.';
-export const AVISO_RENDICION_RECHAZADA = 'La rendición fue rechazada.';
+export const TEXTO_CONFIRMAR_RESPUESTA = 'Confirmar';
+export const AVISO_RENDICION_APROBADA = 'Quedó registrada como aprobada.';
+export const AVISO_RENDICION_RECHAZADA = 'Quedó registrada como rechazada.';
+
+// ─── Corregir una rechazada (HU3.9) ───────────────────────────────────────────────────────
+
+export const TEXTO_CORREGIR_RENDICION = 'Corregir';
+export const AVISO_RENDICION_REABIERTA =
+  'La rendición volvió a En curso: corregí lo que pidió el cliente y volvé a enviarla.';
+/**
+ * Por qué las acciones sobre documentos y canales están deshabilitadas en una Rechazada: se editan
+ * recién después de reabrirla.
+ */
+export const TEXTO_RENDICION_RECHAZADA = 'La rendición fue rechazada: tocá Corregir para editarla.';
+
+/** El motivo del rechazo pendiente, destacado: "Rechazada el 12/11/2026: Falta la firma". */
+export const textoDeRechazo = (fecha: Date, motivo: string | null | undefined): string => {
+  const texto = motivo?.trim() ?? '';
+  return `Rechazada el ${fechaCorta(fecha)}${texto === '' ? '.' : `: ${texto}`}`;
+};
 
 // ─── Orden de compra (HU2.11) ─────────────────────────────────────────────────
 
@@ -285,8 +311,8 @@ export function cantidadDeRendicionesEnElMes(
 
 /**
  * Cómo se lee un paso del historial, antes del badge del estado nuevo: un verbo según el estado al
- * que llegó, sin repetir el anterior (ya se ve en el renglón de arriba). APROBADA y RECHAZADA
- * quedan listos para las HU3.8 y 3.9.
+ * que llegó, sin repetir el anterior (ya se ve en el renglón de arriba). La reapertura de una
+ * Rechazada (HU3.9) tiene su propio texto.
  */
 const VERBO_DEL_PASO: Record<EstadoRendicionType, string> = {
   EN_CURSO: 'Volvió a',
@@ -296,7 +322,7 @@ const VERBO_DEL_PASO: Record<EstadoRendicionType, string> = {
   RECHAZADA: 'Fue rechazada',
 };
 
-/** "Se abrió en" (el alta), "Pasó a", "Volvió a", "Fue aprobada"… */
+/** "Se abrió en" (el alta), "Pasó a", "Volvió a", "Se reabrió para corregir", "Fue aprobada"… */
 export function verboDelPaso({
   estadoAnterior,
   estadoNuevo,
@@ -304,5 +330,8 @@ export function verboDelPaso({
   estadoAnterior: EstadoRendicionType | null;
   estadoNuevo: EstadoRendicionType;
 }): string {
-  return estadoAnterior === null ? 'Se abrió en' : VERBO_DEL_PASO[estadoNuevo];
+  if (estadoAnterior === null) return 'Se abrió en';
+  if (estadoAnterior === 'RECHAZADA' && estadoNuevo === 'EN_CURSO')
+    return 'Se reabrió para corregir';
+  return VERBO_DEL_PASO[estadoNuevo];
 }

@@ -1,6 +1,7 @@
 import {
+  diaDelUltimoRechazo,
   hoyEnBuenosAires,
-  primerDiaDelPeriodo,
+  primerDiaDeEnvio,
   problemaDeFechaEnvio,
   type RendicionDetalle,
 } from '@realpolitik/shared';
@@ -43,8 +44,9 @@ interface MarcarEnviadaDialogProps {
  * Registra que la operadora mandó la rendición (HU3.7): el sistema no envía nada, solo guarda el
  * paso a Enviada con la fecha del envío. Por defecto hoy; no se aceptan fechas futuras ni
  * anteriores al primer día del período (`problemaDeFechaEnvio`, la misma regla del servidor, que
- * vuelve a comprobarla). Lo abren "Marcar como enviada" del detalle y "Ya la envié" del diálogo
- * de envío.
+ * vuelve a comprobarla). En un reenvío (HU3.9), tampoco anteriores al día del último rechazo: el
+ * selector arranca ahí. Lo abren "Marcar como enviada" del detalle y "Ya la envié" del diálogo de
+ * envío.
  */
 export function MarcarEnviadaDialog({
   rendicion,
@@ -61,6 +63,8 @@ export function MarcarEnviadaDialog({
   const [fecha, setFecha] = useState(() => hoyEnBuenosAires());
   const [errorDeCampo, setErrorDeCampo] = useState<string | null>(null);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
+  // El día del último rechazo (HU3.9): el reenvío no puede ser anterior.
+  const rechazo = mostrada === null ? null : diaDelUltimoRechazo(mostrada.historial);
   if (rendicion !== null && rendicion !== mostrada) {
     // Se abre (o cambia la rendición): vuelve a hoy, sin errores de un intento anterior.
     if (mostrada === null || mostrada.id !== rendicion.id) {
@@ -74,7 +78,7 @@ export function MarcarEnviadaDialog({
   async function confirmar() {
     if (mostrada === null || cambio.isPending) return;
     setErrorGeneral(null);
-    const problema = problemaDeFechaEnvio(fecha, mostrada);
+    const problema = problemaDeFechaEnvio(fecha, mostrada, new Date(), rechazo);
     setErrorDeCampo(problema);
     if (problema !== null) return;
     try {
@@ -130,7 +134,7 @@ export function MarcarEnviadaDialog({
             type="date"
             value={fecha}
             max={hoyEnBuenosAires()}
-            {...(mostrada !== null && { min: primerDiaDelPeriodo(mostrada) })}
+            {...(mostrada !== null && { min: primerDiaDeEnvio(mostrada, rechazo) })}
             onChange={(evento) => {
               setFecha(evento.target.value);
               setErrorDeCampo(null);

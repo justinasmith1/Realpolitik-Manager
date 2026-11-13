@@ -148,8 +148,61 @@ describe('verboDelPaso', () => {
     ['COMPLETA', 'ENVIADA', 'Pasó a'],
     ['ENVIADA', 'APROBADA', 'Fue aprobada'],
     ['ENVIADA', 'RECHAZADA', 'Fue rechazada'],
+    ['RECHAZADA', 'EN_CURSO', 'Se reabrió para corregir'],
   ] as const)('de %s a %s: "%s"', (estadoAnterior, estadoNuevo, texto) => {
     expect(verboDelPaso({ estadoAnterior, estadoNuevo })).toBe(texto);
+  });
+});
+
+describe('HistorialDeEstados: ciclo completo con dos rechazos (HU3.9)', () => {
+  it('muestra cada envío, rechazo con su motivo y reenvío, en orden y con las fechas de envío elegidas', async () => {
+    const user = userEvent.setup();
+    const paso = (
+      estadoAnterior: 'EN_CURSO' | 'COMPLETA' | 'ENVIADA' | 'RECHAZADA' | null,
+      estadoNuevo: 'EN_CURSO' | 'COMPLETA' | 'ENVIADA' | 'RECHAZADA' | 'APROBADA',
+      fecha: string,
+      extra: { fechaEfectiva?: string; motivo?: string } = {},
+    ) => ({ estadoAnterior, estadoNuevo, fecha: new Date(`${fecha}T15:00:00.000Z`), ...extra });
+    render(
+      <HistorialDeEstados
+        historial={[
+          paso(null, 'EN_CURSO', '2026-10-01'),
+          paso('EN_CURSO', 'COMPLETA', '2026-10-15'),
+          // Registrada el 21/10 con la fecha de envío elegida, el 20/10.
+          paso('COMPLETA', 'ENVIADA', '2026-10-21', { fechaEfectiva: '2026-10-20' }),
+          paso('ENVIADA', 'RECHAZADA', '2026-10-28', { motivo: 'Falta la firma' }),
+          paso('RECHAZADA', 'EN_CURSO', '2026-10-29'),
+          paso('EN_CURSO', 'COMPLETA', '2026-10-30'),
+          paso('COMPLETA', 'ENVIADA', '2026-11-02', { fechaEfectiva: '2026-10-31' }),
+          paso('ENVIADA', 'RECHAZADA', '2026-11-05', { motivo: 'La factura tiene otro CUIT' }),
+          paso('RECHAZADA', 'EN_CURSO', '2026-11-06'),
+          paso('EN_CURSO', 'COMPLETA', '2026-11-07'),
+          paso('COMPLETA', 'ENVIADA', '2026-11-08', { fechaEfectiva: '2026-11-08' }),
+          paso('ENVIADA', 'APROBADA', '2026-11-12'),
+        ]}
+      />,
+    );
+
+    await user.click(seccion().getByRole('button', { name: 'Historial (12)' }));
+
+    expect(
+      seccion()
+        .getAllByRole('listitem')
+        .map((entrada) => entrada.textContent),
+    ).toEqual([
+      '01/10/2026Se abrió enEn curso',
+      '15/10/2026Pasó aCompleta',
+      '20/10/2026Pasó aEnviada',
+      '28/10/2026Fue rechazadaRechazadaFalta la firma',
+      '29/10/2026Se reabrió para corregirEn curso',
+      '30/10/2026Pasó aCompleta',
+      '31/10/2026Pasó aEnviada',
+      '05/11/2026Fue rechazadaRechazadaLa factura tiene otro CUIT',
+      '06/11/2026Se reabrió para corregirEn curso',
+      '07/11/2026Pasó aCompleta',
+      '08/11/2026Pasó aEnviada',
+      '12/11/2026Fue aprobadaAprobada',
+    ]);
   });
 });
 

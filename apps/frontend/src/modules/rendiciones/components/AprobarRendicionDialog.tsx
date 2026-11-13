@@ -18,9 +18,9 @@ import { useMarcarEstadoDeRendicion } from '@/modules/rendiciones/hooks/useRendi
 import {
   AVISO_RENDICION_APROBADA,
   DESCRIPCION_CONFIRMAR_APROBACION,
-  TEXTO_APROBAR_RENDICION,
+  TEXTO_CONFIRMAR_RESPUESTA,
   TEXTO_GUARDANDO_ESTADO,
-  TITULO_CONFIRMAR_APROBACION,
+  TITULO_APROBADA_DIALOG,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 
 interface AprobarRendicionDialogProps {
@@ -90,7 +90,7 @@ export function AprobarRendicionDialog({
         className="data-[size=default]:sm:max-w-sm"
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>{TITULO_CONFIRMAR_APROBACION}</AlertDialogTitle>
+          <AlertDialogTitle>{TITULO_APROBADA_DIALOG}</AlertDialogTitle>
           <AlertDialogDescription>{DESCRIPCION_CONFIRMAR_APROBACION}</AlertDialogDescription>
         </AlertDialogHeader>
         {errorGeneral !== null && <Alert>{errorGeneral}</Alert>}
@@ -103,7 +103,7 @@ export function AprobarRendicionDialog({
             onClick={() => void confirmar()}
             className="min-w-32"
           >
-            {TEXTO_APROBAR_RENDICION}
+            {TEXTO_CONFIRMAR_RESPUESTA}
           </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>

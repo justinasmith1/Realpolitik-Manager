@@ -39,6 +39,7 @@ import {
   interpretarFalloPreparacionEnvio,
 } from '@/modules/rendiciones/api/rendiciones.api';
 import { AprobarRendicionDialog } from '@/modules/rendiciones/components/AprobarRendicionDialog';
+import { AvisoDeRechazo } from '@/modules/rendiciones/components/AvisoDeRechazo';
 import { CambiarCanalDialog } from '@/modules/rendiciones/components/CambiarCanalDialog';
 import { EditarOcSheet } from '@/modules/rendiciones/components/EditarOcSheet';
 import { EnvioDialog, type Envio } from '@/modules/rendiciones/components/EnvioDialog';
@@ -62,8 +63,10 @@ import {
 import {
   AVISO_RENDICION_COMPLETA,
   AVISO_RENDICION_EN_CURSO,
+  ARIA_RESPUESTA_APROBADA,
+  ARIA_RESPUESTA_RECHAZADA,
+  AVISO_RENDICION_REABIERTA,
   avanceDelChecklist,
-  checklistCompleto,
   etiquetaDeEmisor,
   etiquetaDeMonto,
   etiquetaDeNumeroOc,
@@ -73,11 +76,13 @@ import {
   nombreDeItem,
   TEXTO_GUARDANDO_ESTADO,
   TEXTO_MARCAR_COMPLETA,
-  TEXTO_APROBAR_RENDICION,
+  TEXTO_CORREGIR_RENDICION,
   TEXTO_MARCAR_ENVIADA,
-  TEXTO_RECHAZAR_RENDICION,
+  TEXTO_RENDICION_RECHAZADA,
   TEXTO_RENDICION_YA_APROBADA,
   TEXTO_RENDICION_YA_ENVIADA,
+  TEXTO_RESPUESTA_APROBADA,
+  TEXTO_RESPUESTA_RECHAZADA,
   TEXTO_VOLVER_A_EN_CURSO,
   textoDeFaltantes,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
@@ -246,26 +251,28 @@ function DetalleDeRendicion({
   const avance = calcularFaltantes(rendicion.items);
   const anulada = rendicion.vigencia === 'ANULADA';
   const enviada = rendicion.estado === 'ENVIADA';
-  // Documentos y canales se cambian solo en una activa que todavía no se envió (HU3.7) ni se
-  // aprobó (HU3.8): el motivo que se muestra es el del estado real.
+  // Documentos y canales se cambian solo en una activa que todavía no se envió (HU3.7), no se
+  // aprobó (HU3.8) y, si se rechazó, ya se reabrió (HU3.9): el motivo que se muestra es el del
+  // estado real.
   const cerrada = !esRendicionModificable(rendicion.estado);
   const modificable = !anulada && !cerrada;
   const textoDeCerrada =
-    rendicion.estado === 'APROBADA' ? TEXTO_RENDICION_YA_APROBADA : TEXTO_RENDICION_YA_ENVIADA;
+    rendicion.estado === 'APROBADA'
+      ? TEXTO_RENDICION_YA_APROBADA
+      : rendicion.estado === 'RECHAZADA'
+        ? TEXTO_RENDICION_RECHAZADA
+        : TEXTO_RENDICION_YA_ENVIADA;
   // Lo que falta para completarla, con la regla del envío (HU3.6): pendientes y reunidos sin
   // documento vigente. Sin ítems tampoco se puede completar.
   const faltantesParaCompletar = faltantesParaEnviar(rendicion.items).length;
   const sinDocumentos = rendicion.items.length === 0;
   const puedeCompletarse = !sinDocumentos && faltantesParaCompletar === 0;
   const fechaDeEnvio = enviada ? fechaDeEnvioDe(rendicion) : null;
-  // Los cambios de estado (HU3.6 a HU3.8): solo en una rendición activa, En curso, Completa o
-  // Enviada (esperando la respuesta del cliente).
-  const conAccionesDeEstado =
-    !anulada &&
-    (rendicion.estado === 'EN_CURSO' ||
-      rendicion.estado === 'COMPLETA' ||
-      rendicion.estado === 'ENVIADA');
-  const completo = checklistCompleto(avance);
+  // Los cambios de estado (HU3.6 a HU3.9): solo en una rendición activa que no esté Aprobada.
+  const conAccionesDeEstado = !anulada && rendicion.estado !== 'APROBADA';
+  // "Checklist completo" con la misma regla que el botón (pendientes y reunidos sin documento
+  // vigente): nunca dice "completo" con "Marcar como completa" deshabilitado.
+  const completo = puedeCompletarse;
   const visibles = soloFaltantes ? avance.faltantes : rendicion.items;
   // Solo cuentan los que se pueden enviar con los datos de ahora: si un ítem marcado deja de
   // poder enviarse (se refrescó la rendición), sale solo de la selección.
@@ -355,6 +362,8 @@ function DetalleDeRendicion({
   async function cambiarEstado(estado: 'EN_CURSO' | 'COMPLETA') {
     if (cambioDeEstado.isPending) return;
     setAvisoDelChecklist(null);
+    // "Corregir" (HU3.9) es la vuelta a En curso desde una Rechazada: tiene su propio aviso.
+    const reabriendo = rendicion.estado === 'RECHAZADA';
     try {
       await cambioDeEstado.mutateAsync({
         clienteId: rendicion.clienteId,
@@ -363,12 +372,19 @@ function DetalleDeRendicion({
       });
       setAvisoDelChecklist({
         variant: 'success',
-        texto: estado === 'COMPLETA' ? AVISO_RENDICION_COMPLETA : AVISO_RENDICION_EN_CURSO,
+        texto:
+          estado === 'COMPLETA'
+            ? AVISO_RENDICION_COMPLETA
+            : reabriendo
+              ? AVISO_RENDICION_REABIERTA
+              : AVISO_RENDICION_EN_CURSO,
       });
+      // El botón "Corregir" desaparece: el foco vuelve al título.
+      if (reabriendo) tituloRef.current?.focus();
     } catch (fallo) {
       setAvisoDelChecklist({
         variant: 'warning',
-        texto: mensajeFalloCambioDeEstado(interpretarFalloCambioDeEstado(fallo)),
+        texto: mensajeFalloCambioDeEstado(interpretarFalloCambioDeEstado(fallo), estado),
       });
     }
   }
@@ -441,12 +457,25 @@ function DetalleDeRendicion({
                   </Button>
                 </>
               )}
+              {/* Corregir una rechazada (HU3.9): la reabre a En curso para editarla. */}
+              {rendicion.estado === 'RECHAZADA' && (
+                <LoadingButton
+                  type="button"
+                  className="w-full sm:w-auto"
+                  loading={cambioDeEstado.isPending}
+                  loadingText={TEXTO_GUARDANDO_ESTADO}
+                  onClick={() => void cambiarEstado('EN_CURSO')}
+                >
+                  {TEXTO_CORREGIR_RENDICION}
+                </LoadingButton>
+              )}
               {/* La respuesta del cliente (HU3.8): aprobar o rechazar, cada una con su diálogo. */}
               {rendicion.estado === 'ENVIADA' && (
                 <>
                   <Button
                     type="button"
                     variant="rechazar"
+                    aria-label={ARIA_RESPUESTA_RECHAZADA}
                     className="w-full sm:w-auto"
                     onClick={() => {
                       setAvisoDelChecklist(null);
@@ -454,11 +483,12 @@ function DetalleDeRendicion({
                     }}
                     disabled={cambioDeEstado.isPending}
                   >
-                    {TEXTO_RECHAZAR_RENDICION}
+                    {TEXTO_RESPUESTA_RECHAZADA}
                   </Button>
                   <Button
                     type="button"
                     variant="aprobar"
+                    aria-label={ARIA_RESPUESTA_APROBADA}
                     className="w-full sm:w-auto"
                     onClick={() => {
                       setAvisoDelChecklist(null);
@@ -466,7 +496,7 @@ function DetalleDeRendicion({
                     }}
                     disabled={cambioDeEstado.isPending}
                   >
-                    {TEXTO_APROBAR_RENDICION}
+                    {TEXTO_RESPUESTA_APROBADA}
                   </Button>
                 </>
               )}
@@ -543,6 +573,8 @@ function DetalleDeRendicion({
         <HistorialDeEstados historial={rendicion.historial} />
       </header>
 
+      {/* Lo que pidió corregir el cliente, mientras se corrige (HU3.9). */}
+      <AvisoDeRechazo rendicion={rendicion} />
       {anulada && (
         <Alert variant="warning">
           Anulada
@@ -697,7 +729,7 @@ function DetalleDeRendicion({
         // El botón "Marcar como enviada" desaparece al enviarla: el foco vuelve a "Enviar".
         focoAlCerrar={enviarRef}
       />
-      {/* Los botones "Aprobar" y "Rechazar" desaparecen al responder: el foco vuelve al título. */}
+      {/* Los botones "Aprobada" y "Rechazada" desaparecen al registrar la respuesta: el foco vuelve al título. */}
       <AprobarRendicionDialog
         rendicion={aprobando ? rendicion : null}
         onCerrar={() => setAprobando(false)}

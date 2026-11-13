@@ -108,6 +108,10 @@ const estadoMostrado = () => {
   return within(termino.parentElement as HTMLElement).getByRole('definition');
 };
 
+/** Los botones de la respuesta del cliente (HU3.8), por su nombre accesible. */
+const APROBADA = 'Aprobada: registrar que el cliente la aprobó';
+const RECHAZADA = 'Rechazada: registrar que el cliente la rechazó';
+
 const pedidosDeEstado = () =>
   fetchMock.mock.calls.filter(([entrada, init]) => esPedidoDeEstado(entrada, init));
 
@@ -287,16 +291,21 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
   const MOTIVO = 'Faltó el CUIT 20-12345678-4';
 
   const confirmarAprobacion = () =>
-    screen.findByRole('alertdialog', { name: '¿Confirmar aprobación?' });
-  const dialogoDeRechazo = () => screen.findByRole('alertdialog', { name: 'Rechazar rendición' });
+    screen.findByRole('alertdialog', { name: 'Aprobada por el cliente' });
+  const dialogoDeRechazo = () =>
+    screen.findByRole('alertdialog', { name: 'Rechazada por el cliente' });
 
-  it('una Enviada ofrece "Aprobar" y "Rechazar", y no los botones de las otras etapas', async () => {
+  it('una Enviada ofrece registrar la respuesta del cliente ("Aprobada" y "Rechazada"), y no los botones de las otras etapas', async () => {
     servir({ inicial: { estado: 'ENVIADA' } });
     renderDetalle();
     await esperarDetalle();
 
-    expect(screen.getByRole('button', { name: 'Aprobar' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Rechazar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: APROBADA })).toBeEnabled();
+    expect(screen.getByRole('button', { name: RECHAZADA })).toBeEnabled();
+    // El texto visible es la respuesta del cliente; el nombre accesible empieza con ese texto.
+    expect(screen.getByRole('button', { name: APROBADA })).toHaveTextContent(/^Aprobada$/);
+    expect(screen.getByRole('button', { name: RECHAZADA })).toHaveTextContent(/^Rechazada$/);
+    expect(screen.queryByRole('button', { name: /^(Aprobar|Rechazar)$/ })).not.toBeInTheDocument();
     for (const nombre of ['Marcar como completa', 'Volver a en curso', 'Marcar como enviada']) {
       expect(screen.queryByRole('button', { name: nombre })).not.toBeInTheDocument();
     }
@@ -309,8 +318,8 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
       renderDetalle();
       await esperarDetalle();
 
-      expect(screen.queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Rechazar' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: APROBADA })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: RECHAZADA })).not.toBeInTheDocument();
     },
   );
 
@@ -321,8 +330,8 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     renderDetalle();
     await esperarDetalle();
 
-    expect(screen.queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Rechazar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: APROBADA })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: RECHAZADA })).not.toBeInTheDocument();
   });
 
   it('"Aprobar" abre un diálogo de confirmación sin pedir nada todavía', async () => {
@@ -330,13 +339,13 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     const { user } = renderDetalle();
     await esperarDetalle();
 
-    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+    await user.click(screen.getByRole('button', { name: APROBADA }));
 
     const dialogo = within(await confirmarAprobacion());
     expect(
       dialogo.getByText('Esta acción cierra la rendición. No se puede deshacer.'),
     ).toBeVisible();
-    expect(dialogo.getByRole('button', { name: 'Aprobar' })).toBeEnabled();
+    expect(dialogo.getByRole('button', { name: 'Confirmar' })).toBeEnabled();
     expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeEnabled();
     expect(pedidosDeEstado()).toHaveLength(0);
   });
@@ -345,7 +354,7 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     servir({ inicial: { estado: 'ENVIADA' } });
     const { user } = renderDetalle();
     await esperarDetalle();
-    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+    await user.click(screen.getByRole('button', { name: APROBADA }));
 
     await user.click(within(await confirmarAprobacion()).getByRole('button', { name: 'Cancelar' }));
 
@@ -357,18 +366,20 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     servir({ inicial: { estado: 'ENVIADA' } });
     const { user } = renderDetalle();
     await esperarDetalle();
-    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+    await user.click(screen.getByRole('button', { name: APROBADA }));
 
-    await user.click(within(await confirmarAprobacion()).getByRole('button', { name: 'Aprobar' }));
+    await user.click(
+      within(await confirmarAprobacion()).getByRole('button', { name: 'Confirmar' }),
+    );
 
-    expect(await screen.findByText('La rendición fue aprobada.')).toBeVisible();
+    expect(await screen.findByText('Quedó registrada como aprobada.')).toBeVisible();
     expect(primerPedidoDeEstado()).toEqual({
       url: expect.stringContaining(`/rendiciones/${RENDICION_ID}/estado`) as unknown,
       cuerpo: { estado: 'APROBADA' },
     });
     expect(estadoMostrado()).toHaveTextContent('Aprobada');
-    expect(screen.queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Rechazar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: APROBADA })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: RECHAZADA })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   });
 
@@ -383,9 +394,9 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     });
     const { user } = renderDetalle();
     await esperarDetalle();
-    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+    await user.click(screen.getByRole('button', { name: APROBADA }));
     const confirmar = within(await confirmarAprobacion()).getByRole('button', {
-      name: /Aprobar|Guardando/,
+      name: /Confirmar|Guardando/,
     });
 
     await user.click(confirmar);
@@ -408,9 +419,11 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     });
     const { user } = renderDetalle();
     await esperarDetalle();
-    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+    await user.click(screen.getByRole('button', { name: APROBADA }));
 
-    await user.click(within(await confirmarAprobacion()).getByRole('button', { name: 'Aprobar' }));
+    await user.click(
+      within(await confirmarAprobacion()).getByRole('button', { name: 'Confirmar' }),
+    );
 
     const dialogo = within(await confirmarAprobacion());
     expect(
@@ -423,14 +436,15 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     const { user } = renderDetalle();
     await esperarDetalle();
 
-    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await user.click(screen.getByRole('button', { name: RECHAZADA }));
 
     const dialogo = within(await dialogoDeRechazo());
-    const campo = dialogo.getByRole('textbox', { name: 'Motivo del rechazo' });
+    expect(dialogo.getByText(/Anotá lo que observó el cliente./)).toBeVisible();
+    const campo = dialogo.getByRole('textbox', { name: '¿Qué observó el cliente?' });
     expect(campo).toHaveAttribute('placeholder', 'Describí qué pidió corregir el cliente...');
     expect(campo).toHaveAttribute('maxlength', '500');
     expect(campo).toBeRequired();
-    expect(dialogo.getByRole('button', { name: 'Confirmar rechazo' })).toBeDisabled();
+    expect(dialogo.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
     expect(pedidosDeEstado()).toHaveLength(0);
   });
 
@@ -438,30 +452,33 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     servir({ inicial: { estado: 'ENVIADA' } });
     const { user } = renderDetalle();
     await esperarDetalle();
-    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await user.click(screen.getByRole('button', { name: RECHAZADA }));
     const dialogo = within(await dialogoDeRechazo());
 
     if (texto !== '') {
-      await user.type(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' }), texto);
+      await user.type(dialogo.getByRole('textbox', { name: '¿Qué observó el cliente?' }), texto);
     }
 
-    expect(dialogo.getByRole('button', { name: 'Confirmar rechazo' })).toBeDisabled();
+    expect(dialogo.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
   });
 
   it('confirmar el rechazo pide { estado: RECHAZADA, motivo } recortado, avisa y la deja Rechazada', async () => {
     servir({ inicial: { estado: 'ENVIADA' } });
     const { user } = renderDetalle();
     await esperarDetalle();
-    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await user.click(screen.getByRole('button', { name: RECHAZADA }));
     const dialogo = within(await dialogoDeRechazo());
 
-    await user.type(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' }), `  ${MOTIVO}  `);
-    await user.click(dialogo.getByRole('button', { name: 'Confirmar rechazo' }));
+    await user.type(
+      dialogo.getByRole('textbox', { name: '¿Qué observó el cliente?' }),
+      `  ${MOTIVO}  `,
+    );
+    await user.click(dialogo.getByRole('button', { name: 'Confirmar' }));
 
-    expect(await screen.findByText('La rendición fue rechazada.')).toBeVisible();
+    expect(await screen.findByText('Quedó registrada como rechazada.')).toBeVisible();
     expect(primerPedidoDeEstado().cuerpo).toEqual({ estado: 'RECHAZADA', motivo: MOTIVO });
     expect(estadoMostrado()).toHaveTextContent('Rechazada');
-    expect(screen.queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: APROBADA })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   });
 
@@ -475,17 +492,17 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     });
     const { user } = renderDetalle();
     await esperarDetalle();
-    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await user.click(screen.getByRole('button', { name: RECHAZADA }));
     const dialogo = within(await dialogoDeRechazo());
-    await user.type(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' }), MOTIVO);
+    await user.type(dialogo.getByRole('textbox', { name: '¿Qué observó el cliente?' }), MOTIVO);
 
-    await user.click(dialogo.getByRole('button', { name: 'Confirmar rechazo' }));
+    await user.click(dialogo.getByRole('button', { name: 'Confirmar' }));
 
     expect(
       await dialogo.findByText('El motivo no puede superar los 500 caracteres.'),
     ).toBeVisible();
-    expect(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' })).toHaveValue(MOTIVO);
-    expect(dialogo.getByRole('button', { name: 'Confirmar rechazo' })).toBeEnabled();
+    expect(dialogo.getByRole('textbox', { name: '¿Qué observó el cliente?' })).toHaveValue(MOTIVO);
+    expect(dialogo.getByRole('button', { name: 'Confirmar' })).toBeEnabled();
   });
 
   it('el rechazo no se manda dos veces si se toca dos veces', async () => {
@@ -499,10 +516,10 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     });
     const { user } = renderDetalle();
     await esperarDetalle();
-    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await user.click(screen.getByRole('button', { name: RECHAZADA }));
     const dialogo = within(await dialogoDeRechazo());
-    await user.type(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' }), MOTIVO);
-    const confirmar = dialogo.getByRole('button', { name: 'Confirmar rechazo' });
+    await user.type(dialogo.getByRole('textbox', { name: '¿Qué observó el cliente?' }), MOTIVO);
+    const confirmar = dialogo.getByRole('button', { name: 'Confirmar' });
 
     await user.click(confirmar);
     await user.click(confirmar);
@@ -516,16 +533,16 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
     servir({ inicial: { estado: 'ENVIADA' } });
     const { user } = renderDetalle();
     await esperarDetalle();
-    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await user.click(screen.getByRole('button', { name: RECHAZADA }));
     const primero = within(await dialogoDeRechazo());
-    await user.type(primero.getByRole('textbox', { name: 'Motivo del rechazo' }), MOTIVO);
+    await user.type(primero.getByRole('textbox', { name: '¿Qué observó el cliente?' }), MOTIVO);
     await user.click(primero.getByRole('button', { name: 'Cancelar' }));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
 
-    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await user.click(screen.getByRole('button', { name: RECHAZADA }));
 
     const segundo = within(await dialogoDeRechazo());
-    expect(segundo.getByRole('textbox', { name: 'Motivo del rechazo' })).toHaveValue('');
+    expect(segundo.getByRole('textbox', { name: '¿Qué observó el cliente?' })).toHaveValue('');
   });
 });
 
@@ -571,12 +588,16 @@ describe('RendicionDetallePage: una Aprobada no se modifica (HU3.8)', () => {
     expect(screen.queryByText(/ya fue aprobada/)).not.toBeInTheDocument();
   });
 
-  it('una Rechazada no queda bloqueada: se puede corregir (HU3.9)', async () => {
+  it('una Rechazada queda bloqueada hasta tocar "Corregir" (HU3.9), con su propio texto', async () => {
     servir({ inicial: { estado: 'RECHAZADA' } });
     renderDetalle();
     await esperarDetalle();
 
     expect(screen.queryByText(/ya fue (aprobada|enviada)/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Cambiar el canal de/ })).toBeEnabled();
+    const canal = screen.getByRole('button', { name: /Cambiar el canal de/ });
+    expect(canal).toBeDisabled();
+    expect(canal).toHaveAccessibleDescription(
+      'La rendición fue rechazada: tocá Corregir para editarla.',
+    );
   });
 });

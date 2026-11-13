@@ -8,6 +8,7 @@ import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetal
 import { TEXTO_SIN_EMISOR } from '@/modules/rendiciones/rendiciones.etiquetas';
 import {
   CLIENTE_ID,
+  documentoJson,
   errorJson,
   itemJson,
   json,
@@ -67,6 +68,7 @@ const todosReunidos = ITEMS.map((item) => ({
   ...item,
   completado: true,
   completadoEn: '2026-10-16T12:00:00.000Z',
+  documento: documentoJson(),
 }));
 
 function servir(rendicion: () => Response = () => json({ ...rendicionJson(), items: ITEMS })) {
@@ -217,6 +219,23 @@ describe('RendicionDetallePage', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: 'Ver solo faltantes (0)' }));
     expect(screen.getByText('No hay documentos faltantes.')).toBeInTheDocument();
+  });
+
+  it('con un reunido sin documento vigente no dice que está completo (misma regla que el botón)', async () => {
+    servir(() =>
+      json({
+        ...rendicionJson(),
+        items: todosReunidos.map((item, indice) =>
+          indice === 0 ? { ...item, documento: null } : item,
+        ),
+      }),
+    );
+    renderDetalle();
+    await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
+
+    expect(screen.queryByText(/Checklist completo/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Marcar como completa' })).toBeDisabled();
+    expect(screen.getByText('Falta 1 documento')).toBeVisible();
   });
 
   it('con documentos pendientes no dice que está completo', async () => {
