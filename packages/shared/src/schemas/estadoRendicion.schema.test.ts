@@ -76,6 +76,15 @@ describe('HistorialEstadoRendicionSchema', () => {
     expect(r.estadoNuevo).toBe('COMPLETA');
   });
 
+  it('acepta motivo como texto, como null o sin el campo (HU3.8)', () => {
+    const rechazo = { estadoAnterior: 'ENVIADA', estadoNuevo: 'RECHAZADA', fecha: FECHA };
+    expect(
+      HistorialEstadoRendicionSchema.parse({ ...rechazo, motivo: 'Faltó la factura' }).motivo,
+    ).toBe('Faltó la factura');
+    expect(HistorialEstadoRendicionSchema.parse({ ...rechazo, motivo: null }).motivo).toBeNull();
+    expect(HistorialEstadoRendicionSchema.parse(rechazo).motivo).toBeUndefined();
+  });
+
   it.each([
     ['sin estado nuevo', { estadoAnterior: null, fecha: FECHA }],
     ['sin fecha', { estadoAnterior: null, estadoNuevo: 'EN_CURSO' }],

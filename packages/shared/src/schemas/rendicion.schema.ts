@@ -189,37 +189,70 @@ export const ActualizarVigenciaRendicionSchema = z.object({
 
 export type ActualizarVigenciaRendicionDto = z.infer<typeof ActualizarVigenciaRendicionSchema>;
 
+export const MENSAJE_ESTADO_ACTUALIZABLE =
+  'El estado debe ser EN_CURSO, COMPLETA, ENVIADA, APROBADA o RECHAZADA.';
+export const MENSAJE_MOTIVO_OBLIGATORIO = 'Indicá qué pidió corregir el cliente.';
+export const MENSAJE_MOTIVO_SIN_RECHAZO = 'El motivo solo se indica al rechazar la rendición.';
+/** Largo máximo del motivo del rechazo. */
+export const MOTIVO_RECHAZO_MAX = 500;
+
 /**
  * Cuerpo de `PATCH /rendiciones/:id/estado`: marca la rendición como completa o la vuelve a en
- * curso (HU3.6), o registra que se envió (HU3.7). Aprobada y Rechazada se suman con sus HU.
+ * curso (HU3.6), registra que se envió (HU3.7) o registra la respuesta del cliente, aprobada o
+ * rechazada (HU3.8).
  *
  * `fechaEnvio` (`AAAA-MM-DD`) solo con `ENVIADA`: el día en que se mandó, que puede ser anterior al
  * registro. Opcional: sin ella, hoy en Buenos Aires. No puede ser futura. Que no sea anterior al
  * período lo comprueba el servidor, que conoce la rendición (`problemaDeFechaEnvio`).
+ *
+ * `motivo` (HU3.8): qué pidió corregir el cliente. Obligatorio con `RECHAZADA` y solo con ella;
+ * se recorta y tiene hasta `MOTIVO_RECHAZO_MAX` caracteres.
  */
 export const ActualizarEstadoRendicionSchema = z
   .object({
-    estado: z.enum(['EN_CURSO', 'COMPLETA', 'ENVIADA'], {
-      errorMap: () => ({ message: 'El estado debe ser EN_CURSO, COMPLETA o ENVIADA.' }),
+    estado: z.enum(['EN_CURSO', 'COMPLETA', 'ENVIADA', 'APROBADA', 'RECHAZADA'], {
+      errorMap: () => ({ message: MENSAJE_ESTADO_ACTUALIZABLE }),
     }),
     fechaEnvio: z
       .string({ invalid_type_error: MENSAJE_FECHA_ENVIO_INVALIDA })
       .refine(esDiaValido, MENSAJE_FECHA_ENVIO_INVALIDA)
       .optional(),
+    motivo: z
+      .string({ invalid_type_error: MENSAJE_MOTIVO_OBLIGATORIO })
+      .trim()
+      .min(1, { message: MENSAJE_MOTIVO_OBLIGATORIO })
+      .max(MOTIVO_RECHAZO_MAX, {
+        message: `El motivo no puede superar los ${MOTIVO_RECHAZO_MAX} caracteres.`,
+      })
+      .optional(),
   })
-  .superRefine(({ estado, fechaEnvio }, ctx) => {
-    if (fechaEnvio === undefined) return;
-    if (estado !== 'ENVIADA') {
+  .superRefine(({ estado, fechaEnvio, motivo }, ctx) => {
+    if (fechaEnvio !== undefined) {
+      if (estado !== 'ENVIADA') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['fechaEnvio'],
+          message: MENSAJE_FECHA_ENVIO_SIN_ENVIADA,
+        });
+      } else if (esDiaValido(fechaEnvio) && fechaEnvio > hoyEnBuenosAires()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['fechaEnvio'],
+          message: MENSAJE_FECHA_ENVIO_FUTURA,
+        });
+      }
+    }
+    if (estado === 'RECHAZADA' && motivo === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['fechaEnvio'],
-        message: MENSAJE_FECHA_ENVIO_SIN_ENVIADA,
+        path: ['motivo'],
+        message: MENSAJE_MOTIVO_OBLIGATORIO,
       });
-    } else if (esDiaValido(fechaEnvio) && fechaEnvio > hoyEnBuenosAires()) {
+    } else if (estado !== 'RECHAZADA' && motivo !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['fechaEnvio'],
-        message: MENSAJE_FECHA_ENVIO_FUTURA,
+        path: ['motivo'],
+        message: MENSAJE_MOTIVO_SIN_RECHAZO,
       });
     }
   });
@@ -310,6 +343,8 @@ export const HistorialEstadoRendicionSchema = z.object({
   estadoNuevo: EstadoRendicion,
   fecha: z.coerce.date(),
   fechaEfectiva: z.string().refine(esDiaValido).nullable().optional(),
+  /** Texto que acompaña el cambio (HU3.8): qué pidió corregir el cliente en `RECHAZADA`. */
+  motivo: z.string().nullable().optional(),
 });
 
 export type HistorialEstadoRendicion = z.infer<typeof HistorialEstadoRendicionSchema>;

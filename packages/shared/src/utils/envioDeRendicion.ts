@@ -15,10 +15,13 @@ import type { Periodo } from './periodo.js';
 /**
  * Los estados en los que una rendición ya no se modifica: no se le aplican ni reemplazan
  * documentos, no se corrige ni propaga el canal y no se le suman requisitos. La OC sí se edita
- * (es un dato administrativo, no parte de lo que se mandó). Aprobada y Rechazada se deciden con
- * sus HU (HU3.8 y HU3.9).
+ * (es un dato administrativo, no parte de lo que se mandó). Una Aprobada está cerrada (HU3.8); una
+ * Rechazada sí se modifica: hay que corregirla (HU3.9).
  */
-export const ESTADOS_NO_MODIFICABLES = ['ENVIADA'] as const satisfies readonly EstadoRendicion[];
+export const ESTADOS_NO_MODIFICABLES = [
+  'ENVIADA',
+  'APROBADA',
+] as const satisfies readonly EstadoRendicion[];
 
 /** `true` si a una rendición en este estado se le pueden cambiar documentos o canales. */
 export const esRendicionModificable = (estado: EstadoRendicion): boolean =>

@@ -305,19 +305,79 @@ describe('ActualizarVigenciaRendicionSchema', () => {
 });
 
 describe('ActualizarEstadoRendicionSchema', () => {
-  it.each(['EN_CURSO', 'COMPLETA', 'ENVIADA'])("acepta '%s'", (estado) => {
+  it.each(['EN_CURSO', 'COMPLETA', 'ENVIADA', 'APROBADA'])("acepta '%s'", (estado) => {
     expect(ActualizarEstadoRendicionSchema.parse({ estado })).toEqual({ estado });
   });
 
-  it.each([{ estado: 'APROBADA' }, { estado: 'completa' }, { estado: null }, {}])(
+  it.each([{ estado: 'completa' }, { estado: 'ATRASADA' }, { estado: null }, {}])(
     'rechaza %j con un mensaje en español',
     (cuerpo) => {
       const e = errores(ActualizarEstadoRendicionSchema.safeParse(cuerpo));
       expect(e).toEqual([
-        { path: ['estado'], message: 'El estado debe ser EN_CURSO, COMPLETA o ENVIADA.' },
+        {
+          path: ['estado'],
+          message: 'El estado debe ser EN_CURSO, COMPLETA, ENVIADA, APROBADA o RECHAZADA.',
+        },
       ]);
     },
   );
+
+  describe('motivo (HU3.8)', () => {
+    const OBLIGATORIO = 'Indicá qué pidió corregir el cliente.';
+    const SIN_RECHAZO = 'El motivo solo se indica al rechazar la rendición.';
+
+    it('acepta RECHAZADA con motivo', () => {
+      const motivo = 'Faltó la factura';
+      expect(ActualizarEstadoRendicionSchema.parse({ estado: 'RECHAZADA', motivo })).toEqual({
+        estado: 'RECHAZADA',
+        motivo,
+      });
+    });
+
+    it('RECHAZADA sin motivo: error en motivo', () => {
+      const e = errores(ActualizarEstadoRendicionSchema.safeParse({ estado: 'RECHAZADA' }));
+      expect(e).toEqual([{ path: ['motivo'], message: OBLIGATORIO }]);
+    });
+
+    it.each(['', '   '])('RECHAZADA con motivo %j: error en motivo', (motivo) => {
+      const e = errores(ActualizarEstadoRendicionSchema.safeParse({ estado: 'RECHAZADA', motivo }));
+      expect(e).toHaveLength(1);
+      expect(e[0]?.path).toEqual(['motivo']);
+    });
+
+    it('APROBADA con motivo: error en motivo', () => {
+      const e = errores(
+        ActualizarEstadoRendicionSchema.safeParse({ estado: 'APROBADA', motivo: 'algo' }),
+      );
+      expect(e).toEqual([{ path: ['motivo'], message: SIN_RECHAZO }]);
+    });
+
+    it('EN_CURSO con motivo: error en motivo', () => {
+      const e = errores(
+        ActualizarEstadoRendicionSchema.safeParse({ estado: 'EN_CURSO', motivo: 'algo' }),
+      );
+      expect(e).toHaveLength(1);
+      expect(e[0]?.path).toEqual(['motivo']);
+    });
+
+    it('rechaza un motivo de 501 caracteres y acepta uno de 500', () => {
+      const largo = errores(
+        ActualizarEstadoRendicionSchema.safeParse({ estado: 'RECHAZADA', motivo: 'x'.repeat(501) }),
+      );
+      expect(largo).toHaveLength(1);
+      expect(largo[0]?.path).toEqual(['motivo']);
+      expect(
+        ActualizarEstadoRendicionSchema.safeParse({ estado: 'RECHAZADA', motivo: 'x'.repeat(500) })
+          .success,
+      ).toBe(true);
+    });
+
+    it('recorta el motivo', () => {
+      expect(
+        ActualizarEstadoRendicionSchema.parse({ estado: 'RECHAZADA', motivo: '  texto  ' }),
+      ).toEqual({ estado: 'RECHAZADA', motivo: 'texto' });
+    });
+  });
 
   describe('fechaEnvio (HU3.7)', () => {
     it('acepta ENVIADA con una fecha pasada o de hoy (en Buenos Aires)', () => {
