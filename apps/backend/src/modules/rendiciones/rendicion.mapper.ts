@@ -76,7 +76,8 @@ export const columnaDateDeDia = (dia: string): Date => new Date(`${dia}T00:00:00
 const diaEfectivoDe = (fecha: Date | null | undefined): string | null =>
   fecha instanceof Date ? diaDeColumnaDate(fecha) : null;
 
-const entradaDeHistorial = (row: HistorialRow) => ({
+/** Una entrada del historial como la expone la API (la fecha efectiva como día). */
+export const entradaDeHistorial = (row: HistorialRow) => ({
   estadoAnterior: row.estadoAnterior,
   estadoNuevo: row.estadoNuevo,
   fecha: row.fecha,

@@ -95,6 +95,7 @@ const lecturaDe = (
   anio: 2026,
   mes: 10,
   items: completados.map((completado, indice) => itemDe(indice + 1, completado)),
+  historial: [],
   ...extra,
 });
 
@@ -530,8 +531,136 @@ describe('PATCH /rendiciones/:id/estado — respuesta del cliente (HU3.8)', () =
   });
 });
 
-describe('motivoParaNoModificar (HU3.8)', () => {
-  it.each(['ENVIADA', 'APROBADA'] as const)(
+describe('PATCH /rendiciones/:id/estado — corregir una rechazada (HU3.9)', () => {
+  /** Un paso del historial como lo lee `HISTORIAL_EN_ORDEN`. */
+  const paso = (
+    estadoNuevo: string,
+    fecha: string,
+    extra: { fechaEfectiva?: Date; motivo?: string } = {},
+  ) => ({
+    estadoAnterior: null,
+    estadoNuevo,
+    fecha: new Date(fecha),
+    fechaEfectiva: null,
+    motivo: null,
+    ...extra,
+  });
+  /** Enviada el 20/10 y rechazada el 05/11 (23:30 en Buenos Aires: en UTC ya es 06/11). */
+  const HISTORIAL_RECHAZADO = [
+    paso('EN_CURSO', '2026-10-02T12:00:00.000Z'),
+    paso('COMPLETA', '2026-10-19T12:00:00.000Z'),
+    paso('ENVIADA', '2026-10-20T12:00:00.000Z', {
+      fechaEfectiva: new Date('2026-10-20T00:00:00.000Z'),
+    }),
+    paso('RECHAZADA', '2026-11-06T02:30:00.000Z', { motivo: 'Falta la firma' }),
+    paso('EN_CURSO', '2026-11-06T13:00:00.000Z'),
+    paso('COMPLETA', '2026-11-07T13:00:00.000Z'),
+  ];
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('RECHAZADA → EN_CURSO: 200, con su entrada en el historial y sin tocar los ítems', async () => {
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(lecturaDe('RECHAZADA', [true, false]))
+      .mockResolvedValueOnce({ estado: 'RECHAZADA' });
+
+    const res = await pedir('EN_CURSO');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ estado: 'EN_CURSO' });
+    // No exige todo reunido (hay un faltante) ni pide motivo.
+    expect(transaccion.rendicion.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          estado: 'EN_CURSO',
+          historial: {
+            create: { estadoAnterior: 'RECHAZADA', estadoNuevo: 'EN_CURSO', motivo: null },
+          },
+        },
+      }),
+    );
+    expect(transaccion.itemChecklist.update).not.toHaveBeenCalled();
+    expect(transaccion.itemChecklist.createMany).not.toHaveBeenCalled();
+  });
+
+  it('una rechazada anulada → EN_CURSO: 409 RENDICION_ANULADA, sin escribir', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(
+      lecturaDe('RECHAZADA', [true], { isDeleted: true }),
+    );
+
+    const res = await pedir('EN_CURSO');
+
+    expect(res.status).toBe(409);
+    expect(detalles(res)).toEqual({ motivo: 'RENDICION_ANULADA' });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['COMPLETA', 'APROBADA'])(
+    'RECHAZADA → %s: 409 TRANSICION_INVALIDA (solo se reabre a En curso)',
+    async (estado) => {
+      transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('RECHAZADA'));
+
+      const res = await pedir(estado);
+
+      expect(res.status).toBe(409);
+      expect(detalles(res)).toMatchObject({ motivo: 'TRANSICION_INVALIDA' });
+      expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('reenvío con fecha anterior al día del último rechazo: 400 en fechaEnvio, sin escribir', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-10T15:00:00.000Z'), toFake: ['Date'] });
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(
+      lecturaDe('COMPLETA', [true, true], { historial: HISTORIAL_RECHAZADO }),
+    );
+
+    const res = await clienteDePrueba(app)
+      .patch(`/rendiciones/${RENDICION}/estado`)
+      .send({ estado: 'ENVIADA', fechaEnvio: '2026-11-04' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: {
+        code: 'VALIDATION_ERROR',
+        details: [
+          {
+            campo: 'fechaEnvio',
+            mensaje:
+              'La fecha de envío no puede ser anterior al 05/11/2026, el día del último rechazo.',
+          },
+        ],
+      },
+    });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+
+  it('reenvío el mismo día del rechazo: 200 con esa fecha efectiva', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-10T15:00:00.000Z'), toFake: ['Date'] });
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(
+        lecturaDe('COMPLETA', [true, true], { historial: HISTORIAL_RECHAZADO }),
+      )
+      .mockResolvedValueOnce({ estado: 'COMPLETA' });
+
+    const res = await clienteDePrueba(app)
+      .patch(`/rendiciones/${RENDICION}/estado`)
+      .send({ estado: 'ENVIADA', fechaEnvio: '2026-11-05' });
+
+    expect(res.status).toBe(200);
+    const { data } = transaccion.rendicion.update.mock.calls[0]?.[0] as {
+      data: { historial: { create: Record<string, unknown> } };
+    };
+    expect(data.historial.create).toMatchObject({
+      estadoNuevo: 'ENVIADA',
+      fechaEfectiva: new Date('2026-11-05T00:00:00.000Z'),
+    });
+  });
+});
+
+describe('motivoParaNoModificar (HU3.8 y HU3.9)', () => {
+  it.each(['ENVIADA', 'APROBADA', 'RECHAZADA'] as const)(
     '%s: 409 RENDICION_ENVIADA con el texto "La rendición ya no se puede modificar."',
     (estado) => {
       expect(motivoParaNoModificar({ isDeleted: false, estado })).toMatchObject({
@@ -542,7 +671,7 @@ describe('motivoParaNoModificar (HU3.8)', () => {
     },
   );
 
-  it.each(['EN_CURSO', 'COMPLETA', 'RECHAZADA'] as const)('%s se puede modificar', (estado) => {
+  it.each(['EN_CURSO', 'COMPLETA'] as const)('%s se puede modificar', (estado) => {
     expect(motivoParaNoModificar({ isDeleted: false, estado })).toBeNull();
   });
 });
