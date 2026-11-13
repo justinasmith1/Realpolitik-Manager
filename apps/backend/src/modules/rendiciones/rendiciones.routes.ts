@@ -8,6 +8,7 @@ import {
   ListarRendicionesQuerySchema,
   PrepararEnvioSchema,
   PropagarCanalDeRequisitoSchema,
+  RegistrarCobroSchema,
 } from '@realpolitik/shared';
 import { z } from 'zod';
 
@@ -29,6 +30,8 @@ import {
   obtenerUltimaOcController,
   prepararEnvioController,
   propagarCanalDeRequisitoController,
+  quitarCobroController,
+  registrarCobroController,
 } from './rendiciones.controller';
 
 export const IdParamsSchema = z.object({
@@ -109,6 +112,20 @@ rendicionesRouter.patch(
   autorizar('rendiciones:operar'),
   validate({ params: IdParamsSchema, body: ActualizarEstadoRendicionSchema }),
   cambiarEstadoDeRendicionController,
+);
+
+// El cobro informado por el cliente (HU3.10): alta y edición, y quitar la marca.
+rendicionesRouter.put(
+  '/:id/cobro',
+  autorizar('rendiciones:operar'),
+  validate({ params: IdParamsSchema, body: RegistrarCobroSchema }),
+  registrarCobroController,
+);
+rendicionesRouter.delete(
+  '/:id/cobro',
+  autorizar('rendiciones:operar'),
+  validate({ params: IdParamsSchema }),
+  quitarCobroController,
 );
 
 export const RequisitoDeRendicionParamsSchema = z.object({

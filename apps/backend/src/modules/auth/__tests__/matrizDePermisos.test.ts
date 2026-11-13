@@ -109,14 +109,14 @@ afterEach(() => {
 });
 
 describe('inventario: rutas montadas ↔ matriz', () => {
-  it('lee una matriz con las 44 rutas de negocio implementadas más las de usuarios (HU4.5)', () => {
-    expect(DE_NEGOCIO).toHaveLength(44 + FUTURAS.size);
+  it('lee una matriz con las 46 rutas de negocio implementadas más las de usuarios (HU4.5)', () => {
+    expect(DE_NEGOCIO).toHaveLength(46 + FUTURAS.size);
   });
 
   it('cada ruta montada figura en la matriz con el mismo permiso', () => {
     const enMatriz = new Map(DE_NEGOCIO.map((f) => [clave(f.metodo, f.ruta), f.permiso]));
     const montadas = rutasProtegidasDe(app);
-    expect(montadas).toHaveLength(44);
+    expect(montadas).toHaveLength(46);
     for (const ruta of montadas) {
       expect(enMatriz.get(clave(ruta.metodo, ruta.ruta)), clave(ruta.metodo, ruta.ruta)).toBe(
         ruta.permiso,

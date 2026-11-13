@@ -44,12 +44,14 @@ function fila(
     historial = [{ estadoNuevo: 'EN_CURSO', fecha: ALTA }],
     anio = 2026,
     mes = 11,
+    cobroFecha = null,
   }: {
     clienteId?: string;
     cliente?: object;
     estado?: string;
     anio?: number;
     mes?: number;
+    cobroFecha?: Date | null;
     historial?: { estadoNuevo: string; fecha: Date; fechaEfectiva?: Date | null }[];
   } = {},
 ) {
@@ -62,6 +64,7 @@ function fila(
     estado,
     cliente,
     historial,
+    cobroFecha,
   };
 }
 
@@ -127,8 +130,38 @@ describe('GET /rendiciones?anio=&mes= (pantalla Rendiciones, HU3.2)', () => {
         avance: { reunidos: 2, total: 5, faltantes: 3 },
         ultimoPaso: null,
         atrasada: false,
+        cobro: null,
       },
     ]);
+  });
+
+  it('una rendición cobrada lleva la fecha del cobro como día, sin correrlo (HU3.10)', async () => {
+    prismaMock.rendicion.findMany.mockResolvedValue([
+      fila(1, {
+        estado: 'ENVIADA',
+        historial: [{ estadoNuevo: 'ENVIADA', fecha: ENVIO }],
+        cobroFecha: new Date('2026-11-10T00:00:00.000Z'),
+      }),
+      fila(2),
+    ]);
+    prismaMock.itemChecklist.groupBy.mockResolvedValue(conteos({ 1: [5, 5], 2: [1, 5] }));
+
+    const res = await listar();
+
+    const cobros = Object.fromEntries(
+      (res.body as { id: string; cobro: unknown }[]).map((r) => [r.id, r.cobro]),
+    );
+    expect(cobros).toEqual({ [id(1)]: { fecha: '2026-11-10' }, [id(2)]: null });
+  });
+
+  it('pide la fecha del cobro de cada rendición (HU3.10)', async () => {
+    await listar();
+
+    expect(prismaMock.rendicion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ cobroFecha: true }) as unknown,
+      }),
+    );
   });
 
   it('un cliente con dos rendiciones en el mes tiene una fila por cada una', async () => {

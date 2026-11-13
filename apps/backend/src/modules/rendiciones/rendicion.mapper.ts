@@ -76,6 +76,15 @@ export const columnaDateDeDia = (dia: string): Date => new Date(`${dia}T00:00:00
 const diaEfectivoDe = (fecha: Date | null | undefined): string | null =>
   fecha instanceof Date ? diaDeColumnaDate(fecha) : null;
 
+/**
+ * El cobro de una rendición (HU3.10) como lo expone la API: la fecha como día y la nota, o `null`
+ * si no se marcó. La fecha manda: sin ella no hay cobro (CHECK de la base).
+ */
+const cobroDe = (row: { cobroFecha?: Date | null; cobroNota?: string | null }) =>
+  row.cobroFecha instanceof Date
+    ? { fecha: diaDeColumnaDate(row.cobroFecha), nota: row.cobroNota ?? null }
+    : null;
+
 /** Una entrada del historial como la expone la API (la fecha efectiva como día). */
 export const entradaDeHistorial = (row: HistorialRow) => ({
   estadoAnterior: row.estadoAnterior,
@@ -108,6 +117,7 @@ const camposDeRendicion = (row: RendicionRow) => ({
   numeroOc: row.numeroOc,
   montoMensual: row.montoMensual?.toNumber() ?? null,
   montoTotal: row.montoTotal?.toNumber() ?? null,
+  cobro: cobroDe(row),
   estado: row.estado,
   vigencia: row.isDeleted ? 'ANULADA' : 'ACTIVA',
   anuladaEn: row.isDeleted ? row.deletedAt : null,
@@ -186,6 +196,7 @@ export const SELECT_DEL_MES = {
   mes: true,
   numeroFactura: true,
   estado: true,
+  cobroFecha: true,
   cliente: { select: { denominacion: true, sector: true, subtipo: true } },
   historial: {
     orderBy: [{ fecha: 'desc' }, { createdAt: 'desc' }],
@@ -226,6 +237,8 @@ function datosDeFila(row: RendicionDelMesRow, avance: ResumenDeAvance, hoy: Date
       faltantes: avance.totalItems - avance.completados,
     },
     ultimoPaso,
+    // HU3.10: solo el día; la nota se ve en el detalle.
+    cobro: row.cobroFecha instanceof Date ? { fecha: diaDeColumnaDate(row.cobroFecha) } : null,
     // HU3.4: se calcula con la regla de shared; las anuladas ya no llegan acá.
     atrasada: esAtrasada({ anio: row.anio, mes: row.mes }, row.estado, hoy),
   };
