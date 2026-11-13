@@ -59,6 +59,7 @@ describe('RendicionDelMesSchema', () => {
     avance: { reunidos: 2, total: 5, faltantes: 3 },
     ultimoPaso: null,
     atrasada: false,
+    cobro: null,
   };
 
   it('lee una fila En curso, sin último paso', () => {
@@ -85,6 +86,22 @@ describe('RendicionDelMesSchema', () => {
     });
   });
 
+  it('una Enviada cobrada lleva la fecha del cobro, como día', () => {
+    const r = RendicionDelMesSchema.parse({
+      ...fila,
+      estado: 'ENVIADA',
+      cobro: { fecha: '2026-11-10' },
+    });
+    expect(r.cobro).toEqual({ fecha: '2026-11-10' });
+  });
+
+  it.each([
+    ['un cobro con una fecha que no es un día', { cobro: { fecha: '10/11/2026' } }],
+    ['sin la clave cobro', { cobro: undefined }],
+  ])('rechaza %s', (_caso, cambio) => {
+    expect(RendicionDelMesSchema.safeParse({ ...fila, ...cambio }).success).toBe(false);
+  });
+
   it.each([
     [
       'un último paso de un estado sin fecha',
@@ -109,12 +126,17 @@ describe('RendicionAtrasadaSchema', () => {
     avance: { reunidos: 2, total: 5, faltantes: 3 },
     ultimoPaso: null,
     atrasada: true,
+    cobro: null,
     anio: 2026,
     mes: 9,
   };
 
   it('es la fila del mes más su período', () => {
     expect(RendicionAtrasadaSchema.parse(fila)).toEqual(fila);
+  });
+
+  it('hereda el cobro de la fila del mes', () => {
+    expect(RendicionAtrasadaSchema.parse(fila).cobro).toBeNull();
   });
 
   it.each([
