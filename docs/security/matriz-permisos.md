@@ -2,7 +2,7 @@
 
 > **Estado:** propuesta técnica (Proposed), junto con [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md). Los **roles y su alcance están aprobados**; el catálogo de permisos y su implementación son propuestas. **Implementada en el backend (etapa 3 de HU4.1):** toda ruta de negocio exige sesión y el permiso de esta matriz. Verificado localmente (tests); todavía no desplegado ni validado en Vercel y Railway.
 >
-> Esta matriz es la fuente de verdad de lo que cada rol puede hacer y, cuando exista la infraestructura de permisos (HU4.3 o HU4.5, la que llegue primero), la base del test que recorre cada ruta con cada rol. Inventario verificado contra `main` en `c53f0b1`: 46 endpoints de negocio más `/health`, que es técnico y queda aparte (desde `6c3b9e8` se sumaron `PATCH /rendiciones/:id/estado`, HU3.6, y `PUT` y `DELETE /rendiciones/:id/cobro`, HU3.10). Si el código y esta matriz no coinciden, el test de inventario falla y se corrige el que corresponda en el mismo PR.
+> Esta matriz es la fuente de verdad de lo que cada rol puede hacer y, cuando exista la infraestructura de permisos (HU4.3 o HU4.5, la que llegue primero), la base del test que recorre cada ruta con cada rol. Inventario verificado contra `main` en `abf3800`: 46 endpoints de negocio más `/health`, que es técnico y queda aparte (desde `6c3b9e8` se sumaron `PATCH /rendiciones/:id/estado`, HU3.6, y `PUT` y `DELETE /rendiciones/:id/cobro`, HU3.10; las HU3.7 a HU3.9 usan esa misma ruta de estado). Si el código y esta matriz no coinciden, el test de inventario falla y se corrige el que corresponda en el mismo PR.
 
 ## Roles (aprobados)
 
@@ -126,7 +126,7 @@ El frontend tiene un espejo de este catálogo (`apps/frontend/src/modules/auth/p
 | `POST /clientes/:id/rendiciones`                            | Abrir rendición                               | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `PATCH /rendiciones/:id`                                    | Editar OC                                     | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `PATCH /rendiciones/:id/vigencia`                           | Anular (irreversible)                         | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
-| `PATCH /rendiciones/:id/estado`                             | Marcar Completa o volver a En curso (HU3.6)   | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
+| `PATCH /rendiciones/:id/estado`                             | Cambiar el estado (HU3.6 a HU3.9)             | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `PUT /rendiciones/:id/cobro`                                | Registrar o corregir el cobro (HU3.10)        | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `DELETE /rendiciones/:id/cobro`                             | Quitar la marca de cobrada (HU3.10)           | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `POST /rendiciones/:id/requisitos/:requisitoId`             | Sumar un requisito nuevo                      | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
@@ -163,15 +163,17 @@ Hoy estas rutas **no se montan en producción** (`DOCUMENTOS_HABILITADOS`). Se h
 - Las respuestas de escritura (incluidos los `409` con `clienteExistente`, `rendicionExistente`, etc.) solo llegan a roles operativos, porque solo ellos pueden escribir.
 - Si un rol futuro necesitara restringir datos, se filtran en el backend omitiendo las claves (no poniéndolas en `null`, que hoy significa "sin dato cargado"), con tests que verifiquen la ausencia.
 
-## Operaciones futuras de la épica 3 (sin ruta todavía)
+## Operaciones de la épica 3 sin ruta propia
 
-| Operación                                                         | Ruta probable                                                                            | Permiso              | Sin sesión | `CONSULTA` | `ADMINISTRATIVO` | `ADMINISTRADOR` | Estado                      |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------- | ---------- | ---------- | ---------------- | --------------- | --------------------------- |
-| Marcar Enviada (HU3.7)                                            | `PATCH /rendiciones/:id/estado` (existe desde HU3.6; se amplían sus valores)             | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura (E3)                 |
-| Aprobada o Rechazada con motivo (HU3.8)                           | ídem                                                                                     | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura (E3)                 |
-| Corregir una rechazada (HU3.9)                                    | ídem                                                                                     | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura (E3)                 |
-| Facturación                                                       | A definir (el cobro ya tiene sus rutas: `PUT` y `DELETE /rendiciones/:id/cobro`, HU3.10) | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura, alcance a confirmar |
-| Ver quién hizo cada cambio de estado y si fue manual o automático | En el `historial` del detalle                                                            | `rendiciones:ver`    | 401        | Sí         | Sí               | Sí              | HU4.6                       |
+| Operación                                                         | Ruta                                                                                                     | Permiso              | Sin sesión | `CONSULTA` | `ADMINISTRATIVO` | `ADMINISTRADOR` | Estado                      |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------- | ---------- | ---------- | ---------------- | --------------- | --------------------------- |
+| Marcar Enviada (HU3.7)                                            | `PATCH /rendiciones/:id/estado` con `ENVIADA` y `fechaEnvio` opcional                                    | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Implementada (HU3.7)        |
+| Aprobada o Rechazada con motivo (HU3.8)                           | `PATCH /rendiciones/:id/estado` con `APROBADA`, o con `RECHAZADA` y `motivo`                             | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Implementada (HU3.8)        |
+| Corregir una rechazada y reenviarla (HU3.9)                       | `PATCH /rendiciones/:id/estado` con `EN_CURSO` desde `RECHAZADA`; el reenvío, con `COMPLETA` y `ENVIADA` | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Implementada (HU3.9)        |
+| Facturación                                                       | A definir (el cobro ya tiene sus rutas: `PUT` y `DELETE /rendiciones/:id/cobro`, HU3.10)                 | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura, alcance a confirmar |
+| Ver quién hizo cada cambio de estado y si fue manual o automático | En el `historial` del detalle                                                                            | `rendiciones:ver`    | 401        | Sí         | Sí               | Sí              | HU4.6                       |
+
+Las HU3.7 a HU3.9 no suman rutas: amplían los valores de `PATCH /rendiciones/:id/estado` (HU3.6), que ya figura en la tabla de rendiciones con el mismo permiso. Por eso el total de endpoints de negocio no cambió.
 
 Una lectura nueva de la épica 3 (resumen, exportación) se agrega a esta matriz con `rendiciones:ver` u otro permiso de lectura; mientras no figure acá, la infraestructura de permisos no la deja servir.
 
