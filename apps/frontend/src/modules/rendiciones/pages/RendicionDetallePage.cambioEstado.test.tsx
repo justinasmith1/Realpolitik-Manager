@@ -282,3 +282,301 @@ describe('RendicionDetallePage: marcar como completa (HU3.6)', () => {
     expect(await screen.findByText('La rendición quedó completa.')).toBeVisible();
   });
 });
+
+describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
+  const MOTIVO = 'Faltó el CUIT 20-12345678-4';
+
+  const confirmarAprobacion = () =>
+    screen.findByRole('alertdialog', { name: '¿Confirmar aprobación?' });
+  const dialogoDeRechazo = () => screen.findByRole('alertdialog', { name: 'Rechazar rendición' });
+
+  it('una Enviada ofrece "Aprobar" y "Rechazar", y no los botones de las otras etapas', async () => {
+    servir({ inicial: { estado: 'ENVIADA' } });
+    renderDetalle();
+    await esperarDetalle();
+
+    expect(screen.getByRole('button', { name: 'Aprobar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Rechazar' })).toBeEnabled();
+    for (const nombre of ['Marcar como completa', 'Volver a en curso', 'Marcar como enviada']) {
+      expect(screen.queryByRole('button', { name: nombre })).not.toBeInTheDocument();
+    }
+  });
+
+  it.each(['EN_CURSO', 'COMPLETA', 'APROBADA', 'RECHAZADA'])(
+    'una %s no ofrece "Aprobar" ni "Rechazar"',
+    async (estado) => {
+      servir({ inicial: { estado } });
+      renderDetalle();
+      await esperarDetalle();
+
+      expect(screen.queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Rechazar' })).not.toBeInTheDocument();
+    },
+  );
+
+  it('una Enviada anulada no ofrece "Aprobar" ni "Rechazar"', async () => {
+    servir({
+      inicial: { estado: 'ENVIADA', vigencia: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' },
+    });
+    renderDetalle();
+    await esperarDetalle();
+
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rechazar' })).not.toBeInTheDocument();
+  });
+
+  it('"Aprobar" abre un diálogo de confirmación sin pedir nada todavía', async () => {
+    servir({ inicial: { estado: 'ENVIADA' } });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+
+    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+
+    const dialogo = within(await confirmarAprobacion());
+    expect(
+      dialogo.getByText('Esta acción cierra la rendición. No se puede deshacer.'),
+    ).toBeVisible();
+    expect(dialogo.getByRole('button', { name: 'Aprobar' })).toBeEnabled();
+    expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeEnabled();
+    expect(pedidosDeEstado()).toHaveLength(0);
+  });
+
+  it('cancelar la aprobación cierra el diálogo y no pide nada', async () => {
+    servir({ inicial: { estado: 'ENVIADA' } });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+
+    await user.click(within(await confirmarAprobacion()).getByRole('button', { name: 'Cancelar' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(pedidosDeEstado()).toHaveLength(0);
+  });
+
+  it('confirmar la aprobación pide { estado: APROBADA }, avisa y deja la rendición Aprobada', async () => {
+    servir({ inicial: { estado: 'ENVIADA' } });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+
+    await user.click(within(await confirmarAprobacion()).getByRole('button', { name: 'Aprobar' }));
+
+    expect(await screen.findByText('La rendición fue aprobada.')).toBeVisible();
+    expect(primerPedidoDeEstado()).toEqual({
+      url: expect.stringContaining(`/rendiciones/${RENDICION_ID}/estado`) as unknown,
+      cuerpo: { estado: 'APROBADA' },
+    });
+    expect(estadoMostrado()).toHaveTextContent('Aprobada');
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rechazar' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+
+  it('el pedido de aprobación no se manda dos veces si se toca dos veces', async () => {
+    let soltar: (respuesta: Response) => void = () => undefined;
+    servir({
+      inicial: { estado: 'ENVIADA' },
+      respuestaDelPatch: () =>
+        new Promise<Response>((resolver) => {
+          soltar = resolver;
+        }),
+    });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+    const confirmar = within(await confirmarAprobacion()).getByRole('button', {
+      name: /Aprobar|Guardando/,
+    });
+
+    await user.click(confirmar);
+    await user.click(confirmar);
+
+    expect(pedidosDeEstado()).toHaveLength(1);
+    soltar(json({ ...rendicionJson({ estado: 'APROBADA' }), items: ITEMS }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+
+  it('si la aprobación falla con TRANSICION_INVALIDA, lo dice dentro del diálogo y sigue abierto', async () => {
+    servir({
+      inicial: { estado: 'ENVIADA' },
+      respuestaDelPatch: () =>
+        errorJson(409, 'CONFLICT', {
+          motivo: 'TRANSICION_INVALIDA',
+          estadoActual: 'RECHAZADA',
+          estadoNuevo: 'APROBADA',
+        }),
+    });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+    await user.click(screen.getByRole('button', { name: 'Aprobar' }));
+
+    await user.click(within(await confirmarAprobacion()).getByRole('button', { name: 'Aprobar' }));
+
+    const dialogo = within(await confirmarAprobacion());
+    expect(
+      await dialogo.findByText('La rendición ya cambió de estado. Volvé a cargar la página.'),
+    ).toBeVisible();
+  });
+
+  it('"Rechazar" abre el diálogo con el campo del motivo y la confirmación deshabilitada', async () => {
+    servir({ inicial: { estado: 'ENVIADA' } });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+
+    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+
+    const dialogo = within(await dialogoDeRechazo());
+    const campo = dialogo.getByRole('textbox', { name: 'Motivo del rechazo' });
+    expect(campo).toHaveAttribute('placeholder', 'Describí qué pidió corregir el cliente...');
+    expect(campo).toHaveAttribute('maxlength', '500');
+    expect(campo).toBeRequired();
+    expect(dialogo.getByRole('button', { name: 'Confirmar rechazo' })).toBeDisabled();
+    expect(pedidosDeEstado()).toHaveLength(0);
+  });
+
+  it.each(['', '   '])('con el motivo %j la confirmación sigue deshabilitada', async (texto) => {
+    servir({ inicial: { estado: 'ENVIADA' } });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    const dialogo = within(await dialogoDeRechazo());
+
+    if (texto !== '') {
+      await user.type(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' }), texto);
+    }
+
+    expect(dialogo.getByRole('button', { name: 'Confirmar rechazo' })).toBeDisabled();
+  });
+
+  it('confirmar el rechazo pide { estado: RECHAZADA, motivo } recortado, avisa y la deja Rechazada', async () => {
+    servir({ inicial: { estado: 'ENVIADA' } });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    const dialogo = within(await dialogoDeRechazo());
+
+    await user.type(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' }), `  ${MOTIVO}  `);
+    await user.click(dialogo.getByRole('button', { name: 'Confirmar rechazo' }));
+
+    expect(await screen.findByText('La rendición fue rechazada.')).toBeVisible();
+    expect(primerPedidoDeEstado().cuerpo).toEqual({ estado: 'RECHAZADA', motivo: MOTIVO });
+    expect(estadoMostrado()).toHaveTextContent('Rechazada');
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+
+  it('si el servidor rechaza el motivo, muestra su mensaje en el diálogo y conserva lo escrito', async () => {
+    servir({
+      inicial: { estado: 'ENVIADA' },
+      respuestaDelPatch: () =>
+        errorJson(400, 'VALIDATION_ERROR', [
+          { campo: 'motivo', mensaje: 'El motivo no puede superar los 500 caracteres.' },
+        ]),
+    });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    const dialogo = within(await dialogoDeRechazo());
+    await user.type(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' }), MOTIVO);
+
+    await user.click(dialogo.getByRole('button', { name: 'Confirmar rechazo' }));
+
+    expect(
+      await dialogo.findByText('El motivo no puede superar los 500 caracteres.'),
+    ).toBeVisible();
+    expect(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' })).toHaveValue(MOTIVO);
+    expect(dialogo.getByRole('button', { name: 'Confirmar rechazo' })).toBeEnabled();
+  });
+
+  it('el rechazo no se manda dos veces si se toca dos veces', async () => {
+    let soltar: (respuesta: Response) => void = () => undefined;
+    servir({
+      inicial: { estado: 'ENVIADA' },
+      respuestaDelPatch: () =>
+        new Promise<Response>((resolver) => {
+          soltar = resolver;
+        }),
+    });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    const dialogo = within(await dialogoDeRechazo());
+    await user.type(dialogo.getByRole('textbox', { name: 'Motivo del rechazo' }), MOTIVO);
+    const confirmar = dialogo.getByRole('button', { name: 'Confirmar rechazo' });
+
+    await user.click(confirmar);
+    await user.click(confirmar);
+
+    expect(pedidosDeEstado()).toHaveLength(1);
+    soltar(json({ ...rendicionJson({ estado: 'RECHAZADA' }), items: ITEMS }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+
+  it('al reabrir el diálogo de rechazo, el campo vuelve vacío', async () => {
+    servir({ inicial: { estado: 'ENVIADA' } });
+    const { user } = renderDetalle();
+    await esperarDetalle();
+    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    const primero = within(await dialogoDeRechazo());
+    await user.type(primero.getByRole('textbox', { name: 'Motivo del rechazo' }), MOTIVO);
+    await user.click(primero.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+
+    const segundo = within(await dialogoDeRechazo());
+    expect(segundo.getByRole('textbox', { name: 'Motivo del rechazo' })).toHaveValue('');
+  });
+});
+
+describe('RendicionDetallePage: una Aprobada no se modifica (HU3.8)', () => {
+  it('explica con un motivo verdadero por qué las acciones están deshabilitadas', async () => {
+    servir({ inicial: { estado: 'APROBADA' } });
+    renderDetalle();
+    await esperarDetalle();
+
+    const motivo =
+      'La rendición ya fue aprobada: no se pueden cambiar sus documentos ni sus canales.';
+    expect(screen.getByText(motivo)).toBeVisible();
+    expect(screen.queryByText(/ya fue enviada/)).not.toBeInTheDocument();
+    for (const boton of [
+      screen.getByRole('button', { name: /Cambiar el canal de/ }),
+      screen.getByRole('button', { name: /Reemplazar documento de/ }),
+    ]) {
+      expect(boton).toBeDisabled();
+      expect(boton).toHaveAccessibleDescription(motivo);
+    }
+    // La OC sigue editable: es un dato administrativo.
+    expect(screen.getByRole('button', { name: 'Editar OC' })).toBeEnabled();
+  });
+
+  it('no felicita por el checklist completo: ya no se puede tocar', async () => {
+    servir({ inicial: { estado: 'APROBADA' } });
+    renderDetalle();
+    await esperarDetalle();
+
+    expect(screen.queryByText(/Checklist completo/)).not.toBeInTheDocument();
+  });
+
+  it('una Enviada sigue diciendo que ya fue enviada', async () => {
+    servir({ inicial: { estado: 'ENVIADA' } });
+    renderDetalle();
+    await esperarDetalle();
+
+    expect(
+      screen.getByText(
+        'La rendición ya fue enviada: no se pueden cambiar sus documentos ni sus canales.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/ya fue aprobada/)).not.toBeInTheDocument();
+  });
+
+  it('una Rechazada no queda bloqueada: se puede corregir (HU3.9)', async () => {
+    servir({ inicial: { estado: 'RECHAZADA' } });
+    renderDetalle();
+    await esperarDetalle();
+
+    expect(screen.queryByText(/ya fue (aprobada|enviada)/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Cambiar el canal de/ })).toBeEnabled();
+  });
+});

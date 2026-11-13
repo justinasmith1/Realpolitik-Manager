@@ -350,6 +350,23 @@ describe.skipIf(url === undefined)('Marcar como Enviada (HU3.7) contra PostgreSQ
     expect(oc.status, JSON.stringify(oc.body)).toBe(200);
   });
 
+  // integración: corre Agus
+  it('una Aprobada tampoco se modifica (HU3.8): aplicar un documento da 409 RENDICION_ENVIADA', async () => {
+    const { factura, rendicion, itemId } = await completa();
+    const otroDocumento = await cargar(factura.id);
+    expect((await cambiarEstado(rendicion.id, { estado: 'ENVIADA' })).status).toBe(200);
+    expect((await cambiarEstado(rendicion.id, { estado: 'APROBADA' })).status).toBe(200);
+
+    const res = await sesiones
+      .cliente(app)
+      .post(`/documentos/${otroDocumento}/aplicaciones`)
+      .send({ itemIds: [itemId] });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(conflicto(res).motivo).toBe('RENDICION_ENVIADA');
+    expect((await detalle(rendicion.id)).estado).toBe('APROBADA');
+  });
+
   it('una Enviada deja de estar atrasada', async () => {
     const { rendicion } = await completa(PERIODO_ATRASADO);
     const atrasadas = async () =>

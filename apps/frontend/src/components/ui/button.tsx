@@ -23,6 +23,20 @@ const buttonVariants = cva(
         destructive:
           'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
         link: 'text-primary underline-offset-4 hover:underline',
+        // Respuesta del cliente a una rendición (HU3.8), con los colores de estado de globals.css:
+        // Aprobada (verde) y Rechazada (magenta). Nunca `destructive`: el rojo es de Atrasada.
+        // Aprobar es sólido con el texto claro de `primary-foreground` (el mismo de `default`). Si
+        // está deshabilitado, pasa a gris `muted` en vez de atenuarse: un verde o magenta a medias
+        // con texto blanco no se lee. Cargando no cae acá: `LoadingButton` no usa `disabled` nativo.
+        aprobar:
+          'bg-estado-aprobada text-primary-foreground shadow-xs hover:bg-[color-mix(in_oklch,var(--estado-aprobada),var(--foreground)_12%)] active:bg-[color-mix(in_oklch,var(--estado-aprobada),var(--foreground)_12%)] focus-visible:border-estado-aprobada focus-visible:ring-estado-aprobada/30 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none',
+        // Rechazar es contorno (borde y texto del color de estado, fondo claro al pasar el mouse);
+        // el de confirmar dentro del diálogo es sólido: `rechazar-solido`.
+        rechazar:
+          'border-estado-rechazada bg-background text-estado-rechazada hover:bg-estado-rechazada-soft hover:text-estado-rechazada active:bg-estado-rechazada-soft focus-visible:border-estado-rechazada focus-visible:ring-estado-rechazada/30',
+        // "Confirmar rechazo": sólido, mismo criterio que `aprobar`.
+        'rechazar-solido':
+          'bg-estado-rechazada text-primary-foreground shadow-xs hover:bg-[color-mix(in_oklch,var(--estado-rechazada),var(--foreground)_12%)] active:bg-[color-mix(in_oklch,var(--estado-rechazada),var(--foreground)_12%)] focus-visible:border-estado-rechazada focus-visible:ring-estado-rechazada/30 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none',
       },
       size: {
         // 44px en pantallas táctiles (mobile), 36px desde md: densidad administrativa en escritorio.

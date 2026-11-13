@@ -51,7 +51,13 @@ type AplicacionVigenteRow = Prisma.AplicacionDocumentoGetPayload<typeof APLICACI
  */
 export const HISTORIAL_EN_ORDEN = {
   orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }],
-  select: { estadoAnterior: true, estadoNuevo: true, fecha: true, fechaEfectiva: true },
+  select: {
+    estadoAnterior: true,
+    estadoNuevo: true,
+    fecha: true,
+    fechaEfectiva: true,
+    motivo: true,
+  },
 } satisfies Prisma.Rendicion$historialArgs;
 
 type HistorialRow = Prisma.HistorialEstadoRendicionGetPayload<typeof HISTORIAL_EN_ORDEN>;
@@ -75,6 +81,7 @@ const entradaDeHistorial = (row: HistorialRow) => ({
   estadoNuevo: row.estadoNuevo,
   fecha: row.fecha,
   fechaEfectiva: diaEfectivoDe(row.fechaEfectiva),
+  motivo: row.motivo ?? null,
 });
 
 /** Un ítem y, si se cargó, su aplicación vigente. */

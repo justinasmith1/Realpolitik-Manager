@@ -68,6 +68,8 @@ describe('esRendicionModificable', () => {
     ['EN_CURSO', true],
     ['COMPLETA', true],
     ['ENVIADA', false],
+    ['APROBADA', false],
+    ['RECHAZADA', true],
   ] as const)('%s: %s', (estado, modificable) => {
     expect(esRendicionModificable(estado)).toBe(modificable);
   });

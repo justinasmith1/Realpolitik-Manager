@@ -1,3 +1,5 @@
+import { ApiClientError } from '@/lib/http';
+import { interpretarFalloCambioDeEstado } from '@/modules/rendiciones/api/rendiciones.api';
 import {
   mensajeFalloCambioDeEstado,
   mensajeFalloCorreccionDeCanal,
@@ -59,11 +61,13 @@ describe('mensajeFalloCambioDeEstado al marcar como enviada (HU3.7)', () => {
   });
 });
 
-describe('una Enviada no se modifica (HU3.7)', () => {
+describe('una Enviada o Aprobada no se modifica (HU3.7 y HU3.8)', () => {
   it('sumar un requisito, corregir y propagar el canal lo explican', () => {
-    expect(motivoFalloAgregado({ tipo: 'rendicion-enviada' })).toBe('la rendición ya fue enviada');
+    expect(motivoFalloAgregado({ tipo: 'rendicion-enviada' })).toBe(
+      'la rendición ya no se puede modificar',
+    );
     expect(mensajeFalloCorreccionDeCanal({ tipo: 'rendicion-enviada' })).toBe(
-      'La rendición ya fue enviada: no se puede modificar.',
+      'La rendición ya no se puede modificar.',
     );
     expect(
       mensajeFalloPropagacion(
@@ -71,7 +75,61 @@ describe('una Enviada no se modifica (HU3.7)', () => {
         () => 'Octubre 2026',
       ),
     ).toBe(
-      'El requisito quedó guardado, pero no se actualizó ninguna rendición: Octubre 2026 ya fue enviada. Destildala y probá de nuevo.',
+      'El requisito quedó guardado, pero no se actualizó ninguna rendición: Octubre 2026 ya no se puede modificar. Destildala y probá de nuevo.',
     );
+  });
+});
+
+describe('la respuesta del cliente: aprobar o rechazar (HU3.8)', () => {
+  const falloHttp = (status: number, code: string, details: unknown) =>
+    new ApiClientError({
+      kind: 'http',
+      message: 'x',
+      status,
+      payload: { error: { code, message: 'x', details } },
+    });
+
+  it('un 400 en motivo se interpreta como motivo-invalido, con el mensaje del servidor', () => {
+    const error = falloHttp(400, 'VALIDATION_ERROR', [
+      { campo: 'motivo', mensaje: 'Indicá qué pidió corregir el cliente.' },
+    ]);
+
+    expect(interpretarFalloCambioDeEstado(error)).toEqual({
+      tipo: 'motivo-invalido',
+      mensaje: 'Indicá qué pidió corregir el cliente.',
+    });
+  });
+
+  it('un 400 en fechaEnvio sigue siendo fecha-invalida', () => {
+    const error = falloHttp(400, 'VALIDATION_ERROR', [{ campo: 'fechaEnvio', mensaje: 'x' }]);
+
+    expect(interpretarFalloCambioDeEstado(error)).toMatchObject({ tipo: 'fecha-invalida' });
+  });
+
+  it.each(['APROBADA', 'RECHAZADA'] as const)(
+    'una transición inválida al %s dice que la rendición ya cambió de estado',
+    (destino) => {
+      const texto = mensajeFalloCambioDeEstado({ tipo: 'transicion-invalida' }, destino);
+
+      expect(texto).toBe('La rendición ya cambió de estado. Volvé a cargar la página.');
+    },
+  );
+
+  it('el motivo rechazado muestra el mensaje del servidor o uno genérico', () => {
+    expect(
+      mensajeFalloCambioDeEstado(
+        { tipo: 'motivo-invalido', mensaje: 'El motivo no puede superar los 500 caracteres.' },
+        'RECHAZADA',
+      ),
+    ).toBe('El motivo no puede superar los 500 caracteres.');
+    expect(
+      mensajeFalloCambioDeEstado({ tipo: 'motivo-invalido', mensaje: null }, 'RECHAZADA'),
+    ).toBe('Indicá qué pidió corregir el cliente.');
+  });
+
+  it.each(['APROBADA', 'RECHAZADA'] as const)('los demás fallos al %s tienen texto', (destino) => {
+    for (const tipo of ['rendicion-anulada', 'no-existe', 'inesperado'] as const) {
+      expect(mensajeFalloCambioDeEstado({ tipo }, destino)).not.toBe('');
+    }
   });
 });

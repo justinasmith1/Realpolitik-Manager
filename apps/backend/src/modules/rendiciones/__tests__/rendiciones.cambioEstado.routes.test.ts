@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
 import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
-import { cambiarEstadoDeRendicion } from '../rendiciones.service';
+import { cambiarEstadoDeRendicion, motivoParaNoModificar } from '../rendiciones.service';
 
 // Marcar una rendición como Completa y volverla a En curso (HU3.6, ADR-0005), con la base
 // simulada: `PATCH /rendiciones/:id/estado` recorre route → validate → controller → service →
@@ -238,7 +238,7 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
     expect(res.status).toBe(404);
   });
 
-  it.each([{ estado: 'APROBADA' }, { estado: 'RECHAZADA' }, {}])(
+  it.each([{ estado: 'ATRASADA' }, { estado: 'RECHAZADA' }, {}])(
     '400 VALIDATION_ERROR con el cuerpo %j',
     async (cuerpo) => {
       const res = await clienteDePrueba(app).patch(`/rendiciones/${RENDICION}/estado`).send(cuerpo);
@@ -420,6 +420,130 @@ describe('PATCH /rendiciones/:id/estado — Enviada (HU3.7)', () => {
     expect((await pedir('EN_CURSO')).status).toBe(409);
     expect((await pedir('COMPLETA')).status).toBe(409);
     expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /rendiciones/:id/estado — respuesta del cliente (HU3.8)', () => {
+  const responder = (cuerpo: Record<string, unknown>) =>
+    clienteDePrueba(app).patch(`/rendiciones/${RENDICION}/estado`).send(cuerpo);
+
+  /** El `create` del historial que recibió el `update`. */
+  const entradaCreada = () =>
+    (
+      transaccion.rendicion.update.mock.calls[0]?.[0] as {
+        data: { historial: { create: Record<string, unknown> } };
+      }
+    ).data.historial.create;
+
+  /** El `update` devuelve la rendición con la entrada nueva en su historial, como la base. */
+  const devolverConEntrada = () =>
+    transaccion.rendicion.update.mockImplementation(
+      ({ data }: { data: { estado: string; historial: { create: Record<string, unknown> } } }) =>
+        Promise.resolve({
+          ...filaDetalle(data.estado),
+          historial: [
+            { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA, motivo: null },
+            { fecha: AHORA, fechaEfectiva: null, ...data.historial.create },
+          ],
+        }),
+    );
+
+  it('ENVIADA → APROBADA: 200, sin motivo ni fecha efectiva en la entrada', async () => {
+    devolverConEntrada();
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(lecturaDe('ENVIADA'))
+      .mockResolvedValueOnce({ estado: 'ENVIADA' });
+
+    const res = await responder({ estado: 'APROBADA' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: RENDICION, estado: 'APROBADA' });
+    expect(entradaCreada()).toEqual({
+      estadoAnterior: 'ENVIADA',
+      estadoNuevo: 'APROBADA',
+      motivo: null,
+    });
+  });
+
+  it('ENVIADA → RECHAZADA con motivo: 200 y el historial lo devuelve', async () => {
+    devolverConEntrada();
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(lecturaDe('ENVIADA'))
+      .mockResolvedValueOnce({ estado: 'ENVIADA' });
+
+    const res = await responder({ estado: 'RECHAZADA', motivo: 'Faltó el CUIT 20-12345678-4' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ estado: 'RECHAZADA' });
+    expect(entradaCreada()).toEqual({
+      estadoAnterior: 'ENVIADA',
+      estadoNuevo: 'RECHAZADA',
+      motivo: 'Faltó el CUIT 20-12345678-4',
+    });
+    const historial = (res.body as { historial: Array<{ motivo?: string | null }> }).historial;
+    expect(historial.map((paso) => paso.motivo)).toEqual([null, 'Faltó el CUIT 20-12345678-4']);
+  });
+
+  it('RECHAZADA sin motivo: 400 en motivo (no 409), sin llegar a la base', async () => {
+    const res = await responder({ estado: 'RECHAZADA' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: { code: 'VALIDATION_ERROR', details: [{ campo: 'motivo' }] },
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('RECHAZADA con motivo sobre una EN_CURSO: 409 TRANSICION_INVALIDA, sin escribir', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('EN_CURSO'));
+
+    const res = await responder({ estado: 'RECHAZADA', motivo: 'texto' });
+
+    expect(res.status).toBe(409);
+    expect(detalles(res)).toEqual({
+      motivo: 'TRANSICION_INVALIDA',
+      estadoActual: 'EN_CURSO',
+      estadoNuevo: 'RECHAZADA',
+    });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+
+  it('APROBADA con motivo: 400 en motivo, sin llegar a la base', async () => {
+    const res = await responder({ estado: 'APROBADA', motivo: 'algo' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: { code: 'VALIDATION_ERROR', details: [{ campo: 'motivo' }] },
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('APROBADA sobre una ya APROBADA: 200 idempotente, sin escribir', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('APROBADA'));
+    transaccion.rendicion.findUniqueOrThrow.mockResolvedValueOnce(filaDetalle('APROBADA'));
+
+    const res = await responder({ estado: 'APROBADA' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ estado: 'APROBADA' });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('motivoParaNoModificar (HU3.8)', () => {
+  it.each(['ENVIADA', 'APROBADA'] as const)(
+    '%s: 409 RENDICION_ENVIADA con el texto "La rendición ya no se puede modificar."',
+    (estado) => {
+      expect(motivoParaNoModificar({ isDeleted: false, estado })).toMatchObject({
+        status: 409,
+        message: 'La rendición ya no se puede modificar.',
+        details: { motivo: 'RENDICION_ENVIADA' },
+      });
+    },
+  );
+
+  it.each(['EN_CURSO', 'COMPLETA', 'RECHAZADA'] as const)('%s se puede modificar', (estado) => {
+    expect(motivoParaNoModificar({ isDeleted: false, estado })).toBeNull();
   });
 });
 

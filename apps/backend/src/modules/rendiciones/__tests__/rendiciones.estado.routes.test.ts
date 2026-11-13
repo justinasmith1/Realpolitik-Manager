@@ -203,7 +203,13 @@ describe('GET /rendiciones/:id: estado e historial', () => {
         include: expect.objectContaining({
           historial: {
             orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }],
-            select: { estadoAnterior: true, estadoNuevo: true, fecha: true, fechaEfectiva: true },
+            select: {
+              estadoAnterior: true,
+              estadoNuevo: true,
+              fecha: true,
+              fechaEfectiva: true,
+              motivo: true,
+            },
           },
         }) as unknown,
       }),
@@ -215,8 +221,8 @@ describe('GET /rendiciones/:id: estado e historial', () => {
         { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: DESPUES.toISOString() },
       ],
     });
-    // El motivo todavía no forma parte del contrato.
-    expect((res.body as { historial: object[] }).historial[0]).not.toHaveProperty('motivo');
+    // El motivo (HU3.8) forma parte del contrato: sin valor en la base, viaja como null.
+    expect((res.body as { historial: object[] }).historial[0]).toHaveProperty('motivo', null);
   });
 
   it('una anulada conserva el último estado que tenía', async () => {
