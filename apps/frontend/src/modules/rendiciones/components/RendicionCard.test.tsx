@@ -227,3 +227,41 @@ describe('RendicionCard', () => {
     });
   });
 });
+
+// HU3.10: en el listado del cliente, una rendición cobrada se distingue con un chip y su fecha.
+describe('RendicionCard: cobro informado por el cliente (HU3.10)', () => {
+  const COBRO = { fecha: '2026-11-10', nota: null };
+
+  it('con cobro, muestra el chip "Cobrada · dd/mm/aaaa" con los tokens de éxito y un ícono', () => {
+    renderTarjeta(undefined, { estado: 'APROBADA', cobro: COBRO });
+
+    const tarjeta = screen.getByRole('article', { name: 'Octubre 2026' });
+    const chip = within(tarjeta).getByText('Cobrada · 10/11/2026');
+    expect(chip).toHaveClass('text-success', 'bg-success-soft', 'border-success-border');
+    expect(chip.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('sin cobro, no hay chip', () => {
+    renderTarjeta(undefined, { estado: 'ENVIADA' });
+
+    expect(screen.queryByText(/Cobrada/)).not.toBeInTheDocument();
+  });
+
+  it('el día no se corre por la zona horaria', () => {
+    renderTarjeta(undefined, { estado: 'ENVIADA', cobro: { fecha: '2026-01-01', nota: null } });
+
+    expect(screen.getByText('Cobrada · 01/01/2026')).toBeInTheDocument();
+  });
+
+  it('una anulada conserva a la vista el cobro que tenía', () => {
+    renderTarjeta(undefined, {
+      estado: 'ENVIADA',
+      vigencia: 'ANULADA',
+      anuladaEn: '2026-10-20T15:00:00.000Z',
+      cobro: COBRO,
+    });
+
+    expect(screen.getByText('Cobrada · 10/11/2026')).toBeInTheDocument();
+    expect(screen.getByText('Anulada')).toBeInTheDocument();
+  });
+});

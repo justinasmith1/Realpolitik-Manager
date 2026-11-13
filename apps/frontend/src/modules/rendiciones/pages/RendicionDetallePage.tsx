@@ -1,6 +1,7 @@
 import {
   calcularFaltantes,
   canalDeSeleccion,
+  esEstadoCobrable,
   esRendicionModificable,
   faltantesParaEnviar,
   fechaDelPaso,
@@ -41,6 +42,7 @@ import {
 import { AprobarRendicionDialog } from '@/modules/rendiciones/components/AprobarRendicionDialog';
 import { AvisoDeRechazo } from '@/modules/rendiciones/components/AvisoDeRechazo';
 import { CambiarCanalDialog } from '@/modules/rendiciones/components/CambiarCanalDialog';
+import { CobroDeRendicion } from '@/modules/rendiciones/components/CobroDeRendicion';
 import { EditarOcSheet } from '@/modules/rendiciones/components/EditarOcSheet';
 import { EnvioDialog, type Envio } from '@/modules/rendiciones/components/EnvioDialog';
 import {
@@ -54,7 +56,9 @@ import {
   type AccionesDeDocumento,
 } from '@/modules/rendiciones/components/ItemChecklistFila';
 import { MarcarEnviadaDialog } from '@/modules/rendiciones/components/MarcarEnviadaDialog';
+import { QuitarCobroDialog } from '@/modules/rendiciones/components/QuitarCobroDialog';
 import { RechazarDialog } from '@/modules/rendiciones/components/RechazarDialog';
+import { RegistrarCobroSheet } from '@/modules/rendiciones/components/RegistrarCobroSheet';
 import {
   useMarcarEstadoDeRendicion,
   usePrepararEnvio,
@@ -248,6 +252,10 @@ function DetalleDeRendicion({
   );
   const [editandoCliente, setEditandoCliente] = useState(false);
   const [editandoOc, setEditandoOc] = useState(false);
+  // El cobro informado por el cliente (HU3.10): la hoja para registrarlo o corregirlo y la
+  // confirmación para quitar la marca.
+  const [registrandoCobro, setRegistrandoCobro] = useState(false);
+  const [quitandoCobro, setQuitandoCobro] = useState(false);
   const avance = calcularFaltantes(rendicion.items);
   const anulada = rendicion.vigencia === 'ANULADA';
   const enviada = rendicion.estado === 'ENVIADA';
@@ -268,6 +276,10 @@ function DetalleDeRendicion({
   const sinDocumentos = rendicion.items.length === 0;
   const puedeCompletarse = !sinDocumentos && faltantesParaCompletar === 0;
   const fechaDeEnvio = enviada ? fechaDeEnvioDe(rendicion) : null;
+  // El cobro (HU3.10) se registra en una activa Enviada o Aprobada. No cuelga de "modificable": una
+  // Aprobada ya no se modifica, pero se cobra. Una anulada con cobro lo muestra en solo lectura.
+  const cobro = rendicion.cobro;
+  const puedeCobrar = !anulada && esEstadoCobrable(rendicion.estado);
   // Los cambios de estado (HU3.6 a HU3.9): solo en una rendición activa que no esté Aprobada.
   const conAccionesDeEstado = !anulada && rendicion.estado !== 'APROBADA';
   // "Checklist completo" con la misma regla que el botón (pendientes y reunidos sin documento
@@ -570,6 +582,24 @@ function DetalleDeRendicion({
             <dd className="text-foreground">{avanceDelChecklist(avance)}</dd>
           </div>
         </dl>
+        {/* El cobro informado por el cliente (HU3.10): una marca, no un estado; va en su franja. */}
+        <CobroDeRendicion
+          estado={rendicion.estado}
+          anulada={anulada}
+          cobro={cobro}
+          onRegistrar={() => {
+            setAvisoDelChecklist(null);
+            setRegistrandoCobro(true);
+          }}
+          onEditar={() => {
+            setAvisoDelChecklist(null);
+            setRegistrandoCobro(true);
+          }}
+          onQuitar={() => {
+            setAvisoDelChecklist(null);
+            setQuitandoCobro(true);
+          }}
+        />
         <HistorialDeEstados historial={rendicion.historial} />
       </header>
 
@@ -744,6 +774,32 @@ function DetalleDeRendicion({
         onCerrar={() => setRechazando(false)}
         onRechazada={(texto) => {
           setRechazando(false);
+          setAvisoDelChecklist({ variant: 'success', texto });
+        }}
+        focoAlCerrar={tituloRef}
+      />
+      {puedeCobrar && (
+        <RegistrarCobroSheet
+          rendicion={rendicion}
+          abierto={registrandoCobro}
+          onAbiertoChange={setRegistrandoCobro}
+          onGuardada={(texto) => {
+            setRegistrandoCobro(false);
+            setAvisoDelChecklist({ variant: 'success', texto });
+          }}
+          // Quitar la marca pide su confirmación: se cierra la hoja y se abre el diálogo.
+          onQuitar={() => {
+            setRegistrandoCobro(false);
+            setQuitandoCobro(true);
+          }}
+        />
+      )}
+      {/* El botón "Quitar cobro" desaparece al quitar la marca: el foco vuelve al título. */}
+      <QuitarCobroDialog
+        rendicion={quitandoCobro && !anulada ? rendicion : null}
+        onCerrar={() => setQuitandoCobro(false)}
+        onQuitado={(texto) => {
+          setQuitandoCobro(false);
           setAvisoDelChecklist({ variant: 'success', texto });
         }}
         focoAlCerrar={tituloRef}

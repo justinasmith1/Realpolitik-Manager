@@ -32,6 +32,7 @@ const fila = (id: string, denominacion: string, extra: Record<string, unknown> =
   avance: { reunidos: 2, total: 3, faltantes: 1 },
   ultimoPaso: null,
   atrasada: false,
+  cobro: null,
   ...extra,
 });
 
@@ -375,7 +376,11 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
 
     await panel();
     await waitFor(() => expect(router.state.location.search).toBe(''));
-    expect(screen.queryByRole('region', { name: /Resumen/ })).not.toBeInTheDocument();
+    // El router cambia la URL antes de que React vuelva a dibujar la pantalla: el panel se va en el
+    // render siguiente, así que se espera su ausencia en vez de afirmarla en el mismo instante.
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: /Resumen/ })).not.toBeInTheDocument(),
+    );
   });
 
   it('mientras carga muestra un skeleton y, si falla, un aviso con "Reintentar"', async () => {
@@ -416,5 +421,67 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
     await filaDe(/Zeta/);
     await waitFor(() => expect(parametros(router)).toEqual({ anio: '2026', mes: '10' }));
     expect(screen.queryByRole('region', { name: /Resumen/ })).not.toBeInTheDocument();
+  });
+});
+
+// HU3.10: el resumen es de solo lectura; muestra el cobro informado por el cliente, con su fecha y su
+// nota, y no ofrece registrarlo ni cambiarlo (eso se hace desde el detalle).
+describe('RendicionesPage, panel de resumen: cobro (HU3.10)', () => {
+  const COBRADA = { ...LA_PLATA, estado: 'APROBADA', cobro: { fecha: '2026-11-10' } };
+
+  it('una rendición cobrada muestra "Cobrada el dd/mm/aaaa" y la nota', async () => {
+    servir(
+      { '2026-11': [COBRADA] },
+      {
+        [RENDICION_ID]: detalle({
+          estado: 'APROBADA',
+          cobro: { fecha: '2026-11-10', nota: 'Avisó por mail Juan, de Tesorería' },
+        }),
+      },
+    );
+    renderPantalla(`/rendiciones?rendicion=${RENDICION_ID}`);
+
+    const region = await panel();
+    expect(await within(region).findByText('Cobrada el 10/11/2026')).toBeVisible();
+    expect(within(region).getByText('Avisó por mail Juan, de Tesorería')).toBeVisible();
+  });
+
+  it('el cobro no tiene nota: solo la fecha', async () => {
+    servir(
+      { '2026-11': [COBRADA] },
+      {
+        [RENDICION_ID]: detalle({ estado: 'APROBADA', cobro: { fecha: '2026-11-10', nota: null } }),
+      },
+    );
+    renderPantalla(`/rendiciones?rendicion=${RENDICION_ID}`);
+
+    const region = await panel();
+    expect(await within(region).findByText('Cobrada el 10/11/2026')).toBeVisible();
+  });
+
+  it('una rendición sin cobro no dice nada de cobrada', async () => {
+    servir(
+      { '2026-11': [{ ...LA_PLATA, estado: 'ENVIADA' }] },
+      { [RENDICION_ID]: detalle({ estado: 'ENVIADA' }) },
+    );
+    renderPantalla(`/rendiciones?rendicion=${RENDICION_ID}`);
+
+    const region = await panel();
+    await within(region).findByText('Documentos');
+    expect(within(region).queryByText(/Cobrada/)).not.toBeInTheDocument();
+  });
+
+  it('es de solo lectura: no ofrece registrar, editar ni quitar el cobro', async () => {
+    servir(
+      { '2026-11': [COBRADA] },
+      {
+        [RENDICION_ID]: detalle({ estado: 'APROBADA', cobro: { fecha: '2026-11-10', nota: null } }),
+      },
+    );
+    renderPantalla(`/rendiciones?rendicion=${RENDICION_ID}`);
+
+    const region = await panel();
+    await within(region).findByText('Cobrada el 10/11/2026');
+    expect(within(region).queryByRole('button', { name: /cobro/i })).not.toBeInTheDocument();
   });
 });

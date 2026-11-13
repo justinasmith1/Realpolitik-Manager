@@ -1,7 +1,12 @@
 import {
   cantidadDeRendicionesEnElMes,
+  MENSAJE_COBRO_ESTADO_INVALIDO,
+  MENSAJE_COBRO_REGISTRADO,
   nombreDeItem,
   numeroDeWhatsappLegible,
+  textoDeCobro,
+  textoDeCobroCorto,
+  textoDeCobroEnChip,
   textoDeHoy,
   textoDePendientes,
   tipoDeCliente,
@@ -67,6 +72,31 @@ describe('cantidadDeRendicionesEnElMes', () => {
   it('si el mes es de otro año, lo aclara', () => {
     expect(cantidadDeRendicionesEnElMes(4, { anio: 2025, mes: 12 }, 2026)).toBe(
       '4 rendiciones en diciembre de 2025',
+    );
+  });
+});
+
+// ─── Cobro informado por el cliente (HU3.10) ──────────────────────────────────
+
+describe('textos del cobro', () => {
+  it('la fecha del cobro se lee como un día de calendario, sin pasar por Date', () => {
+    expect(textoDeCobro('2026-11-10')).toBe('Cobrada el 10/11/2026');
+    expect(textoDeCobroEnChip('2026-11-10')).toBe('Cobrada · 10/11/2026');
+    expect(textoDeCobroCorto('2026-11-10')).toBe('Cobrada 10/11');
+  });
+
+  it.each(['2026-01-01', '2026-12-31'])('el día %s no se corre por la zona horaria', (dia) => {
+    const [anio, mes, numero] = dia.split('-');
+    expect(textoDeCobro(dia)).toBe(`Cobrada el ${numero}/${mes}/${anio}`);
+    expect(textoDeCobroCorto(dia)).toBe(`Cobrada ${numero}/${mes}`);
+  });
+
+  it('los textos de error del cobro son los acordados', () => {
+    expect(MENSAJE_COBRO_ESTADO_INVALIDO).toBe(
+      'Solo se puede registrar el cobro de una rendición enviada o aprobada.',
+    );
+    expect(MENSAJE_COBRO_REGISTRADO).toBe(
+      'Tiene un cobro registrado: quitalo antes de rechazarla.',
     );
   });
 });

@@ -1,6 +1,6 @@
 import { ETIQUETAS_ESTADO_RENDICION, type RendicionDelMes } from '@realpolitik/shared';
 import { cn } from 'cn';
-import { ChevronRightIcon } from 'lucide-react';
+import { BadgeCheckIcon, ChevronRightIcon } from 'lucide-react';
 import { useId } from 'react';
 import { Link, type To } from 'react-router';
 
@@ -12,6 +12,7 @@ import {
 } from '@/modules/rendiciones/estadoRendicion.colores';
 import {
   etiquetaDePeriodo,
+  textoDeCobroCorto,
   textoDePendientes,
   textoDeUltimoPaso,
   tipoDeCliente,
@@ -30,20 +31,47 @@ interface RendicionDelMesFilaProps {
   abierta: boolean;
 }
 
+/** "✓ Cobrada 12/11": éxito con ícono y texto (el color nunca es el único canal). Sin fondo ni borde. */
+function MarcaDeCobro({
+  texto,
+  className,
+  ...resto
+}: {
+  texto: string;
+  className: string;
+  title?: string;
+  'data-cobro': 'linea' | 'columna';
+}) {
+  return (
+    <span
+      {...resto}
+      className={cn(
+        'inline-flex items-center gap-1 font-semibold whitespace-nowrap text-success',
+        className,
+      )}
+    >
+      <BadgeCheckIcon aria-hidden="true" className="size-3.5 shrink-0" />
+      <span className="min-w-0 truncate">{texto}</span>
+    </span>
+  );
+}
+
 /**
  * Una rendición de la pantalla Rendiciones (HU3.2), como una fila de la tarjeta del listado:
  *
  * - a la izquierda, el monograma en el color del estado; en la primera línea, el cliente y la
  *   factura; en la segunda, el tipo de cliente, los pendientes y el estado (texto en su color);
- * - a la derecha, la barra de avance, el porcentaje, la fecha del último paso (si ya salió hacia el
- *   organismo) y una flecha, que es solo un indicador.
+ * - a la derecha, la barra de avance, el porcentaje, una columna de ancho fijo con la fecha del
+ *   último paso (si ya salió hacia el organismo) y, debajo, "✓ Cobrada dd/mm" (HU3.10), y una
+ *   flecha, que es solo un indicador. La alineación entre filas la da esa columna fija.
  *
  * Toda la fila es un único enlace que abre el panel de resumen de la rendición (HU3.5), así que se
  * abre tocando cualquier parte, flecha incluida; la abierta queda marcada (`aria-current`). Su
  * nombre es el cliente y la factura (distingue dos del mismo cliente); el resto se anuncia como
  * descripción.
  *
- * Si el listado tiene menos de 46rem de ancho, la parte derecha baja debajo del cliente. Se mide
+ * Si el listado tiene menos de 46rem de ancho, la parte derecha baja debajo del cliente y la marca de
+ * cobrada vuelve a la segunda línea de la izquierda (donde, si no entra, se recorta). Se mide
  * el listado (container query), no la ventana: con la barra lateral abierta o con el panel de
  * resumen al costado, el listado es bastante más angosto que la ventana.
  */
@@ -53,7 +81,9 @@ export function RendicionDelMesFila({
   destino,
   abierta,
 }: RendicionDelMesFilaProps) {
-  const { cliente, avance, ultimoPaso, estado } = rendicion;
+  const { cliente, avance, ultimoPaso, estado, cobro } = rendicion;
+  // HU3.10: el cliente informó el pago. Una marca aparte del estado, con el día del cobro.
+  const cobrada = cobro === null ? null : textoDeCobroCorto(cobro.fecha);
   // HU3.4: en el lugar de la fecha, "Atrasada" (o "Atrasada · Septiembre 2026" en su vista). Las
   // atrasadas están sin enviar, así que no tienen fecha de último paso.
   const marca = rendicion.atrasada
@@ -95,7 +125,7 @@ export function RendicionDelMesFila({
             {/* Siempre en una línea: si no entra, se recorta solo el tipo de cliente (con el texto
                 completo en el title); los pendientes y el estado se ven siempre completos. */}
             <p className="flex min-w-0 text-[0.8125rem] whitespace-nowrap text-content-secondary">
-              <span className="min-w-0 truncate" title={tipoDeCliente(cliente)}>
+              <span className="min-w-0 shrink-[5] truncate" title={tipoDeCliente(cliente)}>
                 {tipoDeCliente(cliente)}
               </span>
               <span className="shrink-0">
@@ -107,6 +137,16 @@ export function RendicionDelMesFila({
                   {ETIQUETAS_ESTADO_RENDICION[estado]}
                 </span>
               </span>
+              {/* Solo con el listado angosto: ancho, la marca va en la columna derecha, bajo la fecha.
+                  Es lo primero que se recorta (con el texto completo en el title). */}
+              {cobrada !== null && (
+                <MarcaDeCobro
+                  data-cobro="linea"
+                  texto={cobrada}
+                  title={cobrada}
+                  className="ml-1 min-w-0 truncate align-top @min-[46rem]:hidden"
+                />
+              )}
             </p>
           </div>
         </div>
@@ -135,19 +175,36 @@ export function RendicionDelMesFila({
           >
             {porcentaje}%
           </span>
-          {/* Ancho mínimo con el listado ancho, a la derecha, para que las barras queden alineadas. Con el
-              mes (vista de atrasadas), más ancho; y apilada, en su propia línea, debajo de la barra. */}
-          <span
+          {/* Columna de ancho fijo (no mínimo), a la derecha, para que ninguna fila corra la barra ni el
+              porcentaje: arriba, la fecha del último paso (o "Atrasada", más ancha con el mes en la vista
+              de atrasadas) y, debajo, la marca de cobrada. Con el listado angosto va en su propia línea,
+              debajo de la barra (así la barra no depende de cuánto mida la fecha), y la marca de cobrada
+              vuelve a la segunda línea de la izquierda. */}
+          <div
+            data-columna="fecha"
             className={cn(
-              'text-[0.8125rem] whitespace-nowrap',
-              periodo === undefined
-                ? 'text-right @min-[46rem]:min-w-28'
-                : 'order-last w-full @min-[46rem]:order-none @min-[46rem]:w-auto @min-[46rem]:min-w-44 @min-[46rem]:text-right',
-              marca === null ? 'text-content-secondary' : 'font-semibold text-atrasada',
+              'order-last flex w-full flex-col items-start gap-0.5 text-left @min-[46rem]:order-none @min-[46rem]:shrink-0 @min-[46rem]:items-end @min-[46rem]:text-right',
+              periodo === undefined ? '@min-[46rem]:w-28' : '@min-[46rem]:w-44',
+              // Sin nada que mostrar, apilada no deja una línea vacía; ancha conserva su ancho.
+              marca === null && fecha === null && cobrada === null && '@max-[46rem]:hidden',
             )}
           >
-            {marca ?? fecha}
-          </span>
+            <span
+              className={cn(
+                'text-[0.8125rem] whitespace-nowrap',
+                marca === null ? 'text-content-secondary' : 'font-semibold text-atrasada',
+              )}
+            >
+              {marca ?? fecha}
+            </span>
+            {cobrada !== null && (
+              <MarcaDeCobro
+                data-cobro="columna"
+                texto={cobrada}
+                className="hidden text-xs @min-[46rem]:inline-flex"
+              />
+            )}
+          </div>
           <ChevronRightIcon
             aria-hidden="true"
             className="size-4 shrink-0 text-content-secondary transition-transform group-hover:translate-x-0.5"
@@ -157,6 +214,7 @@ export function RendicionDelMesFila({
         <span id={idDescripcion} hidden>
           {`${tipoDeCliente(cliente)} · ${textoDePendientes(avance.faltantes)} · ${ETIQUETAS_ESTADO_RENDICION[estado]}. Avance ${porcentaje} %`}
           {(marca ?? fecha) !== null && `, ${marca ?? fecha}`}
+          {cobrada !== null && `. ${cobrada}`}
         </span>
       </Link>
     </article>

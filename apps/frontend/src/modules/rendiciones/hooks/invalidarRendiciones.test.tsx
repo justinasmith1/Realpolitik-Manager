@@ -5,11 +5,14 @@ import type { ReactNode } from 'react';
 import type * as DocumentosApi from '@/modules/documentos/api/documentos.api';
 import { useAplicarDocumento } from '@/modules/documentos/hooks/useDocumentos';
 import type * as RendicionesApi from '@/modules/rendiciones/api/rendiciones.api';
+import * as api from '@/modules/rendiciones/api/rendiciones.api';
 import { rendicionesKeys } from '@/modules/rendiciones/api/rendiciones.keys';
 import {
   useAbrirRendicion,
   useAgregarRequisitoARendicion,
   useAnularRendicion,
+  useQuitarCobro,
+  useRegistrarCobro,
 } from '@/modules/rendiciones/hooks/useRendiciones';
 
 // Lo que cambia la vigencia o el avance de una rendición refresca también la pantalla Rendiciones:
@@ -19,6 +22,8 @@ vi.mock('@/modules/rendiciones/api/rendiciones.api', async (original) => ({
   anularRendicion: vi.fn().mockResolvedValue(undefined),
   abrirRendicion: vi.fn().mockResolvedValue(undefined),
   agregarRequisitoARendicion: vi.fn().mockResolvedValue(undefined),
+  registrarCobro: vi.fn().mockResolvedValue(undefined),
+  quitarCobro: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('@/modules/documentos/api/documentos.api', async (original) => ({
   ...(await original<typeof DocumentosApi>()),
@@ -118,5 +123,87 @@ describe('invalidarRendiciones', () => {
     expect(invalidada(keys.lista)).toBe(true);
     expect(invalidada(keys.detalle)).toBe(true);
     expect(invalidada(keys.deOtroCliente)).toBe(false);
+  });
+});
+
+// HU3.10: la marca "Cobrada" se ve en la pantalla Rendiciones y en el listado del cliente.
+describe('invalidarRendiciones: el cobro (HU3.10)', () => {
+  const detalleConCobro = { id: RENDICION, cobro: { fecha: '2026-11-10', nota: null } };
+
+  it('registrar el cobro deja el detalle como lo devolvió el servidor e invalida el mes, las atrasadas y las del cliente', async () => {
+    vi.mocked(api.registrarCobro).mockResolvedValueOnce(detalleConCobro as never);
+    const { keys, invalidada, wrapper } = cacheConDatos();
+    const { result } = renderHook(() => useRegistrarCobro(), { wrapper });
+
+    await act(() =>
+      result.current.mutateAsync({
+        clienteId: CLIENTE,
+        rendicionId: RENDICION,
+        datos: { fecha: '2026-11-10', nota: null },
+      }),
+    );
+
+    expect(api.registrarCobro).toHaveBeenCalledWith(RENDICION, { fecha: '2026-11-10', nota: null });
+    expect(invalidada(keys.mes)).toBe(true);
+    expect(invalidada(keys.otroMes)).toBe(true);
+    expect(invalidada(keys.atrasadas)).toBe(true);
+    expect(invalidada(keys.lista)).toBe(true);
+    expect(invalidada(keys.detalle)).toBe(true);
+    expect(invalidada(keys.deOtroCliente)).toBe(false);
+  });
+
+  it('quitar la marca invalida lo mismo', async () => {
+    const { keys, invalidada, wrapper } = cacheConDatos();
+    const { result } = renderHook(() => useQuitarCobro(), { wrapper });
+
+    await act(() => result.current.mutateAsync({ clienteId: CLIENTE, rendicionId: RENDICION }));
+
+    expect(api.quitarCobro).toHaveBeenCalledWith(RENDICION);
+    expect(invalidada(keys.mes)).toBe(true);
+    expect(invalidada(keys.atrasadas)).toBe(true);
+    expect(invalidada(keys.lista)).toBe(true);
+    expect(invalidada(keys.detalle)).toBe(true);
+    expect(invalidada(keys.deOtroCliente)).toBe(false);
+  });
+
+  it('si el servidor rechaza el cobro (algo cambió), también se vuelve a pedir todo', async () => {
+    vi.mocked(api.registrarCobro).mockRejectedValueOnce(new Error('409'));
+    const { keys, invalidada, wrapper } = cacheConDatos();
+    const { result } = renderHook(() => useRegistrarCobro(), { wrapper });
+
+    await act(async () => {
+      await result.current
+        .mutateAsync({
+          clienteId: CLIENTE,
+          rendicionId: RENDICION,
+          datos: { fecha: '2026-11-10', nota: null },
+        })
+        .catch(() => undefined);
+    });
+
+    expect(invalidada(keys.mes)).toBe(true);
+    expect(invalidada(keys.detalle)).toBe(true);
+  });
+
+  it('no reintenta un cobro que falló', async () => {
+    vi.mocked(api.registrarCobro).mockClear();
+    vi.mocked(api.registrarCobro).mockRejectedValue(new Error('red'));
+    const { wrapper } = cacheConDatos();
+    const { result } = renderHook(() => useRegistrarCobro(), { wrapper });
+
+    await act(async () => {
+      await result.current
+        .mutateAsync({
+          clienteId: CLIENTE,
+          rendicionId: RENDICION,
+          datos: { fecha: '2026-11-10', nota: null },
+        })
+        .catch(() => undefined);
+    });
+
+    expect(api.registrarCobro).toHaveBeenCalledTimes(1);
+    vi.mocked(api.registrarCobro)
+      .mockReset()
+      .mockResolvedValue(undefined as never);
   });
 });

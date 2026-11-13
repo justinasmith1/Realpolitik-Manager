@@ -18,6 +18,7 @@ import {
   AvisoDeRechazo,
   rechazoPendienteDe,
 } from '@/modules/rendiciones/components/AvisoDeRechazo';
+import { CobradaMarca } from '@/modules/rendiciones/components/CobradaMarca';
 import { EstadoRendicionBadge } from '@/modules/rendiciones/components/EstadoRendicionBadge';
 import { ItemReunidoBadge } from '@/modules/rendiciones/components/ItemReunidoBadge';
 import { fondoDeEstado, textoDeEstado } from '@/modules/rendiciones/estadoRendicion.colores';
@@ -25,6 +26,7 @@ import {
   avanceDelChecklist,
   etiquetaDePeriodo,
   nombreDeItem,
+  textoDeCobro,
   textoDeUltimoPaso,
   tipoDeCliente,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
@@ -105,7 +107,8 @@ function Dato({ etiqueta, children }: { etiqueta: string; children: ReactNode })
  *
  * Los bloques van uno debajo del otro. El motivo del rechazo pendiente (HU3.9) va en un `Bloque`
  * propio después del estado, destacado: en una Rechazada, o en una En curso o Completa que se está
- * corrigiendo. La fecha del cobro (HU3.10) se sumará igual.
+ * corrigiendo. Igual el cobro (HU3.10): si el cliente informó el pago, un bloque con la fecha y la
+ * nota; se registra y se corrige desde el detalle, no acá.
  */
 export function ResumenRendicionPanel({
   fila,
@@ -188,6 +191,16 @@ export function ResumenRendicionPanel({
         {rechazoPendienteDe(detalle) !== null && (
           <Bloque>
             <AvisoDeRechazo rendicion={detalle} />
+          </Bloque>
+        )}
+        {detalle.cobro !== null && (
+          <Bloque titulo="Cobro">
+            <div className="flex flex-col items-start gap-1.5">
+              <CobradaMarca texto={textoDeCobro(detalle.cobro.fecha)} />
+              {detalle.cobro.nota !== null && (
+                <p className="text-sm break-words text-content-secondary">{detalle.cobro.nota}</p>
+              )}
+            </div>
           </Bloque>
         )}
         <Bloque

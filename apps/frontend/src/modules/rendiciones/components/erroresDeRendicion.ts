@@ -11,13 +11,19 @@ import type {
   FalloActualizacionOc,
   FalloApertura,
   FalloCambioDeEstado,
+  FalloCobro,
   FalloCorreccionDeCanal,
   FalloPreparacionEnvio,
   FalloPropagacion,
 } from '@/modules/rendiciones/api/rendiciones.api';
 import type { CampoAbrirRendicion } from '@/modules/rendiciones/components/abrirRendicionForm.validation';
 import type { CampoOc } from '@/modules/rendiciones/components/editarOcForm.validation';
-import { etiquetaDePeriodo } from '@/modules/rendiciones/rendiciones.etiquetas';
+import type { CampoCobro } from '@/modules/rendiciones/components/registrarCobroForm.validation';
+import {
+  etiquetaDePeriodo,
+  MENSAJE_COBRO_ESTADO_INVALIDO,
+  MENSAJE_COBRO_REGISTRADO,
+} from '@/modules/rendiciones/rendiciones.etiquetas';
 
 /** Lo que se puede hacer a partir del error, además de leerlo. */
 export type AccionSugerida =
@@ -266,6 +272,8 @@ export function mensajeFalloCambioDeEstado(
       return 'La rendición está anulada: ya no se puede modificar.';
     case 'transicion-invalida':
       return transicionInvalida;
+    case 'cobro-registrado':
+      return MENSAJE_COBRO_REGISTRADO;
     case 'no-existe':
       return 'La rendición ya no existe. Volvé a cargar la página.';
     case 'inesperado':
@@ -306,5 +314,42 @@ export function mensajeFalloActualizacionOc(fallo: FalloActualizacionOc): Errore
     }
     case 'inesperado':
       return { general: MENSAJE_INESPERADO_OC };
+  }
+}
+
+// ─── Cobro informado por el cliente (HU3.10) ──────────────────────────────────────────────
+
+export interface ErroresDeCobro {
+  campos?: Partial<Record<CampoCobro, string>>;
+  general?: string;
+}
+
+const MENSAJE_INESPERADO_COBRO = 'No pudimos guardar el cobro. Probá de nuevo en unos segundos.';
+
+const esCampoDeCobro = (campo: string): campo is CampoCobro =>
+  campo === 'fecha' || campo === 'nota';
+
+/** Errores de la hoja del cobro para cada fallo (al registrarlo, corregirlo o quitarlo). */
+export function mensajeFalloCobro(fallo: FalloCobro): ErroresDeCobro {
+  switch (fallo.tipo) {
+    case 'rendicion-anulada':
+      return { general: 'La rendición está anulada: ya no se puede modificar.' };
+    case 'estado-invalido':
+      return { general: MENSAJE_COBRO_ESTADO_INVALIDO };
+    case 'no-existe':
+      return { general: 'Esta rendición ya no existe. Volvé a cargar la página.' };
+    case 'datos-invalidos': {
+      const campos: Partial<Record<CampoCobro, string>> = {};
+      for (const { campo, mensaje } of fallo.detalles) {
+        if (esCampoDeCobro(campo)) {
+          campos[campo] ??= mensajeDelServidor(mensaje) ?? MENSAJE_DATO_INVALIDO;
+        }
+      }
+      return Object.keys(campos).length > 0
+        ? { campos, general: 'Algunos datos no son válidos. Revisá los campos marcados.' }
+        : { general: MENSAJE_INESPERADO_COBRO };
+    }
+    case 'inesperado':
+      return { general: MENSAJE_INESPERADO_COBRO };
   }
 }

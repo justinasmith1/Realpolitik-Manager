@@ -20,6 +20,7 @@ const fila = (n: number, denominacion: string) => ({
   avance: { reunidos: 1, total: 2, faltantes: 1 },
   ultimoPaso: null,
   atrasada: false,
+  cobro: null,
 });
 
 /**
