@@ -21,8 +21,11 @@ const sql = readFileSync(`${DIR_MIGRACIONES}${NOMBRE}/migration.sql`, 'utf8');
 const instrucciones = sql.replace(/--.*$/gm, '');
 
 describe(`migración ${NOMBRE}`, () => {
-  it('es la última del historial: se aplica después de todas las existentes', () => {
-    expect(migraciones.at(-1)).toBe(NOMBRE);
+  it('se aplica después de todas las que existían cuando se creó (nada intercalado antes)', () => {
+    // Las migraciones posteriores (HU3.7 en adelante) van después: no se exige que sea la última.
+    const posicion = migraciones.indexOf(NOMBRE);
+    expect(posicion).toBeGreaterThan(0);
+    expect(migraciones[posicion - 1]).toBe('20261109120000_hu3_4_indice_atrasadas');
   });
 
   it('solo agrega: cada sentencia crea un objeto o agrega un constraint (nada de DROP, UPDATE, DELETE…)', () => {

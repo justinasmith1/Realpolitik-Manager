@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
@@ -91,10 +92,13 @@ describe('RendicionDetallePage: estado e historial (HU3.1)', () => {
     await screen.findByRole('heading', { level: 1, name: 'Rendición Octubre 2026' });
     expect(datoDeCabecera('Estado')).toHaveTextContent('Completa');
     expect(datoDeCabecera('Vigencia')).toHaveTextContent('Activa');
+    // El historial es un toggle plegado ("Historial (2)"): la fila despliega la lista.
     const historial = within(screen.getByRole('region', { name: 'Historial' }));
+    expect(historial.queryAllByRole('listitem')).toHaveLength(0);
+    await userEvent.setup().click(historial.getByRole('button', { name: 'Historial (2)' }));
     expect(historial.getAllByRole('listitem').map((li) => li.textContent)).toEqual([
       '01/10/2026Se abrió enEn curso',
-      '20/10/2026De En curso aCompleta',
+      '20/10/2026Pasó aCompleta',
     ]);
   });
 

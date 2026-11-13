@@ -1,4 +1,5 @@
 import {
+  diaLegible,
   ETIQUETAS_ESTADO_RENDICION,
   type ClienteSectorType,
   type ClienteSubtipoPublicoType,
@@ -103,6 +104,25 @@ export const TEXTO_VOLVER_A_EN_CURSO = 'Volver a en curso';
 export const TEXTO_GUARDANDO_ESTADO = 'Guardando…';
 export const AVISO_RENDICION_COMPLETA = 'La rendición quedó completa.';
 export const AVISO_RENDICION_EN_CURSO = 'La rendición volvió a En curso.';
+
+/** "Faltan 3 documentos" / "Falta 1 documento", junto a "Marcar como completa" (HU3.6). */
+export const textoDeFaltantes = (cantidad: number): string =>
+  cantidad === 1 ? 'Falta 1 documento' : `Faltan ${cantidad} documentos`;
+
+// ─── Enviada (HU3.7) ──────────────────────────────────────────────────────────────────────
+
+export const TEXTO_MARCAR_ENVIADA = 'Marcar como enviada';
+export const TEXTO_YA_LA_ENVIE = 'Ya la envié';
+export const TITULO_MARCAR_ENVIADA = 'Registrar el envío';
+export const ETIQUETA_FECHA_ENVIO = 'Fecha de envío';
+export const TEXTO_CONFIRMAR_ENVIO = 'Confirmar';
+/** Por qué las acciones sobre documentos y canales están deshabilitadas en una Enviada. */
+export const TEXTO_RENDICION_YA_ENVIADA =
+  'La rendición ya fue enviada: no se pueden cambiar sus documentos ni sus canales.';
+
+/** El aviso al registrar el envío: "La rendición quedó enviada (08/11/2026)." */
+export const avisoRendicionEnviada = (fechaEnvio: string): string =>
+  `La rendición quedó enviada (${diaLegible(fechaEnvio)}).`;
 
 // ─── Orden de compra (HU2.11) ─────────────────────────────────────────────────
 
@@ -238,4 +258,30 @@ export function cantidadDeRendicionesEnElMes(
   const rendiciones = cantidad === 1 ? '1 rendición' : `${cantidad} rendiciones`;
   const nombre = etiquetaDeMes(mes).toLowerCase();
   return `${rendiciones} en ${nombre}${anio === anioActual ? '' : ` de ${anio}`}`;
+}
+
+// ─── Historial de estados ────────────────────────────────────────────────────────────────
+
+/**
+ * Cómo se lee un paso del historial, antes del badge del estado nuevo: un verbo según el estado al
+ * que llegó, sin repetir el anterior (ya se ve en el renglón de arriba). APROBADA y RECHAZADA
+ * quedan listos para las HU3.8 y 3.9.
+ */
+const VERBO_DEL_PASO: Record<EstadoRendicionType, string> = {
+  EN_CURSO: 'Volvió a',
+  COMPLETA: 'Pasó a',
+  ENVIADA: 'Pasó a',
+  APROBADA: 'Fue aprobada',
+  RECHAZADA: 'Fue rechazada',
+};
+
+/** "Se abrió en" (el alta), "Pasó a", "Volvió a", "Fue aprobada"… */
+export function verboDelPaso({
+  estadoAnterior,
+  estadoNuevo,
+}: {
+  estadoAnterior: EstadoRendicionType | null;
+  estadoNuevo: EstadoRendicionType;
+}): string {
+  return estadoAnterior === null ? 'Se abrió en' : VERBO_DEL_PASO[estadoNuevo];
 }

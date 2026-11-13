@@ -301,7 +301,12 @@ export type {
   PreparacionEnvio,
 } from './schemas/envio.schema.js';
 
-export { canalDeSeleccion, destinatariosDeCorreo, motivoNoEnviable } from './utils/envio.js';
+export {
+  canalDeSeleccion,
+  destinatariosDeCorreo,
+  faltantesParaEnviar,
+  motivoNoEnviable,
+} from './utils/envio.js';
 export type { CanalDeSeleccion, DestinatarioDeCorreo } from './utils/envio.js';
 export {
   ANIO_MIN,
@@ -313,6 +318,23 @@ export {
 } from './utils/periodo.js';
 export type { Periodo } from './utils/periodo.js';
 export { ESTADOS_SIN_ENVIAR, esAtrasada, ultimoPeriodoAtrasado } from './utils/atrasada.js';
+export {
+  diaLegible,
+  esDiaValido,
+  hoyEnBuenosAires,
+  inicioDelDiaEnBuenosAires,
+  primerDiaDelPeriodo,
+} from './utils/dia.js';
+export {
+  ESTADOS_NO_MODIFICABLES,
+  esRendicionModificable,
+  fechaDelPaso,
+  MENSAJE_FECHA_ENVIO_FUTURA,
+  MENSAJE_FECHA_ENVIO_INVALIDA,
+  MENSAJE_FECHA_ENVIO_SIN_ENVIADA,
+  mensajeFechaEnvioAnteriorAlPeriodo,
+  problemaDeFechaEnvio,
+} from './utils/envioDeRendicion.js';
 
 export {
   RolUsuario,

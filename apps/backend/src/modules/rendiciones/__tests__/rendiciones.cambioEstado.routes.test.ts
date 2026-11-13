@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import type request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
 import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
@@ -38,6 +38,14 @@ const REQUISITO = 'd1e2f3a4-b5c6-4789-8abc-def012345678';
 const TIPO = 'c1d2e3f4-a5b6-4789-8abc-def012345678';
 const AHORA = new Date('2026-10-15T15:00:00.000Z');
 
+/** La aplicación vigente de un ítem, como la lee `APLICACION_VIGENTE`. */
+const aplicacionVigente = (indice: number) => ({
+  id: `b1c2d3e4-f5a6-4789-8abc-00000000010${indice}`,
+  documentoId: `b1c2d3e4-f5a6-4789-8abc-00000000020${indice}`,
+  aplicadaEn: AHORA,
+  documento: { nombreOriginal: 'factura.pdf', tipoContenido: 'application/pdf', tamanioBytes: 10 },
+});
+
 const itemDe = (indice: number, completado: boolean) => ({
   id: `f1a2b3c4-d5e6-4789-8abc-def01234560${indice}`,
   rendicionId: RENDICION,
@@ -52,7 +60,8 @@ const itemDe = (indice: number, completado: boolean) => ({
   completadoAt: completado ? AHORA : null,
   createdAt: AHORA,
   updatedAt: AHORA,
-  aplicaciones: [],
+  // Reunido = con su documento vigente (HU2.8): lo exige la regla del envío (HU3.6, deuda).
+  aplicaciones: completado ? [aplicacionVigente(indice)] : [],
 });
 
 /** La rendición completa, como la devuelve la base con sus ítems y su historial. */
@@ -83,7 +92,9 @@ const lecturaDe = (
 ) => ({
   estado,
   isDeleted: false,
-  items: completados.map((completado) => ({ completado })),
+  anio: 2026,
+  mes: 10,
+  items: completados.map((completado, indice) => itemDe(indice + 1, completado)),
   ...extra,
 });
 
@@ -195,8 +206,7 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
   });
 
   it('una transición fuera de las permitidas: 409 TRANSICION_INVALIDA con los dos estados', async () => {
-    // El schema solo deja pasar EN_CURSO y COMPLETA: se prueba el servicio con un estado de partida
-    // que no tiene salida hacia ninguno de los dos (ENVIADA → COMPLETA).
+    // ENVIADA no tiene salida (volver de Enviada no lo pide ninguna HU todavía).
     transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('ENVIADA'));
 
     const res = await pedir('COMPLETA');
@@ -210,7 +220,7 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
     expect(transaccion.rendicion.update).not.toHaveBeenCalled();
   });
 
-  it('el servicio rechaza EN_CURSO → ENVIADA (todavía sin HU): TRANSICION_INVALIDA', async () => {
+  it('el servicio rechaza EN_CURSO → ENVIADA: TRANSICION_INVALIDA', async () => {
     transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('EN_CURSO'));
 
     await expect(cambiarEstadoDeRendicion(RENDICION, 'ENVIADA')).rejects.toMatchObject({
@@ -228,7 +238,7 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
     expect(res.status).toBe(404);
   });
 
-  it.each([{ estado: 'ENVIADA' }, { estado: 'APROBADA' }, {}])(
+  it.each([{ estado: 'APROBADA' }, { estado: 'RECHAZADA' }, {}])(
     '400 VALIDATION_ERROR con el cuerpo %j',
     async (cuerpo) => {
       const res = await clienteDePrueba(app).patch(`/rendiciones/${RENDICION}/estado`).send(cuerpo);
@@ -237,6 +247,180 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('PATCH /rendiciones/:id/estado — deuda de la HU3.6', () => {
+  it('una anulada que pide su mismo estado: 409 RENDICION_ANULADA (no es idempotente)', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(
+      lecturaDe('COMPLETA', [true], { isDeleted: true }),
+    );
+
+    const res = await pedir('COMPLETA');
+
+    expect(res.status).toBe(409);
+    expect(detalles(res)).toEqual({ motivo: 'RENDICION_ANULADA' });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+
+  it('EN_CURSO → EN_CURSO: 200 sin escribir ni agregar historial', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('EN_CURSO', [true, false]));
+    transaccion.rendicion.findUniqueOrThrow.mockResolvedValueOnce(filaDetalle('EN_CURSO'));
+
+    const res = await pedir('EN_CURSO');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: RENDICION, estado: 'EN_CURSO' });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+
+  it('un ítem reunido sin documento vigente cuenta como faltante: 409 ITEMS_PENDIENTES', async () => {
+    const sinDocumento = { ...itemDe(2, true), aplicaciones: [] };
+    transaccion.rendicion.findFirst.mockResolvedValueOnce({
+      ...lecturaDe('EN_CURSO'),
+      items: [itemDe(1, true), sinDocumento],
+    });
+
+    const res = await pedir('COMPLETA');
+
+    expect(res.status).toBe(409);
+    expect(detalles(res)).toEqual({ motivo: 'ITEMS_PENDIENTES', faltantes: 1 });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /rendiciones/:id/estado — Enviada (HU3.7)', () => {
+  const enviar = (cuerpo: Record<string, unknown> = {}) =>
+    clienteDePrueba(app)
+      .patch(`/rendiciones/${RENDICION}/estado`)
+      .send({ estado: 'ENVIADA', ...cuerpo });
+
+  /** El `create` del historial que recibió el `update`. */
+  const entradaCreada = () =>
+    (
+      transaccion.rendicion.update.mock.calls[0]?.[0] as {
+        data: { historial: { create: Record<string, unknown> } };
+      }
+    ).data.historial.create;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('COMPLETA → ENVIADA sin fecha: hoy en Buenos Aires como fecha efectiva', async () => {
+    // 23:30 del 12/11 en Buenos Aires (en UTC ya es 13/11).
+    vi.useFakeTimers({ now: new Date('2026-11-13T02:30:00.000Z'), toFake: ['Date'] });
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(lecturaDe('COMPLETA'))
+      .mockResolvedValueOnce({ estado: 'COMPLETA' });
+
+    const res = await enviar();
+
+    expect(res.status).toBe(200);
+    expect(entradaCreada()).toEqual({
+      estadoAnterior: 'COMPLETA',
+      estadoNuevo: 'ENVIADA',
+      motivo: null,
+      fechaEfectiva: new Date('2026-11-12T00:00:00.000Z'),
+    });
+  });
+
+  it('COMPLETA → ENVIADA con una fecha pasada del período: la guarda', async () => {
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(lecturaDe('COMPLETA'))
+      .mockResolvedValueOnce({ estado: 'COMPLETA' });
+
+    const res = await enviar({ fechaEnvio: '2026-10-01' });
+
+    expect(res.status).toBe(200);
+    expect(entradaCreada()).toMatchObject({ fechaEfectiva: new Date('2026-10-01T00:00:00.000Z') });
+  });
+
+  it('fecha anterior al primer día del período: 400 en fechaEnvio, sin escribir', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('COMPLETA'));
+
+    const res = await enviar({ fechaEnvio: '2026-09-30' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: {
+        code: 'VALIDATION_ERROR',
+        details: [
+          {
+            campo: 'fechaEnvio',
+            mensaje:
+              'La fecha de envío no puede ser anterior al 01/10/2026, el primer día del período.',
+          },
+        ],
+      },
+    });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+
+  it('fecha futura: 400 del schema, sin llegar a la base', async () => {
+    const res = await enviar({ fechaEnvio: '2999-01-01' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: { code: 'VALIDATION_ERROR', details: [{ campo: 'fechaEnvio' }] },
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('fechaEnvio con otro estado: 400, sin llegar a la base', async () => {
+    const res = await clienteDePrueba(app)
+      .patch(`/rendiciones/${RENDICION}/estado`)
+      .send({ estado: 'COMPLETA', fechaEnvio: '2026-10-01' });
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('COMPLETA → ENVIADA con un faltante: 409 ITEMS_PENDIENTES', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('COMPLETA', [true, false]));
+
+    const res = await enviar();
+
+    expect(res.status).toBe(409);
+    expect(detalles(res)).toEqual({ motivo: 'ITEMS_PENDIENTES', faltantes: 1 });
+  });
+
+  it.each(['EN_CURSO', 'RECHAZADA', 'APROBADA'])(
+    '%s → ENVIADA: 409 TRANSICION_INVALIDA',
+    async (estado) => {
+      transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe(estado));
+
+      const res = await enviar();
+
+      expect(res.status).toBe(409);
+      expect(detalles(res)).toEqual({
+        motivo: 'TRANSICION_INVALIDA',
+        estadoActual: estado,
+        estadoNuevo: 'ENVIADA',
+      });
+      expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('una anulada → ENVIADA: 409 RENDICION_ANULADA', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(
+      lecturaDe('COMPLETA', [true], { isDeleted: true }),
+    );
+
+    const res = await enviar();
+
+    expect(res.status).toBe(409);
+    expect(detalles(res)).toEqual({ motivo: 'RENDICION_ANULADA' });
+  });
+
+  it('ENVIADA → COMPLETA o EN_CURSO: 409 TRANSICION_INVALIDA (volver de Enviada no está permitido)', async () => {
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(lecturaDe('ENVIADA'))
+      .mockResolvedValueOnce(lecturaDe('ENVIADA'));
+
+    expect((await pedir('EN_CURSO')).status).toBe(409);
+    expect((await pedir('COMPLETA')).status).toBe(409);
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /rendiciones/:id/requisitos/:requisitoId — auto-revert (HU3.6)', () => {

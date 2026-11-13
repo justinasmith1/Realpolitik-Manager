@@ -1,6 +1,9 @@
 import {
   calcularFaltantes,
   canalDeSeleccion,
+  esRendicionModificable,
+  faltantesParaEnviar,
+  fechaDelPaso,
   motivoNoEnviable,
   type ItemChecklist,
   type Cliente,
@@ -48,6 +51,7 @@ import {
   ItemChecklistFila,
   type AccionesDeDocumento,
 } from '@/modules/rendiciones/components/ItemChecklistFila';
+import { MarcarEnviadaDialog } from '@/modules/rendiciones/components/MarcarEnviadaDialog';
 import {
   useMarcarEstadoDeRendicion,
   usePrepararEnvio,
@@ -62,11 +66,15 @@ import {
   etiquetaDeMonto,
   etiquetaDeNumeroOc,
   etiquetaDePeriodo,
+  fechaCorta,
   motivoParaNoEnviar,
   nombreDeItem,
   TEXTO_GUARDANDO_ESTADO,
   TEXTO_MARCAR_COMPLETA,
+  TEXTO_MARCAR_ENVIADA,
+  TEXTO_RENDICION_YA_ENVIADA,
   TEXTO_VOLVER_A_EN_CURSO,
+  textoDeFaltantes,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 import { rutaDeMatriz, type EstadoDeDetalle } from '@/modules/rendiciones/rendiciones.rutas';
 
@@ -198,7 +206,11 @@ function DetalleDeRendicion({
   tituloRef,
 }: DetalleDeRendicionProps) {
   const idSoloFaltantes = useId();
+  const idFaltantes = useId();
+  const idYaEnviada = useId();
   const enviarRef = useRef<HTMLButtonElement>(null);
+  // El diálogo de la fecha de envío (HU3.7): desde "Marcar como enviada" o desde "Ya la envié".
+  const [registrandoEnvio, setRegistrandoEnvio] = useState(false);
   const [soloFaltantes, setSoloFaltantes] = useState(false);
   const [seleccion, setSeleccion] = useState<ReadonlySet<string>>(new Set());
   // El aviso de canales mezclados se pidió al tocar "Enviar"; los canales se calculan con los
@@ -225,6 +237,18 @@ function DetalleDeRendicion({
   const [editandoOc, setEditandoOc] = useState(false);
   const avance = calcularFaltantes(rendicion.items);
   const anulada = rendicion.vigencia === 'ANULADA';
+  const enviada = rendicion.estado === 'ENVIADA';
+  // Documentos y canales se cambian solo en una activa que todavía no se envió (HU3.7).
+  const modificable = !anulada && esRendicionModificable(rendicion.estado);
+  // Lo que falta para completarla, con la regla del envío (HU3.6): pendientes y reunidos sin
+  // documento vigente. Sin ítems tampoco se puede completar.
+  const faltantesParaCompletar = faltantesParaEnviar(rendicion.items).length;
+  const sinDocumentos = rendicion.items.length === 0;
+  const puedeCompletarse = !sinDocumentos && faltantesParaCompletar === 0;
+  const fechaDeEnvio = enviada ? fechaDeEnvioDe(rendicion) : null;
+  // Los cambios de estado (HU3.6 y HU3.7): solo en una rendición activa, En curso o Completa.
+  const conAccionesDeEstado =
+    !anulada && (rendicion.estado === 'EN_CURSO' || rendicion.estado === 'COMPLETA');
   const completo = checklistCompleto(avance);
   const visibles = soloFaltantes ? avance.faltantes : rendicion.items;
   // Solo cuentan los que se pueden enviar con los datos de ahora: si un ítem marcado deja de
@@ -255,7 +279,7 @@ function DetalleDeRendicion({
 
   /**
    * El documento de un ítem: se descarga y se consulta su historial siempre (también en una
-   * anulada, como historial); se asocia o reemplaza solo en una rendición activa.
+   * anulada, como historial); se asocia o reemplaza solo en una rendición activa y no enviada.
    */
   function accionesDeDocumento(item: ItemChecklist): AccionesDeDocumento {
     const vigente = item.documento ?? null;
@@ -264,7 +288,7 @@ function DetalleDeRendicion({
       setPedidoDeDocumento({ modo, itemId: item.id });
     };
     return {
-      ...(!anulada && { onAsociar: abrir('asociar'), onReemplazar: abrir('reemplazar') }),
+      ...(modificable && { onAsociar: abrir('asociar'), onReemplazar: abrir('reemplazar') }),
       onVerHistorial: () => setHistorialDe(item.id),
       onDescargar: () => {
         if (vigente !== null) {
@@ -307,9 +331,10 @@ function DetalleDeRendicion({
   }
 
   /**
-   * Marca la rendición como completa o la vuelve a en curso (HU3.6). Los botones no se bloquean por
-   * el avance: el servidor decide con los datos de ahora y, si faltan documentos, el aviso dice
-   * cuántos. El detalle y los listados se actualizan solos (el hook).
+   * Marca la rendición como completa o la vuelve a en curso (HU3.6). "Marcar como completa" se
+   * deshabilita mientras falten documentos (dice cuántos), pero el servidor vuelve a decidir con
+   * los datos de ahora: si algo cambió, el aviso lo explica. El detalle y los listados se
+   * actualizan solos (el hook).
    */
   async function cambiarEstado(estado: 'EN_CURSO' | 'COMPLETA') {
     if (cambioDeEstado.isPending) return;
@@ -335,12 +360,74 @@ function DetalleDeRendicion({
   return (
     <>
       <header className="flex flex-col gap-2">
-        {denominacion !== undefined && (
-          <p className="text-sm text-content-secondary">{denominacion}</p>
-        )}
-        <h1 ref={tituloRef} tabIndex={-1} className="text-xl font-semibold tracking-tight">
-          Rendición {etiquetaDePeriodo(rendicion)}
-        </h1>
+        <div className="flex flex-col gap-4 pb-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-2">
+            {denominacion !== undefined && (
+              <p className="text-sm text-content-secondary">{denominacion}</p>
+            )}
+            <h1 ref={tituloRef} tabIndex={-1} className="text-xl font-semibold tracking-tight">
+              Rendición {etiquetaDePeriodo(rendicion)}
+            </h1>
+          </div>
+          {/* Las acciones de estado, en un bloque propio a la derecha del título (debajo y a ancho
+              completo en celular). La principal en el estilo primario. */}
+          {conAccionesDeEstado && (
+            <div
+              role="group"
+              aria-label="Cambiar el estado"
+              className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end"
+            >
+              {rendicion.estado === 'EN_CURSO' && (
+                <>
+                  {!puedeCompletarse && (
+                    <span id={idFaltantes} className="text-sm text-content-secondary">
+                      {sinDocumentos
+                        ? 'La rendición no tiene documentos'
+                        : textoDeFaltantes(faltantesParaCompletar)}
+                    </span>
+                  )}
+                  <LoadingButton
+                    type="button"
+                    className="w-full sm:w-auto"
+                    loading={cambioDeEstado.isPending}
+                    loadingText={TEXTO_GUARDANDO_ESTADO}
+                    onClick={() => void cambiarEstado('COMPLETA')}
+                    disabled={!puedeCompletarse}
+                    aria-describedby={puedeCompletarse ? undefined : idFaltantes}
+                  >
+                    {TEXTO_MARCAR_COMPLETA}
+                  </LoadingButton>
+                </>
+              )}
+              {rendicion.estado === 'COMPLETA' && (
+                <>
+                  <LoadingButton
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    loading={cambioDeEstado.isPending}
+                    loadingText={TEXTO_GUARDANDO_ESTADO}
+                    onClick={() => void cambiarEstado('EN_CURSO')}
+                  >
+                    {TEXTO_VOLVER_A_EN_CURSO}
+                  </LoadingButton>
+                  {/* Registrar el envío (HU3.7): abre el diálogo con la fecha. */}
+                  <Button
+                    type="button"
+                    className="w-full sm:w-auto"
+                    onClick={() => {
+                      setAvisoDelChecklist(null);
+                      setRegistrandoEnvio(true);
+                    }}
+                    disabled={cambioDeEstado.isPending}
+                  >
+                    {TEXTO_MARCAR_ENVIADA}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
         <dl
           aria-label="Datos de la rendición"
           className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-panel border bg-panel px-4 py-3 text-sm sm:grid-cols-3 lg:grid-cols-6"
@@ -387,29 +474,13 @@ function DetalleDeRendicion({
             <dt className="text-content-secondary">Estado</dt>
             <dd className="flex flex-wrap items-center gap-2">
               <EstadoRendicionBadge estado={rendicion.estado} />
-              {/* Pasar de En curso a Completa y volver (HU3.6): solo en una rendición activa. */}
-              {!anulada && rendicion.estado === 'EN_CURSO' && (
-                <LoadingButton
-                  type="button"
-                  size="xs"
-                  loading={cambioDeEstado.isPending}
-                  loadingText={TEXTO_GUARDANDO_ESTADO}
-                  onClick={() => void cambiarEstado('COMPLETA')}
-                >
-                  {TEXTO_MARCAR_COMPLETA}
-                </LoadingButton>
-              )}
-              {!anulada && rendicion.estado === 'COMPLETA' && (
-                <LoadingButton
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  loading={cambioDeEstado.isPending}
-                  loadingText={TEXTO_GUARDANDO_ESTADO}
-                  onClick={() => void cambiarEstado('EN_CURSO')}
-                >
-                  {TEXTO_VOLVER_A_EN_CURSO}
-                </LoadingButton>
+              {fechaDeEnvio !== null && (
+                <span className="text-content-secondary">
+                  el{' '}
+                  <time dateTime={fechaDeEnvio.toISOString()} className="text-foreground">
+                    {fechaCorta(fechaDeEnvio)}
+                  </time>
+                </span>
               )}
             </dd>
           </div>
@@ -434,7 +505,14 @@ function DetalleDeRendicion({
           conserva como historial: no se puede modificar.
         </Alert>
       )}
-      {completo && <Alert variant="success">Checklist completo: están todos los documentos.</Alert>}
+      {enviada && !anulada && (
+        <Alert variant="warning">
+          <span id={idYaEnviada}>{TEXTO_RENDICION_YA_ENVIADA}</span>
+        </Alert>
+      )}
+      {completo && !enviada && (
+        <Alert variant="success">Checklist completo: están todos los documentos.</Alert>
+      )}
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <section
@@ -501,11 +579,14 @@ function DetalleDeRendicion({
                       onCambio: (marcado: boolean) => alternar(item.id, marcado),
                       noEnviable: textoNoEnviable(item),
                     },
+                  })}
+                  {...(modificable && {
                     onCambiarCanal: () => {
                       setAvisoDelChecklist(null);
                       setItemACorregir(item);
                     },
                   })}
+                  {...(enviada && !anulada && { bloqueadoPor: idYaEnviada })}
                   {...(item.documento !== undefined && {
                     documento: accionesDeDocumento(item),
                   })}
@@ -551,6 +632,24 @@ function DetalleDeRendicion({
           setEnvio(null);
           setEditandoCliente(true);
         }}
+        {...(!anulada &&
+          rendicion.estado === 'COMPLETA' && {
+            onYaLaEnvie: () => {
+              setEnvio(null);
+              setRegistrandoEnvio(true);
+            },
+          })}
+        focoAlCerrar={enviarRef}
+      />
+      <MarcarEnviadaDialog
+        rendicion={registrandoEnvio ? rendicion : null}
+        onCerrar={() => setRegistrandoEnvio(false)}
+        onEnviada={(texto) => {
+          setRegistrandoEnvio(false);
+          setSeleccion(new Set());
+          setAvisoDelChecklist({ variant: 'success', texto });
+        }}
+        // El botón "Marcar como enviada" desaparece al enviarla: el foco vuelve a "Enviar".
         focoAlCerrar={enviarRef}
       />
       {cliente !== undefined && (
@@ -576,6 +675,15 @@ function DetalleDeRendicion({
       )}
     </>
   );
+}
+
+/**
+ * La fecha de envío de una Enviada (HU3.7): la de la última entrada que la llevó a Enviada (la
+ * fecha elegida, si la tiene). `null` si el historial no la trae.
+ */
+function fechaDeEnvioDe({ historial }: RendicionDetalle): Date | null {
+  const entrada = [...historial].reverse().find((cambio) => cambio.estadoNuevo === 'ENVIADA');
+  return entrada === undefined ? null : fechaDelPaso(entrada);
 }
 
 interface DatoDeCabeceraProps {

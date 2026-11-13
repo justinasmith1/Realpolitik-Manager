@@ -216,11 +216,16 @@ export function interpretarFalloCarga(error: unknown): FalloDeCarga {
 
 /** Motivos de un 409 al aplicar (contrato 4.10). */
 export type MotivoDeRechazoDeAplicacion =
-  'ITEM_NO_PENDIENTE' | 'RENDICION_ANULADA' | 'TIPO_DOCUMENTO_DISTINTO' | 'PERIODO_DISTINTO';
+  | 'ITEM_NO_PENDIENTE'
+  | 'RENDICION_ANULADA'
+  | 'RENDICION_ENVIADA'
+  | 'TIPO_DOCUMENTO_DISTINTO'
+  | 'PERIODO_DISTINTO';
 
 const MOTIVOS: readonly MotivoDeRechazoDeAplicacion[] = [
   'ITEM_NO_PENDIENTE',
   'RENDICION_ANULADA',
+  'RENDICION_ENVIADA',
   'TIPO_DOCUMENTO_DISTINTO',
   'PERIODO_DISTINTO',
 ];
@@ -278,6 +283,7 @@ export function interpretarFalloReemplazo(error: unknown): FalloDeReemplazo {
       case 'DOCUMENTO_YA_VIGENTE':
         return { tipo: 'ya-vigente' };
       case 'RENDICION_ANULADA':
+      case 'RENDICION_ENVIADA':
       case 'TIPO_DOCUMENTO_DISTINTO':
       case 'PERIODO_DISTINTO':
         return { tipo: 'rechazado', motivo };

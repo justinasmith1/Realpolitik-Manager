@@ -136,7 +136,12 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
 
     expect(abierta.estado).toBe('EN_CURSO');
     expect(abierta.historial).toEqual([
-      { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: expect.any(String) as unknown },
+      {
+        estadoAnterior: null,
+        estadoNuevo: 'EN_CURSO',
+        fecha: expect.any(String) as unknown,
+        fechaEfectiva: null,
+      },
     ]);
     // La entrada se escribió en la misma alta: es del momento en que se creó la rendición.
     const [entrada] = abierta.historial ?? [];

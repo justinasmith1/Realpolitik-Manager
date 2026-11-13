@@ -15,7 +15,10 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { interpretarFalloAgregado } from '@/modules/rendiciones/api/rendiciones.api';
 import { motivoFalloAgregado } from '@/modules/rendiciones/components/erroresDeRendicion';
 import { useAgregarRequisitoARendicion } from '@/modules/rendiciones/hooks/useRendiciones';
-import { etiquetaDePeriodo } from '@/modules/rendiciones/rendiciones.etiquetas';
+import {
+  AVISO_RENDICION_EN_CURSO,
+  etiquetaDePeriodo,
+} from '@/modules/rendiciones/rendiciones.etiquetas';
 
 export type VarianteDeResultado = 'success' | 'warning' | 'destructive';
 
@@ -32,6 +35,17 @@ interface SumarRequisitoDialogProps {
 
 const describir = (rendicion: RendicionResumen) =>
   `${etiquetaDePeriodo(rendicion)} (factura ${rendicion.numeroFactura})`;
+
+/**
+ * Las Completas que volvieron a En curso al sumarles un ítem pendiente (HU3.6). Si solo se sumó a
+ * una, "La rendición volvió a En curso."; si no, se nombran las que volvieron.
+ */
+function avisoDeRevertidas(revertidas: readonly RendicionResumen[], sumadas: number): string {
+  if (sumadas === 1) return AVISO_RENDICION_EN_CURSO;
+  return revertidas.length === 1
+    ? `${describir(revertidas[0] as RendicionResumen)} volvió a En curso.`
+    : `Volvieron a En curso: ${revertidas.map(describir).join(', ')}.`;
+}
 
 /**
  * Después de agregar un requisito a la matriz, ofrece sumarlo también a rendiciones ya abiertas
@@ -68,16 +82,21 @@ export function SumarRequisitoDialog({
     setPendiente(true);
     const elegidas = rendiciones.filter((rendicion) => seleccion.has(rendicion.id));
     const sumadas: RendicionResumen[] = [];
+    // Las Completas que, con el ítem nuevo pendiente, volvieron solas a En curso (HU3.6).
+    const revertidas: RendicionResumen[] = [];
     const fallidas: string[] = [];
     // De a una: así cada resultado se informa por separado y un fallo no frena a las demás.
     for (const rendicion of elegidas) {
       try {
-        await agregado.mutateAsync({
+        const actualizada = await agregado.mutateAsync({
           clienteId: rendicion.clienteId,
           rendicionId: rendicion.id,
           requisitoId: requisito.id,
         });
         sumadas.push(rendicion);
+        if (rendicion.estado === 'COMPLETA' && actualizada.estado === 'EN_CURSO') {
+          revertidas.push(rendicion);
+        }
       } catch (error) {
         fallidas.push(
           `${describir(rendicion)}: ${motivoFalloAgregado(interpretarFalloAgregado(error))}`,
@@ -89,6 +108,9 @@ export function SumarRequisitoDialog({
     const partes: string[] = [];
     if (sumadas.length > 0) {
       partes.push(`Se sumó ${nombre} a ${sumadas.map(describir).join(', ')}.`);
+    }
+    if (revertidas.length > 0) {
+      partes.push(avisoDeRevertidas(revertidas, sumadas.length));
     }
     if (fallidas.length > 0) {
       partes.push(`No se pudo sumar a ${fallidas.join('; ')}.`);

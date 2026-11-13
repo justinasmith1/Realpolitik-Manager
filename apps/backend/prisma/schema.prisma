@@ -364,8 +364,11 @@ model HistorialEstadoRendicion {
   /// Null solo en la primera entrada.
   estadoAnterior EstadoRendicion?
   estadoNuevo    EstadoRendicion
-  /// Cuándo ocurrió el cambio.
+  /// Cuándo se registró el cambio. Ordena el historial.
   fecha          DateTime         @default(now())
+  /// El día en que ocurrió, si la operadora lo indicó (HU3.7): hoy, solo la fecha de envío de la
+  /// entrada ENVIADA, que puede ser anterior al registro. Null en las demás.
+  fechaEfectiva  DateTime?        @db.Date
   /// Por qué (lo usa el rechazo, HU3.8). Hoy siempre null.
   motivo         String?
 

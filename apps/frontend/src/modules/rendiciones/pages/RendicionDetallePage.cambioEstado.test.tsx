@@ -7,7 +7,7 @@ import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetal
 import {
   CLIENTE_ID,
   errorJson,
-  itemJson,
+  itemReunidoJson,
   json,
   RENDICION_ID,
   rendicionJson,
@@ -15,8 +15,9 @@ import {
 } from '@/modules/rendiciones/test/rendiciones.fixtures';
 
 // Marcar la rendición como Completa y volverla a En curso, desde el detalle (HU3.6). El pedido es
-// `PATCH /rendiciones/:id/estado`; los botones nunca se deshabilitan por el avance: el servidor
-// decide y, si faltan documentos, el aviso dice cuántos.
+// `PATCH /rendiciones/:id/estado`. Con todo reunido el botón está habilitado; el servidor vuelve a
+// decidir y, si algo cambió en el medio (faltan documentos), el aviso dice cuántos. Lo que falta
+// antes de pedirlo ("Faltan N") está en RendicionDetallePage.enviada.test.tsx.
 
 vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera'));
 
@@ -51,7 +52,7 @@ const clienteJson = {
   actualizadoEn: '2026-10-08T12:00:00.000Z',
 };
 
-const ITEMS = [itemJson({ id: 'f1a2b3c4-d5e6-4789-8abc-def012345670', completado: true })];
+const ITEMS = [itemReunidoJson({ id: 'f1a2b3c4-d5e6-4789-8abc-def012345670' })];
 
 const esPedidoDeEstado = (entrada: Parameters<typeof fetch>[0], init?: RequestInit) =>
   urlDe(entrada).endsWith(`/rendiciones/${RENDICION_ID}/estado`) && init?.method === 'PATCH';
@@ -139,6 +140,25 @@ describe('RendicionDetallePage: marcar como completa (HU3.6)', () => {
     expect(screen.queryByRole('button', { name: 'Marcar como completa' })).not.toBeInTheDocument();
   });
 
+  it('los botones de estado van en un bloque de acciones propio, fuera de la línea de datos, en tamaño normal', async () => {
+    servir({ inicial: { estado: 'COMPLETA' } });
+    renderDetalle();
+    await esperarDetalle();
+
+    const acciones = screen.getByRole('group', { name: 'Cambiar el estado' });
+    const volver = within(acciones).getByRole('button', { name: 'Volver a en curso' });
+    const enviar = within(acciones).getByRole('button', { name: 'Marcar como enviada' });
+    expect(within(estadoMostrado()).queryAllByRole('button')).toHaveLength(0);
+    // La principal en el estilo primario y la secundaria en outline; tamaño normal (no `xs`).
+    expect(enviar).toHaveClass('bg-primary');
+    expect(volver).toHaveClass('border-border', 'bg-background');
+    expect(volver).not.toHaveClass('bg-primary');
+    for (const boton of [volver, enviar]) {
+      expect(boton).toHaveClass('h-11', 'md:h-9');
+      expect(boton).not.toHaveClass('h-6');
+    }
+  });
+
   it('en una rendición anulada no ofrece ningún botón de estado', async () => {
     servir({ inicial: { vigencia: 'ANULADA', anuladaEn: '2026-10-20T15:00:00.000Z' } });
     renderDetalle();
@@ -148,7 +168,7 @@ describe('RendicionDetallePage: marcar como completa (HU3.6)', () => {
     expect(screen.queryByRole('button', { name: 'Volver a en curso' })).not.toBeInTheDocument();
   });
 
-  it('con otro estado (Enviada) no ofrece botones: son de otras historias', async () => {
+  it('con la rendición Enviada no ofrece botones de completar ni de volver (HU3.7)', async () => {
     servir({ inicial: { estado: 'ENVIADA' } });
     renderDetalle();
     await esperarDetalle();

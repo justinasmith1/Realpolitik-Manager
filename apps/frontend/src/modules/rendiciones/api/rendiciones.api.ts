@@ -262,6 +262,7 @@ export async function agregarRequisitoARendicion(
 export type FalloAgregado =
   | { tipo: 'ya-esta' }
   | { tipo: 'rendicion-anulada' }
+  | { tipo: 'rendicion-enviada' }
   | { tipo: 'cliente-no-activo'; estado: ClienteEstadoType | null }
   | { tipo: 'no-existe' }
   | { tipo: 'inesperado' };
@@ -282,6 +283,8 @@ export function interpretarFalloAgregado(error: unknown): FalloAgregado {
         return { tipo: 'ya-esta' };
       case 'RENDICION_ANULADA':
         return { tipo: 'rendicion-anulada' };
+      case 'RENDICION_ENVIADA':
+        return { tipo: 'rendicion-enviada' };
       case 'CLIENTE_NO_ACTIVO':
         return { tipo: 'cliente-no-activo', estado: leerEstadoCliente(details.estado) };
     }
@@ -306,7 +309,10 @@ export async function corregirCanalDeItem(
 
 /** Por qué no se pudo corregir el canal de un ítem, en términos del dominio. */
 export type FalloCorreccionDeCanal =
-  { tipo: 'rendicion-anulada' } | { tipo: 'no-existe' } | { tipo: 'inesperado' };
+  | { tipo: 'rendicion-anulada' }
+  | { tipo: 'rendicion-enviada' }
+  | { tipo: 'no-existe' }
+  | { tipo: 'inesperado' };
 
 /** Traduce el error de corregir el canal. Mismo criterio que `interpretarFalloAgregado`. */
 export function interpretarFalloCorreccionDeCanal(error: unknown): FalloCorreccionDeCanal {
@@ -315,13 +321,9 @@ export function interpretarFalloCorreccionDeCanal(error: unknown): FalloCorrecci
     return { tipo: 'no-existe' };
   }
   const details = respuesta?.cuerpo?.details;
-  if (
-    respuesta?.status === 409 &&
-    respuesta.cuerpo?.code === 'CONFLICT' &&
-    esObjeto(details) &&
-    details.motivo === 'RENDICION_ANULADA'
-  ) {
-    return { tipo: 'rendicion-anulada' };
+  if (respuesta?.status === 409 && respuesta.cuerpo?.code === 'CONFLICT' && esObjeto(details)) {
+    if (details.motivo === 'RENDICION_ANULADA') return { tipo: 'rendicion-anulada' };
+    if (details.motivo === 'RENDICION_ENVIADA') return { tipo: 'rendicion-enviada' };
   }
   return { tipo: 'inesperado' };
 }
@@ -350,6 +352,7 @@ export async function propagarCanalDeRequisito(
  */
 export type FalloPropagacion =
   | { tipo: 'rendicion-anulada'; rendicionId: string | null }
+  | { tipo: 'rendicion-enviada'; rendicionId: string | null }
   | { tipo: 'requisito-no-en-rendicion'; rendicionId: string | null }
   | { tipo: 'no-existe' }
   | { tipo: 'inesperado' };
@@ -372,6 +375,8 @@ export function interpretarFalloPropagacion(error: unknown): FalloPropagacion {
     switch (details.motivo) {
       case 'RENDICION_ANULADA':
         return { tipo: 'rendicion-anulada', rendicionId };
+      case 'RENDICION_ENVIADA':
+        return { tipo: 'rendicion-enviada', rendicionId };
       case 'REQUISITO_NO_EN_RENDICION':
         return { tipo: 'requisito-no-en-rendicion', rendicionId };
     }
@@ -451,6 +456,8 @@ export async function cambiarEstadoDeRendicion(
  */
 export type FalloCambioDeEstado =
   | { tipo: 'items-pendientes'; faltantes: number | null }
+  /** La fecha de envío no vale (HU3.7): el mensaje del servidor, si vino. */
+  | { tipo: 'fecha-invalida'; mensaje: string | null }
   | { tipo: 'rendicion-anulada' }
   | { tipo: 'transicion-invalida' }
   | { tipo: 'no-existe' }
@@ -461,6 +468,12 @@ export function interpretarFalloCambioDeEstado(error: unknown): FalloCambioDeEst
   const respuesta = respuestaDeError(error);
   if (respuesta === null) {
     return { tipo: 'inesperado' };
+  }
+  if (respuesta.status === 400 && respuesta.cuerpo?.code === 'VALIDATION_ERROR') {
+    const fecha = leerDetallesInvalidos(respuesta.cuerpo.details).find(
+      (detalle) => detalle.campo === 'fechaEnvio',
+    );
+    if (fecha !== undefined) return { tipo: 'fecha-invalida', mensaje: fecha.mensaje };
   }
   if (respuesta.status === 404 && respuesta.cuerpo?.code === 'NOT_FOUND') {
     return { tipo: 'no-existe' };

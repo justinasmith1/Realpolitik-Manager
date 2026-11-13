@@ -1,6 +1,7 @@
 import {
   ESTADOS_CON_FECHA,
   esAtrasada,
+  fechaDelPaso,
   type RendicionDelMes,
   type RendicionDetalle,
 } from '@realpolitik/shared';
@@ -40,14 +41,15 @@ interface ResumenRendicionPanelProps {
 
 /**
  * La fecha del último paso, como en la fila del listado: la de la entrada del historial que llevó
- * a la rendición a su estado actual, solo si ya salió hacia el organismo. El historial viene del
+ * a la rendición a su estado actual (en una Enviada, la fecha de envío elegida: `fechaDelPaso`),
+ * solo si ya salió hacia el organismo. El historial viene del
  * cambio más viejo al más nuevo.
  */
 function ultimoPasoDe({ estado, historial }: RendicionDetalle) {
   const ultima = historial.at(-1);
   const conFecha = (ESTADOS_CON_FECHA as readonly string[]).includes(estado);
   return conFecha && ultima !== undefined && ultima.estadoNuevo === estado
-    ? { estado, fecha: ultima.fecha }
+    ? { estado, fecha: fechaDelPaso(ultima) }
     : null;
 }
 

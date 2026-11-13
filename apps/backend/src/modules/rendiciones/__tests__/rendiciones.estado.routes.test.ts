@@ -203,7 +203,7 @@ describe('GET /rendiciones/:id: estado e historial', () => {
         include: expect.objectContaining({
           historial: {
             orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }],
-            select: { estadoAnterior: true, estadoNuevo: true, fecha: true },
+            select: { estadoAnterior: true, estadoNuevo: true, fecha: true, fechaEfectiva: true },
           },
         }) as unknown,
       }),

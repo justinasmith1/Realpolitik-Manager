@@ -249,3 +249,48 @@ describe('MatrizPage: sumar un requisito nuevo a rendiciones abiertas', () => {
     expect(posteosDeSumar()).toHaveLength(2);
   });
 });
+
+describe('MatrizPage: sumar un requisito y el estado de la rendición (HU3.6 y HU3.7)', () => {
+  it('si una Completa vuelve a En curso al sumarle el requisito, el aviso lo dice', async () => {
+    servir({
+      rendiciones: [{ ...rendicion(REND_OCT, 10, 'A 00001-00000001'), estado: 'COMPLETA' }],
+      sumar: () =>
+        json({ ...rendicion(REND_OCT, 10, 'A 00001-00000001'), items: [], historial: [] }),
+    });
+    const { user } = renderMatriz();
+    await screen.findByRole('article', { name: 'Octubre 2026' });
+    await agregarFactura(user);
+
+    const ventana = within(await dialogo());
+    await user.click(
+      ventana.getByRole('checkbox', { name: 'Octubre 2026 (factura A 00001-00000001)' }),
+    );
+    await user.click(ventana.getByRole('button', { name: 'Sumar a las elegidas' }));
+
+    expect(
+      await screen.findByText(
+        'Se sumó Factura a Octubre 2026 (factura A 00001-00000001). La rendición volvió a En curso.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('no ofrece sumarlo a una Enviada: ya no se modifica', async () => {
+    servir({
+      rendiciones: [
+        rendicion(REND_OCT, 10, 'A 00001-00000001'),
+        { ...rendicion(REND_SEP, 9, 'A 00001-00000002'), estado: 'ENVIADA' },
+      ],
+    });
+    const { user } = renderMatriz();
+    await screen.findByRole('article', { name: 'Octubre 2026' });
+    await agregarFactura(user);
+
+    const ventana = within(await dialogo());
+    expect(
+      ventana.getByRole('checkbox', { name: 'Octubre 2026 (factura A 00001-00000001)' }),
+    ).toBeInTheDocument();
+    expect(
+      ventana.queryByRole('checkbox', { name: 'Septiembre 2026 (factura A 00001-00000002)' }),
+    ).not.toBeInTheDocument();
+  });
+});

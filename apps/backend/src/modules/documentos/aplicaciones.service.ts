@@ -2,13 +2,18 @@ import { Prisma } from '@prisma/client';
 import {
   HistorialDeItemSchema,
   type DocumentoConAplicaciones,
+  type EstadoRendicionType,
   type HistorialDeItem,
   type RendicionDetalle,
 } from '@realpolitik/shared';
 
 import { conflict, notFound, type AppError } from '../../errors/app-error';
 import { prisma } from '../../lib/prisma';
-import { enTransaccionSerializable, obtenerRendicion } from '../rendiciones/rendiciones.service';
+import {
+  enTransaccionSerializable,
+  motivoParaNoModificar,
+  obtenerRendicion,
+} from '../rendiciones/rendiciones.service';
 
 import { CON_TIPO, toDocumentoDto } from './documento.mapper';
 import { obtenerDocumento } from './documentos.service';
@@ -92,18 +97,19 @@ interface ItemAComparar {
   id: string;
   tipoDocumentoId: string;
   completado: boolean;
-  rendicion: { anio: number; mes: number; isDeleted: boolean };
+  rendicion: { anio: number; mes: number; isDeleted: boolean; estado: EstadoRendicionType };
 }
 
 /**
  * Por qué el documento no se puede aplicar a este ítem, o `null` si se puede. Tipo según el
- * snapshot del ítem, período de la rendición y rendición activa. Un cliente inactivo no impide
- * nada: la rendición sigue activa.
+ * snapshot del ítem, período de la rendición, rendición activa y no enviada (HU3.7: lo que se
+ * mandó no cambia). Un cliente inactivo no impide nada: la rendición sigue activa.
  */
 function motivoDeRechazo(documento: DocumentoAComparar, item: ItemAComparar): AppError | null {
   const datos = { itemId: item.id };
-  if (item.rendicion.isDeleted) {
-    return conflict('RENDICION_ANULADA', datos, 'La rendición del ítem está anulada');
+  const noModificable = motivoParaNoModificar(item.rendicion, datos);
+  if (noModificable !== null) {
+    return noModificable;
   }
   if (item.tipoDocumentoId !== documento.tipoDocumentoId) {
     return conflict('TIPO_DOCUMENTO_DISTINTO', datos, 'El documento es de otro tipo que el ítem');
@@ -120,7 +126,7 @@ function motivoDeRechazo(documento: DocumentoAComparar, item: ItemAComparar): Ap
  * Aplica el documento a los ítems elegidos (contrato 4.10). Todo o nada: si un ítem no cumple, no
  * se aplica a ninguno y el 409 lleva el `itemId` del primero que no cumple, en el orden pedido.
  * Cada ítem tiene que ser del mismo tipo (su snapshot) y período que el documento, de una
- * rendición activa de un cliente no borrado, y estar pendiente. Puede haber varios de la misma
+ * rendición activa y no enviada de un cliente no borrado, y estar pendiente. Puede haber varios de la misma
  * rendición. Responde con el documento y todas sus aplicaciones.
  */
 export async function aplicarDocumento(
@@ -143,7 +149,9 @@ export async function aplicarDocumento(
           id: true,
           tipoDocumentoId: true,
           completado: true,
-          rendicion: { select: { id: true, anio: true, mes: true, isDeleted: true } },
+          rendicion: {
+            select: { id: true, anio: true, mes: true, isDeleted: true, estado: true },
+          },
           aplicaciones: { where: { reemplazadaEn: null }, select: { id: true } },
         },
       });
@@ -194,7 +202,7 @@ export async function aplicarDocumento(
  * APLICACION_DESACTUALIZADA` con la vigente actual, sin escribir nada. La anterior recibe
  * `reemplazadaEn` y la nueva la apunta con `reemplazaAId`. El ítem sigue completado (con su fecha
  * original). Las aplicaciones del documento anterior en otros ítems no se tocan. Solo en una
- * rendición activa. Responde con la rendición, como la corrección del canal.
+ * rendición activa y no enviada (`409 RENDICION_ENVIADA`, HU3.7). Responde con la rendición, como la corrección del canal.
  */
 export async function reemplazarDocumentoDeItem(
   rendicionId: string,
@@ -210,7 +218,9 @@ export async function reemplazarDocumentoDeItem(
           id: true,
           tipoDocumentoId: true,
           completado: true,
-          rendicion: { select: { id: true, anio: true, mes: true, isDeleted: true } },
+          rendicion: {
+            select: { id: true, anio: true, mes: true, isDeleted: true, estado: true },
+          },
           aplicaciones: { where: { reemplazadaEn: null }, select: { id: true, documentoId: true } },
         },
       });

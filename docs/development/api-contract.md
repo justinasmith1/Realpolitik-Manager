@@ -287,16 +287,17 @@ Reglas que valen para toda la sección (además de las de la sección 1):
 
 Nuevos valores de `motivo` en `409 CONFLICT` (misma forma que en la sección 1: `details` trae `motivo` y, cuando corresponde, el registro existente):
 
-| `motivo`                    | Datos en `details`                      | Cuándo                                                                                                                                                |
-| --------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TIPO_DOCUMENTO_DUPLICADO`  | `tipoDocumentoExistente`                | Ya existe un tipo de documento con ese nombre, sin distinguir mayúsculas ni acentos                                                                   |
-| `REQUISITO_DUPLICADO`       | `requisitoExistente`                    | El cliente ya tiene un requisito activo para ese tipo de documento                                                                                    |
-| `RENDICION_DUPLICADA`       | `rendicionExistente`                    | Ese número de factura ya existe para el mismo emisor en otra rendición activa, de cualquier mes, año y cliente                                        |
-| `MATRIZ_VACIA`              | No lleva                                | Se intenta abrir una rendición para un cliente sin requisitos activos                                                                                 |
-| `RENDICION_ANULADA`         | `rendicionId` solo al propagar un canal | Se intenta editar la orden de compra, agregar un requisito, corregir el canal de un ítem o propagar el canal de un requisito en una rendición anulada |
-| `REQUISITO_NO_EN_RENDICION` | `rendicionId`                           | Se intenta propagar el canal de un requisito a una rendición que no tiene ítems de ese requisito                                                      |
-| `REQUISITO_YA_EN_RENDICION` | No lleva                                | Se intenta agregar a una rendición un requisito cuyo tipo de documento ya tiene ítems en ella, aunque sea de otro requisito                           |
-| `CLIENTE_NO_ACTIVO`         | `estado` del cliente                    | Se intenta editar la matriz o las indicaciones de armado, abrir una rendición o agregarle un requisito, de un cliente `INACTIVO` o `SUSPENDIDO`       |
+| `motivo`                    | Datos en `details`                                                                     | Cuándo                                                                                                                                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TIPO_DOCUMENTO_DUPLICADO`  | `tipoDocumentoExistente`                                                               | Ya existe un tipo de documento con ese nombre, sin distinguir mayúsculas ni acentos                                                                                                               |
+| `REQUISITO_DUPLICADO`       | `requisitoExistente`                                                                   | El cliente ya tiene un requisito activo para ese tipo de documento                                                                                                                                |
+| `RENDICION_DUPLICADA`       | `rendicionExistente`                                                                   | Ese número de factura ya existe para el mismo emisor en otra rendición activa, de cualquier mes, año y cliente                                                                                    |
+| `MATRIZ_VACIA`              | No lleva                                                                               | Se intenta abrir una rendición para un cliente sin requisitos activos                                                                                                                             |
+| `RENDICION_ANULADA`         | `rendicionId` solo al propagar un canal                                                | Se intenta editar la orden de compra, agregar un requisito, corregir el canal de un ítem o propagar el canal de un requisito en una rendición anulada                                             |
+| `RENDICION_ENVIADA`         | `rendicionId` solo al propagar un canal; `itemId` al aplicar o reemplazar un documento | (HU3.7) Se intenta agregar un requisito, corregir el canal de un ítem, propagar el canal de un requisito, o aplicar o reemplazar un documento en una rendición Enviada (4.6.1). La OC sí se edita |
+| `REQUISITO_NO_EN_RENDICION` | `rendicionId`                                                                          | Se intenta propagar el canal de un requisito a una rendición que no tiene ítems de ese requisito                                                                                                  |
+| `REQUISITO_YA_EN_RENDICION` | No lleva                                                                               | Se intenta agregar a una rendición un requisito cuyo tipo de documento ya tiene ítems en ella, aunque sea de otro requisito                                                                       |
+| `CLIENTE_NO_ACTIVO`         | `estado` del cliente                                                                   | Se intenta editar la matriz o las indicaciones de armado, abrir una rendición o agregarle un requisito, de un cliente `INACTIVO` o `SUSPENDIDO`                                                   |
 
 ```json
 {
@@ -643,7 +644,7 @@ Una rendición es un período (`anio`, `mes`), una factura (`numeroFactura`) y e
 - **Vigencia (`vigencia`, `anuladaEn`):** `ACTIVA` o `ANULADA`, derivada de la baja lógica; `anuladaEn` es la fecha de anulación (`deletedAt`) o `null`. El listado devuelve por defecto solo `ACTIVA` y muestra las anuladas solo si se piden con el filtro `vigencia`; el detalle devuelve también una anulada, que se conserva como historial.
 - **Estado (`estado`, HU3.1):** en qué paso está la rendición: `EN_CURSO`, `COMPLETA`, `ENVIADA`, `APROBADA` o `RECHAZADA` (en pantalla: "En curso", "Completa", "Enviada", "Aprobada" y "Rechazada"). Toda rendición nace `EN_CURSO`. La clave siempre está presente en la respuesta (alta, detalle, listado y anulación). Es **independiente de la vigencia**: una rendición anulada conserva el último estado que tenía. "Atrasada" no es un estado: la calcula el sistema (HU3.4). Ver [ADR-0005](../adr/0005-estados-de-la-rendicion.md).
   - **Cómo cambia:** `PATCH /rendiciones/:id/estado` (4.6.1) marca la rendición como Completa o la vuelve a En curso (HU3.6). Los demás cambios los traen las HU3.7 (Enviada), HU3.8 (Aprobada o Rechazada) y HU3.9 (corregir una rechazada), que todavía no tienen endpoint.
-- **Historial (`historial`, HU3.1):** solo en el detalle y en la respuesta de alta (y en las demás que devuelven la rendición con su checklist). Cada cambio de estado, del más viejo al más nuevo: `{ "estadoAnterior", "estadoNuevo", "fecha" }`. La primera entrada es la del alta, con `estadoAnterior: null`. `fecha` es cuándo ocurrió el cambio. Las rendiciones anteriores a HU3.1 tienen una sola entrada (`null` → `EN_CURSO`) con la fecha en que se crearon. Anular no agrega una entrada: no es un cambio de estado.
+- **Historial (`historial`, HU3.1):** solo en el detalle y en la respuesta de alta (y en las demás que devuelven la rendición con su checklist). Cada cambio de estado, del más viejo al más nuevo: `{ "estadoAnterior", "estadoNuevo", "fecha", "fechaEfectiva" }`. La primera entrada es la del alta, con `estadoAnterior: null`. `fecha` es cuándo se registró el cambio (y ordena el historial). `fechaEfectiva` (HU3.7) es el día en que ocurrió, `AAAA-MM-DD`, si la operadora lo indicó: hoy, solo la fecha de envío de la entrada `ENVIADA` (4.6.1), que puede ser anterior al registro; `null` en las demás. Para mostrar la fecha de un paso, la efectiva si la tiene (`fechaDelPaso` de shared). Las rendiciones anteriores a HU3.1 tienen una sola entrada (`null` → `EN_CURSO`) con la fecha en que se crearon. Anular no agrega una entrada: no es un cambio de estado.
 - **Ítems (`items`):** solo en el detalle y en la respuesta de alta. Cada ítem es un documento a presentar, ordenados por `nombreTipoDocumento` y luego por `ordinal`. `completadoEn` es la columna `completadoAt`, con el mismo criterio de nombres que `creadoEn`. El completado de ítems se define en HU2.8 (aplicar documento); no hay endpoint de tilde manual.
 
 #### `POST /clientes/:id/rendiciones`
@@ -748,7 +749,7 @@ La pantalla Rendiciones (HU3.2): todas las rendiciones **activas** de un períod
 
 - **`cliente`:** el nombre corto (`denominacion`) y la tipología: `sector` y, si es público, `subtipo` (`null` en uno privado).
 - **`avance`:** ítems reunidos, el total y los que faltan (`total - reunidos`).
-- **`ultimoPaso`:** en una rendición `ENVIADA`, `APROBADA` o `RECHAZADA`, ese estado y la `fecha` de la entrada del historial que la llevó ahí. `null` en las `EN_CURSO` y `COMPLETA`.
+- **`ultimoPaso`:** en una rendición `ENVIADA`, `APROBADA` o `RECHAZADA`, ese estado y la `fecha` de la entrada del historial que la llevó ahí. En una `ENVIADA` (HU3.7), la fecha de envío elegida (`fechaEfectiva`), como el instante en que empieza ese día en Buenos Aires (`2026-11-08T03:00:00.000Z` es "Enviada 08/11"). `null` en las `EN_CURSO` y `COMPLETA`.
 - **`atrasada` (HU3.4):** `true` si la rendición todavía no se envió (`EN_CURSO` o `COMPLETA`) y su período es de dos meses atrás o más respecto del mes actual en horario de Buenos Aires (`esAtrasada` de `@realpolitik/shared`). Se calcula en cada consulta, no se guarda. Ver [ADR-0005](../adr/0005-estados-de-la-rendicion.md), punto 8.
 - **Orden:** primero las atrasadas (HU3.4); después las `RECHAZADA`; después el resto, de menor a mayor avance (porcentaje de ítems reunidos; sin ítems cuenta como 0 %); a igual avance, por el nombre corto del cliente. La factura desempata.
 - **Consultas:** dos, sin importar cuántas filas haya: las rendiciones con su cliente y su última entrada de historial, y un solo conteo de ítems para todas.
@@ -832,6 +833,7 @@ Para cuando un cliente empieza a pedir un documento nuevo justo en un mes cuya r
   - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado; el requisito no existe, está dado de baja o es de otro cliente.
   - `409 CONFLICT`:
     - `motivo: "RENDICION_ANULADA"`: la rendición está anulada.
+    - `motivo: "RENDICION_ENVIADA"`: la rendición ya fue enviada (HU3.7, 4.6.1).
     - `motivo: "REQUISITO_YA_EN_RENDICION"`: la rendición ya tiene ítems de ese tipo de documento, aunque sean de otro requisito.
     - `motivo: "CLIENTE_NO_ACTIVO"`: el cliente es `INACTIVO` o `SUSPENDIDO`.
 - **Cómo lo usa el front:** justo después de agregar un requisito a la matriz, si el cliente tiene una rendición abierta, ofrece agregarlo también a esa rendición.
@@ -848,6 +850,7 @@ Para cuando un requisito tenía un canal equivocado: los ítems guardan el canal
   - `400 VALIDATION_ERROR`: ids que no son uuid; `canalEntrega` ausente o fuera del enum.
   - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado; el ítem no existe o es de otra rendición.
   - `409 CONFLICT` con `motivo: "RENDICION_ANULADA"`: la rendición está anulada.
+  - `409 CONFLICT` con `motivo: "RENDICION_ENVIADA"`: la rendición ya fue enviada (HU3.7, 4.6.1).
 - **Cómo lo usa el front:** desde el detalle de una rendición activa, ítem por ítem, con confirmación. En una anulada no se ofrece.
 
 #### `POST /rendiciones/:id/preparar-envio`
@@ -889,6 +892,7 @@ Para cuando cambia el canal de un requisito (por ejemplo, Print pasa de WhatsApp
   - `404 NOT_FOUND`: el cliente no existe o está borrado; el requisito no existe, está dado de baja o es de otro cliente; una rendición no existe o es de otro cliente.
   - `409 CONFLICT`:
     - `motivo: "RENDICION_ANULADA"`, con `rendicionId`: una rendición está anulada.
+    - `motivo: "RENDICION_ENVIADA"`, con `rendicionId`: una rendición ya fue enviada (HU3.7, 4.6.1).
     - `motivo: "REQUISITO_NO_EN_RENDICION"`, con `rendicionId`: una rendición no tiene ítems de ese requisito.
 - **Cómo lo usa el front:** al guardar la edición de un requisito en la que cambió el canal efectivo (también al volver a heredar el del cliente, si es distinto), pide `GET /clientes/:id/rendiciones?vigencia=ACTIVA&requisitoId=…`. Si hay alguna, ofrece "¿Actualizar el canal en las rendiciones abiertas?", con la lista (período y factura) y ninguna tildada. Si el canal efectivo no cambió o no hay rendiciones, no muestra nada. Si el pedido falla, el requisito ya quedó guardado: el error se muestra en el mismo diálogo, con la selección intacta.
 
@@ -906,35 +910,45 @@ Sigue el patrón de `PATCH /clientes/:id/estado`: un endpoint aparte, que solo c
 - **Errores:** `400 VALIDATION_ERROR` (`vigencia` ausente, `ACTIVA` o un valor desconocido, id que no es uuid), `404 NOT_FOUND` (la rendición no existe o su cliente está borrado).
 - **Cómo lo usa el front:** "Anular" pide confirmación antes de llamar, como "Desactivar" un cliente.
 
-### 4.6.1 Cambiar el estado de una rendición (HU3.6)
+### 4.6.1 Cambiar el estado de una rendición (HU3.6 y HU3.7)
 
-Marca una rendición como Completa cuando la operadora terminó de armarla, y la vuelve a En curso si hay que cambiar algo. Es el único endpoint que cambia el **estado** (el paso del proceso, 4.5); la **vigencia** se cambia aparte (4.6). Se llama desde el detalle de la rendición, no desde el panel de resumen. Las HU3.7 a HU3.9 agregan sus transiciones a este mismo endpoint.
+Marca una rendición como Completa cuando la operadora terminó de armarla, la vuelve a En curso si hay que cambiar algo y registra que se envió (HU3.7). Es el único endpoint que cambia el **estado** (el paso del proceso, 4.5); la **vigencia** se cambia aparte (4.6). Se llama desde el detalle de la rendición, no desde el panel de resumen. Las HU3.8 y HU3.9 agregan sus transiciones a este mismo endpoint.
 
 #### `PATCH /rendiciones/:id/estado`
 
-- **Pedido:** `{ "estado": "COMPLETA" }` o `{ "estado": "EN_CURSO" }` (`ActualizarEstadoRendicionSchema` de `@realpolitik/shared`). Cualquier otro valor, también `ENVIADA`, `APROBADA` o `RECHAZADA` mientras no tengan su HU, es `400 VALIDATION_ERROR`, con el mensaje "El estado debe ser EN_CURSO o COMPLETA."
-- **Transiciones permitidas en esta HU:**
+- **Pedido:** `{ "estado": "COMPLETA" }`, `{ "estado": "EN_CURSO" }` o `{ "estado": "ENVIADA", "fechaEnvio": "2026-11-08" }` (`ActualizarEstadoRendicionSchema` de `@realpolitik/shared`).
+  - `estado`: `EN_CURSO`, `COMPLETA` o `ENVIADA`. `APROBADA` o `RECHAZADA` (todavía sin su HU) u otro valor es `400 VALIDATION_ERROR`, con el mensaje "El estado debe ser EN_CURSO, COMPLETA o ENVIADA."
+  - `fechaEnvio` (HU3.7): el día en que la operadora mandó la rendición, `AAAA-MM-DD`. **Solo con `ENVIADA`** (con otro estado, `400`). Opcional: sin ella, hoy en horario de Buenos Aires. No puede ser futura (`400`, lo comprueba el schema) ni anterior al primer día del período de la rendición (`400`, lo comprueba el servidor: la rendición de octubre de 2026 no se pudo mandar antes del 01/10/2026). La regla es `problemaDeFechaEnvio` de shared.
+- **Transiciones permitidas** (`TRANSICIONES_PERMITIDAS` en `rendiciones.service.ts`):
 
-  | Estado actual  | Estado pedido         | Resultado                                                                          |
-  | -------------- | --------------------- | ---------------------------------------------------------------------------------- |
-  | `EN_CURSO`     | `COMPLETA`            | Solo si tiene ítems y todos están completados; si no, `409 ITEMS_PENDIENTES`.      |
-  | `COMPLETA`     | `EN_CURSO`            | Siempre (en una rendición activa), aunque falte algún documento.                   |
-  | el mismo       | el mismo              | Idempotente: 200 con la rendición tal cual, **sin escribir** ni agregar historial. |
-  | cualquier otro | cualquiera de los dos | `409 TRANSICION_INVALIDA`.                                                         |
+  | Estado actual  | Estado pedido | Resultado                                                                                                                             |
+  | -------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+  | `EN_CURSO`     | `COMPLETA`    | Solo si tiene ítems y no falta ninguno; si no, `409 ITEMS_PENDIENTES`.                                                                |
+  | `COMPLETA`     | `EN_CURSO`    | Siempre (en una rendición activa), aunque falte algún documento.                                                                      |
+  | `COMPLETA`     | `ENVIADA`     | Solo si tiene ítems y no falta ninguno (se vuelve a comprobar); si no, `409 ITEMS_PENDIENTES`.                                        |
+  | el mismo       | el mismo      | Idempotente: 200 con la rendición tal cual, **sin escribir** ni agregar historial (en una Enviada, tampoco cambia la fecha de envío). |
+  | cualquier otro | cualquiera    | `409 TRANSICION_INVALIDA` (p. ej. `EN_CURSO → ENVIADA`, `RECHAZADA → ENVIADA` o volver de `ENVIADA`).                                 |
 
-- **Qué hace:** actualiza `estado` y agrega la entrada del historial (`estadoAnterior`, `estadoNuevo`, `fecha`) en una sola transacción serializable. La comprobación de los ítems va en esa misma transacción: si un documento cambia en el medio, se reintenta con los datos nuevos. Una rendición sin ítems no se puede marcar como completa.
-- **Auto-revert:** una `COMPLETA` que recibe un ítem sin documento vuelve sola a `EN_CURSO`. Hoy lo dispara solo `POST /rendiciones/:id/requisitos/:requisitoId` (4.5). Reemplazar el documento de un ítem no puede dejarlo sin documento, así que no lo dispara.
+- **Qué falta:** un ítem falta si está pendiente o si figura reunido **sin un documento vigente**: la misma regla que el envío (`motivoNoEnviable` y `faltantesParaEnviar` de shared). `faltantes` cuenta esos ítems.
+- **Qué hace:** actualiza `estado` y agrega la entrada del historial (`estadoAnterior`, `estadoNuevo`, `fecha`) en una sola transacción serializable. Con `ENVIADA`, la entrada guarda además la fecha de envío elegida como `fechaEfectiva` (4.5); `fecha` sigue siendo cuándo se registró. La comprobación de los ítems va en esa misma transacción: si un documento cambia en el medio, se reintenta con los datos nuevos. Una rendición sin ítems no se puede marcar como completa ni como enviada.
+- **Auto-revert:** una `COMPLETA` que recibe un ítem sin documento vuelve sola a `EN_CURSO`, con el motivo "Revertida a En curso al agregar requisito" en el historial. Hoy lo dispara solo `POST /rendiciones/:id/requisitos/:requisitoId` (4.5). Reemplazar el documento de un ítem no puede dejarlo sin documento, así que no lo dispara.
 - **Se puede seguir editando una `COMPLETA`:** cambiar el canal de un ítem, la OC o reemplazar un documento no cambia el estado.
+- **Una `ENVIADA` no se modifica (HU3.7):** aplicar o reemplazar un documento en sus ítems (4.10), corregir el canal de un ítem, propagar el canal de un requisito y sumarle un requisito (4.5) responden `409 RENDICION_ENVIADA`. **La OC sí se edita** (`PATCH /rendiciones/:id`): es un dato administrativo nuestro, no parte de lo que se mandó, y suele llegar o corregirse después. Preparar el envío (`POST /rendiciones/:id/preparar-envio`) sigue respondiendo: solo lee.
+- **Atrasada:** una `ENVIADA` ya no está atrasada (`ESTADOS_SIN_ENVIAR`, ADR-0005 punto 8): sale de `GET /rendiciones/atrasadas` y su fila del mes tiene `atrasada: false`.
 - **No mira el estado del cliente:** se puede cambiar el estado de una rendición de un cliente `INACTIVO` o `SUSPENDIDO`.
 - **Respuesta 200:** `RendicionDetalleSchema`: la rendición con su checklist (`items`) y el `historial` ya con el cambio.
 - **Errores:**
-  - `400 VALIDATION_ERROR`: `estado` ausente o fuera de `EN_CURSO` y `COMPLETA`; id que no es uuid.
+  - `400 VALIDATION_ERROR`: `estado` ausente o fuera de los admitidos; `fechaEnvio` con otro estado, con otro formato, futura o anterior al primer día del período (con `campo: "fechaEnvio"`); id que no es uuid.
   - `404 NOT_FOUND`: la rendición no existe o su cliente está borrado.
   - `409 CONFLICT`:
-    - `motivo: "ITEMS_PENDIENTES"`, con `faltantes` (entero): cuántos ítems no tienen documento. Con una rendición **sin ítems**, `faltantes` es `0`.
+    - `motivo: "ITEMS_PENDIENTES"`, con `faltantes` (entero): cuántos ítems faltan. Con una rendición **sin ítems**, `faltantes` es `0`.
     - `motivo: "RENDICION_ANULADA"`: la rendición está anulada; una anulada no cambia de estado, tampoco con el mismo estado que ya tiene.
     - `motivo: "TRANSICION_INVALIDA"`, con `estadoActual` y `estadoNuevo`: la transición no está permitida.
-- **Cómo lo usa el front:** en la cabecera del detalle, junto al estado: "Marcar como completa" (con la rendición En curso) y "Volver a en curso" (con la Completa), solo en una rendición activa. Los botones no se deshabilitan según el avance: el servidor decide y, ante `ITEMS_PENDIENTES`, el aviso dice cuántos documentos faltan. Al terminar se actualiza el detalle y se vuelve a pedir el listado del cliente, el del mes y las atrasadas.
+- **Cómo lo usa el front:** en la cabecera del detalle, junto al estado, solo en una rendición activa:
+  - En curso: "Marcar como completa", deshabilitado mientras falten documentos, con "Faltan N documentos" al lado (misma regla). El servidor vuelve a decidir: si algo cambió en el medio, el aviso dice cuántos faltan.
+  - Completa: "Volver a en curso" y "Marcar como enviada", que abre un diálogo con la fecha de envío (hoy por defecto, sin fechas futuras ni anteriores al período) y "Confirmar". El diálogo de envío de los documentos (HU2.5) ofrece al final "Ya la envié", que abre el mismo diálogo.
+  - Enviada: el estado con la fecha de envío ("Enviada el 08/11/2026"). Las acciones que cambian documentos o canales se ven deshabilitadas, con el motivo ("La rendición ya fue enviada"). La matriz del cliente no la ofrece para sumar un requisito ni para propagar un canal.
+  - Al terminar se actualiza el detalle y se vuelven a pedir el listado del cliente, el del mes y las atrasadas. La pantalla Rendiciones muestra "Enviada dd/mm" con la fecha de envío elegida.
 
 ### 4.7 Extensión de `GET /clientes`
 
@@ -972,6 +986,7 @@ Todos están implementados en `@realpolitik/shared` (T2.2), incluido el punto 7.
 12. **Hecho (HU3.2).** `ListarRendicionesDelMesQuerySchema` (`anio` y `mes`, obligatorios) y `RendicionDelMesSchema` (la fila de la pantalla Rendiciones), con `ESTADOS_CON_FECHA`.
 13. **Hecho (HU3.4).** `atrasada` en `RendicionDelMesSchema`, `RendicionAtrasadaSchema` (la fila más `anio` y `mes`) y la regla en `utils/atrasada.ts`: `esAtrasada(periodo, estado, hoy)`, `ultimoPeriodoAtrasado(hoy)` y `ESTADOS_SIN_ENVIAR`.
 14. **Hecho (HU3.6).** `ActualizarEstadoRendicionSchema` (cuerpo de `PATCH /rendiciones/:id/estado`: `estado` solo `EN_CURSO` o `COMPLETA`, con el mensaje "El estado debe ser EN_CURSO o COMPLETA.") y su tipo `ActualizarEstadoRendicionDto`. Cada HU que agrega una transición (HU3.7 a HU3.9) amplía los valores aceptados.
+15. **Hecho (HU3.7).** `ActualizarEstadoRendicionSchema` acepta `ENVIADA` y `fechaEnvio` (`AAAA-MM-DD`, solo con `ENVIADA`, no futura), con el mensaje "El estado debe ser EN_CURSO, COMPLETA o ENVIADA." `HistorialEstadoRendicionSchema` suma `fechaEfectiva`. Reglas en `utils/envioDeRendicion.ts` (`problemaDeFechaEnvio`, `ESTADOS_NO_MODIFICABLES`, `esRendicionModificable`, `fechaDelPaso`) y `utils/dia.ts` (días de calendario en Buenos Aires). `faltantesParaEnviar` (en `utils/envio.ts`) es la regla de faltantes de Completa y Enviada.
 
 Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, cliente)`, `calcularFaltantes(items)`, `ChecklistError` y `esChecklistError` (que reconoce el error por `codigo`, sin `instanceof`). `generarChecklist` lanza `MATRIZ_VACIA` ante una matriz sin requisitos activos: el backend lo responde como `409 CONFLICT` con `motivo: "MATRIZ_VACIA"`.
 
@@ -1040,11 +1055,11 @@ Los ítems a los que se podría aplicar el documento: **mismo `tipoDocumentoId`*
 - **Todo o nada**, en una transacción serializable: si un ítem no cumple, no se aplica a ninguno. Cada ítem recibe una aplicación vigente y queda `completado` (con `completadoEn`), en la misma transacción. Las rendiciones involucradas se bloquean contra una anulación simultánea.
 - **Concurrencia:** si dos pedidos aplican documentos al mismo ítem a la vez, uno gana y el otro responde `409 ITEM_NO_PENDIENTE`, sin aplicaciones parciales.
 
-| Error          | Cuándo                                                                                                                                                  |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `400`          | `itemIds` vacío, con repetidos, con un id inválido o con más de 500                                                                                     |
-| `404`          | El documento, o algún ítem (o su cliente), no existe                                                                                                    |
-| `409 CONFLICT` | `RENDICION_ANULADA`, `TIPO_DOCUMENTO_DISTINTO`, `PERIODO_DISTINTO` o `ITEM_NO_PENDIENTE`, con el `itemId` del primero que no cumple, en el orden pedido |
+| Error          | Cuándo                                                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `400`          | `itemIds` vacío, con repetidos, con un id inválido o con más de 500                                                                                                                  |
+| `404`          | El documento, o algún ítem (o su cliente), no existe                                                                                                                                 |
+| `409 CONFLICT` | `RENDICION_ANULADA`, `RENDICION_ENVIADA` (HU3.7), `TIPO_DOCUMENTO_DISTINTO`, `PERIODO_DISTINTO` o `ITEM_NO_PENDIENTE`, con el `itemId` del primero que no cumple, en el orden pedido |
 
 #### `POST /rendiciones/:id/items/:itemId/reemplazo`
 
@@ -1053,10 +1068,10 @@ Los ítems a los que se podría aplicar el documento: **mismo `tipoDocumentoId`*
 - **Efecto, atómico:** la aplicación anterior recibe `reemplazadaEn` y se crea una nueva con `reemplazaAId`. El ítem sigue completado, con su fecha original. Las aplicaciones del documento anterior en otros ítems no cambian.
 - **Respuesta:** la rendición con su checklist, como la corrección del canal.
 
-| Error          | Cuándo                                                                                                                                                                   |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `404`          | La rendición, el ítem (en esa rendición) o el documento no existen                                                                                                       |
-| `409 CONFLICT` | `APLICACION_DESACTUALIZADA` (con la `aplicacionVigenteId` actual, o `null`), `DOCUMENTO_YA_VIGENTE`, `RENDICION_ANULADA`, `TIPO_DOCUMENTO_DISTINTO` o `PERIODO_DISTINTO` |
+| Error          | Cuándo                                                                                                                                                                                                |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `404`          | La rendición, el ítem (en esa rendición) o el documento no existen                                                                                                                                    |
+| `409 CONFLICT` | `APLICACION_DESACTUALIZADA` (con la `aplicacionVigenteId` actual, o `null`), `DOCUMENTO_YA_VIGENTE`, `RENDICION_ANULADA`, `RENDICION_ENVIADA` (HU3.7), `TIPO_DOCUMENTO_DISTINTO` o `PERIODO_DISTINTO` |
 
 Dos reemplazos simultáneos de la misma aplicación: uno gana y el otro responde `409 APLICACION_DESACTUALIZADA`.
 

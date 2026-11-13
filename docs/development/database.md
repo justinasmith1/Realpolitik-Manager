@@ -187,19 +187,22 @@ En qué paso está cada rendición, con su historial de cambios. La decisión de
 - **`Rendicion.estado`:** obligatorio, con default `EN_CURSO`. Es independiente de la baja lógica (`isDeleted`): una rendición anulada conserva el último estado que tenía.
 - **Tabla `HistorialEstadoRendicion`:** una fila por cambio de estado. Es historial: no se edita ni se borra (cae en cascada solo si se borra físicamente la rendición).
 
-| Columna          | Tipo                        | Notas                                                    |
-| ---------------- | --------------------------- | -------------------------------------------------------- |
-| `id`             | UUID                        |                                                          |
-| `rendicionId`    | UUID, FK a `Rendicion`      | `onDelete: Cascade`                                      |
-| `estadoAnterior` | `EstadoRendicion`, opcional | `NULL` solo en la primera entrada, la del alta           |
-| `estadoNuevo`    | `EstadoRendicion`           |                                                          |
-| `fecha`          | fecha y hora                | Cuándo ocurrió el cambio. Default: el momento del insert |
-| `motivo`         | texto, opcional             | Lo va a usar el rechazo (HU3.8). Hoy siempre `NULL`      |
-| `createdAt`      | fecha y hora                | Auditoría                                                |
+| Columna          | Tipo                        | Notas                                                                                                                                                                  |
+| ---------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`             | UUID                        |                                                                                                                                                                        |
+| `rendicionId`    | UUID, FK a `Rendicion`      | `onDelete: Cascade`                                                                                                                                                    |
+| `estadoAnterior` | `EstadoRendicion`, opcional | `NULL` solo en la primera entrada, la del alta                                                                                                                         |
+| `estadoNuevo`    | `EstadoRendicion`           |                                                                                                                                                                        |
+| `fecha`          | fecha y hora                | Cuándo se registró el cambio. Default: el momento del insert. Ordena el historial                                                                                      |
+| `fechaEfectiva`  | fecha (`DATE`), opcional    | (HU3.7) El día en que ocurrió, si la operadora lo indicó: hoy, solo la fecha de envío de la entrada `ENVIADA`, que puede ser anterior al registro. `NULL` en las demás |
+| `motivo`         | texto, opcional             | Lo usa la vuelta automática a En curso (HU3.6) y lo va a usar el rechazo (HU3.8)                                                                                       |
+| `createdAt`      | fecha y hora                | Auditoría                                                                                                                                                              |
 
 Índice `HistorialEstadoRendicion_rendicionId_fecha_idx` sobre `(rendicionId, fecha)`: el historial de una rendición se lee en orden.
 
 La migración `20261103120000_hu3_1_estado_rendicion` crea el enum, la columna y la tabla, y le da a **cada rendición existente** (también a las anuladas) el estado `EN_CURSO` y una entrada inicial (`NULL` → `EN_CURSO`) con su `createdAt` como fecha. Las altas nuevas crean esa entrada en la misma transacción que la rendición. Los cambios posteriores pasan por un solo punto del backend (`registrarCambioDeEstado`), que actualiza el estado y agrega la entrada juntos.
+
+La migración `20261112120000_hu3_7_fecha_efectiva_historial` (HU3.7) agrega `fechaEfectiva` (`DATE`, opcional). Es aditiva: las entradas existentes quedan en `NULL` y se siguen mostrando con su `fecha`. Es un `DATE` y no una fecha y hora porque la operadora elige un día; Prisma lo lee como la medianoche UTC de ese día, y la API lo devuelve como `AAAA-MM-DD` (contrato 4.5).
 
 ## Tests de integración
 
