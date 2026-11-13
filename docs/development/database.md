@@ -195,7 +195,7 @@ En qué paso está cada rendición, con su historial de cambios. La decisión de
 | `estadoNuevo`    | `EstadoRendicion`           |                                                                                                                                                                        |
 | `fecha`          | fecha y hora                | Cuándo se registró el cambio. Default: el momento del insert. Ordena el historial                                                                                      |
 | `fechaEfectiva`  | fecha (`DATE`), opcional    | (HU3.7) El día en que ocurrió, si la operadora lo indicó: hoy, solo la fecha de envío de la entrada `ENVIADA`, que puede ser anterior al registro. `NULL` en las demás |
-| `motivo`         | texto, opcional             | Lo usa la vuelta automática a En curso (HU3.6) y lo va a usar el rechazo (HU3.8)                                                                                       |
+| `motivo`         | texto, opcional             | Lo usan la vuelta automática a En curso (HU3.6) y el rechazo (HU3.8: qué pidió corregir el cliente)                                                                    |
 | `createdAt`      | fecha y hora                | Auditoría                                                                                                                                                              |
 
 Índice `HistorialEstadoRendicion_rendicionId_fecha_idx` sobre `(rendicionId, fecha)`: el historial de una rendición se lee en orden.
