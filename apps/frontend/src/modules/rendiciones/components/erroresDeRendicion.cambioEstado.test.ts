@@ -16,26 +16,28 @@ describe('mensajeFalloCambioDeEstado', () => {
     [2, 'No se puede marcar como completa: faltan 2 documentos.'],
     [15, 'No se puede marcar como completa: faltan 15 documentos.'],
   ])('items-pendientes con %i faltantes', (faltantes, texto) => {
-    expect(mensajeFalloCambioDeEstado({ tipo: 'items-pendientes', faltantes })).toBe(texto);
+    expect(mensajeFalloCambioDeEstado({ tipo: 'items-pendientes', faltantes }, 'COMPLETA')).toBe(
+      texto,
+    );
   });
 
   it('sin la cantidad (el servidor no la mandó) dice que faltan documentos', () => {
-    expect(mensajeFalloCambioDeEstado({ tipo: 'items-pendientes', faltantes: null })).toBe(
-      'No se puede marcar como completa: faltan documentos.',
-    );
+    expect(
+      mensajeFalloCambioDeEstado({ tipo: 'items-pendientes', faltantes: null }, 'COMPLETA'),
+    ).toBe('No se puede marcar como completa: faltan documentos.');
   });
 
   it('cubre el resto de los fallos', () => {
-    expect(mensajeFalloCambioDeEstado({ tipo: 'rendicion-anulada' })).toBe(
+    expect(mensajeFalloCambioDeEstado({ tipo: 'rendicion-anulada' }, 'COMPLETA')).toBe(
       'La rendición está anulada: ya no se puede modificar.',
     );
-    expect(mensajeFalloCambioDeEstado({ tipo: 'transicion-invalida' })).toBe(
+    expect(mensajeFalloCambioDeEstado({ tipo: 'transicion-invalida' }, 'COMPLETA')).toBe(
       'Ese cambio de estado no está permitido desde el estado actual.',
     );
-    expect(mensajeFalloCambioDeEstado({ tipo: 'no-existe' })).toBe(
+    expect(mensajeFalloCambioDeEstado({ tipo: 'no-existe' }, 'COMPLETA')).toBe(
       'La rendición ya no existe. Volvé a cargar la página.',
     );
-    expect(mensajeFalloCambioDeEstado({ tipo: 'inesperado' })).toBe(
+    expect(mensajeFalloCambioDeEstado({ tipo: 'inesperado' }, 'COMPLETA')).toBe(
       'No pudimos cambiar el estado de la rendición. Probá de nuevo en unos segundos.',
     );
   });
@@ -130,6 +132,40 @@ describe('la respuesta del cliente: aprobar o rechazar (HU3.8)', () => {
   it.each(['APROBADA', 'RECHAZADA'] as const)('los demás fallos al %s tienen texto', (destino) => {
     for (const tipo of ['rendicion-anulada', 'no-existe', 'inesperado'] as const) {
       expect(mensajeFalloCambioDeEstado({ tipo }, destino)).not.toBe('');
+    }
+  });
+});
+
+describe('mensajeFalloCambioDeEstado por estado de destino (deuda de la HU3.8)', () => {
+  const ESTADOS = ['EN_CURSO', 'COMPLETA', 'ENVIADA', 'APROBADA', 'RECHAZADA'] as const;
+
+  it.each([
+    ['EN_CURSO', 'No se puede volver a En curso: falta 1 documento.'],
+    ['COMPLETA', 'No se puede marcar como completa: falta 1 documento.'],
+    ['ENVIADA', 'No se puede marcar como enviada: falta 1 documento.'],
+    ['APROBADA', 'No se puede registrar como aprobada: falta 1 documento.'],
+    ['RECHAZADA', 'No se puede registrar como rechazada: falta 1 documento.'],
+  ] as const)('los faltantes al pedir %s lo dicen con su verbo', (destino, texto) => {
+    expect(mensajeFalloCambioDeEstado({ tipo: 'items-pendientes', faltantes: 1 }, destino)).toBe(
+      texto,
+    );
+  });
+
+  it.each([
+    ['EN_CURSO', 'Ese cambio de estado no está permitido desde el estado actual.'],
+    ['COMPLETA', 'Ese cambio de estado no está permitido desde el estado actual.'],
+    ['ENVIADA', 'Ese cambio de estado no está permitido desde el estado actual.'],
+    ['APROBADA', 'La rendición ya cambió de estado. Volvé a cargar la página.'],
+    ['RECHAZADA', 'La rendición ya cambió de estado. Volvé a cargar la página.'],
+  ] as const)('una transición inválida al pedir %s', (destino, texto) => {
+    expect(mensajeFalloCambioDeEstado({ tipo: 'transicion-invalida' }, destino)).toBe(texto);
+  });
+
+  it('ningún destino cae en el texto de "completa" salvo COMPLETA', () => {
+    for (const destino of ESTADOS.filter((estado) => estado !== 'COMPLETA')) {
+      expect(
+        mensajeFalloCambioDeEstado({ tipo: 'items-pendientes', faltantes: 2 }, destino),
+      ).not.toContain('completa');
     }
   });
 });
