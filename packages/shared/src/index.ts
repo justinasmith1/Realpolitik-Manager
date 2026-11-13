@@ -336,8 +336,13 @@ export {
   MENSAJE_FECHA_ENVIO_FUTURA,
   MENSAJE_FECHA_ENVIO_INVALIDA,
   MENSAJE_FECHA_ENVIO_SIN_ENVIADA,
+  diaDelPaso,
+  diaDelUltimoRechazo,
   mensajeFechaEnvioAnteriorAlPeriodo,
+  mensajeFechaEnvioAnteriorAlRechazo,
+  primerDiaDeEnvio,
   problemaDeFechaEnvio,
+  ultimoRechazoPendiente,
 } from './utils/envioDeRendicion.js';
 
 export {

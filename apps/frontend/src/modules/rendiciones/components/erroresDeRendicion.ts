@@ -1,7 +1,7 @@
 // Traduce un fallo de rendiciones (ya interpretado por `rendiciones.api`) a texto de la interfaz.
 // Nunca muestra detalles técnicos.
 
-import { MENSAJE_MOTIVO_OBLIGATORIO } from '@realpolitik/shared';
+import { MENSAJE_MOTIVO_OBLIGATORIO, type EstadoRendicionType } from '@realpolitik/shared';
 
 import { mensajeDelServidor } from '@/lib/errores-api';
 import { etiquetasEstado } from '@/modules/clientes/clientes.etiquetas';
@@ -198,17 +198,55 @@ export const MENSAJE_RENDICION_ENVIADA = 'La rendición ya no se puede modificar
 export const MENSAJE_RENDICION_CAMBIO_DE_ESTADO =
   'La rendición ya cambió de estado. Volvé a cargar la página.';
 
+const MENSAJE_TRANSICION_NO_PERMITIDA =
+  'Ese cambio de estado no está permitido desde el estado actual.';
+
+/** Lo que depende del estado pedido en los mensajes de un cambio de estado. */
+interface TextosDeDestino {
+  /** El comienzo del aviso de faltantes: "No se puede marcar como completa". */
+  noSePuede: string;
+  /** El aviso si la transición ya no está permitida (otra persona la cambió antes). */
+  transicionInvalida: string;
+}
+
+/**
+ * Los textos de cada estado de destino. Es un `Record` de todos los estados: si se agrega uno, no
+ * compila hasta darle sus textos. Aprobar y rechazar (HU3.8) parten de una Enviada que pudo
+ * responder otra persona: piden recargar.
+ */
+const TEXTOS_POR_DESTINO: Record<EstadoRendicionType, TextosDeDestino> = {
+  EN_CURSO: {
+    noSePuede: 'No se puede volver a En curso',
+    transicionInvalida: MENSAJE_TRANSICION_NO_PERMITIDA,
+  },
+  COMPLETA: {
+    noSePuede: 'No se puede marcar como completa',
+    transicionInvalida: MENSAJE_TRANSICION_NO_PERMITIDA,
+  },
+  ENVIADA: {
+    noSePuede: 'No se puede marcar como enviada',
+    transicionInvalida: MENSAJE_TRANSICION_NO_PERMITIDA,
+  },
+  APROBADA: {
+    noSePuede: 'No se puede registrar como aprobada',
+    transicionInvalida: MENSAJE_RENDICION_CAMBIO_DE_ESTADO,
+  },
+  RECHAZADA: {
+    noSePuede: 'No se puede registrar como rechazada',
+    transicionInvalida: MENSAJE_RENDICION_CAMBIO_DE_ESTADO,
+  },
+};
+
 /**
  * Por qué no se pudo cambiar el estado: se avisa en el checklist (o en el diálogo del envío), que
- * ya se volvió a pedir. `destino` es el estado pedido: el aviso de faltantes dice si era para
- * completarla o para marcarla como enviada.
+ * ya se volvió a pedir. `destino` es el estado pedido (`TEXTOS_POR_DESTINO`): el aviso de
+ * faltantes dice si era para completarla o para marcarla como enviada.
  */
 export function mensajeFalloCambioDeEstado(
   fallo: FalloCambioDeEstado,
-  destino: 'COMPLETA' | 'ENVIADA' | 'APROBADA' | 'RECHAZADA' = 'COMPLETA',
+  destino: EstadoRendicionType,
 ): string {
-  const noSePuede =
-    destino === 'ENVIADA' ? 'No se puede marcar como enviada' : 'No se puede marcar como completa';
+  const { noSePuede, transicionInvalida } = TEXTOS_POR_DESTINO[destino];
   switch (fallo.tipo) {
     case 'items-pendientes':
       if (fallo.faltantes === null) {
@@ -227,9 +265,7 @@ export function mensajeFalloCambioDeEstado(
     case 'rendicion-anulada':
       return 'La rendición está anulada: ya no se puede modificar.';
     case 'transicion-invalida':
-      return destino === 'APROBADA' || destino === 'RECHAZADA'
-        ? MENSAJE_RENDICION_CAMBIO_DE_ESTADO
-        : 'Ese cambio de estado no está permitido desde el estado actual.';
+      return transicionInvalida;
     case 'no-existe':
       return 'La rendición ya no existe. Volvé a cargar la página.';
     case 'inesperado':

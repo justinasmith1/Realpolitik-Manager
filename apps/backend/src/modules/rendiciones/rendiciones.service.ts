@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import {
   canalDeSeleccion,
   compararItemsDeChecklist,
+  diaDelUltimoRechazo,
   esChecklistError,
   esRendicionModificable,
   ESTADOS_SIN_ENVIAR,
@@ -39,6 +40,7 @@ import { prisma } from '../../lib/prisma';
 import {
   APLICACION_VIGENTE,
   columnaDateDeDia,
+  entradaDeHistorial,
   HISTORIAL_EN_ORDEN,
   SELECT_DEL_MES,
   toItemChecklistDto,
@@ -576,10 +578,12 @@ const TRANSICIONES_PERMITIDAS: Readonly<
   COMPLETA: { EN_CURSO: { exigeTodoReunido: false }, ENVIADA: { exigeTodoReunido: true } },
   // La respuesta del cliente (HU3.8): lo que se mandó ya no se vuelve a revisar.
   ENVIADA: { APROBADA: { exigeTodoReunido: false }, RECHAZADA: { exigeTodoReunido: false } },
+  // "Corregir" (HU3.9): la reabre para editarla. Los ítems quedan como estaban.
+  RECHAZADA: { EN_CURSO: { exigeTodoReunido: false } },
 };
 
 /**
- * Cambia el estado de una rendición a pedido de la operadora (HU3.6, HU3.7 y HU3.8):
+ * Cambia el estado de una rendición a pedido de la operadora (HU3.6 a HU3.9):
  * `PATCH /rendiciones/:id/estado`.
  * - Las transiciones y lo que exige cada una están en `TRANSICIONES_PERMITIDAS`; cualquier otra es
  *   `409 TRANSICION_INVALIDA`.
@@ -589,8 +593,10 @@ const TRANSICIONES_PERMITIDAS: Readonly<
  * - A `ENVIADA` (HU3.7), con la fecha de envío elegida (por defecto, hoy en Buenos Aires) como
  *   fecha efectiva de la entrada del historial. No futura ni anterior al primer día del período:
  *   si no, `400 VALIDATION_ERROR` en `fechaEnvio`.
+ *   En un reenvío (HU3.9), tampoco anterior al día del último rechazo.
  * - A `APROBADA` o `RECHAZADA` (HU3.8), solo desde `ENVIADA`. El `motivo` (obligatorio con
  *   `RECHAZADA`, lo exige el schema) se guarda en la entrada del historial; sin fecha efectiva.
+ * - De `RECHAZADA` a `EN_CURSO` ("Corregir", HU3.9), sin tocar los ítems.
  * - Pedir el estado que ya tiene responde igual, sin escribir ni agregar historial (en una Enviada,
  *   tampoco cambia la fecha de envío). Una anulada es `409 RENDICION_ANULADA`.
  * El chequeo y el cambio van en la misma transacción serializable: si un documento cambia en el
@@ -614,6 +620,7 @@ export async function cambiarEstadoDeRendicion(
         anio: true,
         mes: true,
         items: { include: { aplicaciones: APLICACION_VIGENTE } },
+        historial: HISTORIAL_EN_ORDEN,
       },
     });
     if (rendicion === null) {
@@ -648,7 +655,9 @@ export async function cambiarEstadoDeRendicion(
     let fechaEfectiva: string | null = null;
     if (estadoNuevo === 'ENVIADA') {
       fechaEfectiva = fechaEnvio ?? hoyEnBuenosAires(ahora);
-      const problema = problemaDeFechaEnvio(fechaEfectiva, rendicion, ahora);
+      // Un reenvío (HU3.9) no puede ser anterior al día del último rechazo.
+      const rechazo = diaDelUltimoRechazo(rendicion.historial.map(entradaDeHistorial));
+      const problema = problemaDeFechaEnvio(fechaEfectiva, rendicion, ahora, rechazo);
       if (problema !== null) {
         throw validationError([{ campo: 'fechaEnvio', mensaje: problema }]);
       }
@@ -660,9 +669,10 @@ export async function cambiarEstadoDeRendicion(
 
 /**
  * Por qué no se puede modificar una rendición (documentos, canales o requisitos), o `null` si se
- * puede: anulada (`RENDICION_ANULADA`, es historial) o ya enviada o aprobada (`RENDICION_ENVIADA`,
- * HU3.7 y HU3.8: lo que se mandó no cambia). El código no cambió, el texto sí. `datos` va en los `details` del 409 (p. ej. el `itemId` o el
- * `rendicionId` del conflicto).
+ * puede: anulada (`RENDICION_ANULADA`, es historial) o enviada, aprobada o rechazada
+ * (`RENDICION_ENVIADA`, HU3.7 a HU3.9: lo que se mandó no cambia, y una rechazada se edita recién
+ * después de reabrirla con "Corregir"). El código no cambió, el texto sí. `datos` va en los
+ * `details` del 409 (p. ej. el `itemId` o el `rendicionId` del conflicto).
  */
 export function motivoParaNoModificar(
   rendicion: { isDeleted: boolean; estado: EstadoRendicionType },

@@ -14,6 +14,10 @@ import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ClienteMonogram } from '@/modules/clientes/components/ClienteMonogram';
+import {
+  AvisoDeRechazo,
+  rechazoPendienteDe,
+} from '@/modules/rendiciones/components/AvisoDeRechazo';
 import { EstadoRendicionBadge } from '@/modules/rendiciones/components/EstadoRendicionBadge';
 import { ItemReunidoBadge } from '@/modules/rendiciones/components/ItemReunidoBadge';
 import { fondoDeEstado, textoDeEstado } from '@/modules/rendiciones/estadoRendicion.colores';
@@ -99,8 +103,9 @@ function Dato({ etiqueta, children }: { etiqueta: string; children: ReactNode })
  * del alto de su contenido, y el listado sigue a la vista y se puede usar. Por debajo de `lg`
  * ocupa toda la pantalla, por encima del listado. Se cierra con la X o con Escape.
  *
- * Los bloques van uno debajo del otro. El motivo del rechazo (HU3.8) y la fecha del cobro (HU3.10)
- * se suman como un `Bloque` más, después del estado, cuando la API los traiga.
+ * Los bloques van uno debajo del otro. El motivo del rechazo pendiente (HU3.9) va en un `Bloque`
+ * propio después del estado, destacado: en una Rechazada, o en una En curso o Completa que se está
+ * corrigiendo. La fecha del cobro (HU3.10) se sumará igual.
  */
 export function ResumenRendicionPanel({
   fila,
@@ -180,6 +185,11 @@ export function ResumenRendicionPanel({
             </Dato>
           </div>
         </Bloque>
+        {rechazoPendienteDe(detalle) !== null && (
+          <Bloque>
+            <AvisoDeRechazo rendicion={detalle} />
+          </Bloque>
+        )}
         <Bloque
           titulo="Documentos"
           extra={

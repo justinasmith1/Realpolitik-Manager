@@ -202,6 +202,77 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
     expect(await within(region).findByText('Enviada 08/11')).toBeInTheDocument();
   });
 
+  describe('el motivo del rechazo pendiente (HU3.9)', () => {
+    const HASTA_EL_RECHAZO = [
+      { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-11-02T13:00:00.000Z' },
+      { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: '2026-11-03T13:00:00.000Z' },
+      {
+        estadoAnterior: 'COMPLETA',
+        estadoNuevo: 'ENVIADA',
+        fecha: '2026-11-04T13:00:00.000Z',
+        fechaEfectiva: '2026-11-04',
+      },
+      {
+        estadoAnterior: 'ENVIADA',
+        estadoNuevo: 'RECHAZADA',
+        fecha: '2026-11-09T13:00:00.000Z',
+        motivo: 'Falta el sello',
+      },
+    ];
+    const REABIERTA = {
+      estadoAnterior: 'RECHAZADA',
+      estadoNuevo: 'EN_CURSO',
+      fecha: '2026-11-10T13:00:00.000Z',
+    };
+
+    it.each([
+      ['Rechazada', 'RECHAZADA', HASTA_EL_RECHAZO],
+      ['En curso que se está corrigiendo', 'EN_CURSO', [...HASTA_EL_RECHAZO, REABIERTA]],
+    ])('una %s muestra el motivo destacado con su fecha', async (_nombre, estado, historial) => {
+      servir(
+        { '2026-11': [{ ...LA_PLATA, estado }] },
+        { [RENDICION_ID]: detalle({ estado, historial }) },
+      );
+      renderPantalla(`/rendiciones?rendicion=${RENDICION_ID}`);
+
+      const region = await panel();
+      expect(
+        await within(region).findByText('Rechazada el 09/11/2026: Falta el sello'),
+      ).toBeVisible();
+    });
+
+    it('una reenviada ya no lo muestra', async () => {
+      servir(
+        { '2026-11': [{ ...LA_PLATA, estado: 'ENVIADA' }] },
+        {
+          [RENDICION_ID]: detalle({
+            estado: 'ENVIADA',
+            historial: [
+              ...HASTA_EL_RECHAZO,
+              REABIERTA,
+              {
+                estadoAnterior: 'EN_CURSO',
+                estadoNuevo: 'COMPLETA',
+                fecha: '2026-11-11T13:00:00.000Z',
+              },
+              {
+                estadoAnterior: 'COMPLETA',
+                estadoNuevo: 'ENVIADA',
+                fecha: '2026-11-12T13:00:00.000Z',
+                fechaEfectiva: '2026-11-12',
+              },
+            ],
+          }),
+        },
+      );
+      renderPantalla(`/rendiciones?rendicion=${RENDICION_ID}`);
+
+      const region = await panel();
+      expect(await within(region).findByText('Enviada 12/11')).toBeInTheDocument();
+      expect(within(region).queryByText(/Rechazada el/)).not.toBeInTheDocument();
+    });
+  });
+
   it('una rendición atrasada muestra la marca "Atrasada" en rojo', async () => {
     servir(
       { '2026-9': [{ ...LA_PLATA, atrasada: true }] },

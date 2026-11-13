@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { diaLegible, esDiaValido, hoyEnBuenosAires, inicioDelDiaEnBuenosAires } from './dia.js';
 import { faltantesParaEnviar } from './envio.js';
 import {
+  diaDelPaso,
+  diaDelUltimoRechazo,
   esRendicionModificable,
   fechaDelPaso,
   MENSAJE_FECHA_ENVIO_FUTURA,
   MENSAJE_FECHA_ENVIO_INVALIDA,
+  primerDiaDeEnvio,
   problemaDeFechaEnvio,
+  ultimoRechazoPendiente,
 } from './envioDeRendicion.js';
 
 // Marcar como Enviada (HU3.7): días de calendario, la regla de la fecha de envío, qué estados ya
@@ -61,6 +65,114 @@ describe('problemaDeFechaEnvio', () => {
   it('rechaza un día que no existe', () => {
     expect(problemaDeFechaEnvio('2026-10-32', octubre, ahora)).toBe(MENSAJE_FECHA_ENVIO_INVALIDA);
   });
+
+  it('en un reenvío (HU3.9), rechaza una fecha anterior al día del último rechazo', () => {
+    expect(problemaDeFechaEnvio('2026-11-04', octubre, ahora, '2026-11-05')).toBe(
+      'La fecha de envío no puede ser anterior al 05/11/2026, el día del último rechazo.',
+    );
+    expect(problemaDeFechaEnvio('2026-11-05', octubre, ahora, '2026-11-05')).toBeNull();
+    expect(problemaDeFechaEnvio('2026-11-12', octubre, ahora, '2026-11-05')).toBeNull();
+  });
+
+  it('la regla del período va antes que la del rechazo', () => {
+    expect(problemaDeFechaEnvio('2026-09-30', octubre, ahora, '2026-11-05')).toBe(
+      'La fecha de envío no puede ser anterior al 01/10/2026, el primer día del período.',
+    );
+  });
+});
+
+describe('primerDiaDeEnvio', () => {
+  const octubre = { anio: 2026, mes: 10 };
+
+  it('sin rechazo, el primer día del período', () => {
+    expect(primerDiaDeEnvio(octubre, null)).toBe('2026-10-01');
+  });
+
+  it('con un rechazo dentro o después del período, el día del rechazo', () => {
+    expect(primerDiaDeEnvio(octubre, '2026-11-05')).toBe('2026-11-05');
+  });
+
+  it('con un rechazo anterior al período (no debería pasar), el primer día del período', () => {
+    expect(primerDiaDeEnvio(octubre, '2026-09-20')).toBe('2026-10-01');
+  });
+});
+
+describe('rechazos (HU3.9)', () => {
+  // A las 23:30 de Buenos Aires del 5/11 ya es 6/11 en UTC: el día es el de acá.
+  const paso = (
+    estadoNuevo: 'EN_CURSO' | 'COMPLETA' | 'ENVIADA' | 'RECHAZADA' | 'APROBADA',
+    fecha: string,
+    extra: { fechaEfectiva?: string; motivo?: string } = {},
+  ) => ({ estadoNuevo, fecha: new Date(fecha), ...extra });
+  const ALTA = paso('EN_CURSO', '2026-10-02T12:00:00.000Z');
+  const COMPLETA = paso('COMPLETA', '2026-10-20T12:00:00.000Z');
+  const ENVIO = paso('ENVIADA', '2026-10-21T12:00:00.000Z', { fechaEfectiva: '2026-10-21' });
+  const RECHAZO = paso('RECHAZADA', '2026-11-06T02:30:00.000Z', { motivo: 'Falta la firma' });
+  const REAPERTURA = paso('EN_CURSO', '2026-11-06T13:00:00.000Z');
+  const COMPLETA_2 = paso('COMPLETA', '2026-11-07T12:00:00.000Z');
+  const REENVIO = paso('ENVIADA', '2026-11-08T12:00:00.000Z', { fechaEfectiva: '2026-11-08' });
+  const RECHAZO_2 = paso('RECHAZADA', '2026-11-10T12:00:00.000Z', { motivo: 'Factura mal' });
+
+  describe('ultimoRechazoPendiente', () => {
+    it('sin rechazos: null', () => {
+      expect(ultimoRechazoPendiente([])).toBeNull();
+      expect(ultimoRechazoPendiente([ALTA, COMPLETA, ENVIO])).toBeNull();
+    });
+
+    it('un rechazo sin reenvío: ese rechazo (Rechazada, reabierta o completa)', () => {
+      expect(ultimoRechazoPendiente([ALTA, COMPLETA, ENVIO, RECHAZO])).toBe(RECHAZO);
+      expect(ultimoRechazoPendiente([ALTA, COMPLETA, ENVIO, RECHAZO, REAPERTURA])).toBe(RECHAZO);
+      expect(ultimoRechazoPendiente([ALTA, COMPLETA, ENVIO, RECHAZO, REAPERTURA, COMPLETA_2])).toBe(
+        RECHAZO,
+      );
+    });
+
+    it('un rechazo ya reenviado: null', () => {
+      expect(
+        ultimoRechazoPendiente([ALTA, COMPLETA, ENVIO, RECHAZO, REAPERTURA, COMPLETA_2, REENVIO]),
+      ).toBeNull();
+    });
+
+    it('dos rechazos: el segundo, mientras no se reenvíe', () => {
+      const historial = [
+        ALTA,
+        COMPLETA,
+        ENVIO,
+        RECHAZO,
+        REAPERTURA,
+        COMPLETA_2,
+        REENVIO,
+        RECHAZO_2,
+      ];
+      expect(ultimoRechazoPendiente(historial)).toBe(RECHAZO_2);
+      expect(
+        ultimoRechazoPendiente([...historial, paso('EN_CURSO', '2026-11-11T12:00:00.000Z')]),
+      ).toBe(RECHAZO_2);
+    });
+
+    it('mira el orden del historial, no la fecha efectiva del envío', () => {
+      // Un envío registrado después del rechazo resuelve el rechazo aunque su fecha sea el mismo día.
+      const reenvioMismoDia = paso('ENVIADA', '2026-11-06T15:00:00.000Z', {
+        fechaEfectiva: '2026-11-05',
+      });
+      expect(ultimoRechazoPendiente([ENVIO, RECHAZO, REAPERTURA, reenvioMismoDia])).toBeNull();
+    });
+  });
+
+  describe('diaDelPaso y diaDelUltimoRechazo', () => {
+    it('el día efectivo si lo hay; si no, el del registro en Buenos Aires', () => {
+      expect(diaDelPaso(ENVIO)).toBe('2026-10-21');
+      expect(diaDelPaso(RECHAZO)).toBe('2026-11-05');
+    });
+
+    it('el día del último rechazo, aunque ya se haya reenviado; null si nunca se rechazó', () => {
+      expect(diaDelUltimoRechazo([ALTA, ENVIO])).toBeNull();
+      expect(diaDelUltimoRechazo([ENVIO, RECHAZO, REAPERTURA])).toBe('2026-11-05');
+      expect(diaDelUltimoRechazo([ENVIO, RECHAZO, REAPERTURA, REENVIO, RECHAZO_2])).toBe(
+        '2026-11-10',
+      );
+    });
+  });
 });
 
 describe('esRendicionModificable', () => {
@@ -69,7 +181,8 @@ describe('esRendicionModificable', () => {
     ['COMPLETA', true],
     ['ENVIADA', false],
     ['APROBADA', false],
-    ['RECHAZADA', true],
+    // Hasta que la operadora la reabre con "Corregir" (HU3.9).
+    ['RECHAZADA', false],
   ] as const)('%s: %s', (estado, modificable) => {
     expect(esRendicionModificable(estado)).toBe(modificable);
   });

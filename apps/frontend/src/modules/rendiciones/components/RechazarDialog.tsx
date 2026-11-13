@@ -19,11 +19,12 @@ import { useMarcarEstadoDeRendicion } from '@/modules/rendiciones/hooks/useRendi
 import {
   AVISO_RENDICION_RECHAZADA,
   etiquetaDePeriodo,
+  DESCRIPCION_RECHAZADA_DIALOG,
   ETIQUETA_MOTIVO_RECHAZO,
   PLACEHOLDER_MOTIVO_RECHAZO,
-  TEXTO_CONFIRMAR_RECHAZO,
+  TEXTO_CONFIRMAR_RESPUESTA,
   TEXTO_GUARDANDO_ESTADO,
-  TITULO_RECHAZAR_DIALOG,
+  TITULO_RECHAZADA_DIALOG,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 
 interface RechazarDialogProps {
@@ -107,10 +108,10 @@ export function RechazarDialog({
         className="data-[size=default]:sm:max-w-md"
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>{TITULO_RECHAZAR_DIALOG}</AlertDialogTitle>
+          <AlertDialogTitle>{TITULO_RECHAZADA_DIALOG}</AlertDialogTitle>
           <AlertDialogDescription>
             {mostrada === null ? '' : `Rendición ${etiquetaDePeriodo(mostrada)}. `}
-            Quedan registrados el rechazo y lo que pidió corregir el cliente.
+            {DESCRIPCION_RECHAZADA_DIALOG}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="flex flex-col gap-1.5">
@@ -149,7 +150,7 @@ export function RechazarDialog({
             disabled={!motivoListo}
             className="min-w-40"
           >
-            {TEXTO_CONFIRMAR_RECHAZO}
+            {TEXTO_CONFIRMAR_RESPUESTA}
           </LoadingButton>
         </AlertDialogFooter>
       </AlertDialogContent>

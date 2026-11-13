@@ -9,6 +9,10 @@
 // - una Enviada deja de estar atrasada
 // - auto-revert (HU3.6): sumar un requisito a una Completa la vuelve a En curso con su motivo; si
 //   la inserción falla, sigue Completa y sin historial nuevo
+// - corregir una rechazada (HU3.9): una Rechazada no se modifica (salvo la OC) hasta reabrirla con
+//   RECHAZADA → EN_CURSO, que no toca los ítems; el reenvío no puede ser anterior al último rechazo;
+//   el ciclo completo con dos rechazos queda entero en el historial; una reabierta de dos meses
+//   atrás vuelve a estar atrasada
 //
 // Sin `TEST_DATABASE_URL` se saltan, y se niegan a correr si la base no es `*_audit` o `*_test`.
 
@@ -16,6 +20,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 
 import type { PrismaClient } from '@prisma/client';
 import {
+  diaLegible,
   hoyEnBuenosAires,
   inicioDelDiaEnBuenosAires,
   mesActual,
@@ -133,6 +138,7 @@ interface HistorialJson {
   estadoNuevo: string;
   fecha: string;
   fechaEfectiva: string | null;
+  motivo?: string | null;
 }
 interface RendicionJson {
   id: string;
@@ -389,6 +395,212 @@ describe.skipIf(url === undefined)('Marcar como Enviada (HU3.7) contra PostgreSQ
       (r) => r.id === rendicion.id,
     );
     expect(fila?.atrasada).toBe(false);
+  });
+});
+
+// ─── HU3.9 ────────────────────────────────────────────────────────────────────
+
+/** El mes anterior al actual: ayer siempre cae en él o en el actual (sirve para fechas de envío). */
+const PERIODO_ANTERIOR = mesesAPeriodo(periodoAMeses(PERIODO) - 1);
+
+/** Ayer en Buenos Aires (`AAAA-MM-DD`). */
+const ayerEnBuenosAires = () => hoyEnBuenosAires(new Date(Date.now() - 86_400_000));
+
+/** Una rendición Rechazada con `motivo`: completa, enviada el primer día del período y rechazada. */
+async function rechazada(periodo: Periodo = PERIODO, motivo = 'Falta la firma') {
+  const datos = await completa(periodo);
+  const enviada = await cambiarEstado(datos.rendicion.id, {
+    estado: 'ENVIADA',
+    fechaEnvio: primerDiaDelPeriodo(periodo),
+  });
+  expect(enviada.status, JSON.stringify(enviada.body)).toBe(200);
+  const res = await cambiarEstado(datos.rendicion.id, { estado: 'RECHAZADA', motivo });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return datos;
+}
+
+describe.skipIf(url === undefined)('Corregir una rechazada (HU3.9) contra PostgreSQL real', () => {
+  it('una Rechazada no se modifica: documentos, canales y requisitos dan 409; la OC sí se edita', async () => {
+    const { cliente, factura, requisito, rendicion, itemId } = await rechazada();
+    const otroDocumento = await cargar(factura.id);
+    const print = await crearTipo('Print');
+    const requisitoNuevo = await prisma.requisitoCliente.create({
+      data: { clienteId: cliente.id, tipoDocumentoId: print.id, cantidad: 1, diasAproximados: [] },
+    });
+    const vigente = (await detalle(rendicion.id)).items[0]?.documento?.aplicacionId;
+    const api = sesiones.cliente(app);
+
+    const intentos = {
+      aplicar: await api
+        .post(`/documentos/${otroDocumento}/aplicaciones`)
+        .send({ itemIds: [itemId] }),
+      reemplazar: await api
+        .post(`/rendiciones/${rendicion.id}/items/${itemId}/reemplazo`)
+        .send({ documentoId: otroDocumento, aplicacionVigenteId: vigente }),
+      canal: await api
+        .patch(`/rendiciones/${rendicion.id}/items/${itemId}/canal`)
+        .send({ canalEntrega: 'WHATSAPP' }),
+      propagar: await api
+        .post(`/clientes/${cliente.id}/requisitos/${requisito.id}/propagar-canal`)
+        .send({ rendicionIds: [rendicion.id] }),
+      sumarRequisito: await api.post(
+        `/rendiciones/${rendicion.id}/requisitos/${requisitoNuevo.id}`,
+      ),
+    };
+
+    for (const [nombre, res] of Object.entries(intentos)) {
+      expect(res.status, `${nombre}: ${JSON.stringify(res.body)}`).toBe(409);
+      expect(conflicto(res).motivo, nombre).toBe('RENDICION_ENVIADA');
+    }
+    const despues = await detalle(rendicion.id);
+    expect(despues.estado).toBe('RECHAZADA');
+    expect(despues.items).toHaveLength(1);
+    expect(despues.items[0]?.documento?.aplicacionId).toBe(vigente);
+
+    const oc = await api.patch(`/rendiciones/${rendicion.id}`).send({ numeroOc: 'OC-456' });
+    expect(oc.status, JSON.stringify(oc.body)).toBe(200);
+  });
+
+  it('RECHAZADA → EN_CURSO: la reabre sin tocar los ítems, y desde ahí se edita', async () => {
+    const { factura, rendicion, itemId } = await rechazada();
+    const antes = await detalle(rendicion.id);
+
+    const res = await cambiarEstado(rendicion.id, { estado: 'EN_CURSO' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const reabierta = res.body as RendicionJson;
+    expect(reabierta.estado).toBe('EN_CURSO');
+    expect(reabierta.historial.at(-1)).toMatchObject({
+      estadoAnterior: 'RECHAZADA',
+      estadoNuevo: 'EN_CURSO',
+      motivo: null,
+      fechaEfectiva: null,
+    });
+    // Con todo reunido igual queda En curso: los ítems siguen como estaban.
+    expect(reabierta.items).toEqual(antes.items);
+
+    // Ya se puede reemplazar el documento observado.
+    const otroDocumento = await cargar(factura.id);
+    const reemplazo = await sesiones
+      .cliente(app)
+      .post(`/rendiciones/${rendicion.id}/items/${itemId}/reemplazo`)
+      .send({
+        documentoId: otroDocumento,
+        aplicacionVigenteId: antes.items[0]?.documento?.aplicacionId,
+      });
+    expect(reemplazo.status, JSON.stringify(reemplazo.body)).toBe(200);
+  });
+
+  it('una rechazada anulada no se reabre: 409 RENDICION_ANULADA', async () => {
+    const { rendicion } = await rechazada();
+    await sesiones
+      .cliente(app)
+      .patch(`/rendiciones/${rendicion.id}/vigencia`)
+      .send({ vigencia: 'ANULADA' });
+
+    const res = await cambiarEstado(rendicion.id, { estado: 'EN_CURSO' });
+
+    expect(res.status).toBe(409);
+    expect(conflicto(res)).toEqual({ motivo: 'RENDICION_ANULADA' });
+  });
+
+  it('el reenvío no puede ser anterior al día del último rechazo: 400, sin escribir', async () => {
+    // Del mes anterior: ayer cae dentro del período, así la que rechaza es la regla del rechazo.
+    const { rendicion } = await rechazada(PERIODO_ANTERIOR);
+    expect((await cambiarEstado(rendicion.id, { estado: 'EN_CURSO' })).status).toBe(200);
+    expect((await cambiarEstado(rendicion.id, { estado: 'COMPLETA' })).status).toBe(200);
+    const antes = await historialDe(rendicion.id);
+
+    const res = await cambiarEstado(rendicion.id, {
+      estado: 'ENVIADA',
+      fechaEnvio: ayerEnBuenosAires(),
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: {
+        code: 'VALIDATION_ERROR',
+        details: [
+          {
+            campo: 'fechaEnvio',
+            mensaje: `La fecha de envío no puede ser anterior al ${diaLegible(hoyEnBuenosAires())}, el día del último rechazo.`,
+          },
+        ],
+      },
+    });
+    expect((await detalle(rendicion.id)).estado).toBe('COMPLETA');
+    expect(await historialDe(rendicion.id)).toHaveLength(antes.length);
+  });
+
+  it('ciclo completo con dos rechazos: el historial queda entero, en orden, con motivos y fechas', async () => {
+    const { rendicion } = await rechazada(PERIODO, 'Falta la firma');
+    const id = rendicion.id;
+    const hoy = hoyEnBuenosAires();
+    const pasos: Record<string, unknown>[] = [
+      { estado: 'EN_CURSO' },
+      { estado: 'COMPLETA' },
+      { estado: 'ENVIADA', fechaEnvio: hoy },
+      { estado: 'RECHAZADA', motivo: 'La factura tiene otro CUIT' },
+      { estado: 'EN_CURSO' },
+      { estado: 'COMPLETA' },
+      { estado: 'ENVIADA' },
+      { estado: 'APROBADA' },
+    ];
+    for (const cuerpo of pasos) {
+      const res = await cambiarEstado(id, cuerpo);
+      expect(res.status, `${JSON.stringify(cuerpo)}: ${JSON.stringify(res.body)}`).toBe(200);
+    }
+
+    const { historial, estado } = await detalle(id);
+    expect(estado).toBe('APROBADA');
+    const paso = (
+      estadoAnterior: string | null,
+      estadoNuevo: string,
+      fechaEfectiva: string | null = null,
+      motivo: string | null = null,
+    ) => ({ estadoAnterior, estadoNuevo, fechaEfectiva, motivo });
+    expect(
+      historial.map((h) =>
+        paso(h.estadoAnterior, h.estadoNuevo, h.fechaEfectiva, h.motivo ?? null),
+      ),
+    ).toEqual([
+      paso(null, 'EN_CURSO'),
+      paso('EN_CURSO', 'COMPLETA'),
+      paso('COMPLETA', 'ENVIADA', primerDiaDelPeriodo(PERIODO)),
+      paso('ENVIADA', 'RECHAZADA', null, 'Falta la firma'),
+      paso('RECHAZADA', 'EN_CURSO'),
+      paso('EN_CURSO', 'COMPLETA'),
+      paso('COMPLETA', 'ENVIADA', hoy),
+      paso('ENVIADA', 'RECHAZADA', null, 'La factura tiene otro CUIT'),
+      paso('RECHAZADA', 'EN_CURSO'),
+      paso('EN_CURSO', 'COMPLETA'),
+      paso('COMPLETA', 'ENVIADA', hoy),
+      paso('ENVIADA', 'APROBADA'),
+    ]);
+    // El orden es el del registro.
+    const fechas = historial.map((h) => h.fecha);
+    expect([...fechas].sort()).toEqual(fechas);
+  });
+
+  it('una reabierta de dos meses atrás o más vuelve a estar atrasada', async () => {
+    const atrasadas = async () =>
+      ((await sesiones.cliente(app).get('/rendiciones/atrasadas')).body as { id: string }[]).map(
+        (r) => r.id,
+      );
+    const { rendicion } = await rechazada(PERIODO_ATRASADO);
+    // Enviada y después Rechazada: no está atrasada (la regla mira En curso y Completa).
+    expect(await atrasadas()).not.toContain(rendicion.id);
+
+    expect((await cambiarEstado(rendicion.id, { estado: 'EN_CURSO' })).status).toBe(200);
+
+    expect(await atrasadas()).toContain(rendicion.id);
+    const delMes = await sesiones
+      .cliente(app)
+      .get(`/rendiciones?anio=${PERIODO_ATRASADO.anio}&mes=${PERIODO_ATRASADO.mes}`);
+    const fila = (delMes.body as { id: string; atrasada: boolean }[]).find(
+      (r) => r.id === rendicion.id,
+    );
+    expect(fila?.atrasada).toBe(true);
   });
 });
 
