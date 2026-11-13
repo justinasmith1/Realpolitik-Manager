@@ -5,6 +5,7 @@ import {
   MENSAJE_FECHA_COBRO_INVALIDA,
   MENSAJE_NOTA_COBRO,
 } from '../utils/cobro.js';
+import { hoyEnBuenosAires } from '../utils/dia.js';
 
 import {
   RegistrarCobroSchema,
@@ -23,6 +24,10 @@ function errores(r: { error?: { issues: { path: PropertyKey[]; message: string }
 afterEach(() => {
   vi.useRealTimers();
 });
+
+/** El día siguiente a `dia` (`AAAA-MM-DD`): una fecha futura que no se vuelve válida con el tiempo. */
+const diaSiguiente = (dia: string): string =>
+  new Date(Date.parse(`${dia}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
 describe('RegistrarCobroSchema', () => {
   // 13/11/2026, 12:00 en Buenos Aires.
@@ -75,15 +80,18 @@ describe('RegistrarCobroSchema', () => {
 
   it('rechaza una fecha futura, en fecha', () => {
     reloj();
-    expect(errores(RegistrarCobroSchema.safeParse({ fecha: '2026-11-14' }))).toEqual([
-      { path: ['fecha'], message: MENSAJE_FECHA_COBRO_FUTURA },
-    ]);
+    expect(
+      errores(RegistrarCobroSchema.safeParse({ fecha: diaSiguiente(hoyEnBuenosAires()) })),
+    ).toEqual([{ path: ['fecha'], message: MENSAJE_FECHA_COBRO_FUTURA }]);
   });
 
   it('a las 22:00 en Buenos Aires el día siguiente en UTC ya es futuro; hoy no', () => {
     vi.useFakeTimers({ now: new Date('2026-11-14T01:00:00.000Z') });
-    expect(RegistrarCobroSchema.safeParse({ fecha: '2026-11-13' }).success).toBe(true);
-    expect(errores(RegistrarCobroSchema.safeParse({ fecha: '2026-11-14' }))).toEqual([
+    // Con el reloj en las 22:00 del 13/11 en Buenos Aires (ya es el 14 en UTC).
+    const hoy = hoyEnBuenosAires();
+    expect(hoy).toBe('2026-11-13');
+    expect(RegistrarCobroSchema.safeParse({ fecha: hoy }).success).toBe(true);
+    expect(errores(RegistrarCobroSchema.safeParse({ fecha: diaSiguiente(hoy) }))).toEqual([
       { path: ['fecha'], message: MENSAJE_FECHA_COBRO_FUTURA },
     ]);
   });
@@ -130,9 +138,9 @@ describe('cobro en las entidades de la rendición', () => {
   });
 
   it('al leer no aplica la regla de la fecha futura', () => {
+    const futura = diaSiguiente(hoyEnBuenosAires());
     expect(
-      RendicionSchema.safeParse({ ...rendicion, cobro: { fecha: '2099-01-01', nota: null } })
-        .success,
+      RendicionSchema.safeParse({ ...rendicion, cobro: { fecha: futura, nota: null } }).success,
     ).toBe(true);
   });
 
