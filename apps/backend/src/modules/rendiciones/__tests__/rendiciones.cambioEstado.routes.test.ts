@@ -485,6 +485,49 @@ describe('PATCH /rendiciones/:id/estado — respuesta del cliente (HU3.8)', () =
     expect(historial.map((paso) => paso.motivo)).toEqual([null, 'Faltó el CUIT 20-12345678-4']);
   });
 
+  it('ENVIADA → RECHAZADA con un cobro registrado: 409 COBRO_REGISTRADO, sin escribir (HU3.10)', async () => {
+    devolverConEntrada();
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(lecturaDe('ENVIADA'))
+      .mockResolvedValueOnce({
+        estado: 'ENVIADA',
+        cobroFecha: new Date('2026-11-10T00:00:00.000Z'),
+      });
+
+    const res = await responder({ estado: 'RECHAZADA', motivo: 'Faltó la firma' });
+
+    expect(res.status).toBe(409);
+    expect(detalles(res)).toEqual({ motivo: 'COBRO_REGISTRADO' });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+
+  it('ENVIADA → APROBADA con un cobro registrado: 200, el cobro no impide aprobar (HU3.10)', async () => {
+    devolverConEntrada();
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(lecturaDe('ENVIADA'))
+      .mockResolvedValueOnce({
+        estado: 'ENVIADA',
+        cobroFecha: new Date('2026-11-10T00:00:00.000Z'),
+      });
+
+    const res = await responder({ estado: 'APROBADA' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ estado: 'APROBADA' });
+    expect(transaccion.rendicion.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('APROBADA → RECHAZADA con un cobro: sigue siendo TRANSICION_INVALIDA, no COBRO_REGISTRADO (HU3.10)', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(
+      lecturaDe('APROBADA', [true, true], { cobroFecha: new Date('2026-11-10T00:00:00.000Z') }),
+    );
+
+    const res = await responder({ estado: 'RECHAZADA', motivo: 'texto' });
+
+    expect(res.status).toBe(409);
+    expect(detalles(res)).toMatchObject({ motivo: 'TRANSICION_INVALIDA' });
+  });
+
   it('RECHAZADA sin motivo: 400 en motivo (no 409), sin llegar a la base', async () => {
     const res = await responder({ estado: 'RECHAZADA' });
 

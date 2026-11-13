@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+import {
+  COBRO_NOTA_MAX,
+  MENSAJE_FECHA_COBRO_FUTURA,
+  MENSAJE_FECHA_COBRO_INVALIDA,
+  MENSAJE_NOTA_COBRO,
+} from '../utils/cobro.js';
 import { esDiaValido, hoyEnBuenosAires } from '../utils/dia.js';
 import {
   MENSAJE_FECHA_ENVIO_FUTURA,
@@ -282,6 +288,47 @@ export const ActualizarRendicionSchema = z
 export type ActualizarRendicionDto = z.infer<typeof ActualizarRendicionSchema>;
 
 /**
+ * Cuerpo de `PUT /rendiciones/:id/cobro` (HU3.10): el cobro que el cliente informó. Reemplaza el
+ * cobro entero: sin `nota` (o con `null`) la nota queda vacía.
+ *
+ * `fecha` (`AAAA-MM-DD`): el día en que el cliente avisó el pago. No puede ser posterior a hoy
+ * (Buenos Aires); no hay fecha mínima. `nota`: opcional, se recorta y tiene de 1 a
+ * `COBRO_NOTA_MAX` caracteres (vacía se rechaza: para no tener nota se omite o se manda `null`).
+ * Que la rendición sea cobrable lo comprueba el servidor.
+ */
+export const RegistrarCobroSchema = z
+  .object({
+    fecha: z.string({
+      required_error: MENSAJE_FECHA_COBRO_INVALIDA,
+      invalid_type_error: MENSAJE_FECHA_COBRO_INVALIDA,
+    }),
+    nota: z
+      .string({ invalid_type_error: MENSAJE_NOTA_COBRO })
+      .trim()
+      .min(1, { message: MENSAJE_NOTA_COBRO })
+      .max(COBRO_NOTA_MAX, { message: MENSAJE_NOTA_COBRO })
+      .nullable()
+      .optional(),
+  })
+  .superRefine(({ fecha }, ctx) => {
+    if (!esDiaValido(fecha)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['fecha'],
+        message: MENSAJE_FECHA_COBRO_INVALIDA,
+      });
+    } else if (fecha > hoyEnBuenosAires()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['fecha'],
+        message: MENSAJE_FECHA_COBRO_FUTURA,
+      });
+    }
+  });
+
+export type RegistrarCobroDto = z.infer<typeof RegistrarCobroSchema>;
+
+/**
  * Respuesta de `GET /clientes/:id/ultima-oc`: los datos de la OC de la rendición más reciente del
  * cliente que tenga número de OC, o `null` si ninguna lo tiene.
  */
@@ -376,6 +423,14 @@ export const ItemChecklistSchema = z.object({
 
 export type ItemChecklist = z.infer<typeof ItemChecklistSchema>;
 
+/** El cobro de una rendición, como se lee (HU3.10): sin las reglas de escritura. */
+export const CobroSchema = z.object({
+  fecha: z.string().refine(esDiaValido),
+  nota: z.string().nullable(),
+});
+
+export type Cobro = z.infer<typeof CobroSchema>;
+
 /** Rendición sin ítems: lo que devuelve la anulación y base de las demás vistas. */
 export const RendicionSchema = z.object({
   id: z.string().uuid(),
@@ -393,6 +448,12 @@ export const RendicionSchema = z.object({
   numeroOc: z.string().nullable().default(null),
   montoMensual: z.number().nullable().default(null),
   montoTotal: z.number().nullable().default(null),
+  /**
+   * Cobro informado por el cliente (HU3.10): `null` si no se marcó; una clave ausente también es
+   * `null`. `fecha` es un día (`AAAA-MM-DD`); `nota`, el texto opcional. Es una marca de la
+   * rendición, no un estado.
+   */
+  cobro: CobroSchema.nullable().default(null),
   /** En qué paso está (HU3.1). Independiente de la vigencia. */
   estado: EstadoRendicion,
   vigencia: VigenciaRendicion,

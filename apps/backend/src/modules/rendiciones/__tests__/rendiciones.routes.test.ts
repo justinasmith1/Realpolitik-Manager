@@ -54,6 +54,7 @@ const CAMPOS_DE_RENDICION = [
   'anio',
   'anuladaEn',
   'clienteId',
+  'cobro',
   'creadoEn',
   'emisor',
   'estado',
@@ -784,6 +785,48 @@ describe('GET /rendiciones/:id', () => {
     expect(Object.keys(res.body as object).sort()).toEqual(
       [...CAMPOS_DE_RENDICION, 'items', 'historial'].sort(),
     );
+  });
+
+  it('sin cobro, "cobro" es null (HU3.10)', async () => {
+    prismaMock.rendicion.findFirst.mockResolvedValue(filaRendicion({ items: [] }));
+
+    const res = await obtener();
+
+    expect(res.body).toMatchObject({ cobro: null });
+  });
+
+  it('con cobro, lo devuelve con la fecha como día y la nota (HU3.10)', async () => {
+    prismaMock.rendicion.findFirst.mockResolvedValue(
+      filaRendicion({
+        estado: 'ENVIADA',
+        items: [],
+        cobroFecha: new Date('2026-11-10T00:00:00.000Z'),
+        cobroNota: 'Avisó por mail',
+      }),
+    );
+
+    const res = await obtener();
+
+    expect(res.body).toMatchObject({ cobro: { fecha: '2026-11-10', nota: 'Avisó por mail' } });
+  });
+
+  it('una anulada con cobro lo conserva a la vista (HU3.10)', async () => {
+    prismaMock.rendicion.findFirst.mockResolvedValue(
+      filaRendicion({
+        isDeleted: true,
+        deletedAt: new Date('2026-11-12T10:00:00.000Z'),
+        items: [],
+        cobroFecha: new Date('2026-11-10T00:00:00.000Z'),
+        cobroNota: null,
+      }),
+    );
+
+    const res = await obtener();
+
+    expect(res.body).toMatchObject({
+      vigencia: 'ANULADA',
+      cobro: { fecha: '2026-11-10', nota: null },
+    });
   });
 
   it('404 si no existe o su cliente está borrado', async () => {

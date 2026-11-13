@@ -113,6 +113,7 @@ describe('GET /rendiciones/atrasadas (HU3.4)', () => {
         avance: { reunidos: 3, total: 3, faltantes: 0 },
         ultimoPaso: null,
         atrasada: true,
+        cobro: null,
         anio: 2026,
         mes: 9,
       },

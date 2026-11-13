@@ -2,7 +2,7 @@
 
 > **Estado:** propuesta técnica (Proposed), junto con [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md). Los **roles y su alcance están aprobados**; el catálogo de permisos y su implementación son propuestas. **Implementada en el backend (etapa 3 de HU4.1):** toda ruta de negocio exige sesión y el permiso de esta matriz. Verificado localmente (tests); todavía no desplegado ni validado en Vercel y Railway.
 >
-> Esta matriz es la fuente de verdad de lo que cada rol puede hacer y, cuando exista la infraestructura de permisos (HU4.3 o HU4.5, la que llegue primero), la base del test que recorre cada ruta con cada rol. Inventario verificado contra `main` en `c53f0b1`: 44 endpoints de negocio más `/health`, que es técnico y queda aparte (desde `6c3b9e8` solo se sumó `PATCH /rendiciones/:id/estado`, HU3.6). Si el código y esta matriz no coinciden, el test de inventario falla y se corrige el que corresponda en el mismo PR.
+> Esta matriz es la fuente de verdad de lo que cada rol puede hacer y, cuando exista la infraestructura de permisos (HU4.3 o HU4.5, la que llegue primero), la base del test que recorre cada ruta con cada rol. Inventario verificado contra `main` en `c53f0b1`: 46 endpoints de negocio más `/health`, que es técnico y queda aparte (desde `6c3b9e8` se sumaron `PATCH /rendiciones/:id/estado`, HU3.6, y `PUT` y `DELETE /rendiciones/:id/cobro`, HU3.10). Si el código y esta matriz no coinciden, el test de inventario falla y se corrige el que corresponda en el mismo PR.
 
 ## Roles (aprobados)
 
@@ -127,6 +127,8 @@ El frontend tiene un espejo de este catálogo (`apps/frontend/src/modules/auth/p
 | `PATCH /rendiciones/:id`                                    | Editar OC                                     | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `PATCH /rendiciones/:id/vigencia`                           | Anular (irreversible)                         | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `PATCH /rendiciones/:id/estado`                             | Marcar Completa o volver a En curso (HU3.6)   | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
+| `PUT /rendiciones/:id/cobro`                                | Registrar o corregir el cobro (HU3.10)        | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
+| `DELETE /rendiciones/:id/cobro`                             | Quitar la marca de cobrada (HU3.10)           | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `POST /rendiciones/:id/requisitos/:requisitoId`             | Sumar un requisito nuevo                      | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `PATCH /rendiciones/:id/items/:itemId/canal`                | Corregir el canal de un ítem                  | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
 | `POST /clientes/:id/requisitos/:requisitoId/propagar-canal` | Propagar canal                                | `rendiciones:operar` | 401        | No         | Sí               | Sí              |
@@ -163,13 +165,13 @@ Hoy estas rutas **no se montan en producción** (`DOCUMENTOS_HABILITADOS`). Se h
 
 ## Operaciones futuras de la épica 3 (sin ruta todavía)
 
-| Operación                                                         | Ruta probable                                                                | Permiso              | Sin sesión | `CONSULTA` | `ADMINISTRATIVO` | `ADMINISTRADOR` | Estado                      |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------- | ---------- | ---------- | ---------------- | --------------- | --------------------------- |
-| Marcar Enviada (HU3.7)                                            | `PATCH /rendiciones/:id/estado` (existe desde HU3.6; se amplían sus valores) | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura (E3)                 |
-| Aprobada o Rechazada con motivo (HU3.8)                           | ídem                                                                         | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura (E3)                 |
-| Corregir una rechazada (HU3.9)                                    | ídem                                                                         | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura (E3)                 |
-| Facturación o cobro                                               | A definir                                                                    | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura, alcance a confirmar |
-| Ver quién hizo cada cambio de estado y si fue manual o automático | En el `historial` del detalle                                                | `rendiciones:ver`    | 401        | Sí         | Sí               | Sí              | HU4.6                       |
+| Operación                                                         | Ruta probable                                                                            | Permiso              | Sin sesión | `CONSULTA` | `ADMINISTRATIVO` | `ADMINISTRADOR` | Estado                      |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------- | ---------- | ---------- | ---------------- | --------------- | --------------------------- |
+| Marcar Enviada (HU3.7)                                            | `PATCH /rendiciones/:id/estado` (existe desde HU3.6; se amplían sus valores)             | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura (E3)                 |
+| Aprobada o Rechazada con motivo (HU3.8)                           | ídem                                                                                     | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura (E3)                 |
+| Corregir una rechazada (HU3.9)                                    | ídem                                                                                     | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura (E3)                 |
+| Facturación                                                       | A definir (el cobro ya tiene sus rutas: `PUT` y `DELETE /rendiciones/:id/cobro`, HU3.10) | `rendiciones:operar` | 401        | No         | Sí               | Sí              | Futura, alcance a confirmar |
+| Ver quién hizo cada cambio de estado y si fue manual o automático | En el `historial` del detalle                                                            | `rendiciones:ver`    | 401        | Sí         | Sí               | Sí              | HU4.6                       |
 
 Una lectura nueva de la épica 3 (resumen, exportación) se agrega a esta matriz con `rendiciones:ver` u otro permiso de lectura; mientras no figure acá, la infraestructura de permisos no la deja servir.
 

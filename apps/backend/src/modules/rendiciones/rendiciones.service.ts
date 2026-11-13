@@ -4,6 +4,7 @@ import {
   compararItemsDeChecklist,
   diaDelUltimoRechazo,
   esChecklistError,
+  esEstadoCobrable,
   esRendicionModificable,
   ESTADOS_SIN_ENVIAR,
   faltantesParaEnviar,
@@ -11,6 +12,7 @@ import {
   generarChecklist,
   hoyEnBuenosAires,
   motivoNoEnviable,
+  problemaDeFechaCobro,
   problemaDeFechaEnvio,
   PreparacionEnvioSchema,
   ultimoPeriodoAtrasado,
@@ -25,6 +27,7 @@ import {
   type ListarRendicionesDelMesQuery,
   type ListarRendicionesQuery,
   type PreparacionEnvio,
+  type RegistrarCobroDto,
   type Rendicion,
   type RendicionAtrasada,
   type RendicionDelMes,
@@ -536,10 +539,15 @@ async function registrarCambioDeEstadoEnTx(
 ): Promise<RendicionDetalle> {
   const rendicion = await tx.rendicion.findFirst({
     where: { id: rendicionId, cliente: { isDeleted: false } },
-    select: { estado: true },
+    select: { estado: true, cobroFecha: true },
   });
   if (rendicion === null) {
     throw notFound('Rendición no encontrada');
+  }
+  // Una rechazada no está cobrada (HU3.10): quien la rechaza quita antes la marca. Se lee dentro de
+  // la misma transacción que cambia el estado, así un cobro registrado en el medio no se pierde.
+  if (estadoNuevo === 'RECHAZADA' && rendicion.cobroFecha instanceof Date) {
+    throw conflict('COBRO_REGISTRADO', {}, 'La rendición tiene un cobro registrado');
   }
 
   const actualizada = await tx.rendicion.update({
@@ -717,6 +725,84 @@ export async function actualizarRendicion(
         ...(datos.montoMensual !== undefined && { montoMensual: datos.montoMensual }),
         ...(datos.montoTotal !== undefined && { montoTotal: datos.montoTotal }),
       },
+      include: CON_ITEMS,
+    });
+    return toRendicionDetalleDto(conItemsEnOrden(actualizada));
+  });
+}
+
+/**
+ * Registra o corrige el cobro que el cliente informó (HU3.10): `PUT /rendiciones/:id/cobro`.
+ * Reemplaza el cobro entero: sin nota, la nota queda en `null`. Solo en una rendición activa
+ * (anulada: `409 RENDICION_ANULADA`) y Enviada o Aprobada (`409 COBRO_ESTADO_INVALIDO` con el
+ * `estadoActual`). Es una marca, no un estado: no toca el historial. La fecha no puede ser
+ * posterior a hoy (Buenos Aires): se vuelve a comprobar acá con `ahora`, como la fecha de envío.
+ * No usa `motivoParaNoModificar`: una Aprobada no se modifica, pero sí se cobra. Una sola
+ * escritura, en transacción serializable junto con los chequeos.
+ */
+export async function registrarCobro(
+  id: string,
+  datos: RegistrarCobroDto,
+  { ahora = new Date() }: { ahora?: Date } = {},
+): Promise<RendicionDetalle> {
+  return enTransaccionSerializable(async (tx) => {
+    const rendicion = await tx.rendicion.findFirst({
+      where: { id, cliente: { isDeleted: false } },
+      select: { estado: true, isDeleted: true },
+    });
+    if (rendicion === null) {
+      throw notFound('Rendición no encontrada');
+    }
+    if (rendicion.isDeleted) {
+      throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
+    }
+    if (!esEstadoCobrable(rendicion.estado)) {
+      throw conflict(
+        'COBRO_ESTADO_INVALIDO',
+        { estadoActual: rendicion.estado },
+        'Solo se registra el cobro de una rendición enviada o aprobada',
+      );
+    }
+    const problema = problemaDeFechaCobro(datos.fecha, ahora);
+    if (problema !== null) {
+      throw validationError([{ campo: 'fecha', mensaje: problema }]);
+    }
+
+    const actualizada = await tx.rendicion.update({
+      where: { id },
+      data: { cobroFecha: columnaDateDeDia(datos.fecha), cobroNota: datos.nota ?? null },
+      include: CON_ITEMS,
+    });
+    return toRendicionDetalleDto(conItemsEnOrden(actualizada));
+  });
+}
+
+/**
+ * Quita la marca de cobrada (HU3.10): `DELETE /rendiciones/:id/cobro`. Pone en `null` la fecha y la
+ * nota; la rendición, su historial y su factura no se tocan. Una rendición sin cobro responde igual,
+ * sin escribir. No mira el estado (si un cobro quedó donde no debía, se puede quitar); una anulada es
+ * `409 RENDICION_ANULADA`: se conserva como historial.
+ */
+export async function quitarCobro(id: string): Promise<RendicionDetalle> {
+  return enTransaccionSerializable(async (tx) => {
+    const rendicion = await tx.rendicion.findFirst({
+      where: { id, cliente: { isDeleted: false } },
+      select: { isDeleted: true, cobroFecha: true },
+    });
+    if (rendicion === null) {
+      throw notFound('Rendición no encontrada');
+    }
+    if (rendicion.isDeleted) {
+      throw conflict('RENDICION_ANULADA', {}, 'La rendición está anulada');
+    }
+    if (!(rendicion.cobroFecha instanceof Date)) {
+      const actual = await tx.rendicion.findUniqueOrThrow({ where: { id }, include: CON_ITEMS });
+      return toRendicionDetalleDto(conItemsEnOrden(actual));
+    }
+
+    const actualizada = await tx.rendicion.update({
+      where: { id },
+      data: { cobroFecha: null, cobroNota: null },
       include: CON_ITEMS,
     });
     return toRendicionDetalleDto(conItemsEnOrden(actualizada));

@@ -335,3 +335,45 @@ export function verboDelPaso({
     return 'Se reabrió para corregir';
   return VERBO_DEL_PASO[estadoNuevo];
 }
+
+// ─── Cobro informado por el cliente (HU3.10) ──────────────────────────────────
+
+/** La marca de una rendición cuyo cobro el cliente informó. Es una marca, no un estado. */
+export const TEXTO_COBRADA = 'Cobrada';
+export const TEXTO_SIN_COBRO = 'Sin cobro registrado';
+/** El nombre de la franja del cobro en el detalle (su región). */
+export const TITULO_FRANJA_COBRO = 'Cobro';
+export const TEXTO_REGISTRAR_COBRO = 'Registrar cobro';
+export const TEXTO_EDITAR_COBRO = 'Editar cobro';
+export const TEXTO_QUITAR_COBRO = 'Quitar cobro';
+
+export const TITULO_COBRO_SHEET = 'Cobro de la rendición';
+export const DESCRIPCION_COBRO_SHEET =
+  'Anotá cuándo el cliente avisó que pagó. No hay conciliación bancaria: es solo lo que te informó.';
+export const ETIQUETA_FECHA_COBRO = 'Fecha en que el cliente avisó el pago';
+export const ETIQUETA_NOTA_COBRO = 'Nota';
+export const AYUDA_NOTA_COBRO = 'Por ejemplo: avisó por mail Juan, de Tesorería.';
+export const TEXTO_GUARDAR_COBRO = 'Guardar cobro';
+export const TEXTO_QUITAR_MARCA = 'Quitar marca';
+
+export const TITULO_QUITAR_COBRO_DIALOG = '¿Quitar la marca de cobrada?';
+export const DESCRIPCION_QUITAR_COBRO_DIALOG =
+  'Se borran la fecha y la nota del cobro. La rendición no cambia y la podés volver a marcar.';
+export const AVISO_COBRO_GUARDADO = 'Cobro guardado.';
+export const AVISO_COBRO_QUITADO = 'Se quitó la marca de cobrada.';
+
+/** Una acción sobre el cobro se pidió a una rendición que ya no es cobrable (otra persona la cambió). */
+export const MENSAJE_COBRO_ESTADO_INVALIDO =
+  'Solo se puede registrar el cobro de una rendición enviada o aprobada.';
+/** Rechazar una Enviada con cobro: hay que quitar antes la marca. */
+export const MENSAJE_COBRO_REGISTRADO = 'Tiene un cobro registrado: quitalo antes de rechazarla.';
+
+/** El día del cobro como se lee en el detalle y el resumen: "Cobrada el 10/11/2026". */
+export const textoDeCobro = (dia: string): string => `${TEXTO_COBRADA} el ${diaLegible(dia)}`;
+
+/** El chip del listado del cliente: "Cobrada · 10/11/2026". */
+export const textoDeCobroEnChip = (dia: string): string => `${TEXTO_COBRADA} · ${diaLegible(dia)}`;
+
+/** El sufijo de la fila de la pantalla Rendiciones, sin el año como el resto de la fila: "Cobrada 10/11". */
+export const textoDeCobroCorto = (dia: string): string =>
+  `${TEXTO_COBRADA} ${diaLegible(dia).slice(0, 5)}`;

@@ -280,8 +280,23 @@ describe('registrarCambioDeEstado (sin endpoint)', () => {
     });
     expect(transaccion.rendicion.findFirst).toHaveBeenCalledWith({
       where: { id: RENDICION, cliente: { isDeleted: false } },
-      select: { estado: true },
+      select: { estado: true, cobroFecha: true },
     });
+  });
+
+  it('rechazar una rendición con cobro registrado es COBRO_REGISTRADO, también por el punto único (HU3.10)', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValue({
+      estado: 'ENVIADA',
+      cobroFecha: new Date('2026-11-10T00:00:00.000Z'),
+    });
+
+    await expect(
+      registrarCambioDeEstado(RENDICION, 'RECHAZADA', 'Falta la firma'),
+    ).rejects.toMatchObject({
+      status: 409,
+      details: { motivo: 'COBRO_REGISTRADO' },
+    });
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
   });
 
   it('guarda el motivo cuando viene (lo va a usar el rechazo, HU3.8)', async () => {

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { esDiaValido } from '../utils/dia.js';
+
 import { ClienteSector, ClienteSubtipoPublico } from './cliente.schema.js';
 import { enteroDeQuery } from './listarRendicionesQuery.schema.js';
 import {
@@ -38,6 +40,8 @@ export const ESTADOS_CON_FECHA = ['ENVIADA', 'APROBADA', 'RECHAZADA'] as const;
  *   Completa.
  * - `atrasada` (HU3.4): sin enviar y de dos meses atrás o más (`esAtrasada`). Se calcula, no se
  *   guarda.
+ * - `cobro` (HU3.10): `{ fecha }` si el cliente informó el pago (el día, `AAAA-MM-DD`), `null` si no.
+ *   En una atrasada siempre es `null`: no se envió.
  */
 export const RendicionDelMesSchema = z.object({
   id: z.string().uuid(),
@@ -61,6 +65,7 @@ export const RendicionDelMesSchema = z.object({
     })
     .nullable(),
   atrasada: z.boolean(),
+  cobro: z.object({ fecha: z.string().refine(esDiaValido) }).nullable(),
 });
 
 export type RendicionDelMes = z.infer<typeof RendicionDelMesSchema>;

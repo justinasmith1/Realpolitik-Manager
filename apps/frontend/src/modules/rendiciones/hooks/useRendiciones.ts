@@ -4,6 +4,7 @@ import type {
   CanalEntregaType,
   CreateRendicionDto,
   ListarRendicionesQuery,
+  RegistrarCobroDto,
 } from '@realpolitik/shared';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -22,6 +23,8 @@ import {
   obtenerUltimaOc,
   prepararEnvio,
   propagarCanalDeRequisito,
+  quitarCobro,
+  registrarCobro,
 } from '@/modules/rendiciones/api/rendiciones.api';
 import { rendicionesKeys } from '@/modules/rendiciones/api/rendiciones.keys';
 import { invalidarRendiciones } from '@/modules/rendiciones/hooks/invalidarRendiciones';
@@ -262,5 +265,47 @@ export function useActualizarOcDeRendicion() {
       queryClient.setQueryData(rendicionesKeys.detalle(clienteId, rendicionId), detalle);
       void queryClient.invalidateQueries({ queryKey: rendicionesKeys.deCliente(clienteId) });
     },
+  });
+}
+
+// ─── Cobro informado por el cliente (HU3.10) ──────────────────────────────────────────────
+
+/**
+ * Registra o corrige el cobro de una rendición. Sin reintentos. Si sale bien, el detalle queda con
+ * la rendición que devolvió el servidor (sin otro pedido). Al terminar, bien o mal, se vuelve a
+ * pedir lo que muestra la marca: el listado del cliente y la pantalla Rendiciones (el mes y las
+ * atrasadas). Un 409 significa que algo cambió (se anuló, ya no está enviada): hay que volver a mirar.
+ * No toca el hook de la OC, que solo refresca al cliente.
+ */
+export function useRegistrarCobro() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      rendicionId,
+      datos,
+    }: {
+      clienteId: string;
+      rendicionId: string;
+      datos: RegistrarCobroDto;
+    }) => registrarCobro(rendicionId, datos),
+    retry: false,
+    onSuccess: (detalle, { clienteId, rendicionId }) => {
+      queryClient.setQueryData(rendicionesKeys.detalle(clienteId, rendicionId), detalle);
+    },
+    onSettled: (_resultado, _error, { clienteId }) => invalidarRendiciones(queryClient, clienteId),
+  });
+}
+
+/** Quita la marca de cobrada. Mismas reglas que `useRegistrarCobro`. */
+export function useQuitarCobro() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rendicionId }: { clienteId: string; rendicionId: string }) =>
+      quitarCobro(rendicionId),
+    retry: false,
+    onSuccess: (detalle, { clienteId, rendicionId }) => {
+      queryClient.setQueryData(rendicionesKeys.detalle(clienteId, rendicionId), detalle);
+    },
+    onSettled: (_resultado, _error, { clienteId }) => invalidarRendiciones(queryClient, clienteId),
   });
 }

@@ -123,6 +123,12 @@ enum PeriodicidadTipo {
 //   ck_rendicion_numero_oc_no_vacio     numeroOc NULL o con algún carácter que no sea espacio
 //   ck_rendicion_montos_oc_no_negativos montoMensual y montoTotal NULL o >= 0
 //
+// Cobro informado por el cliente (HU3.10, ADR-0005 punto 13): CHECK en la migración
+// `20261113120000_hu3_10_cobro_rendicion`. Sin índice, sin CHECK de fecha futura (depende del
+// reloj) ni de estado (lo decide el servicio).
+//   ck_rendicion_cobro_nota_con_fecha  cobroNota NULL o con cobroFecha cargada
+//   ck_rendicion_cobro_nota_no_vacia   cobroNota NULL o con algún carácter que no sea espacio
+//
 // Estado de la rendición (HU3.1, ADR-0005): la migración `20261103120000_hu3_1_estado_rendicion`
 // agrega `Rendicion.estado` y la tabla `HistorialEstadoRendicion`, y le da a cada rendición
 // existente (también a las anuladas) el estado EN_CURSO con su entrada inicial de historial.
@@ -324,6 +330,12 @@ model Rendicion {
   numeroOc      String?  @db.VarChar(100)
   montoMensual  Decimal? @db.Decimal(14, 2)
   montoTotal    Decimal? @db.Decimal(14, 2)
+
+  // Cobro informado por el cliente (HU3.10): una marca de la rendición, no un estado. `cobroFecha` es
+  // el día en que el cliente avisó el pago; `cobroNota` el texto opcional (hasta 300). Sin fecha no
+  // hay cobro. CHECK ck_rendicion_cobro_nota_con_fecha y ck_rendicion_cobro_nota_no_vacia, en SQL.
+  cobroFecha    DateTime? @db.Date
+  cobroNota     String?   @db.VarChar(300)
 
   /// En qué paso está (HU3.1). Nace EN_CURSO; cada cambio deja una entrada en `historial`. Una
   /// rendición anulada conserva el último estado que tenía: la anulación es `isDeleted`, aparte.

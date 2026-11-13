@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { interpretarFalloAnulacion } from '@/modules/rendiciones/api/rendiciones.api';
+import { CobradaMarca } from '@/modules/rendiciones/components/CobradaMarca';
 import {
   cierraTrasFallarAnulacion,
   MENSAJE_FALLO_ANULACION,
@@ -30,6 +31,7 @@ import {
   etiquetaDeEmisor,
   etiquetaDePeriodo,
   TEXTO_SIN_EMISOR,
+  textoDeCobroEnChip,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 import { rutaDeRendicion } from '@/modules/rendiciones/rendiciones.rutas';
 
@@ -123,6 +125,10 @@ export function RendicionCard({ rendicion, onAnulada, onYaNoExiste }: RendicionC
           {/* El estado es independiente de la anulación: una anulada conserva el suyo. */}
           <EstadoRendicionBadge estado={rendicion.estado} />
           {anulada && <Badge tone="muted">Anulada</Badge>}
+          {/* HU3.10: el cliente informó el pago. También en una anulada, que conserva su cobro. */}
+          {rendicion.cobro !== null && (
+            <CobradaMarca texto={textoDeCobroEnChip(rendicion.cobro.fecha)} />
+          )}
           <span>{avanceDelChecklist(rendicion.resumen)}</span>
           {completo && !anulada && (
             <span className="rounded-pill border border-success-border bg-success-soft px-2 py-0.5 font-semibold text-success">

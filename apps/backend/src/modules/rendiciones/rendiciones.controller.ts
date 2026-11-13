@@ -9,6 +9,7 @@ import type {
   PreparacionEnvio,
   PrepararEnvioSchema,
   PropagarCanalDeRequisitoSchema,
+  RegistrarCobroSchema,
   Rendicion,
   RendicionAtrasada,
   RendicionDetalle,
@@ -41,6 +42,8 @@ import {
   obtenerUltimaOc,
   prepararEnvio,
   propagarCanalDeRequisito,
+  quitarCobro,
+  registrarCobro,
 } from './rendiciones.service';
 
 type AbrirRendicionLocals = ValidatedLocals<{
@@ -137,6 +140,30 @@ export async function actualizarRendicionController(
 ): Promise<void> {
   const { params, body } = res.locals.validated;
   const rendicion = await actualizarRendicion(params.id, body);
+  res.status(200).json(rendicion);
+}
+
+type RegistrarCobroLocals = ValidatedLocals<{
+  params: typeof IdParamsSchema;
+  body: typeof RegistrarCobroSchema;
+}>;
+
+/** Registra o corrige el cobro informado por el cliente (HU3.10). */
+export async function registrarCobroController(
+  _req: Request,
+  res: Response<RendicionDetalle, RegistrarCobroLocals>,
+): Promise<void> {
+  const { params, body } = res.locals.validated;
+  const rendicion = await registrarCobro(params.id, body);
+  res.status(200).json(rendicion);
+}
+
+/** Quita la marca de cobrada (HU3.10). */
+export async function quitarCobroController(
+  _req: Request,
+  res: Response<RendicionDetalle, ObtenerRendicionLocals>,
+): Promise<void> {
+  const rendicion = await quitarCobro(res.locals.validated.params.id);
   res.status(200).json(rendicion);
 }
 

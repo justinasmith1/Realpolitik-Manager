@@ -20,6 +20,7 @@ import {
   type ListarRendicionesQuery,
   type MotivoNoEnviableType,
   type PreparacionEnvio,
+  type RegistrarCobroDto,
   type Rendicion,
   type RendicionAtrasada,
   type RendicionDelMes,
@@ -40,7 +41,10 @@ import { ApiClientError, http } from '@/lib/http';
 const rutaDeRendicionesDe = (clienteId: string) =>
   `/clientes/${encodeURIComponent(clienteId)}/rendiciones`;
 
-function pedidoJson(method: 'POST' | 'PATCH', cuerpo: Record<string, unknown>): RequestInit {
+function pedidoJson(
+  method: 'POST' | 'PATCH' | 'PUT',
+  cuerpo: Record<string, unknown>,
+): RequestInit {
   return {
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -462,6 +466,8 @@ export type FalloCambioDeEstado =
   | { tipo: 'motivo-invalido'; mensaje: string | null }
   | { tipo: 'rendicion-anulada' }
   | { tipo: 'transicion-invalida' }
+  /** Rechazar una rendición con un cobro registrado (HU3.10): hay que quitar antes la marca. */
+  | { tipo: 'cobro-registrado' }
   | { tipo: 'no-existe' }
   | { tipo: 'inesperado' };
 
@@ -497,6 +503,8 @@ export function interpretarFalloCambioDeEstado(error: unknown): FalloCambioDeEst
         return { tipo: 'rendicion-anulada' };
       case 'TRANSICION_INVALIDA':
         return { tipo: 'transicion-invalida' };
+      case 'COBRO_REGISTRADO':
+        return { tipo: 'cobro-registrado' };
     }
   }
   return { tipo: 'inesperado' };
@@ -555,6 +563,57 @@ export function interpretarFalloActualizacionOc(error: unknown): FalloActualizac
     details.motivo === 'RENDICION_ANULADA'
   ) {
     return { tipo: 'rendicion-anulada' };
+  }
+  return { tipo: 'inesperado' };
+}
+
+// ─── Cobro informado por el cliente (HU3.10) ──────────────────────────────────────────────
+
+/** `PUT /rendiciones/:id/cobro`: registra o corrige el cobro (reemplaza el cobro entero). */
+export async function registrarCobro(
+  rendicionId: string,
+  datos: RegistrarCobroDto,
+): Promise<RendicionDetalle> {
+  const response = await http(
+    `/rendiciones/${encodeURIComponent(rendicionId)}/cobro`,
+    pedidoJson('PUT', { ...datos }),
+  );
+  return RendicionDetalleSchema.parse(await response.json());
+}
+
+/** `DELETE /rendiciones/:id/cobro`: quita la marca de cobrada. */
+export async function quitarCobro(rendicionId: string): Promise<RendicionDetalle> {
+  const response = await http(`/rendiciones/${encodeURIComponent(rendicionId)}/cobro`, {
+    method: 'DELETE',
+  });
+  return RendicionDetalleSchema.parse(await response.json());
+}
+
+/** Por qué no se pudo registrar o quitar el cobro, en términos del dominio. */
+export type FalloCobro =
+  | { tipo: 'datos-invalidos'; detalles: DetalleInvalido[] }
+  | { tipo: 'rendicion-anulada' }
+  /** La rendición ya no está Enviada ni Aprobada (otra persona la cambió). */
+  | { tipo: 'estado-invalido' }
+  | { tipo: 'no-existe' }
+  | { tipo: 'inesperado' };
+
+/** Traduce el error de registrar o quitar el cobro. Mismo criterio que `interpretarFalloActualizacionOc`. */
+export function interpretarFalloCobro(error: unknown): FalloCobro {
+  const respuesta = respuestaDeError(error);
+  if (respuesta === null) {
+    return { tipo: 'inesperado' };
+  }
+  if (respuesta.status === 400 && respuesta.cuerpo?.code === 'VALIDATION_ERROR') {
+    return { tipo: 'datos-invalidos', detalles: leerDetallesInvalidos(respuesta.cuerpo.details) };
+  }
+  if (respuesta.status === 404 && respuesta.cuerpo?.code === 'NOT_FOUND') {
+    return { tipo: 'no-existe' };
+  }
+  const details = respuesta.cuerpo?.details;
+  if (respuesta.status === 409 && respuesta.cuerpo?.code === 'CONFLICT' && esObjeto(details)) {
+    if (details.motivo === 'RENDICION_ANULADA') return { tipo: 'rendicion-anulada' };
+    if (details.motivo === 'COBRO_ESTADO_INVALIDO') return { tipo: 'estado-invalido' };
   }
   return { tipo: 'inesperado' };
 }

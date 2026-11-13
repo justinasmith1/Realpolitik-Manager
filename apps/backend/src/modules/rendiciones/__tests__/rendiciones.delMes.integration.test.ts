@@ -130,6 +130,7 @@ interface FilaJson {
   avance: { reunidos: number; total: number; faltantes: number };
   ultimoPaso: { estado: string; fecha: string } | null;
   atrasada: boolean;
+  cobro: { fecha: string } | null;
 }
 
 /** Las filas del período, solo de los clientes de esta suite. */
@@ -207,6 +208,26 @@ describe.skipIf(url === undefined)('Pantalla Rendiciones (HU3.2) contra PostgreS
     });
     expect(de(enCurso)?.ultimoPaso).toBeNull();
     expect(de(completa)?.ultimoPaso).toBeNull();
+  });
+
+  // HU3.10: el cobro viaja como un día (AAAA-MM-DD), sin pasar por Date ni por la zona horaria.
+  it('la fila trae la fecha del cobro como día; sin cobro, null', async () => {
+    const epsilon = await cliente('Epsilon');
+    const cobrada = await abrir(epsilon.id, { anio: 2021, mes: 8 });
+    const sinCobro = await abrir(epsilon.id, { anio: 2021, mes: 8 });
+    await registrarCambioDeEstado(cobrada, 'ENVIADA');
+    await registrarCambioDeEstado(sinCobro, 'ENVIADA');
+    const marca = await sesiones
+      .cliente(app)
+      .put(`/rendiciones/${cobrada}/cobro`)
+      .send({ fecha: '2021-08-01', nota: 'Avisó por mail' });
+    expect(marca.status, JSON.stringify(marca.body)).toBe(200);
+
+    const filas = await filasDe({ anio: 2021, mes: 8 });
+    const de = (rendicionId: string) => filas.find((fila) => fila.id === rendicionId);
+
+    expect(de(cobrada)?.cobro).toEqual({ fecha: '2021-08-01' });
+    expect(de(sinCobro)?.cobro).toBeNull();
   });
 
   it('un período sin rendiciones da una lista vacía', async () => {

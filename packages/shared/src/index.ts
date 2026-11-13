@@ -140,6 +140,8 @@ export {
   ActualizarVigenciaRendicionSchema,
   ActualizarEstadoRendicionSchema,
   ActualizarRendicionSchema,
+  CobroSchema,
+  RegistrarCobroSchema,
   MENSAJE_ACTUALIZAR_OC_VACIO,
   MENSAJE_MONTO_OC,
   MENSAJE_NUMERO_OC,
@@ -164,6 +166,8 @@ export type {
   ActualizarVigenciaRendicionDto,
   ActualizarEstadoRendicionDto,
   ActualizarRendicionDto,
+  Cobro,
+  RegistrarCobroDto,
   UltimaOc,
   VigenciaRendicion as VigenciaRendicionType,
   EstadoRendicion as EstadoRendicionType,
@@ -322,6 +326,15 @@ export {
 } from './utils/periodo.js';
 export type { Periodo } from './utils/periodo.js';
 export { ESTADOS_SIN_ENVIAR, esAtrasada, ultimoPeriodoAtrasado } from './utils/atrasada.js';
+export {
+  COBRO_NOTA_MAX,
+  ESTADOS_COBRABLES,
+  esEstadoCobrable,
+  MENSAJE_FECHA_COBRO_FUTURA,
+  MENSAJE_FECHA_COBRO_INVALIDA,
+  MENSAJE_NOTA_COBRO,
+  problemaDeFechaCobro,
+} from './utils/cobro.js';
 export {
   diaLegible,
   esDiaValido,
