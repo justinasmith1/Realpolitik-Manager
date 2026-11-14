@@ -1,9 +1,11 @@
-import { ChevronsUpDownIcon, Loader2Icon, LogOutIcon } from 'lucide-react';
+import { ChevronsUpDownIcon, KeyRoundIcon, Loader2Icon, LogOutIcon } from 'lucide-react';
+import type { Ref } from 'react';
 
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCerrarSesion, useSesion } from '@/modules/auth/hooks/useSesion';
@@ -13,14 +15,21 @@ import { ClienteMonogram } from '@/modules/clientes/components/ClienteMonogram';
 const etiqueta =
   'whitespace-nowrap transition-opacity duration-200 ease-standard group-data-[collapsible=icon]:opacity-0';
 
+interface CuentaMenuProps {
+  /** "Cambiar contraseña": abre el panel del cambio voluntario (lo monta `AppLayout`). */
+  onCambiarContrasena: () => void;
+  /** El disparador del menú: el panel devuelve el foco acá al cerrarse. */
+  disparadorRef?: Ref<HTMLButtonElement> | undefined;
+}
+
 /**
- * Cuenta de la persona con sesión, al pie del sidebar: quién es, su rol y "Cerrar sesión".
- * Versión mínima de HU4.1 (el cambio voluntario de contraseña llega con HU4.2).
+ * Cuenta de la persona con sesión, al pie del sidebar: quién es (nombre, email, rol), "Cambiar
+ * contraseña" y "Cerrar sesión". "Usuarios" llega con HU4.5.
  *
  * "Cerrar sesión" espera la confirmación del servidor: si no se puede confirmar, la sesión sigue
  * abierta y se avisa acá mismo, sin simular que se cerró.
  */
-export function CuentaMenu() {
+export function CuentaMenu({ onCambiarContrasena, disparadorRef }: CuentaMenuProps) {
   const usuario = useSesion().data?.usuario;
   const { cerrar, cerrando, error, descartarError } = useCerrarSesion();
   // Debajo de la guarda siempre hay usuario; en el render en que la sesión termina, ya no.
@@ -48,6 +57,7 @@ export function CuentaMenu() {
       )}
       <DropdownMenu>
         <DropdownMenuTrigger
+          ref={disparadorRef}
           aria-label={`Cuenta de ${usuario.nombre} (${rol})`}
           className="flex min-h-12 w-full items-center gap-2.5 overflow-hidden rounded-lg bg-white/4 px-2.5 py-2 text-left outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring aria-expanded:bg-sidebar-accent"
         >
@@ -78,6 +88,11 @@ export function CuentaMenu() {
               {rol}
             </span>
           </div>
+          <DropdownMenuItem disabled={cerrando} onClick={onCambiarContrasena}>
+            <KeyRoundIcon aria-hidden="true" />
+            Cambiar contraseña
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem disabled={cerrando} onClick={cerrar}>
             <LogOutIcon aria-hidden="true" />
             Cerrar sesión

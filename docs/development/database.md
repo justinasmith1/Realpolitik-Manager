@@ -227,6 +227,16 @@ TEST_DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik
 
 `test:integration` corre las suites **de a una** (`--no-file-parallelism`), también en el CI. Todas comparten la misma base y varias operaciones usan transacciones `SERIALIZABLE` (abrir una rendición, aplicar o reemplazar un documento…). Con las suites en paralelo, PostgreSQL detecta conflictos de serialización entre transacciones que tocan datos distintos (en tablas chicas los predicate locks cubren páginas o tablas enteras), se agotan los reintentos y un alta responde 500: los tests fallaban de forma intermitente. Medido en local con 259 tests: en paralelo, 3 de 3 corridas fallaron (11–16 s); de a una, 3 de 3 pasaron (23–25 s). Para correr solo algunas, usá `vitest` directo con el mismo flag: `pnpm --filter @realpolitik/backend exec vitest run --no-file-parallelism rendiciones.envio.integration`.
 
+**Suites de autenticación (HU4.1 y HU4.2):**
+
+- `cambioDeContrasena.integration` solo corre contra un PostgreSQL **local**: fuerza fallas terminando conexiones con `pg_terminate_backend`.
+- La misma suite crea además, durante un solo test, un trigger de restricción diferido y su función, para forzar que falle el `COMMIT`.
+  - Se llaman `rp_prueba_falla_al_confirmar_<marca de la corrida>`.
+  - Solo afectan al usuario de esa prueba.
+  - Los borra al terminar el test y otra vez en `afterAll`.
+  - Como las suites corren de a una, no afectan a las demás.
+- `primerAdministrador.integration` necesita que la base no tenga ningún `ADMINISTRADOR` activo. Si hay uno (por ejemplo, una cuenta creada a mano para probar la app), la suite falla con un mensaje y no la toca.
+
 El frontend contra la API real (`test:api`) necesita además un backend levantado contra esa misma base, en otro puerto (el CI usa el 3999), y `TEST_API_URL`:
 
 ```bash

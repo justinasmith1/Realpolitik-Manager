@@ -5,7 +5,7 @@ import {
   PanelLeftOpenIcon,
   UsersIcon,
 } from 'lucide-react';
-import type { ComponentType } from 'react';
+import type { ComponentType, Ref } from 'react';
 import { Link, useMatch } from 'react-router';
 
 import { Button } from '@/components/ui/button';
@@ -141,7 +141,30 @@ function NavItem({ to, seccion, label, icon: Icon }: NavDestination) {
   );
 }
 
-export function AppSidebar() {
+/** El pie: la cuenta. En mobile, abrir el cambio de contraseña cierra el cajón primero. */
+function PieDeCuenta({ onCambiarContrasena, cuentaRef }: AppSidebarProps) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  return (
+    <CuentaMenu
+      disparadorRef={cuentaRef}
+      onCambiarContrasena={() => {
+        if (isMobile) {
+          setOpenMobile(false);
+        }
+        onCambiarContrasena();
+      }}
+    />
+  );
+}
+
+interface AppSidebarProps {
+  /** "Cambiar contraseña" del menú de cuenta. */
+  onCambiarContrasena: () => void;
+  /** El disparador del menú de cuenta, para devolverle el foco. */
+  cuentaRef?: Ref<HTMLButtonElement> | undefined;
+}
+
+export function AppSidebar({ onCambiarContrasena, cuentaRef }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon">
       {/* 56px expandido (marca + botón en una fila); colapsado crece a 96px para alojar el
@@ -166,7 +189,7 @@ export function AppSidebar() {
         </nav>
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border">
-        <CuentaMenu />
+        <PieDeCuenta onCambiarContrasena={onCambiarContrasena} cuentaRef={cuentaRef} />
       </SidebarFooter>
     </Sidebar>
   );

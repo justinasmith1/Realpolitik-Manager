@@ -198,4 +198,30 @@ describe('AppLayout', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveFocus();
   });
+
+  it('en mobile, "Cambiar contraseña" cierra el cajón y abre el panel a todo el ancho', async () => {
+    mockMobileViewport();
+    const user = userEvent.setup();
+    renderRoute('/clientes');
+
+    await user.click(screen.getByRole('button', { name: 'Alternar barra lateral' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Navegación' });
+    await user.click(within(drawer).getByRole('button', { name: /^Cuenta de Ana Administrativa/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Cambiar contraseña' }));
+
+    const panel = await screen.findByRole('dialog', { name: 'Cambiar contraseña' });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Navegación' })).not.toBeInTheDocument(),
+    );
+    expect(panel).toHaveClass('data-[side=right]:w-full');
+    expect(within(panel).getByLabelText('Contraseña actual')).toBeVisible();
+
+    // Al cerrarlo, el foco no se pierde: el menú quedó en el cajón cerrado, vuelve al botón que
+    // lo abre.
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Alternar barra lateral' })).toHaveFocus(),
+    );
+  });
 });

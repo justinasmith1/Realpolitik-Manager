@@ -1,11 +1,5 @@
-import {
-  CambiarContrasenaSchema,
-  CONTRASENA_LARGO_MINIMO,
-  contarCaracteresDeContrasena,
-  MENSAJE_CONTRASENA_PREVISIBLE,
-} from '@realpolitik/shared';
+import { MENSAJE_CONTRASENA_PREVISIBLE } from '@realpolitik/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 
@@ -16,6 +10,7 @@ import { cambiarContrasena } from '@/modules/auth/api/auth.api';
 import { AccesoLayout, EncabezadoDeAcceso } from '@/modules/auth/components/AccesoLayout';
 import { CampoContrasena } from '@/modules/auth/components/CampoContrasena';
 import { CargandoSesion, ServicioNoDisponible } from '@/modules/auth/components/PantallasDeAcceso';
+import { RequisitosDeContrasena } from '@/modules/auth/components/RequisitosDeContrasena';
 import {
   avisoDeErrorDeAuth,
   clasificarErrorDeAuth,
@@ -28,39 +23,23 @@ import {
   terminarSesion,
   urlDeLogin,
 } from '@/modules/auth/sesion';
+import {
+  primerCampoConError,
+  validarCambioDeContrasena,
+  type ErroresDeContrasena as Errores,
+} from '@/modules/auth/validacionDeContrasena';
 
-export const MENSAJE_CONFIRMACION_DISTINTA = 'Las contraseñas no coinciden.';
-export const MENSAJE_CONFIRMACION_VACIA = 'Repetí la contraseña nueva.';
 export const MENSAJE_GUARDADO_FALLIDO =
   'No pudimos guardar la contraseña. Lo que escribiste sigue acá: probá de nuevo.';
-
-type Campo = 'actual' | 'nueva' | 'confirmacion';
-type Errores = Partial<Record<Campo, string>>;
 
 const errorDeCampo = (mensaje: string | undefined) =>
   mensaje === undefined ? undefined : { type: 'manual', message: mensaje };
 
-function Requisito({ cumplido, children }: { cumplido: boolean; children: string }) {
-  return (
-    <li
-      className={`flex items-center gap-2 text-[13px] ${cumplido ? 'text-success' : 'text-content-secondary'}`}
-    >
-      <span
-        aria-hidden="true"
-        className={`flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] ${cumplido ? 'border-success bg-success text-white' : 'border-input bg-card'}`}
-      >
-        {cumplido && <CheckIcon className="size-2.5" strokeWidth={3.5} />}
-      </span>
-      {children}
-      <span className="sr-only">{cumplido ? ' (cumplido)' : ' (pendiente)'}</span>
-    </li>
-  );
-}
-
 /**
  * Cambio OBLIGATORIO de contraseña (HU4.1): quien entró con una contraseña temporal no puede usar
  * el sistema hasta elegir una propia. Con el 204 el servidor revocó todas las sesiones, también
- * esta: se termina la sesión local y se vuelve a `/login` para entrar con la nueva.
+ * esta, y borró la cookie: se termina la sesión local y se vuelve a `/login` para entrar con la
+ * nueva. (El cambio voluntario, desde el menú de cuenta, rota la sesión: `CambiarContrasenaSheet`.)
  */
 export function CambiarContrasenaPage() {
   const queryClient = useQueryClient();
@@ -81,9 +60,7 @@ export function CambiarContrasenaPage() {
 
   function mostrarErrores(nuevos: Errores) {
     setErrores(nuevos);
-    const primero = (['actual', 'nueva', 'confirmacion'] as const).find(
-      (campo) => nuevos[campo] !== undefined,
-    );
+    const primero = primerCampoConError(nuevos);
     if (primero !== undefined) {
       document.getElementById(`cc-${primero}`)?.focus();
     }
@@ -97,8 +74,11 @@ export function CambiarContrasenaPage() {
       const clasificado = clasificarErrorDeAuth(error);
       switch (clasificado.clase) {
         case 'sin-sesion':
-          // La sesión venció en el medio: a `/login`, con su aviso.
-          terminarSesion(queryClient, clasificado.vencida ? 'vencida' : 'terminada');
+          // La sesión venció o terminó en el medio: a `/login`, con su aviso y el de que la
+          // contraseña no se guardó.
+          terminarSesion(queryClient, clasificado.vencida ? 'vencida' : 'terminada', {
+            sinGuardar: true,
+          });
           return;
         case 'validacion': {
           const deActual = mensajeDeCampo(clasificado.detalles, 'actual');
@@ -169,29 +149,19 @@ export function CambiarContrasenaPage() {
       return;
     }
     setAviso(null);
-    const resultado = CambiarContrasenaSchema.safeParse({ actual, nueva });
-    const campos = resultado.success ? {} : resultado.error.flatten().fieldErrors;
-    const nuevos: Errores = {
-      ...(campos.actual?.[0] !== undefined && { actual: campos.actual[0] }),
-      ...(campos.nueva?.[0] !== undefined && { nueva: campos.nueva[0] }),
-      ...(confirmacion === ''
-        ? { confirmacion: MENSAJE_CONFIRMACION_VACIA }
-        : confirmacion !== nueva && { confirmacion: MENSAJE_CONFIRMACION_DISTINTA }),
-    };
-    if (!resultado.success || nuevos.confirmacion !== undefined) {
-      mostrarErrores(nuevos);
+    const resultado = validarCambioDeContrasena({ actual, nueva, confirmacion });
+    if (!resultado.valido) {
+      mostrarErrores(resultado.errores);
       return;
     }
     setErrores({});
-    cambio.mutate(resultado.data);
+    cambio.mutate(resultado.datos);
   }
 
   const ocupado = cambio.isPending;
   const eActual = errorDeCampo(errores.actual);
   const eNueva = errorDeCampo(errores.nueva);
   const eConfirmacion = errorDeCampo(errores.confirmacion);
-  const largoSuficiente = contarCaracteresDeContrasena(nueva) >= CONTRASENA_LARGO_MINIMO;
-  const distinta = nueva !== '' && nueva.normalize('NFC') !== actual.normalize('NFC');
 
   return (
     <AccesoLayout pie="Si la contraseña temporal no funciona, pedile una nueva a un administrador.">
@@ -233,12 +203,11 @@ export function CambiarContrasenaPage() {
             readOnly={ocupado}
             onChange={(e) => setNueva(e.target.value)}
           />
-          <ul aria-label="Requisitos de la contraseña" className="flex flex-col gap-1">
-            <Requisito cumplido={largoSuficiente}>
-              {`Al menos ${CONTRASENA_LARGO_MINIMO} caracteres`}
-            </Requisito>
-            <Requisito cumplido={distinta}>Distinta de la contraseña temporal</Requisito>
-          </ul>
+          <RequisitosDeContrasena
+            actual={actual}
+            nueva={nueva}
+            distintaDe="la contraseña temporal"
+          />
         </FormField>
         <FormField id="cc-confirmacion" label="Confirmar nueva contraseña" error={eConfirmacion}>
           <CampoContrasena

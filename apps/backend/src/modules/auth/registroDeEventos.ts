@@ -32,6 +32,8 @@ export type MotivoDeEvento =
 interface DatosDelEvento {
   usuarioId?: string;
   motivo?: MotivoDeEvento;
+  /** Tipo de cambio de contraseña (`auth.password.cambiada`): lo decide la base, no el pedido. */
+  cambio?: 'obligatorio' | 'voluntario';
   /** El permiso que faltó (`auth.permiso_denegado`). Un nombre del catálogo: no es un dato sensible. */
   permiso?: string;
   ip?: string | undefined;
@@ -57,6 +59,7 @@ export function registrarEventoDeAuth(evento: EventoDeAuth, datos: DatosDelEvent
     evento,
     ...(datos.usuarioId ? { usuarioId: datos.usuarioId } : {}),
     ...(datos.motivo ? { motivo: datos.motivo } : {}),
+    ...(datos.cambio ? { cambio: datos.cambio } : {}),
     ...(datos.permiso ? { permiso: datos.permiso } : {}),
     ...(datos.ip ? { ip: truncarIp(datos.ip) } : {}),
   };

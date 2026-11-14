@@ -1,6 +1,6 @@
 # Borrador de trabajo — Experiencia de usuarios y acceso (épica 4)
 
-> **Estado (revisión del PR #47, 2026-11-12): se conserva como referencia de trabajo para HU4.2, HU4.3 y HU4.5.** HU4.1 ya está implementada; lo implementado y lo que cambió respecto de este texto está en la nota "Estado (etapa 4 de HU4.1)" más abajo, y el comportamiento real está en el código, en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) y en el [contrato de la API](../development/api-contract.md#8-autenticación-auth-hu41). Las secciones de cambio voluntario de contraseña, cierre de otras sesiones, administración de usuarios e interfaz por rol describen **propuestas para historias pendientes**, no funcionalidades existentes.
+> **Estado (HU4.2, 2026-11-14): se conserva como referencia de trabajo para HU4.3 y HU4.5.** HU4.1 y HU4.2 ya están implementadas; lo implementado y lo que cambió respecto de este texto está en las notas "Estado (etapa 4 de HU4.1)" y "Estado (HU4.2)" más abajo, y el comportamiento real está en el código, en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) y en el [contrato de la API](../development/api-contract.md#8-autenticación-auth-hu41). El cambio voluntario de contraseña (2.8, 3.4), el menú de cuenta (3.3) y los avisos de sesión (2.10, 3.6) están **implementados**. Las secciones de administración de usuarios e interfaz por rol siguen siendo **propuestas para historias pendientes**; la pantalla de sesiones activas no está en ninguna historia.
 >
 > **Borrador, no es backlog ni documentación estable.** Especificación funcional y de experiencia del bloque 1A, actualizada en la consolidación previa a HU4.1 (tres roles aprobados y división en HU4.1–HU4.6). Se apoya en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) y en la [matriz de permisos](../security/matriz-permisos.md), ambos `Proposed`. Se descarta o se consolida cuando esté el handoff visual de Design. No está en el índice de `docs/` porque no es documentación estable.
 >
@@ -54,6 +54,30 @@
 > - 2.9: el cierre de sesión **no** se da por hecho si el servidor no responde 204 (o 401): con 503 o sin red se avisa "No pudimos cerrar la sesión: seguís con la sesión abierta. Probá de nuevo." y la sesión sigue. No hay recarga completa: se descarta la caché y se navega a `/login?motivo=cerrada`.
 > - 2.10: el aviso "Lo que estabas guardando no se guardó." no se implementó.
 > - 3.8 "Sección" (acceso denegado dentro del shell) no hace falta todavía: los dos roles habilitados tienen los mismos permisos operativos y no hay rutas de `usuarios:administrar`.
+
+> **Estado (HU4.2, 2026-11-14):** están implementadas 2.8 (cambio voluntario), 2.10 (expiración y revocación) y las interfaces 3.3 (menú de cuenta completo, sin "Usuarios", que llega con HU4.5), 3.4 y 3.6. Lo que cambió respecto de este borrador:
+>
+> - **2.8, decisión tomada:** el cambio voluntario **rota** la sesión. El servidor revoca todas las sesiones y emite una cookie nueva para este navegador; la persona sigue en la misma pantalla y no se recargan sus datos. El obligatorio (3.5) sigue exigiendo volver a entrar. Quien decide el tipo es el servidor (`debeCambiarPassword`).
+> - **3.4, textos del handoff:**
+>   - el panel "Cambiar contraseña", con nombre · email;
+>   - "Vas a seguir con la sesión abierta en este navegador. Al cambiarla, se cierran tus otras sesiones.";
+>   - los campos "Contraseña actual", "Nueva contraseña" y "Confirmar nueva contraseña";
+>   - la ayuda "Podés usar una frase. Los espacios cuentan.", con los requisitos "Al menos 8 caracteres" y "Distinta de la actual", que se van marcando;
+>   - los botones "Cancelar" y "Guardar cambios" ("Guardando…", éxito "Guardada");
+>   - el aviso de la página "Cambiaste tu contraseña. Cerramos tus otras sesiones abiertas.".
+> - **3.4, errores:**
+>   - actual incorrecta: en su campo, vacía y con foco;
+>   - política: en "Nueva contraseña";
+>   - 429: la espera;
+>   - 503: "El servicio no está disponible…";
+>   - sin red: "No pudimos conectarnos…".
+>     Ninguno cierra la sesión. Cerrar el panel (Escape, Cancelar o la X) descarta lo escrito. En mobile, el ítem cierra el cajón y el panel ocupa todo el ancho.
+> - **2.10 y 3.6, textos:** "Tu sesión venció. Ingresá de nuevo para continuar." y "Tu sesión terminó. Ingresá de nuevo.", más "Lo que estabas guardando no se guardó." si el 401 llegó al enviar un formulario. Ahora sí está implementado.
+> - **2.10, comportamiento:**
+>   - Un 401 se confirma con `GET /auth/sesion` antes de cerrar la sesión. Un pedido con el token anterior a una rotación (en esta pestaña o en otra) no cierra la sesión nueva.
+>   - Varios 401 dan una sola redirección y conservan `volverA` con la ruta y la query.
+>   - Al volver a la pestaña se revalida la sesión, sin polling. Una cookie vencida en la carga inicial muestra "venció"; quien entra por primera vez no ve ningún aviso.
+> - **2.9:** sin cambios. Las otras pestañas se enteran en su próximo pedido o al volver a estar visibles.
 
 Convenciones de respuesta (ADR-0006 §4):
 
@@ -128,7 +152,7 @@ Convenciones de respuesta (ADR-0006 §4):
 
 1. Desde el menú de cuenta → "Cambiar contraseña" abre un `Sheet` (3.4) sobre la pantalla actual.
 2. `PUT /api/auth/password` con `{ actual, nueva }`.
-3. Éxito: `LoadingButton` en verde ("Contraseña cambiada"), el panel se cierra y la página muestra el aviso "Cambiaste tu contraseña. Cerramos tus otras sesiones abiertas." La pantalla y sus datos no se recargan (la sesión actual sigue, rotada). **Pendiente de decisión para HU4.2:** el endpoint implementado en la etapa 2 revoca todas las sesiones, también la actual, y exige volver a entrar; si HU4.2 quiere conservar la sesión actual, hay que agregar la rotación.
+3. Éxito: `LoadingButton` en verde ("Guardada", texto del handoff), el panel se cierra y la página muestra el aviso "Cambiaste tu contraseña. Cerramos tus otras sesiones abiertas." La pantalla y sus datos no se recargan (la sesión actual sigue, rotada). **Implementado en HU4.2:** el endpoint rota la sesión en el cambio voluntario (ver la nota "Estado (HU4.2)").
 4. Errores: como en 2.6. Cerrar el panel con cambios sin guardar descarta lo escrito (son contraseñas: no se guardan borradores).
 
 ### 2.9 Cerrar sesión
@@ -142,7 +166,7 @@ Convenciones de respuesta (ADR-0006 §4):
 ### 2.10 Expiración por inactividad
 
 - Disparador: cualquier pedido (query, refetch al volver a la pestaña, mutation) recibe `401 SESION_VENCIDA`.
-- Interfaz: se limpia la caché y se navega con `replace` a `/login?motivo=vencida&volverA=<ruta actual>`. En `/login`, `Alert` de advertencia: "Tu sesión venció por inactividad. Ingresá de nuevo para continuar."
+- Interfaz: se limpia la caché y se navega con `replace` a `/login?motivo=vencida&volverA=<ruta actual>`. En `/login`, `Alert` de advertencia: "Tu sesión venció. Ingresá de nuevo para continuar." (implementado en HU4.2; antes de terminar la sesión, el 401 se confirma con `GET /auth/sesion`)
 - Si la expiración ocurrió **al enviar un formulario** (mutation), lo escrito se pierde en este sprint; el aviso agrega: "Lo que estabas guardando no se guardó." (La reautenticación en un diálogo sin perder el formulario queda para después.)
 - Varios pedidos con 401 a la vez: una sola redirección (se ignoran los siguientes si ya se está navegando a `/login`).
 - `401 SESION_REQUERIDA` (revocada, por ejemplo por un cambio de rol o de contraseña en otro lado) sigue el mismo camino con el aviso genérico "Tu sesión terminó. Ingresá de nuevo."
@@ -203,17 +227,17 @@ Rutas nuevas propuestas: `/login` y `/cambiar-contrasena`, ambas **fuera** de `A
 
 ### 3.4 Cambio voluntario de contraseña
 
-| Aspecto              | Especificación                                                                                                                                                                                                                                                                                                                           |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contenido            | `Sheet` "Cambiar contraseña". Texto: "Al cambiarla, se cierran tus otras sesiones abiertas."                                                                                                                                                                                                                                             |
-| Campos               | **Contraseña actual** (`autocomplete="current-password"`). **Contraseña nueva** (`autocomplete="new-password"`, ayuda: "Al menos 8 caracteres. Podés usar una frase con espacios."; el mínimo es 8, decidido por el usuario, ADR-0006 P5). **Repetir la contraseña nueva** (`autocomplete="new-password"`). Los tres con mostrar/ocultar |
-| Botones              | "Cambiar contraseña" (`LoadingButton`, "Guardando…", éxito "Contraseña cambiada"); "Cancelar"                                                                                                                                                                                                                                            |
-| Validación (cliente) | Todos obligatorios; nueva de 8 a 128 caracteres (contados después de NFC, igual que el servidor); repetir = nueva; nueva ≠ actual. La lista de bloqueo la aplica solo el servidor                                                                                                                                                        |
-| Errores del servidor | Actual incorrecta → en "Contraseña actual"; política → en "Contraseña nueva" con "Esa contraseña es muy común o fácil de adivinar. Elegí otra."; 429, 503, red → `Alert` en el panel                                                                                                                                                     |
-| Responsive           | El `Sheet` ocupa el ancho en mobile, como los demás                                                                                                                                                                                                                                                                                      |
-| Accesibilidad        | Como el resto de los formularios: foco al primer campo inválido, errores conectados, título del panel como nombre del diálogo                                                                                                                                                                                                            |
-| Reutilizable         | `Sheet`, `FormField`, `LoadingButton`, `useExitoBreve`, `useAvisoDePagina`, campo de contraseña de 3.1                                                                                                                                                                                                                                   |
-| Nuevo                | No                                                                                                                                                                                                                                                                                                                                       |
+| Aspecto              | Especificación                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contenido            | `Sheet` "Cambiar contraseña", con nombre · email. Texto (handoff, implementado): "Vas a seguir con la sesión abierta en este navegador. Al cambiarla, se cierran tus otras sesiones."                                                                                                                                                                                                   |
+| Campos               | **Contraseña actual** (`autocomplete="current-password"`). **Nueva contraseña** (`autocomplete="new-password"`, ayuda "Podés usar una frase. Los espacios cuentan." y requisitos "Al menos 8 caracteres" y "Distinta de la actual"; el mínimo es 8, decidido por el usuario, ADR-0006 P5). **Confirmar nueva contraseña** (`autocomplete="new-password"`). Los tres con mostrar/ocultar |
+| Botones              | "Guardar cambios" (`LoadingButton`, "Guardando…", éxito "Guardada"; textos del handoff, implementados); "Cancelar"                                                                                                                                                                                                                                                                      |
+| Validación (cliente) | Todos obligatorios; nueva de 8 a 128 caracteres (contados después de NFC, igual que el servidor); repetir = nueva; nueva ≠ actual. La lista de bloqueo la aplica solo el servidor                                                                                                                                                                                                       |
+| Errores del servidor | Actual incorrecta → en "Contraseña actual"; política → en "Contraseña nueva" con "Esa contraseña es muy común o fácil de adivinar. Elegí otra."; 429, 503, red → `Alert` en el panel                                                                                                                                                                                                    |
+| Responsive           | El `Sheet` ocupa el ancho en mobile, como los demás                                                                                                                                                                                                                                                                                                                                     |
+| Accesibilidad        | Como el resto de los formularios: foco al primer campo inválido, errores conectados, título del panel como nombre del diálogo                                                                                                                                                                                                                                                           |
+| Reutilizable         | `Sheet`, `FormField`, `LoadingButton`, `useExitoBreve`, `useAvisoDePagina`, campo de contraseña de 3.1                                                                                                                                                                                                                                                                                  |
+| Nuevo                | No                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ### 3.5 Cambio obligatorio de contraseña
 
@@ -231,13 +255,13 @@ Nota: pedir de nuevo la contraseña temporal es coherente con el contrato del AD
 
 ### 3.6 Sesión expirada
 
-| Aspecto       | Especificación                                                                                                                                                                                                                      |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contenido     | No es una pantalla propia: es `/login` con un `Alert` de advertencia según `motivo` (`vencida`, `cerrada`, `terminada`)                                                                                                             |
-| Textos        | Vencida: "Tu sesión venció por inactividad. Ingresá de nuevo para continuar." (+ "Lo que estabas guardando no se guardó." si ocurrió en un envío). Terminada: "Tu sesión terminó. Ingresá de nuevo." Cerrada: "Cerraste la sesión." |
-| Accesibilidad | El aviso es `status` (advertencia/éxito), no interrumpe; el foco va al email                                                                                                                                                        |
-| Reutilizable  | `Alert`                                                                                                                                                                                                                             |
-| Nuevo         | No                                                                                                                                                                                                                                  |
+| Aspecto       | Especificación                                                                                                                                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contenido     | No es una pantalla propia: es `/login` con un `Alert` de advertencia según `motivo` (`vencida`, `cerrada`, `terminada`)                                                                                                                     |
+| Textos        | Vencida: "Tu sesión venció. Ingresá de nuevo para continuar." (implementado en HU4.2) (+ "Lo que estabas guardando no se guardó." si ocurrió en un envío). Terminada: "Tu sesión terminó. Ingresá de nuevo." Cerrada: "Cerraste la sesión." |
+| Accesibilidad | El aviso es `status` (advertencia/éxito), no interrumpe; el foco va al email                                                                                                                                                                |
+| Reutilizable  | `Alert`                                                                                                                                                                                                                                     |
+| Nuevo         | No                                                                                                                                                                                                                                          |
 
 `motivo` es solo presentación: un valor desconocido no muestra aviso.
 
