@@ -3,6 +3,7 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { CATALOGO_COMPACTO_QUERY } from '@/modules/tipos-documento/components/TiposDocumentoListado';
 import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
 
@@ -10,7 +11,9 @@ const fetchMock = vi.fn<typeof fetch>();
 const BASE = 'https://api.example';
 
 function renderPage(url = '/documentos') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = sembrarSesion(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
   const router = createMemoryRouter([{ path: '/documentos', element: <TiposDocumentoPage /> }], {
     initialEntries: [url],
   });

@@ -1,8 +1,10 @@
+import type { RolUsuarioType } from '@realpolitik/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { ArchivosPage } from '@/modules/documentos/pages/ArchivosPage';
 import { elegirOpcion } from '@/test/select';
 
@@ -154,8 +156,15 @@ const llamadasA = (metodo: string, ruta: string | RegExp) =>
     (l) => l.metodo === metodo && (typeof ruta === 'string' ? l.ruta === ruta : ruta.test(l.ruta)),
   );
 
-function renderPage(url = '/documentos/archivos?anio=2026&mes=10') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+/** Por defecto con una sesión ADMINISTRATIVO; `rol` muestra la interfaz de otro rol (HU4.3). */
+function renderPage(
+  url = '/documentos/archivos?anio=2026&mes=10',
+  rol: RolUsuarioType = 'ADMINISTRATIVO',
+) {
+  const queryClient = sembrarSesion(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    { rol },
+  );
   const router = createMemoryRouter(
     [
       { path: '/documentos/archivos', element: <ArchivosPage /> },
@@ -587,5 +596,184 @@ describe('ArchivosPage: asistente de carga y aplicación', () => {
     ).toBeInTheDocument();
     expect(llamadasA('POST', '/documentos')).toHaveLength(1);
     expect(llamadasA('POST', /aplicaciones$/)).toHaveLength(0);
+  });
+});
+
+// ─── Según el rol (HU4.3) ─────────────────────────────────────────────────────
+
+describe('ArchivosPage con CONSULTA: repositorio en solo lectura', () => {
+  const PAGINA = '/documentos/archivos?anio=2026&mes=10';
+
+  it('lista, busca y filtra por período y tipo, sin "Cargar documento" ni "Aplicar"', async () => {
+    const { user, router } = renderPage(PAGINA, 'CONSULTA');
+    expect(await screen.findByRole('button', { name: 'print-1.pdf' })).toBeInTheDocument();
+    expect(screen.getByText('factura-octubre.pdf')).toBeInTheDocument();
+    expect(within(filaDe('print-1.pdf') as HTMLElement).getByText('2 ítems')).toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: 'Cargar documento' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Aplicar/ })).not.toBeInTheDocument();
+    // La columna de acciones sigue: tiene "Descargar".
+    expect(screen.getByRole('button', { name: 'Descargar print-1.pdf' })).toBeInTheDocument();
+
+    await user.type(screen.getByRole('searchbox', { name: 'Buscar por nombre' }), 'factura');
+    expect(screen.queryByRole('button', { name: 'print-1.pdf' })).not.toBeInTheDocument();
+    await user.clear(screen.getByRole('searchbox', { name: 'Buscar por nombre' }));
+
+    await elegirOpcion(user, screen.getByLabelText('Tipo de documento'), 'Factura');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'print-1.pdf' })).not.toBeInTheDocument(),
+    );
+    await elegirOpcion(user, screen.getByLabelText('Mes'), 'Septiembre');
+    await waitFor(() => expect(router.state.location.search).toContain('mes=9'));
+  });
+
+  it('en tarjetas (celular) tampoco hay "Aplicar" y queda "Descargar"', async () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string): MediaQueryList =>
+        ({
+          matches: query.includes('max-width'),
+          media: query,
+          onchange: null,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          addListener: () => undefined,
+          removeListener: () => undefined,
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    );
+    renderPage(PAGINA, 'CONSULTA');
+
+    expect(await screen.findByRole('list', { name: 'Archivos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Descargar print-1.pdf' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Aplicar/ })).not.toBeInTheDocument();
+  });
+
+  it('el detalle muestra datos y aplicaciones, descarga y no ofrece aplicar ni pide candidatos', async () => {
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:prueba'), revokeObjectURL: vi.fn() }),
+    );
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const { user } = renderPage(PAGINA, 'CONSULTA');
+    await user.click(await screen.findByRole('button', { name: 'print-1.pdf' }));
+
+    const detalle = within(await screen.findByRole('dialog', { name: 'print-1.pdf' }));
+    expect(await detalle.findByText('Todavía no se aplicó a ningún ítem.')).toBeInTheDocument();
+    expect(detalle.queryByText(/Podés aplicarlo/)).not.toBeInTheDocument();
+    expect(detalle.getByText('PDF · 2 KB')).toBeInTheDocument();
+    expect(detalle.queryByRole('button', { name: 'Aplicar a otros ítems' })).toBeNull();
+
+    await user.click(detalle.getByRole('button', { name: 'Descargar' }));
+    await waitFor(() =>
+      expect(llamadasA('GET', `/documentos/${EXISTENTE.id}/archivo`)).toHaveLength(1),
+    );
+
+    expect(llamadasA('GET', /\/candidatos$/)).toEqual([]);
+    expect(llamadas.every((l) => l.metodo === 'GET')).toBe(true);
+  });
+
+  it('si la descarga falla, lo avisa igual', async () => {
+    servidor.archivo = () => error(503, 'SERVICE_UNAVAILABLE');
+    const { user } = renderPage(PAGINA, 'CONSULTA');
+    await screen.findByRole('button', { name: 'print-1.pdf' });
+
+    await user.click(screen.getByRole('button', { name: 'Descargar print-1.pdf' }));
+
+    expect(
+      await screen.findByText('No se pudo descargar print-1.pdf. Probá de nuevo.'),
+    ).toBeInTheDocument();
+  });
+
+  it('un período sin documentos no invita a cargar', async () => {
+    servidor.documentos = [];
+    renderPage(PAGINA, 'CONSULTA');
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Todavía no hay documentos cargados en este período.',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Los documentos registrados para este período aparecerán acá.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cargar documento' })).not.toBeInTheDocument();
+  });
+
+  it('sin coincidencias por los filtros, conserva "Limpiar filtros"', async () => {
+    const { user } = renderPage(PAGINA, 'CONSULTA');
+    await screen.findByRole('button', { name: 'print-1.pdf' });
+
+    await user.type(screen.getByRole('searchbox', { name: 'Buscar por nombre' }), 'nada');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ningún archivo coincide con estos filtros' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Limpiar filtros' })).toBeInTheDocument();
+  });
+});
+
+describe.each(['ADMINISTRATIVO', 'ADMINISTRADOR'] as const)('ArchivosPage con %s', (rol) => {
+  it('conserva "Cargar documento", "Aplicar" y "Aplicar a otros ítems"', async () => {
+    const { user } = renderPage('/documentos/archivos?anio=2026&mes=10', rol);
+    await screen.findByRole('button', { name: 'print-1.pdf' });
+
+    expect(screen.getByRole('button', { name: 'Cargar documento' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aplicar print-1.pdf' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'print-1.pdf' }));
+    const detalle = within(await screen.findByRole('dialog', { name: 'print-1.pdf' }));
+    expect(
+      await detalle.findByText(
+        'Todavía no se aplicó a ningún ítem. Podés aplicarlo cuando quieras.',
+      ),
+    ).toBeInTheDocument();
+    expect(detalle.getByRole('button', { name: 'Aplicar a otros ítems' })).toBeInTheDocument();
+  });
+});
+
+describe('ArchivosPage con CONSULTA: aplicaciones e historial', () => {
+  it('el detalle lista dónde está vigente y lo reemplazado', async () => {
+    const ubicacion = (cliente: object, rendicion: object, it: object) => ({
+      cliente,
+      rendicion: { ...rendicion, vigencia: 'ACTIVA' },
+      item: it,
+    });
+    servidor.detalle = () =>
+      json({
+        ...EXISTENTE,
+        aplicaciones: [
+          {
+            id: id(510),
+            documentoId: EXISTENTE.id,
+            itemChecklistId: ITEM_A1.id,
+            estado: 'VIGENTE',
+            aplicadaEn: '2026-10-21T10:00:00.000Z',
+            reemplazadaEn: null,
+            reemplazaAId: null,
+            ubicacion: ubicacion(CLIENTE_A, RENDICION_A, ITEM_A1),
+          },
+          {
+            id: id(511),
+            documentoId: EXISTENTE.id,
+            itemChecklistId: ITEM_A2.id,
+            estado: 'REEMPLAZADA',
+            aplicadaEn: '2026-10-20T10:00:00.000Z',
+            reemplazadaEn: '2026-10-22T10:00:00.000Z',
+            reemplazaAId: null,
+            ubicacion: ubicacion(CLIENTE_A, RENDICION_A, ITEM_A2),
+          },
+        ],
+      });
+    const { user } = renderPage('/documentos/archivos?anio=2026&mes=10', 'CONSULTA');
+    await user.click(await screen.findByRole('button', { name: 'print-1.pdf' }));
+
+    const detalle = await screen.findByRole('dialog', { name: 'print-1.pdf' });
+    const vigentes = await within(detalle).findByRole('region', { name: 'Dónde está vigente' });
+    expect(within(vigentes).getAllByRole('listitem')).toHaveLength(1);
+    const historial = within(detalle).getByRole('region', { name: 'Historial (reemplazado)' });
+    expect(within(historial).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(detalle).getAllByRole('link', { name: /Ver la rendición/ })).toHaveLength(2);
+    expect(
+      within(detalle).queryByRole('button', { name: 'Aplicar a otros ítems' }),
+    ).not.toBeInTheDocument();
   });
 });

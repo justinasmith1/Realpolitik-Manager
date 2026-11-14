@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAvisoDePagina } from '@/hooks/use-aviso-de-pagina';
 import { causaDeError, diagnosticoDeError } from '@/lib/errores-api';
 import { cn } from '@/lib/utils';
+import { usePermiso } from '@/modules/auth/hooks/useSesion';
 import {
   AplicarDocumentoAsistente,
   type ResultadoDelAsistente,
@@ -51,8 +52,14 @@ interface SesionDelAsistente {
  * Repositorio de archivos (`/documentos/archivos`, HU2.8): los documentos cargados en un período,
  * con su tipo, fecha y en cuántos ítems están vigentes. Desde acá se cargan y aplican (asistente),
  * se consulta dónde se usó cada uno (detalle) y se descargan, siempre a través del backend.
+ *
+ * Cargar y aplicar piden `documentos:operar` (HU4.3). Sin ese permiso (CONSULTA) el repositorio
+ * es de lectura: listado, búsqueda, filtros, detalle y descargas quedan; no hay "Cargar
+ * documento" ni "Aplicar", el asistente no se monta (y nunca pide `GET /documentos/:id/candidatos`,
+ * que es de operar) y el vacío no invita a cargar.
  */
 export function ArchivosPage() {
+  const puedeOperar = usePermiso('documentos:operar');
   const tituloRef = useRef<HTMLHeadingElement>(null);
   const avisoRef = useRef<HTMLDivElement>(null);
   const idBusqueda = useId();
@@ -150,27 +157,31 @@ export function ArchivosPage() {
     contenido = (
       <div className="flex min-h-60 flex-col items-center justify-center gap-3 rounded-card border bg-card p-8 text-center">
         <h2 className="text-[17px] font-semibold">
-          {sinDocumentos
-            ? `Todavía no se cargaron documentos en ${periodo}`
-            : 'Ningún archivo coincide con estos filtros'}
+          {!sinDocumentos
+            ? 'Ningún archivo coincide con estos filtros'
+            : puedeOperar
+              ? `Todavía no se cargaron documentos en ${periodo}`
+              : 'Todavía no hay documentos cargados en este período.'}
         </h2>
         <p className="max-w-115 text-sm text-content-secondary">
-          {sinDocumentos
-            ? 'Cargá un archivo una sola vez y aplicalo a los clientes que lo necesiten.'
-            : 'Probá con otro nombre u otro tipo de documento.'}
+          {!sinDocumentos
+            ? 'Probá con otro nombre u otro tipo de documento.'
+            : puedeOperar
+              ? 'Cargá un archivo una sola vez y aplicalo a los clientes que lo necesiten.'
+              : 'Los documentos registrados para este período aparecerán acá.'}
         </p>
-        {sinDocumentos ? (
-          <Button variant="brand" onClick={() => abrirAsistente(null)}>
-            <UploadIcon aria-hidden="true" />
-            Cargar documento
-          </Button>
-        ) : (
-          hayFiltros && (
-            <Button variant="outline" onClick={limpiarFiltros}>
-              Limpiar filtros
-            </Button>
-          )
-        )}
+        {sinDocumentos
+          ? puedeOperar && (
+              <Button variant="brand" onClick={() => abrirAsistente(null)}>
+                <UploadIcon aria-hidden="true" />
+                Cargar documento
+              </Button>
+            )
+          : hayFiltros && (
+              <Button variant="outline" onClick={limpiarFiltros}>
+                Limpiar filtros
+              </Button>
+            )}
       </div>
     );
   } else {
@@ -187,7 +198,7 @@ export function ArchivosPage() {
             setDetalleId(documento.id);
           }}
           onDescargar={(documento) => void descargar(documento)}
-          onAplicar={abrirAsistente}
+          onAplicar={puedeOperar ? abrirAsistente : undefined}
         />
       </div>
     );
@@ -204,10 +215,12 @@ export function ArchivosPage() {
             Repositorio de {periodo}. Un mismo archivo puede aplicarse a varias rendiciones.
           </p>
         </div>
-        <Button variant="brand" onClick={() => abrirAsistente(null)} className="max-sm:w-full">
-          <UploadIcon aria-hidden="true" />
-          Cargar documento
-        </Button>
+        {puedeOperar && (
+          <Button variant="brand" onClick={() => abrirAsistente(null)} className="max-sm:w-full">
+            <UploadIcon aria-hidden="true" />
+            Cargar documento
+          </Button>
+        )}
       </div>
 
       <DocumentosNav />
@@ -301,9 +314,9 @@ export function ArchivosPage() {
         onCerrar={() => setDetalleId(null)}
         onDescargar={(documento) => void descargar(documento)}
         descargando={detalleId !== null && idsDescargando.includes(detalleId)}
-        onAplicar={abrirAsistente}
+        onAplicar={puedeOperar ? abrirAsistente : undefined}
       />
-      {asistente.sesion > 0 && (
+      {puedeOperar && asistente.sesion > 0 && (
         <AplicarDocumentoAsistente
           key={asistente.sesion}
           abierto={asistente.abierto}

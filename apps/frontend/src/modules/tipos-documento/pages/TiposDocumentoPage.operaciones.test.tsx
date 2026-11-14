@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { TiposDocumentoListado } from '@/modules/tipos-documento/components/TiposDocumentoListado';
 import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
 
@@ -13,7 +14,9 @@ vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera')
 const fetchMock = vi.fn<typeof fetch>();
 
 function renderPage(url = '/documentos') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = sembrarSesion(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
   const router = createMemoryRouter([{ path: '/documentos', element: <TiposDocumentoPage /> }], {
     initialEntries: [url],
   });

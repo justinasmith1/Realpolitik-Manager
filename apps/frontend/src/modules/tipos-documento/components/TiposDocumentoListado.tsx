@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { EstadoTipoDocumentoBadge } from '@/modules/tipos-documento/components/EstadoTipoDocumentoBadge';
 import { NombreTipoDocumento } from '@/modules/tipos-documento/components/NombreTipoDocumento';
 import {
+  hayAccionesDeTipo,
   TipoDocumentoAccionesMenu,
   type AccionesTipoDocumento,
 } from '@/modules/tipos-documento/components/TipoDocumentoAccionesMenu';
@@ -38,6 +39,8 @@ export function TiposDocumentoListado({
 }: TiposDocumentoListadoProps) {
   const compacto = useMediaQuery(CATALOGO_COMPACTO_QUERY);
   const cambiandoEstado = (tipo: TipoDocumento) => idsCambiandoEstado.includes(tipo.id);
+  // Las acciones son las mismas en todas las filas: sin ninguna no hay columna "Acciones".
+  const conAcciones = hayAccionesDeTipo(acciones);
 
   if (compacto) {
     return (
@@ -66,9 +69,11 @@ export function TiposDocumentoListado({
             <th scope="col" className={cn(claseEncabezado, 'w-40')}>
               Estado
             </th>
-            <th scope="col" className={cn(claseEncabezado, 'w-20 text-right')}>
-              Acciones
-            </th>
+            {conAcciones && (
+              <th scope="col" className={cn(claseEncabezado, 'w-20 text-right')}>
+                Acciones
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -89,15 +94,17 @@ export function TiposDocumentoListado({
               <td className="px-4 py-3">
                 <EstadoTipoDocumentoBadge activo={tipo.activo} />
               </td>
-              <td className="px-2 py-2">
-                <div className="flex justify-end">
-                  <TipoDocumentoAccionesMenu
-                    tipo={tipo}
-                    cambiandoEstado={cambiandoEstado(tipo)}
-                    {...acciones}
-                  />
-                </div>
-              </td>
+              {conAcciones && (
+                <td className="px-2 py-2">
+                  <div className="flex justify-end">
+                    <TipoDocumentoAccionesMenu
+                      tipo={tipo}
+                      cambiandoEstado={cambiandoEstado(tipo)}
+                      {...acciones}
+                    />
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

@@ -31,7 +31,12 @@ interface DocumentoDetalleSheetProps {
   onCerrar: () => void;
   onDescargar: (documento: DocumentoConAplicaciones) => void;
   descargando: boolean;
-  onAplicar: (documento: DocumentoConAplicaciones) => void;
+  /**
+   * Abre el asistente para aplicarlo a otros ítems. Sin esto (quien no opera documentos, como
+   * CONSULTA) el panel es de lectura: no hay "Aplicar a otros ítems" y el vacío no invita a
+   * aplicarlo.
+   */
+  onAplicar?: ((documento: DocumentoConAplicaciones) => void) | undefined;
 }
 
 /** Una aplicación: cliente, factura e ítem, con su estado y el enlace a la rendición. */
@@ -175,7 +180,11 @@ export function DocumentoDetalleSheet({
               <ListaDeAplicaciones
                 titulo="Dónde está vigente"
                 aplicaciones={vigentes}
-                vacio="Todavía no se aplicó a ningún ítem. Podés aplicarlo cuando quieras."
+                vacio={
+                  onAplicar === undefined
+                    ? 'Todavía no se aplicó a ningún ítem.'
+                    : 'Todavía no se aplicó a ningún ítem. Podés aplicarlo cuando quieras.'
+                }
               />
               <ListaDeAplicaciones
                 titulo="Historial (reemplazado)"
@@ -201,10 +210,12 @@ export function DocumentoDetalleSheet({
                 <DownloadIcon aria-hidden="true" />
                 Descargar
               </LoadingButton>
-              <Button type="button" variant="brand" onClick={() => onAplicar(documento)}>
-                <FileCheckIcon aria-hidden="true" />
-                Aplicar a otros ítems
-              </Button>
+              {onAplicar !== undefined && (
+                <Button type="button" variant="brand" onClick={() => onAplicar(documento)}>
+                  <FileCheckIcon aria-hidden="true" />
+                  Aplicar a otros ítems
+                </Button>
+              )}
             </>
           )}
         </SheetFooter>

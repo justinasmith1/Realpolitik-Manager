@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useAvisoDePagina } from '@/hooks/use-aviso-de-pagina';
 import { causaDeError, diagnosticoDeError } from '@/lib/errores-api';
 import { cn } from '@/lib/utils';
+import { usePermiso } from '@/modules/auth/hooks/useSesion';
 import { interpretarFalloCambioEstadoTipoDocumento } from '@/modules/tipos-documento/api/tipos-documento.api';
 import {
   CambiarEstadoTipoDocumentoDialog,
@@ -45,8 +46,14 @@ const avisoDeEstado: Record<AccionDeEstado, (nombre: string) => string> = {
  * desactivan o reactivan con confirmación. Cada operación invalida el catálogo (lo hacen los
  * hooks) y deja un aviso sobre el listado. Los paneles y el diálogo viven acá, fuera del listado y
  * de sus menús: así no se desmontan al cerrarse un menú, y nunca hay dos abiertos a la vez.
+ *
+ * Crear, editar y cambiar el estado piden `tipos-documento:editar` (HU4.3). Sin ese permiso
+ * (CONSULTA) el catálogo es de lectura: nombres como texto, sin menús ni columna "Acciones", sin
+ * "Nuevo tipo" y con un vacío neutro; los paneles y el diálogo no se montan. "Incluir
+ * desactivados" queda: es un filtro.
  */
 export function TiposDocumentoPage() {
+  const puedeEditar = usePermiso('tipos-documento:editar');
   const idIncluirDesactivados = useId();
   const [altaAbierta, setAltaAbierta] = useState(false);
   const [tipoAEditar, setTipoAEditar] = useState<TipoDocumento | null>(null);
@@ -156,7 +163,7 @@ export function TiposDocumentoPage() {
     const cantidadDesactivados = todos.isError ? null : (todos.data?.length ?? 0);
     contenido =
       cantidadDesactivados === 0 ? (
-        <TiposDocumentoVacio onNuevoTipo={abrirAlta} />
+        <TiposDocumentoVacio onNuevoTipo={puedeEditar ? abrirAlta : undefined} />
       ) : (
         <TiposDocumentoSinActivos
           cantidadDesactivados={cantidadDesactivados}
@@ -164,7 +171,7 @@ export function TiposDocumentoPage() {
         />
       );
   } else if (vacio) {
-    contenido = <TiposDocumentoVacio onNuevoTipo={abrirAlta} />;
+    contenido = <TiposDocumentoVacio onNuevoTipo={puedeEditar ? abrirAlta : undefined} />;
   } else {
     contenido = (
       <div
@@ -174,9 +181,11 @@ export function TiposDocumentoPage() {
         <TiposDocumentoListado
           tipos={tipos ?? []}
           idsCambiandoEstado={idsCambiandoEstado}
-          onEditar={abrirEdicion}
-          onDesactivar={(tipo) => pedirCambioDeEstado(tipo, 'desactivar')}
-          onReactivar={(tipo) => pedirCambioDeEstado(tipo, 'reactivar')}
+          {...(puedeEditar && {
+            onEditar: abrirEdicion,
+            onDesactivar: (tipo: TipoDocumento) => pedirCambioDeEstado(tipo, 'desactivar'),
+            onReactivar: (tipo: TipoDocumento) => pedirCambioDeEstado(tipo, 'reactivar'),
+          })}
         />
       </div>
     );
@@ -193,10 +202,12 @@ export function TiposDocumentoPage() {
             Catálogo de tipos de documento que se pueden pedir como requisito.
           </p>
         </div>
-        <Button variant="brand" onClick={abrirAlta} className="max-sm:w-full">
-          <PlusIcon aria-hidden="true" />
-          Nuevo tipo
-        </Button>
+        {puedeEditar && (
+          <Button variant="brand" onClick={abrirAlta} className="max-sm:w-full">
+            <PlusIcon aria-hidden="true" />
+            Nuevo tipo
+          </Button>
+        )}
       </div>
 
       <DocumentosNav />
@@ -238,22 +249,26 @@ export function TiposDocumentoPage() {
 
       {contenido}
 
-      <NuevoTipoDocumentoSheet
-        abierto={altaAbierta}
-        onAbiertoChange={setAltaAbierta}
-        onCreado={alCrear}
-      />
-      <EditarTipoDocumentoSheet
-        tipo={tipoAEditar}
-        onClose={() => setTipoAEditar(null)}
-        onActualizado={alActualizar}
-      />
-      <CambiarEstadoTipoDocumentoDialog
-        cambio={cambioAConfirmar}
-        onConfirmar={confirmarCambio}
-        onCancelar={() => setCambioAConfirmar(null)}
-        focoTrasConfirmar={tituloRef}
-      />
+      {puedeEditar && (
+        <>
+          <NuevoTipoDocumentoSheet
+            abierto={altaAbierta}
+            onAbiertoChange={setAltaAbierta}
+            onCreado={alCrear}
+          />
+          <EditarTipoDocumentoSheet
+            tipo={tipoAEditar}
+            onClose={() => setTipoAEditar(null)}
+            onActualizado={alActualizar}
+          />
+          <CambiarEstadoTipoDocumentoDialog
+            cambio={cambioAConfirmar}
+            onConfirmar={confirmarCambio}
+            onCancelar={() => setCambioAConfirmar(null)}
+            focoTrasConfirmar={tituloRef}
+          />
+        </>
+      )}
     </div>
   );
 }

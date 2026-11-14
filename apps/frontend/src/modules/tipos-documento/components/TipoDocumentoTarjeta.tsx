@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { EstadoTipoDocumentoBadge } from '@/modules/tipos-documento/components/EstadoTipoDocumentoBadge';
 import { NombreTipoDocumento } from '@/modules/tipos-documento/components/NombreTipoDocumento';
 import {
+  hayAccionesDeTipo,
   TipoDocumentoAccionesMenu,
   type AccionesTipoDocumento,
 } from '@/modules/tipos-documento/components/TipoDocumentoAccionesMenu';
@@ -36,9 +37,16 @@ export function TipoDocumentoTarjeta({
             <p className="mt-0.5 text-sm break-words text-content-secondary">{tipo.descripcion}</p>
           )}
         </div>
-        <div className="-mt-2 -mr-2 shrink-0">
-          <TipoDocumentoAccionesMenu tipo={tipo} cambiandoEstado={cambiandoEstado} {...acciones} />
-        </div>
+        {/* Sin acciones no queda el hueco del menú. */}
+        {hayAccionesDeTipo(acciones) && (
+          <div className="-mt-2 -mr-2 shrink-0">
+            <TipoDocumentoAccionesMenu
+              tipo={tipo}
+              cambiandoEstado={cambiandoEstado}
+              {...acciones}
+            />
+          </div>
+        )}
       </div>
       <div className="mt-3">
         <EstadoTipoDocumentoBadge activo={tipo.activo} />
