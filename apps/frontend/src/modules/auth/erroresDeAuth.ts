@@ -19,9 +19,10 @@ export type ErrorDeAuth =
   | { clase: 'credenciales' }
   /** 403: hay sesión, con contraseña temporal sin cambiar. */
   | { clase: 'cambio-requerido' }
-  /** 403: hay sesión, pero el rol todavía no entra al sistema (CONSULTA, hasta HU4.3). */
-  | { clase: 'rol-no-habilitado' }
-  /** 403: hay sesión, sin el permiso de esa operación. */
+  /**
+   * 403: hay sesión, sin el permiso de esa operación. También cualquier otro motivo de 403 que no
+   * sea de los de arriba (p. ej. el `ROL_NO_HABILITADO` de HU4.1, que el backend ya no emite).
+   */
   | { clase: 'permiso-insuficiente' }
   /** 403: el servidor no aceptó el origen del pedido. */
   | { clase: 'origen' }
@@ -63,8 +64,6 @@ export function clasificarErrorDeAuth(error: unknown): ErrorDeAuth {
     switch (motivo) {
       case 'CAMBIO_DE_PASSWORD_REQUERIDO':
         return { clase: 'cambio-requerido' };
-      case 'ROL_NO_HABILITADO':
-        return { clase: 'rol-no-habilitado' };
       case 'ORIGEN_NO_PERMITIDO':
         return { clase: 'origen' };
       default:
@@ -98,7 +97,6 @@ export const MENSAJE_INTENTO_EN_CURSO =
 export const MENSAJE_ORIGEN = 'No pudimos validar el pedido. Recargá la página y probá de nuevo.';
 export const MENSAJE_INESPERADO = 'Algo salió mal. Probá de nuevo.';
 export const MENSAJE_PERMISO_INSUFICIENTE = 'No tenés permiso para esta acción.';
-export const MENSAJE_ROL_NO_HABILITADO = 'Tu cuenta todavía no tiene acceso al sistema.';
 
 /** La misma frase que el servidor (segundos, o minutos redondeados hacia arriba). */
 export function mensajeDeEspera(esperaSegundos: number | undefined): string {
@@ -139,8 +137,6 @@ export function avisoDeErrorDeAuth(error: ErrorDeAuth): {
       return { variante: 'destructive', texto: MENSAJE_ORIGEN };
     case 'permiso-insuficiente':
       return { variante: 'destructive', texto: MENSAJE_PERMISO_INSUFICIENTE };
-    case 'rol-no-habilitado':
-      return { variante: 'destructive', texto: MENSAJE_ROL_NO_HABILITADO };
     default:
       return { variante: 'destructive', texto: MENSAJE_INESPERADO };
   }

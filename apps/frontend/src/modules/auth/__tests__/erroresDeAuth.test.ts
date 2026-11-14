@@ -30,7 +30,9 @@ describe('clasificarErrorDeAuth', () => {
 
   it.each([
     ['CAMBIO_DE_PASSWORD_REQUERIDO', 'cambio-requerido'],
-    ['ROL_NO_HABILITADO', 'rol-no-habilitado'],
+    // El motivo de la regla temporal de HU4.1, que el backend ya no emite: si llegara, es un 403
+    // de permiso más, que no cierra la sesión.
+    ['ROL_NO_HABILITADO', 'permiso-insuficiente'],
     ['PERMISO_INSUFICIENTE', 'permiso-insuficiente'],
     ['ORIGEN_NO_PERMITIDO', 'origen'],
     ['OTRO_MOTIVO', 'permiso-insuficiente'],

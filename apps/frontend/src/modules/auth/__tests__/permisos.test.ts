@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { RolUsuario } from '@realpolitik/shared';
 
-import { PERMISOS, PERMISOS_POR_ROL, rolHabilitado, tienePermiso } from '@/modules/auth/permisos';
+import { PERMISOS, PERMISOS_POR_ROL, rolConocido, tienePermiso } from '@/modules/auth/permisos';
 
 // La matriz es la fuente de verdad (la misma que compara el backend): si cambia el catálogo, este
 // test obliga a cambiar el espejo del frontend en el mismo PR.
@@ -55,10 +55,12 @@ describe('permisos por rol (espejo de la matriz)', () => {
     expect(tienePermiso('INVENTADO' as never, 'clientes:ver')).toBe(false);
   });
 
-  it('HU4.1: CONSULTA no entra al sistema; los otros roles sí; uno desconocido, tampoco', () => {
-    expect(rolHabilitado('CONSULTA')).toBe(false);
-    expect(rolHabilitado('ADMINISTRATIVO')).toBe(true);
-    expect(rolHabilitado('ADMINISTRADOR')).toBe(true);
-    expect(rolHabilitado('INVENTADO' as never)).toBe(false);
+  it('HU4.3: los tres roles entran al sistema; uno desconocido, no (denegado por defecto)', () => {
+    expect(rolConocido('CONSULTA')).toBe(true);
+    expect(rolConocido('ADMINISTRATIVO')).toBe(true);
+    expect(rolConocido('ADMINISTRADOR')).toBe(true);
+    expect(rolConocido('INVENTADO' as never)).toBe(false);
+    // Ni una propiedad heredada de los objetos pasa por un rol.
+    expect(rolConocido('toString' as never)).toBe(false);
   });
 });

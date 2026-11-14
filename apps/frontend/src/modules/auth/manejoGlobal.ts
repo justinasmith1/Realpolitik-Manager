@@ -7,9 +7,11 @@
 //   terminó: "no autenticado", sin datos en memoria. Varios 401 a la vez dan una sola consulta, un
 //   solo cambio de estado y una sola redirección. Si el 401 vino de un envío de formulario,
 //   `/login` avisa que lo que se estaba guardando no se guardó.
-// - 403 CAMBIO_DE_PASSWORD_REQUERIDO / ROL_NO_HABILITADO → la sesión sigue pero cambió: se
-//   descartan los datos y se vuelve a pedir `GET /auth/sesion`.
-// - 403 PERMISO_INSUFICIENTE → la sesión sigue: solo se revalida (pudo cambiar el rol).
+// - 403 CAMBIO_DE_PASSWORD_REQUERIDO → la sesión sigue pero cambió: se descartan los datos y se
+//   vuelve a pedir `GET /auth/sesion`.
+// - 403 PERMISO_INSUFICIENTE (o cualquier otro motivo de 403 de negocio) → la sesión sigue: solo
+//   se revalida, sin descartar datos (pudo cambiar el rol, y la interfaz se ajusta a los permisos
+//   nuevos). Nunca cierra la sesión ni manda a `/login`.
 // - 429, 503, red y 403 de origen → NUNCA tocan la sesión.
 
 import type { QueryClient } from '@tanstack/react-query';
@@ -47,7 +49,6 @@ export function manejarErrorGlobal(
       }
       return;
     case 'cambio-requerido':
-    case 'rol-no-habilitado':
       revalidarSesion(queryClient);
       return;
     case 'permiso-insuficiente':
