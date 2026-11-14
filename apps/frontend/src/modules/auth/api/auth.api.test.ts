@@ -2,6 +2,7 @@ import { ApiClientError } from '@/lib/http';
 import {
   cambiarContrasena,
   cerrarSesion,
+  consultarSesionActual,
   iniciarSesion,
   obtenerSesionActual,
 } from '@/modules/auth/api/auth.api';
@@ -64,6 +65,21 @@ describe('servicio de autenticación', () => {
       json(401, { error: { code: 'UNAUTHENTICATED', details: { motivo: 'SESION_REQUERIDA' } } }),
     );
     await expect(obtenerSesionActual()).resolves.toBeNull();
+  });
+
+  it('consultarSesionActual: sin sesión dice si el servidor la dio por vencida (HU4.2)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(401, { error: { code: 'UNAUTHENTICATED', details: { motivo: 'SESION_VENCIDA' } } }),
+    );
+    await expect(consultarSesionActual()).resolves.toEqual({ sesion: null, vencida: true });
+
+    fetchMock.mockResolvedValueOnce(
+      json(401, { error: { code: 'UNAUTHENTICATED', details: { motivo: 'SESION_REQUERIDA' } } }),
+    );
+    await expect(consultarSesionActual()).resolves.toEqual({ sesion: null, vencida: false });
+
+    fetchMock.mockResolvedValueOnce(json(200, sesionDePrueba()));
+    await expect(consultarSesionActual()).resolves.toEqual({ sesion: sesionDePrueba() });
   });
 
   it('obtenerSesionActual: 503 y red caída rechazan (no se confunden con "sin sesión")', async () => {

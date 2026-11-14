@@ -2,7 +2,7 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@ta
 import type { ReactNode } from 'react';
 
 import { debeReintentar, DEMORA_DEL_REINTENTO_MS } from '@/lib/reintentos';
-import { manejarErrorGlobal } from '@/modules/auth/manejoGlobal';
+import { manejarErrorGlobal, type OrigenDelError } from '@/modules/auth/manejoGlobal';
 
 /**
  * El QueryClient de la app, con la política de reintentos explícita (ver `lib/reintentos`):
@@ -13,15 +13,23 @@ import { manejarErrorGlobal } from '@/modules/auth/manejoGlobal';
  * por `manejarErrorGlobal`, salvo los de la propia sesión (`meta.esDeSesion`), que se manejan solos.
  */
 export function crearQueryClient(): QueryClient {
-  const alFallar = (error: unknown, meta: Record<string, unknown> | undefined) => {
+  const alFallar = (
+    error: unknown,
+    meta: Record<string, unknown> | undefined,
+    contexto: OrigenDelError,
+  ) => {
     if (meta?.esDeSesion !== true) {
-      manejarErrorGlobal(queryClient, error);
+      manejarErrorGlobal(queryClient, error, contexto);
     }
   };
   const queryClient: QueryClient = new QueryClient({
-    queryCache: new QueryCache({ onError: (error, query) => alFallar(error, query.meta) }),
+    queryCache: new QueryCache({
+      onError: (error, query) =>
+        alFallar(error, query.meta, { origen: 'consulta', consulta: query }),
+    }),
     mutationCache: new MutationCache({
-      onError: (error, _variables, _contexto, mutation) => alFallar(error, mutation.meta),
+      onError: (error, _variables, _contexto, mutation) =>
+        alFallar(error, mutation.meta, { origen: 'envio' }),
     }),
     defaultOptions: {
       queries: { retry: debeReintentar, retryDelay: DEMORA_DEL_REINTENTO_MS },

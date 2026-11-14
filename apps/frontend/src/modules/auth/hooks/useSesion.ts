@@ -7,7 +7,7 @@ import { META_DE_SESION, opcionesDeSesion, terminarSesion } from '@/modules/auth
 
 /** El estado de la sesión (ver `sesion.ts`): pendiente, con usuario, `null` o en error. */
 export function useSesion() {
-  return useQuery(opcionesDeSesion());
+  return useQuery(opcionesDeSesion(useQueryClient()));
 }
 
 /** Si el rol de la sesión tiene el permiso: para ocultar acciones. La API decide de verdad. */

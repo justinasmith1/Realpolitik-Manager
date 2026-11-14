@@ -1,5 +1,5 @@
-// Flujos de autenticación de punta a punta en el frontend (HU4.1): las rutas reales de la app,
-// sus providers y su QueryClient, igual que main.tsx. Lo único simulado es `fetch`, con un
+// Flujos de autenticación de punta a punta en el frontend (HU4.1 y HU4.2): las rutas reales de la
+// app, sus providers y su QueryClient, igual que main.tsx. Lo único simulado es `fetch`, con un
 // servidor de mentira que responde el contrato de `/auth/*` (ADR-0006).
 //
 //   A. Sin sesión → /login, y de vuelta a la página pedida
@@ -10,15 +10,25 @@
 //   F. Cierre de sesión (204 y 503)
 //   G. Recuperación de la sesión y pérdida durante la navegación (401, 403)
 //   H. CONSULTA bloqueado y servicio no disponible al entrar
+//   I. Menú de cuenta y cambio voluntario de contraseña, con la sesión rotada (HU4.2)
+//   J. Expiración, revocación, 401 atrasados y varias pestañas (HU4.2)
 
-import type { SesionActual, UsuarioDeSesion } from '@realpolitik/shared';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  MENSAJE_CONTRASENA_CORTA,
+  MENSAJE_CONTRASENA_PREVISIBLE,
+  MENSAJE_CONTRASENA_REPETIDA,
+  type SesionActual,
+  type UsuarioDeSesion,
+} from '@realpolitik/shared';
+import { focusManager } from '@tanstack/react-query';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
 import { AppProviders, queryClient } from '@/app/providers';
 import { routes } from '@/app/router';
-import { CLAVE_SESION } from '@/modules/auth/sesion';
+import { http } from '@/lib/http';
+import { CLAVE_SESION, REVALIDACION_DE_SESION_MS } from '@/modules/auth/sesion';
 import { sesionDePrueba } from '@/modules/auth/test/sesionDePrueba';
 
 type Respuesta = () => Response | Promise<Response>;
@@ -104,7 +114,17 @@ async function completarLogin(email = 'ana@realpolitik.test', password = 'mi con
   return usuario;
 }
 
-const enElShell = () => screen.findByRole('navigation', { name: 'Principal' });
+/**
+ * El shell, con la página ya pidiendo sus datos. Las páginas se cargan en diferido: si el test
+ * terminara apenas aparece el shell, la página podría montarse después y pedir con `fetch` ya
+ * restaurado (el bloqueo de `setup.ts` lo marcaría como un pedido no simulado). `previos`: los
+ * pedidos de negocio que ya había antes de llegar a esta página.
+ */
+async function enElShell(previos = 0) {
+  const nav = await screen.findByRole('navigation', { name: 'Principal' });
+  await waitFor(() => expect(pedidosDeNegocio().length).toBeGreaterThan(previos));
+  return nav;
+}
 const sinShell = () =>
   expect(screen.queryByRole('navigation', { name: 'Principal' })).not.toBeInTheDocument();
 
@@ -486,7 +506,7 @@ describe('E. contraseña temporal y cambio obligatorio', () => {
     );
   });
 
-  it('si la sesión venció en el medio (401), va a /login con el aviso', async () => {
+  it('si la sesión venció en el medio (401), va a /login con el aviso y avisa que no se guardó', async () => {
     servidor.forzadas.set('PUT /api/auth/password', () =>
       error(401, 'UNAUTHENTICATED', { motivo: 'SESION_VENCIDA' }),
     );
@@ -496,9 +516,9 @@ describe('E. contraseña temporal y cambio obligatorio', () => {
 
     expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Tu sesión venció. Iniciá sesión de nuevo.',
+      'Tu sesión venció. Ingresá de nuevo para continuar. Lo que estabas guardando no se guardó.',
     );
-    expect(donde()).toMatch(/^\/login\?motivo=vencida/);
+    expect(donde()).toMatch(/^\/login\?motivo=vencida&sinGuardar=1/);
   });
 
   it('"Salir sin cambiarla" cierra la sesión en el servidor', async () => {
@@ -603,12 +623,16 @@ describe('G. recuperación y pérdida de la sesión', () => {
 
   it('un 401 de cualquier pedido termina la sesión: una sola redirección, con aviso y volverA', async () => {
     servidor.sesion = sesionDePrueba();
-    servidor.negocio = () => error(401, 'UNAUTHENTICATED', { motivo: 'SESION_VENCIDA' });
+    servidor.negocio = () => {
+      // Venció en el servidor: el 401 de un vencimiento también borra la cookie.
+      servidor.sesion = null;
+      return error(401, 'UNAUTHENTICATED', { motivo: 'SESION_VENCIDA' });
+    };
     const { donde } = abrir('/documentos/tipos?desactivados=1');
 
     expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Tu sesión venció. Iniciá sesión de nuevo.',
+      'Tu sesión venció. Ingresá de nuevo para continuar.',
     );
     expect(donde()).toBe('/login?motivo=vencida&volverA=%2Fdocumentos%2Ftipos%3Fdesactivados%3D1');
     sinShell();
@@ -623,10 +647,13 @@ describe('G. recuperación y pérdida de la sesión', () => {
 
   it('un 401 por sesión revocada usa el aviso genérico', async () => {
     servidor.sesion = sesionDePrueba();
-    servidor.negocio = SIN_SESION;
+    servidor.negocio = () => {
+      servidor.sesion = null; // la revocaron (logout en otra pestaña, otro equipo)
+      return SIN_SESION();
+    };
     const { donde } = abrir('/clientes');
 
-    expect(await screen.findByText('Tu sesión terminó. Iniciá sesión de nuevo.')).toBeVisible();
+    expect(await screen.findByText('Tu sesión terminó. Ingresá de nuevo.')).toBeVisible();
     expect(donde()).toBe('/login?motivo=terminada&volverA=%2Fclientes');
   });
 
@@ -743,4 +770,604 @@ describe('H. CONSULTA bloqueado y servicio no disponible al entrar', () => {
       expect(donde()).toBe('/documentos/tipos?desactivados=1');
     },
   );
+});
+
+describe('I. menú de cuenta y cambio voluntario de contraseña (HU4.2)', () => {
+  const ACTUAL = 'mi contraseña larga';
+  const NUEVA = 'otra frase larga y propia';
+  const AVISO_DE_EXITO = 'Cambiaste tu contraseña. Cerramos tus otras sesiones abiertas.';
+
+  /** El cambio voluntario del contrato: 204, y la sesión sigue (rotada: el token no se ve). */
+  const cambioCorrecto = () =>
+    servidor.forzadas.set('PUT /api/auth/password', () => new Response(null, { status: 204 }));
+
+  async function abrirCambio(ruta = '/clientes?estado=INACTIVO') {
+    servidor.sesion ??= sesionDePrueba();
+    const vista = abrir(ruta);
+    const usuario = userEvent.setup();
+    const cuenta = await screen.findByRole('button', { name: /^Cuenta de Ana Administrativa/ });
+    await usuario.click(cuenta);
+    await usuario.click(await screen.findByRole('menuitem', { name: 'Cambiar contraseña' }));
+    const panel = await screen.findByRole('dialog', { name: 'Cambiar contraseña' });
+    return { ...vista, usuario, panel, cuenta };
+  }
+
+  async function completarCambio(
+    usuario: ReturnType<typeof userEvent.setup>,
+    {
+      actual = ACTUAL,
+      nueva = NUEVA,
+      confirmacion = nueva,
+    }: { actual?: string; nueva?: string; confirmacion?: string } = {},
+  ) {
+    if (actual) await usuario.type(screen.getByLabelText('Contraseña actual'), actual);
+    if (nueva) await usuario.type(screen.getByLabelText('Nueva contraseña'), nueva);
+    if (confirmacion) {
+      await usuario.type(screen.getByLabelText('Confirmar nueva contraseña'), confirmacion);
+    }
+    await usuario.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  }
+
+  const panelAbierto = () => screen.queryByRole('dialog', { name: 'Cambiar contraseña' });
+  /** Sigue en la misma pantalla del sistema (con el panel abierto, el resto queda inerte). */
+  const enLaMismaPantalla = (donde: () => string, ruta: string) => {
+    expect(donde()).toBe(ruta);
+    expect(screen.getByRole('navigation', { name: 'Principal', hidden: true })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Iniciar sesión', hidden: true }),
+    ).not.toBeInTheDocument();
+  };
+
+  it.each([
+    ['ADMINISTRATIVO', 'Administrativo'],
+    ['ADMINISTRADOR', 'Administrador'],
+  ] as const)(
+    'el menú de cuenta (%s) muestra nombre, email y rol, y ofrece "Cambiar contraseña" y "Cerrar sesión", sin "Usuarios"',
+    async (rol, etiquetaDeRol) => {
+      servidor.sesion = sesionDePrueba({ rol });
+      abrir('/clientes');
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: `Cuenta de Ana Administrativa (${etiquetaDeRol})`,
+        }),
+      );
+
+      const menu = await screen.findByRole('menu');
+      expect(within(menu).getByText('Ana Administrativa')).toBeVisible();
+      expect(within(menu).getByText('administrativo@realpolitik.test')).toBeVisible();
+      expect(within(menu).getByText(etiquetaDeRol)).toBeVisible();
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map((item) => item.textContent),
+      ).toEqual(['Cambiar contraseña', 'Cerrar sesión']);
+      expect(within(menu).getByRole('separator')).toBeInTheDocument();
+    },
+  );
+
+  it('abre un panel sobre la pantalla actual: tres campos con etiqueta, autocompletado correcto y foco en el primero', async () => {
+    const { panel, donde } = await abrirCambio();
+
+    expect(donde()).toBe('/clientes?estado=INACTIVO');
+    expect(
+      within(panel).getByText('Ana Administrativa · administrativo@realpolitik.test'),
+    ).toBeVisible();
+    expect(panel).toHaveAccessibleDescription(
+      'Vas a seguir con la sesión abierta en este navegador. Al cambiarla, se cierran tus otras sesiones.',
+    );
+    const actual = within(panel).getByLabelText('Contraseña actual');
+    const nueva = within(panel).getByLabelText('Nueva contraseña');
+    const confirmacion = within(panel).getByLabelText('Confirmar nueva contraseña');
+    expect(actual).toHaveAttribute('autocomplete', 'current-password');
+    expect(nueva).toHaveAttribute('autocomplete', 'new-password');
+    expect(confirmacion).toHaveAttribute('autocomplete', 'new-password');
+    for (const campo of [actual, nueva, confirmacion]) {
+      expect(campo).toHaveAttribute('type', 'password');
+    }
+    expect(nueva).toHaveAccessibleDescription('Podés usar una frase. Los espacios cuentan.');
+    expect(
+      within(panel).getByRole('list', { name: 'Requisitos de la contraseña' }),
+    ).toHaveTextContent(/Al menos 8 caracteres.*Distinta de la actual/);
+    await waitFor(() => expect(actual).toHaveFocus());
+  });
+
+  it('cada campo se muestra y se oculta con su propio botón accesible', async () => {
+    const { usuario, panel } = await abrirCambio();
+
+    for (const [etiqueta, nombre] of [
+      ['Contraseña actual', 'contraseña actual'],
+      ['Nueva contraseña', 'nueva contraseña'],
+      ['Confirmar nueva contraseña', 'confirmación de la contraseña'],
+    ] as const) {
+      const campo = within(panel).getByLabelText(etiqueta);
+      const mostrar = within(panel).getByRole('button', { name: `Mostrar ${nombre}` });
+      expect(mostrar).toHaveAttribute('aria-pressed', 'false');
+      await usuario.click(mostrar);
+      expect(campo).toHaveAttribute('type', 'text');
+      const ocultar = within(panel).getByRole('button', { name: `Ocultar ${nombre}` });
+      expect(ocultar).toHaveAttribute('aria-pressed', 'true');
+      await usuario.click(ocultar);
+      expect(campo).toHaveAttribute('type', 'password');
+    }
+  });
+
+  it('valida con las reglas compartidas antes de enviar: el error en su campo y el foco en el primero', async () => {
+    const { usuario, panel } = await abrirCambio();
+    const actual = within(panel).getByLabelText('Contraseña actual');
+    const nueva = within(panel).getByLabelText('Nueva contraseña');
+    const confirmacion = within(panel).getByLabelText('Confirmar nueva contraseña');
+    const guardar = within(panel).getByRole('button', { name: 'Guardar cambios' });
+
+    await usuario.click(guardar);
+    expect(actual).toHaveFocus();
+    expect(actual).toHaveAttribute('aria-invalid', 'true');
+    expect(actual).toHaveAccessibleDescription('Ingresá tu contraseña actual.');
+    expect(nueva).toHaveAccessibleDescription(expect.stringContaining(MENSAJE_CONTRASENA_CORTA));
+    expect(confirmacion).toHaveAccessibleDescription('Repetí la contraseña nueva.');
+
+    await usuario.type(actual, ACTUAL);
+    await usuario.type(nueva, 'corta');
+    await usuario.type(confirmacion, 'otra');
+    await usuario.click(guardar);
+    expect(nueva).toHaveFocus();
+    expect(nueva).toHaveAccessibleDescription(expect.stringContaining(MENSAJE_CONTRASENA_CORTA));
+    expect(confirmacion).toHaveAccessibleDescription('Las contraseñas no coinciden.');
+
+    await usuario.clear(nueva);
+    await usuario.type(nueva, ACTUAL);
+    await usuario.clear(confirmacion);
+    await usuario.type(confirmacion, ACTUAL);
+    await usuario.click(guardar);
+    expect(nueva).toHaveFocus();
+    expect(nueva).toHaveAccessibleDescription(expect.stringContaining(MENSAJE_CONTRASENA_REPETIDA));
+
+    expect(pedidos()).not.toContain('PUT /api/auth/password');
+  });
+
+  it('con el 204: confirma la sesión rotada, cierra el panel, avisa y sigue en la misma pantalla sin recargar datos', async () => {
+    cambioCorrecto();
+    const { usuario, donde, cuenta } = await abrirCambio('/documentos/tipos?desactivados=1');
+    await waitFor(() => expect(pedidosDeNegocio().length).toBeGreaterThan(0));
+    const negocioAntes = pedidosDeNegocio().length;
+
+    await completarCambio(usuario);
+
+    expect(await screen.findByRole('button', { name: 'Guardada' })).toBeVisible();
+    expect(await screen.findByText(AVISO_DE_EXITO, {}, { timeout: 3000 })).toBeVisible();
+    await waitFor(() => expect(panelAbierto()).not.toBeInTheDocument());
+    enLaMismaPantalla(donde, '/documentos/tipos?desactivados=1');
+    // La contraseña viajó solo en el cuerpo; después se confirmó la cookie nueva con el servidor.
+    expect(cuerpoDe('PUT /api/auth/password')).toEqual({ actual: ACTUAL, nueva: NUEVA });
+    const orden = pedidos();
+    expect(orden.lastIndexOf('GET /api/auth/sesion')).toBeGreaterThan(
+      orden.indexOf('PUT /api/auth/password'),
+    );
+    // La identidad sigue en la caché y los datos de la página no se volvieron a pedir.
+    expect(queryClient.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba());
+    expect(pedidosDeNegocio()).toHaveLength(negocioAntes);
+    // El foco vuelve al menú de cuenta; nada de esto queda en el almacenamiento del navegador.
+    await waitFor(() => expect(cuenta).toHaveFocus());
+    expect(window.localStorage).toHaveLength(0);
+    expect(window.sessionStorage).toHaveLength(0);
+  });
+
+  it('cerrar el panel (Escape o Cancelar) descarta lo escrito: no hay borradores de contraseñas', async () => {
+    const { usuario, panel } = await abrirCambio();
+    await usuario.type(within(panel).getByLabelText('Contraseña actual'), ACTUAL);
+    await usuario.type(within(panel).getByLabelText('Nueva contraseña'), NUEVA);
+    await usuario.keyboard('{Escape}');
+    await waitFor(() => expect(panelAbierto()).not.toBeInTheDocument());
+
+    await usuario.click(screen.getByRole('button', { name: /^Cuenta de Ana Administrativa/ }));
+    await usuario.click(await screen.findByRole('menuitem', { name: 'Cambiar contraseña' }));
+    const otraVez = await screen.findByRole('dialog', { name: 'Cambiar contraseña' });
+    expect(within(otraVez).getByLabelText('Contraseña actual')).toHaveValue('');
+    expect(within(otraVez).getByLabelText('Nueva contraseña')).toHaveValue('');
+
+    await usuario.type(within(otraVez).getByLabelText('Nueva contraseña'), NUEVA);
+    await usuario.click(within(otraVez).getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(panelAbierto()).not.toBeInTheDocument());
+    expect(pedidos()).not.toContain('PUT /api/auth/password');
+  });
+
+  it('sin doble envío: mientras se guarda, otro clic o Enter no repiten el pedido', async () => {
+    let soltar: (respuesta: Response) => void = () => undefined;
+    servidor.forzadas.set(
+      'PUT /api/auth/password',
+      () => new Promise<Response>((resolve) => (soltar = resolve)),
+    );
+    const { usuario } = await abrirCambio();
+    await completarCambio(usuario);
+
+    const guardando = await screen.findByRole('button', { name: 'Guardando…' });
+    await usuario.click(guardando);
+    await usuario.keyboard('{Enter}');
+    expect(screen.getByLabelText('Nueva contraseña')).toHaveAttribute('readonly');
+    // Tampoco se cierra mientras tanto.
+    await usuario.keyboard('{Escape}');
+    expect(panelAbierto()).toBeInTheDocument();
+
+    soltar(new Response(null, { status: 204 }));
+    expect(await screen.findByText(AVISO_DE_EXITO, {}, { timeout: 3000 })).toBeVisible();
+    expect(pedidos().filter((p) => p === 'PUT /api/auth/password')).toHaveLength(1);
+  });
+
+  it('actual incorrecta (400 en "actual"): el error en su campo, vacío y con foco; la sesión sigue', async () => {
+    servidor.forzadas.set('PUT /api/auth/password', () =>
+      error(400, 'VALIDATION_ERROR', [
+        { campo: 'actual', mensaje: 'La contraseña actual no es correcta.' },
+      ]),
+    );
+    const { usuario, donde } = await abrirCambio();
+    await completarCambio(usuario, { actual: 'no es la mía' });
+
+    const actual = await screen.findByLabelText('Contraseña actual');
+    await waitFor(() => expect(actual).toHaveFocus());
+    expect(actual).toHaveValue('');
+    expect(actual).toHaveAccessibleDescription('La contraseña actual no es correcta.');
+    expect(screen.getByLabelText('Nueva contraseña')).toHaveValue(NUEVA);
+    expect(panelAbierto()).toBeInTheDocument();
+    enLaMismaPantalla(donde, '/clientes?estado=INACTIVO');
+  });
+
+  it('nueva rechazada por la política (400 en "nueva"): el mensaje en su campo', async () => {
+    servidor.forzadas.set('PUT /api/auth/password', () =>
+      error(400, 'VALIDATION_ERROR', [{ campo: 'nueva', mensaje: MENSAJE_CONTRASENA_PREVISIBLE }]),
+    );
+    const { usuario } = await abrirCambio();
+    await completarCambio(usuario, { nueva: 'qwertyuiopasdfgh' });
+
+    const nueva = await screen.findByLabelText('Nueva contraseña');
+    await waitFor(() => expect(nueva).toHaveFocus());
+    expect(nueva).toHaveAccessibleDescription(
+      expect.stringContaining(MENSAJE_CONTRASENA_PREVISIBLE),
+    );
+    expect(screen.getByLabelText('Contraseña actual')).toHaveValue(ACTUAL);
+  });
+
+  it.each([
+    [
+      '429',
+      () =>
+        error(429, 'TOO_MANY_REQUESTS', { motivo: 'DEMASIADOS_INTENTOS' }, { 'Retry-After': '30' }),
+      'Demasiados intentos. Probá de nuevo en 30 segundos.',
+    ],
+    [
+      '503',
+      NO_DISPONIBLE,
+      'El servicio no está disponible en este momento. Probá de nuevo en unos minutos.',
+    ],
+    [
+      'red caída',
+      () => Promise.reject(new TypeError('Failed to fetch')),
+      'No pudimos conectarnos. Revisá tu conexión y probá de nuevo.',
+    ],
+  ] as const)(
+    'con %s: un aviso en el panel, lo escrito se conserva y la sesión NO se cierra',
+    async (_, respuesta, texto) => {
+      servidor.forzadas.set('PUT /api/auth/password', respuesta);
+      const { usuario, donde } = await abrirCambio();
+      await completarCambio(usuario);
+
+      const panel = await screen.findByRole('dialog', { name: 'Cambiar contraseña' });
+      const aviso = await within(panel).findByText(texto);
+      await waitFor(() => expect(aviso.closest('[tabindex="-1"]')).toHaveFocus());
+      expect(aviso).not.toHaveTextContent('mensaje interno');
+      expect(within(panel).getByLabelText('Nueva contraseña')).toHaveValue(NUEVA);
+      enLaMismaPantalla(donde, '/clientes?estado=INACTIVO');
+      expect(queryClient.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba());
+      expect(pedidos()).not.toContain('POST /api/auth/logout');
+    },
+  );
+
+  it('si la sesión terminó mientras tanto (401 confirmado): a /login, avisando que no se guardó', async () => {
+    servidor.forzadas.set('PUT /api/auth/password', () => {
+      servidor.sesion = null; // la cerraron en otro lado
+      return SIN_SESION();
+    });
+    const { usuario, donde } = await abrirCambio();
+    await completarCambio(usuario);
+
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Tu sesión terminó. Ingresá de nuevo. Lo que estabas guardando no se guardó.',
+    );
+    expect(donde()).toBe(
+      '/login?motivo=terminada&sinGuardar=1&volverA=%2Fclientes%3Festado%3DINACTIVO',
+    );
+  });
+
+  it('si el servidor lo trató como obligatorio (borró la cookie), hay que volver a entrar con la nueva', async () => {
+    servidor.forzadas.set('PUT /api/auth/password', () => {
+      servidor.sesion = null; // le restablecieron la contraseña mientras tanto: cambio obligatorio
+      return new Response(null, { status: 204 });
+    });
+    const { usuario, donde } = await abrirCambio();
+    await completarCambio(usuario);
+
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Elegiste tu contraseña. Ingresá con la nueva.',
+    );
+    expect(donde()).toBe('/login?motivo=contrasena&volverA=%2Fclientes%3Festado%3DINACTIVO');
+  });
+});
+
+describe('J. expiración, revocación, 401 atrasados y varias pestañas (HU4.2)', () => {
+  const getsDeSesion = () => pedidos().filter((p) => p === 'GET /api/auth/sesion').length;
+  /** El listado de tipos de documento (la página pide además los inactivos, con otra URL). */
+  const LISTADO_DE_TIPOS = 'GET /api/tipos-documento';
+  const deTipos = () => pedidos().filter((p) => p === LISTADO_DE_TIPOS).length;
+
+  /** La pestaña vuelve a estar visible pasado el plazo de revalidación de la sesión. */
+  function volverALaPestana() {
+    const despues = Date.now() + REVALIDACION_DE_SESION_MS + 1;
+    vi.spyOn(Date, 'now').mockReturnValue(despues);
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    focusManager.setFocused(undefined);
+  });
+
+  it('al abrir la app con una cookie vencida, /login lo dice y vuelve a la página con sus filtros', async () => {
+    servidor.forzadas.set('GET /api/auth/sesion', () => {
+      servidor.forzadas.delete('GET /api/auth/sesion'); // el 401 de un vencimiento borra la cookie
+      return error(401, 'UNAUTHENTICATED', { motivo: 'SESION_VENCIDA' });
+    });
+    loginResponde();
+    const { donde } = abrir('/clientes?estado=INACTIVO&q=muni');
+
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Tu sesión venció. Ingresá de nuevo para continuar.',
+    );
+    expect(donde()).toBe(
+      '/login?motivo=vencida&volverA=%2Fclientes%3Festado%3DINACTIVO%26q%3Dmuni',
+    );
+
+    await completarLogin();
+    await enElShell();
+    expect(donde()).toBe('/clientes?estado=INACTIVO&q=muni');
+  });
+
+  it('quien entra sin sesión (primera vez, sin cookie) no ve ningún aviso de sesión vencida', async () => {
+    const { donde } = abrir('/clientes');
+
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tu sesión (venció|terminó)/)).not.toBeInTheDocument();
+    expect(donde()).toBe('/login?volverA=%2Fclientes');
+  });
+
+  it('un volverA externo se ignora también después de una sesión vencida (sin redirección abierta)', async () => {
+    loginResponde();
+    const { donde } = abrir('/login?motivo=vencida&volverA=%2F%2Fmalo.example%2Fx');
+
+    expect(
+      await screen.findByText('Tu sesión venció. Ingresá de nuevo para continuar.'),
+    ).toBeVisible();
+    await completarLogin();
+    await enElShell();
+    expect(donde()).toBe('/rendiciones');
+  });
+
+  it('al volver a la pestaña revalida la sesión, sin polling: si la cerraron en otra pestaña, va a /login', async () => {
+    servidor.sesion = sesionDePrueba();
+    const { donde } = abrir('/clientes?estado=INACTIVO');
+    await enElShell();
+    expect(getsDeSesion()).toBe(1);
+
+    // La cerraron en otra pestaña: mientras esta no vuelve a estar visible, no pregunta.
+    servidor.sesion = null;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(getsDeSesion()).toBe(1);
+
+    volverALaPestana();
+
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Tu sesión terminó. Ingresá de nuevo.');
+    expect(donde()).toBe('/login?motivo=terminada&volverA=%2Fclientes%3Festado%3DINACTIVO');
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .filter((q) => q.queryKey[0] !== 'sesion' && q.state.data !== undefined),
+    ).toEqual([]);
+  });
+
+  it('si al volver a la pestaña el servidor no responde, la sesión NO se pierde', async () => {
+    servidor.sesion = sesionDePrueba();
+    const { donde } = abrir('/clientes');
+    await enElShell();
+    servidor.forzadas.set('GET /api/auth/sesion', NO_DISPONIBLE);
+    servidor.negocio = NO_DISPONIBLE;
+
+    volverALaPestana();
+
+    await waitFor(() => expect(getsDeSesion()).toBeGreaterThan(1));
+    await waitFor(() => expect(queryClient.getQueryState(CLAVE_SESION)?.fetchStatus).toBe('idle'), {
+      timeout: 3000,
+    });
+    expect(donde()).toBe('/clientes');
+    expect(screen.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+    expect(queryClient.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba());
+  });
+
+  it('si al volver a la pestaña la sesión es de otra cuenta (otra pestaña entró con otra), no queda nada de la anterior', async () => {
+    servidor.sesion = sesionDePrueba();
+    abrir('/documentos/tipos');
+    await enElShell();
+    queryClient.setQueryData(['dato-de-negocio'], 'de Ana');
+    servidor.sesion = sesionDePrueba({
+      id: '0000a000-0000-4000-8000-000000000002',
+      nombre: 'Beto Bermúdez',
+    });
+
+    volverALaPestana();
+
+    expect(
+      await screen.findByRole('button', { name: 'Cuenta de Beto Bermúdez (Administrativo)' }),
+    ).toBeVisible();
+    expect(queryClient.getQueryData(['dato-de-negocio'])).toBeUndefined();
+  });
+
+  it('un 401 de un pedido que salió con el token anterior (otra pestaña rotó la sesión): la sesión sigue y el pedido se repite', async () => {
+    servidor.sesion = sesionDePrueba();
+    const { donde } = abrir('/documentos/tipos');
+    await enElShell();
+    await waitFor(() => expect(deTipos()).toBe(1));
+    const sesionesAntes = getsDeSesion();
+
+    // La cookie del navegador ya es la rotada; este pedido viajó con la anterior.
+    servidor.forzadas.set(LISTADO_DE_TIPOS, () => {
+      servidor.forzadas.delete(LISTADO_DE_TIPOS);
+      return SIN_SESION();
+    });
+    await act(() => queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] !== 'sesion' }));
+
+    // Se confirmó con el servidor (una vez) y el listado se volvió a pedir (una vez).
+    await waitFor(() => expect(deTipos()).toBe(3));
+    expect(getsDeSesion()).toBe(sesionesAntes + 1);
+    expect(donde()).toBe('/documentos/tipos');
+    expect(screen.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+    expect(queryClient.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba());
+  });
+
+  it('si el servidor sigue rechazando un pedido con la sesión válida, no se insiste en un bucle', async () => {
+    servidor.sesion = sesionDePrueba();
+    abrir('/documentos/tipos');
+    await enElShell();
+    await waitFor(() => expect(deTipos()).toBe(1));
+
+    // El listado responde 401, pero `GET /auth/sesion` dice que la sesión vale.
+    servidor.forzadas.set(LISTADO_DE_TIPOS, SIN_SESION);
+    await act(() => queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] !== 'sesion' }));
+
+    await waitFor(() => expect(deTipos()).toBe(3));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(deTipos()).toBe(3);
+    expect(screen.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  });
+
+  it('un 401 atrasado durante el cambio voluntario en esta pestaña espera la rotación y no cierra la sesión nueva', async () => {
+    let soltarCambio: (respuesta: Response) => void = () => undefined;
+    servidor.forzadas.set(
+      'PUT /api/auth/password',
+      () => new Promise<Response>((resolve) => (soltarCambio = resolve)),
+    );
+    servidor.sesion = sesionDePrueba();
+    const { donde } = abrir('/documentos/tipos');
+    const usuario = userEvent.setup();
+    await usuario.click(
+      await screen.findByRole('button', { name: /^Cuenta de Ana Administrativa/ }),
+    );
+    await usuario.click(await screen.findByRole('menuitem', { name: 'Cambiar contraseña' }));
+    await usuario.type(await screen.findByLabelText('Contraseña actual'), 'mi contraseña larga');
+    await usuario.type(screen.getByLabelText('Nueva contraseña'), 'otra frase larga y propia');
+    await usuario.type(
+      screen.getByLabelText('Confirmar nueva contraseña'),
+      'otra frase larga y propia',
+    );
+    await usuario.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    await screen.findByRole('button', { name: 'Guardando…' });
+    await waitFor(() => expect(deTipos()).toBe(1));
+
+    // Un pedido de la página salió con el token que el cambio está revocando.
+    const sesionesAntes = getsDeSesion();
+    servidor.negocio = SIN_SESION;
+    await act(() => queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] !== 'sesion' }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // No se dio por terminada ni se preguntó todavía: espera a que el cambio termine.
+    expect(getsDeSesion()).toBe(sesionesAntes);
+    expect(screen.queryByRole('heading', { name: 'Iniciar sesión' })).not.toBeInTheDocument();
+
+    servidor.negocio = () => json(200, []);
+    soltarCambio(new Response(null, { status: 204 }));
+
+    expect(
+      await screen.findByText(
+        'Cambiaste tu contraseña. Cerramos tus otras sesiones abiertas.',
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeVisible();
+    expect(donde()).toBe('/documentos/tipos');
+    expect(queryClient.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba());
+    // La consulta que falló se volvió a pedir, ya con la cookie nueva.
+    await waitFor(() => expect(deTipos()).toBe(3));
+    // Las dos consultas de la sesión (la del cambio y la del 401) salieron después del cambio.
+    const orden = pedidos();
+    const despuesDelCambio = orden.slice(orden.indexOf('PUT /api/auth/password') + 1);
+    expect(despuesDelCambio.filter((p) => p === 'GET /api/auth/sesion')).toHaveLength(2);
+  });
+
+  it('varios 401 a la vez: una sola confirmación y una sola navegación, sin pisar el motivo ni perder volverA', async () => {
+    servidor.sesion = sesionDePrueba();
+    const { router, donde } = abrir('/clientes?estado=INACTIVO&q=muni');
+    await enElShell();
+    const navegaciones: string[] = [];
+    const dejar = router.subscribe((estado) =>
+      navegaciones.push(`${estado.location.pathname}${estado.location.search}`),
+    );
+    const sesionesAntes = getsDeSesion();
+    // Venció: el primer 401 lo dice (y borra la cookie); los siguientes ya no tienen cookie.
+    servidor.negocio = () => {
+      servidor.sesion = null;
+      return error(401, 'UNAUTHENTICATED', { motivo: 'SESION_VENCIDA' });
+    };
+
+    await act(async () => {
+      await Promise.allSettled(
+        [1, 2, 3].map((n) =>
+          queryClient.fetchQuery({
+            queryKey: ['negocio', n],
+            queryFn: () => http(`/negocio/${n}`),
+            retry: false,
+          }),
+        ),
+      );
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Tu sesión venció. Ingresá de nuevo para continuar.',
+    );
+    expect(donde()).toBe(
+      '/login?motivo=vencida&volverA=%2Fclientes%3Festado%3DINACTIVO%26q%3Dmuni',
+    );
+    expect(getsDeSesion()).toBe(sesionesAntes + 1);
+    expect(navegaciones.filter((ruta) => ruta.startsWith('/login'))).toHaveLength(1);
+    dejar();
+  });
+
+  it('si la sesión se pierde al enviar un formulario, /login avisa que no se guardó y vuelve a la página', async () => {
+    servidor.sesion = sesionDePrueba();
+    servidor.forzadas.set('POST /api/tipos-documento', () => {
+      servidor.sesion = null;
+      return SIN_SESION();
+    });
+    const { donde } = abrir('/documentos/tipos');
+    const usuario = userEvent.setup();
+    await usuario.click(await screen.findByRole('button', { name: 'Nuevo tipo' }));
+    const panel = await screen.findByRole('dialog', { name: 'Nuevo tipo de documento' });
+    await usuario.type(within(panel).getByLabelText('Nombre'), 'Constancia de inscripción');
+    await usuario.click(within(panel).getByRole('button', { name: 'Crear tipo' }));
+
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Tu sesión terminó. Ingresá de nuevo. Lo que estabas guardando no se guardó.',
+    );
+    expect(donde()).toBe('/login?motivo=terminada&sinGuardar=1&volverA=%2Fdocumentos%2Ftipos');
+
+    loginResponde();
+    const antesDeVolver = pedidosDeNegocio().length;
+    await completarLogin();
+    await enElShell(antesDeVolver);
+    expect(donde()).toBe('/documentos/tipos');
+  });
 });

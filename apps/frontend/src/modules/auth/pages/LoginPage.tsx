@@ -24,13 +24,34 @@ import {
   urlDeCambioDeContrasena,
 } from '@/modules/auth/sesion';
 
+export const MENSAJE_SESION_VENCIDA = 'Tu sesión venció. Ingresá de nuevo para continuar.';
+export const MENSAJE_SESION_TERMINADA = 'Tu sesión terminó. Ingresá de nuevo.';
+/** Se agrega cuando la sesión se perdió al enviar un formulario (`?sinGuardar=1`). */
+export const MENSAJE_SIN_GUARDAR = 'Lo que estabas guardando no se guardó.';
+
 /** Avisos de `?motivo=`. Solo presentación: un valor desconocido no muestra nada. */
-const AVISOS_DE_MOTIVO: Record<string, { variante: 'success' | 'warning'; texto: string }> = {
-  vencida: { variante: 'warning', texto: 'Tu sesión venció. Iniciá sesión de nuevo.' },
-  terminada: { variante: 'warning', texto: 'Tu sesión terminó. Iniciá sesión de nuevo.' },
+const AVISOS_DE_MOTIVO: Record<
+  string,
+  { variante: 'success' | 'warning'; texto: string; admiteSinGuardar?: true }
+> = {
+  vencida: { variante: 'warning', texto: MENSAJE_SESION_VENCIDA, admiteSinGuardar: true },
+  terminada: { variante: 'warning', texto: MENSAJE_SESION_TERMINADA, admiteSinGuardar: true },
   cerrada: { variante: 'success', texto: 'Cerraste la sesión.' },
   contrasena: { variante: 'success', texto: 'Elegiste tu contraseña. Ingresá con la nueva.' },
 };
+
+/** El aviso de `?motivo=` (y `?sinGuardar=1`, solo para una sesión vencida o terminada). */
+function avisoDeSalida(parametros: URLSearchParams) {
+  const aviso = AVISOS_DE_MOTIVO[parametros.get('motivo') ?? ''];
+  if (aviso === undefined) {
+    return null;
+  }
+  const sinGuardar = aviso.admiteSinGuardar === true && parametros.get('sinGuardar') === '1';
+  return {
+    variante: aviso.variante,
+    texto: sinGuardar ? `${aviso.texto} ${MENSAJE_SIN_GUARDAR}` : aviso.texto,
+  };
+}
 
 interface Aviso {
   variante: 'destructive' | 'warning' | 'success';
@@ -139,7 +160,7 @@ export function LoginPage() {
     login.mutate(resultado.data);
   }
 
-  const avisoDeMotivo = aviso === null ? AVISOS_DE_MOTIVO[parametros.get('motivo') ?? ''] : null;
+  const avisoDeMotivo = aviso === null ? avisoDeSalida(parametros) : null;
   const eEmail = errorDeCampo(errores.email);
   const ePassword = errorDeCampo(errores.password);
 
