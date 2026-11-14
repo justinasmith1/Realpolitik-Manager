@@ -1,12 +1,78 @@
 import { act, render, screen, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+// El `fetch` del setup, que no sale a la red: lo que este archivo no simula pasa por ahí y hace
+// fallar el test con la URL pedida.
+const fetchSinSimular = globalThis.fetch;
+
+const CLIENTE_DE_LA_MATRIZ = '11111111-1111-4111-a111-111111111111';
+
+// Las páginas reales piden sus datos al montarse. Estos tests son sobre las rutas, no sobre los
+// datos: el backend simulado responde los listados vacíos y el cliente de la matriz.
+const LISTADOS_VACIOS = [
+  /^\/clientes$/,
+  /^\/rendiciones$/,
+  /^\/rendiciones\/atrasadas$/,
+  /^\/tipos-documento$/,
+  /^\/documentos$/,
+  /^\/clientes\/[^/]+\/(requisitos|rendiciones)$/,
+];
+
+const clienteDeLaMatriz = {
+  id: CLIENTE_DE_LA_MATRIZ,
+  razonSocial: 'Municipalidad de Ejemplo',
+  denominacion: 'Muni Ejemplo',
+  cuit: '30-50001274-5',
+  sector: 'PUBLICO',
+  subtipo: 'MUNICIPAL',
+  ivaCondicion: 'EXENTO',
+  emailContacto: 'muni@ejemplo.example',
+  emailsAdicionales: [],
+  canalEntrega: 'CORREO',
+  periodicidad: null,
+  estado: 'ACTIVO',
+  matrizConfigurada: false,
+  creadoEn: '2026-10-08T12:00:00.000Z',
+  actualizadoEn: '2026-10-08T12:00:00.000Z',
+};
+
+const json = (cuerpo: unknown) =>
+  new Response(JSON.stringify(cuerpo), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+const fetchMock = vi.fn<typeof fetch>((entrada, init) => {
+  const url = new URL(entrada instanceof Request ? entrada.url : String(entrada));
+  if ((init?.method ?? 'GET') === 'GET') {
+    if (LISTADOS_VACIOS.some((ruta) => ruta.test(url.pathname))) {
+      return Promise.resolve(json([]));
+    }
+    if (url.pathname === `/clientes/${CLIENTE_DE_LA_MATRIZ}`) {
+      return Promise.resolve(json(clienteDeLaMatriz));
+    }
+  }
+  return fetchSinSimular(entrada, init);
+});
+
+// Simulado para todo el archivo, no por test: las páginas son lazy y, en un test sincrónico,
+// terminan de montarse (y piden sus datos) después de que el test terminó. Si el mock se quitara
+// en cada `afterEach`, ese pedido tardío caería en el test siguiente como "no simulado".
+beforeAll(() => {
+  vi.stubGlobal('fetch', fetchMock);
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
+
 beforeEach(() => {
   conSesionDePrueba();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  fetchMock.mockClear();
 });
 
 import { AppProviders } from '@/app/providers';

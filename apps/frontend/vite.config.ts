@@ -24,6 +24,11 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // Base fija de la API en los tests: no depende de `.env.local`, que en desarrollo apunta al
+    // backend real (http://localhost:3000). Es un dominio reservado que no resuelve, y de todos
+    // modos `src/test/setup.ts` hace fallar cualquier `fetch` que el test no simuló. Un test puede
+    // cambiarla con `vi.stubEnv` (`vi.unstubAllEnvs` vuelve a este valor).
+    env: { VITE_API_URL: 'https://api.example' },
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     // jsdom por archivo, en forks. Con todos los núcleos de una máquina de desarrollo los

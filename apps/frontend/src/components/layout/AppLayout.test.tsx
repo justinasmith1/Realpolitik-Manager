@@ -35,12 +35,40 @@ function mockMobileViewport() {
 const enlaceDelSidebar = (nombre: string) =>
   within(screen.getByRole('navigation', { name: 'Principal' })).getByRole('link', { name: nombre });
 
+// El `fetch` del setup, que no sale a la red: lo que este archivo no simula pasa por ahí y hace
+// fallar el test con la URL pedida.
+const fetchSinSimular = globalThis.fetch;
+
+// La página de /clientes pide el listado al montarse. El layout no depende de esos datos: se
+// simula vacío, así el test no le pega a ningún backend.
+const fetchMock = vi.fn<typeof fetch>((entrada, init) => {
+  const url = new URL(entrada instanceof Request ? entrada.url : String(entrada));
+  if ((init?.method ?? 'GET') === 'GET' && url.pathname === '/clientes') {
+    return Promise.resolve(
+      new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+  }
+  return fetchSinSimular(entrada, init);
+});
+
+// Simulado para todo el archivo, no por test: la página es lazy y, en un test sincrónico, termina
+// de montarse (y pide el listado) después de que el test terminó. Si el mock se quitara en cada
+// `afterEach`, ese pedido tardío caería en el test siguiente como "no simulado".
+beforeAll(() => {
+  vi.stubGlobal('fetch', fetchMock);
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
+
 beforeEach(() => {
   conSesionDePrueba();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  fetchMock.mockClear();
 });
 
 describe('AppLayout', () => {

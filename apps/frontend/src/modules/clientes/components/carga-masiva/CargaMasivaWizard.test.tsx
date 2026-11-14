@@ -80,7 +80,34 @@ function renderWizard(props: Partial<Parameters<typeof CargaMasivaWizard>[0]> = 
   };
 }
 
+// El `fetch` del setup, que no sale a la red: lo que este archivo no simula pasa por ahí y hace
+// fallar el test con la URL pedida.
+const fetchSinSimular = globalThis.fetch;
+
+// Los pasos 2 y 3 piden los requisitos de cada cliente para avisar si ya tienen el tipo elegido.
+// Ninguno lo tiene: se simulan vacíos.
+const fetchMock = vi.fn<typeof fetch>((entrada, init) => {
+  const url = new URL(entrada instanceof Request ? entrada.url : String(entrada));
+  const esRequisitos = /^\/clientes\/[^/]+\/requisitos$/.test(url.pathname);
+  if ((init?.method ?? 'GET') === 'GET' && esRequisitos) {
+    return Promise.resolve(
+      new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+  }
+  return fetchSinSimular(entrada, init);
+});
+
 describe('CargaMasivaWizard', () => {
+  // Simulado para todo el archivo, no por test: un pedido que llega después de que un test
+  // terminó lo sigue respondiendo la simulación, en vez de caer en el test siguiente.
+  beforeAll(() => {
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
