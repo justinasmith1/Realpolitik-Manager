@@ -20,13 +20,16 @@ import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 
+import { fetchDeRed } from './fetchDeRed';
+
 const SCRIPT = 'src/modules/auth/__tests__/usuarioDeApiDeTest.ts';
 
 /** Un origen que el backend de pruebas acepta (`CORS_ORIGINS`). Por defecto, el del CI. */
 const ORIGEN = process.env.TEST_API_ORIGIN ?? 'http://localhost:5173';
 
 export function sesionDeApi(api: string | undefined) {
-  const fetchBase = globalThis.fetch.bind(globalThis);
+  // El `fetch` real: `setup.ts` bloquea el global para que ningún otro test salga a la red.
+  const fetchBase = fetchDeRed;
   // Vitest corre con la raíz del frontend como directorio de trabajo.
   const backend = resolve(process.cwd(), '../backend');
   let cookie: string | undefined;
