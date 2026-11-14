@@ -292,8 +292,11 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
 
     await user.click(within(await panel()).getByRole('link', { name: 'Ir a la rendición' }));
 
-    expect(router.state.location.pathname).toBe(
-      `/clientes/${CLIENTE_ID}/rendiciones/${RENDICION_ID}`,
+    // La navegación se aplica en una transición: se espera la URL en vez de leerla al instante.
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        `/clientes/${CLIENTE_ID}/rendiciones/${RENDICION_ID}`,
+      ),
     );
     expect(await screen.findByRole('heading', { name: 'Detalle' })).toBeInTheDocument();
   });
@@ -344,7 +347,10 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
         expect(screen.queryByRole('region', { name: /Resumen/ })).not.toBeInTheDocument(),
       );
       expect(parametros(router)).toEqual({ anio: '2026', mes: '10', tipo: 'MUNICIPAL' });
-      expect(screen.getByRole('link', { name: /Muni La Plata/ })).toHaveFocus();
+      // El foco vuelve a la fila y se le quita la marca después de dibujar sin el panel.
+      await waitFor(() =>
+        expect(screen.getByRole('link', { name: /Muni La Plata/ })).toHaveFocus(),
+      );
       expect(screen.getByRole('link', { name: /Muni La Plata/ })).not.toHaveAttribute(
         'aria-current',
       );
@@ -367,7 +373,10 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
 
     await filaDe(/Muni La Plata/);
     await waitFor(() => expect(parametros(router)).toEqual({ anio: '2026', mes: '10' }));
-    expect(screen.queryByRole('region', { name: /Resumen/ })).not.toBeInTheDocument();
+    // El router cambia la URL antes de que React vuelva a dibujar: se espera la ausencia del panel.
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: /Resumen/ })).not.toBeInTheDocument(),
+    );
   });
 
   it('si la rendición ya no existe (404), se quita de la URL', async () => {
@@ -420,7 +429,10 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
 
     await filaDe(/Zeta/);
     await waitFor(() => expect(parametros(router)).toEqual({ anio: '2026', mes: '10' }));
-    expect(screen.queryByRole('region', { name: /Resumen/ })).not.toBeInTheDocument();
+    // El router cambia la URL antes de que React vuelva a dibujar: se espera la ausencia del panel.
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: /Resumen/ })).not.toBeInTheDocument(),
+    );
   });
 });
 
