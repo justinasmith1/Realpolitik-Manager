@@ -1189,12 +1189,13 @@ Todos los puntos están implementados. Se conservan, con su numeración, como re
 
 ## 8. Autenticación (`/auth/*`, HU4.1)
 
-Diseño en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md); schemas en `packages/shared/src/schemas/usuario.schema.ts`. Esta sección describe el contrato HTTP.
+Diseño en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md); schemas en `packages/shared/src/schemas/usuario.schema.ts`. Esta sección describe el contrato HTTP, con los cambios de HU4.2 (cambio voluntario con rotación de sesión y el 401 de una sesión revocada).
 
 ### Sesión y cookie
 
 - La sesión es un token opaco que viaja **solo** en la cookie `__Host-rp_sesion` (`HttpOnly; Secure; SameSite=Strict; Path=/`, sin `Domain`). Ninguna respuesta lo incluye en el cuerpo y JavaScript no lo puede leer.
-- Es una cookie de sesión del navegador (sin `Max-Age`). La vigencia la decide el servidor: vence tras **24 h sin actividad** o **7 días** desde el inicio, lo que ocurra primero (propuesta P2, sin confirmar). Una persona tiene como mucho **10 sesiones vigentes**: al iniciar una más se revoca la de actividad más vieja.
+- Es una cookie de sesión del navegador (sin `Max-Age`). La vigencia la decide el servidor, que es la única autoridad de la expiración: vence tras **24 h sin actividad** o **7 días** desde el inicio, lo que ocurra primero (propuesta P2, sin confirmar). Una sesión rotada por un cambio voluntario de contraseña cuenta los dos plazos desde el cambio. Una persona tiene como mucho **10 sesiones vigentes**: al iniciar una más se revoca la de actividad más vieja.
+- Una falla de infraestructura (`503`, sin red) **no** es una pérdida de sesión: nunca se borra la cookie por eso.
 - El frontend llama a la API por el mismo origen (`/api/...`, proxy de Vite en desarrollo y rewrite de Vercel en producción). Desde otro origen la cookie no viaja y no se puede iniciar sesión.
 
 ### Reglas globales de la API de negocio
@@ -1211,7 +1212,8 @@ En este orden, antes de leer el cuerpo del pedido:
 | El rol no tiene el permiso de la ruta (o `CONSULTA` intenta escribir)                                             | `403 FORBIDDEN`, motivo `PERMISO_INSUFICIENTE`         |
 | PostgreSQL no responde al validar la sesión                                                                       | `503 SERVICE_UNAVAILABLE` (la cookie no se borra)      |
 
-- Con una cookie inválida o vencida, la respuesta 401 además la borra.
+- Con una cookie inválida, vencida, desconocida o de una cuenta desactivada, la respuesta 401 además la borra. **Con una sesión revocada, no** (desde HU4.2): ese 401 puede ser de un pedido que salió con el token anterior a una rotación, y borrar la cookie haría perder la sesión nueva. La cookie revocada no da acceso; el próximo login la reemplaza y el logout la borra.
+- El frontend no da la sesión por terminada con el primer 401: la confirma con `GET /auth/sesion`.
 - Sin sesión, una ruta inexistente también responde 401 (y a `CONSULTA`, 403 `ROL_NO_HABILITADO`): no se puede usar para descubrir rutas. Con sesión, una ruta inexistente responde 404.
 
 ### `POST /auth/login`
@@ -1238,25 +1240,32 @@ Exige sesión. Responde aunque la contraseña sea temporal y para cualquier rol 
 
 **200:** `{ "usuario": { … } }`, igual que el login, con los datos leídos de la base en cada pedido.
 
-**Errores:** `401` `SESION_REQUERIDA` o `SESION_VENCIDA` (borra la cookie); `503` si PostgreSQL no responde (no la borra). El frontend trata el 401 como "sin sesión", no como un error.
+**Errores:** `401` `SESION_REQUERIDA` o `SESION_VENCIDA` (borra la cookie, salvo si la sesión está revocada); `503` si PostgreSQL no responde (no la borra). El frontend trata el 401 como "sin sesión", no como un error.
 
 ### `PUT /auth/password`
 
-Exige sesión y `Origin` permitido. Es el cambio obligatorio del primer acceso (y el de la propia contraseña).
+Exige sesión y `Origin` permitido. Es el cambio de la propia contraseña: el **obligatorio** del primer acceso o de un restablecimiento (HU4.1) y el **voluntario** desde el menú de cuenta (HU4.2). El tipo lo decide el servidor con `debeCambiarPassword`, leído en la misma transacción que guarda el cambio; el cuerpo no puede elegirlo.
 
 **Pedido:** `{ "actual": string, "nueva": string }` (`CambiarContrasenaSchema`). `actual` se verifica como en el login. `nueva`, después de normalizar a NFC: de 8 a 128 caracteres (P5), sin caracteres de control, distinta de `actual`, que no esté en la lista de contraseñas comunes y que no sea un derivado trivial del nombre o del email de la cuenta.
 
-**204:** sin cuerpo. Se guarda la contraseña nueva, `debeCambiarPassword` pasa a `false`, se revocan **todas** las sesiones de la cuenta (también la de este pedido) y se borra la cookie: hay que volver a iniciar sesión con la contraseña nueva.
+**204:** sin cuerpo. En los dos casos se guarda la contraseña nueva, `debeCambiarPassword` pasa a `false` y se revocan **todas** las sesiones de la cuenta, también la de este pedido. Después:
+
+- **Cambio obligatorio:** se borra la cookie y hay que volver a iniciar sesión con la contraseña nueva.
+- **Cambio voluntario:** `Set-Cookie` con una sesión **nueva** para este navegador (rotación), con los mismos atributos que la del login. El token anterior queda revocado. La persona sigue dentro y las demás sesiones quedan cerradas. El token no aparece en el cuerpo: para confirmar que la cookie nueva vale, el frontend pide `GET /auth/sesion`.
+
+El servidor solo responde `204` después de confirmar, con una lectura aparte, que el cambio quedó guardado.
 
 **Errores:**
 
-| Estado | `code` / motivo                                           | Cuándo                                                                                                                                                                            |
-| ------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | `VALIDATION_ERROR` en `actual`                            | Vacía, o no es la contraseña vigente ("La contraseña actual no es correcta."). Nunca 401: la sesión es válida. Cuenta como un fallo de inicio de sesión para la espera por cuenta |
-| 400    | `VALIDATION_ERROR` en `nueva`                             | No cumple la política: corta, larga, caracteres inválidos, igual a la actual o previsible ("Esa contraseña es muy común o fácil de adivinar. Elegí otra.")                        |
-| 401    | `UNAUTHENTICATED` / `SESION_REQUERIDA` o `SESION_VENCIDA` | Sin sesión válida, o la sesión dejó de valer mientras se procesaba (borra la cookie)                                                                                              |
-| 429    | `TOO_MANY_REQUESTS`                                       | Las mismas esperas que el login, sobre el email de la cuenta                                                                                                                      |
-| 503    | `SERVICE_UNAVAILABLE`                                     | PostgreSQL no responde o no hay capacidad para el cálculo. No se borra la cookie ni se cambia nada                                                                                |
+| Estado | `code` / motivo                                           | Cuándo                                                                                                                                                                                              |
+| ------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR` en `actual`                            | Vacía, o no es la contraseña vigente ("La contraseña actual no es correcta."). Nunca 401: la sesión es válida. Cuenta como un fallo de inicio de sesión para la espera por cuenta                   |
+| 400    | `VALIDATION_ERROR` en `nueva`                             | No cumple la política: corta, larga, caracteres inválidos, igual a la actual o previsible ("Esa contraseña es muy común o fácil de adivinar. Elegí otra.")                                          |
+| 401    | `UNAUTHENTICATED` / `SESION_REQUERIDA` o `SESION_VENCIDA` | Sin sesión válida, o la sesión o la cuenta dejaron de valer mientras se procesaba (otro cambio, un logout, una desactivación). Borra la cookie, salvo si la sesión está revocada. No se cambia nada |
+| 403    | `FORBIDDEN` / `ORIGEN_NO_PERMITIDO`                       | Sin `Origin`, con otro origen o `Sec-Fetch-Site: cross-site`. No se cambia nada                                                                                                                     |
+| 429    | `TOO_MANY_REQUESTS`                                       | Las mismas esperas que el login, sobre el email de la cuenta                                                                                                                                        |
+| 500    | `INTERNAL_ERROR`                                          | El cambio no quedó confirmado en la base. No se toca la cookie ni se informa un cambio                                                                                                              |
+| 503    | `SERVICE_UNAVAILABLE`                                     | PostgreSQL no responde o no hay capacidad para el cálculo. No se borra la cookie, no se cambia nada y no cuenta como fallo                                                                          |
 
 ### `POST /auth/logout`
 

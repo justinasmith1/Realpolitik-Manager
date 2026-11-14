@@ -4,7 +4,7 @@
 
 Proposed
 
-Diseño de la épica 4 (Sprint 3), consolidado antes de implementar HU4.1. Del código, están implementados el transporte de mismo origen, sin activar (§7 y [deployment.md](../deployment.md#proxy-de-mismo-origen-preparado-sin-activar)), el modelo de usuarios y sesiones con el hash de contraseñas (§6) y los endpoints `POST /auth/login`, `GET /auth/sesion`, `POST /auth/logout` y `PUT /auth/password` con la cookie, la validación de `Origin` y la protección del login (Backend 2C y cierre de la etapa 2, §1, §3 y §4). **Desde la etapa 3, toda la API de negocio exige sesión y el permiso de la matriz** (§5, implementado y verificado localmente; sin desplegar): lo demás que este ADR describe como "se agrega" o "cambia" es la propuesta a implementar. Se mantiene `Proposed` porque quedan decisiones arquitectónicas sin validar en un entorno real: el proxy de mismo origen en Vercel (Anexo A), la carga de la biblioteca de contraseñas en Railway y los tiempos de sesión. La matriz de permisos vive en [`docs/security/matriz-permisos.md`](../security/matriz-permisos.md); la experiencia de usuario, en el [borrador UX](../product/borrador-ux-usuarios-y-acceso.md).
+Diseño de la épica 4 (Sprint 3), consolidado antes de implementar HU4.1. Del código, están implementados el transporte de mismo origen, sin activar (§7 y [deployment.md](../deployment.md#proxy-de-mismo-origen-preparado-sin-activar)), el modelo de usuarios y sesiones con el hash de contraseñas (§6) y los endpoints `POST /auth/login`, `GET /auth/sesion`, `POST /auth/logout` y `PUT /auth/password` con la cookie, la validación de `Origin` y la protección del login (Backend 2C y cierre de la etapa 2, §1, §3 y §4). **Desde la etapa 3, toda la API de negocio exige sesión y el permiso de la matriz** (§5, implementado y verificado localmente; sin desplegar). **Desde HU4.2, el cambio voluntario de contraseña rota la sesión** del navegador que lo hace (§1 "Cambio de contraseña") y el frontend confirma cada 401 con el servidor antes de cerrar la sesión (§7); verificado localmente, sin desplegar. Lo demás que este ADR describe como "se agrega" o "cambia" es la propuesta a implementar. Se mantiene `Proposed` porque quedan decisiones arquitectónicas sin validar en un entorno real: el proxy de mismo origen en Vercel (Anexo A), la carga de la biblioteca de contraseñas en Railway y los tiempos de sesión. La matriz de permisos vive en [`docs/security/matriz-permisos.md`](../security/matriz-permisos.md); la experiencia de usuario, en el [borrador UX](../product/borrador-ux-usuarios-y-acceso.md).
 
 ## Fecha
 
@@ -124,16 +124,16 @@ El backend es **el mismo** para 3 y 4; solo cambia la configuración. La segurid
 
 #### Ciclo de vida
 
-| Evento                                                                                  | Qué pasa                                                                                                                                                                                                                     |
-| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Login correcto                                                                          | Se crea una sesión **nueva** (nunca se reutiliza un token recibido). Si el pedido traía una cookie de sesión válida, esa sesión se revoca. Se borran de forma oportunista las sesiones vencidas o revocadas de más de 7 días |
-| Cada pedido autenticado                                                                 | Se busca la sesión vigente (hash + no revocada + no vencida por inactividad ni por tiempo absoluto) junto con el usuario activo, en **una** consulta                                                                         |
-| Actividad                                                                               | `UPDATE … SET ultimaActividadEn = ahora WHERE id = :id AND revocadaEn IS NULL AND ultimaActividadEn < ahora − 60 s`. Condicional e idempotente: como mucho una escritura por minuto por sesión, sin transacción              |
-| Logout                                                                                  | `UPDATE … SET revocadaEn = ahora WHERE tokenHash = :hash AND revocadaEn IS NULL` y se borra la cookie con los mismos atributos con que se creó. Idempotente: 204 aunque la sesión ya no exista                               |
-| Cambio de la propia contraseña                                                          | En una transacción: nuevo hash, `debeCambiarPassword = false` y revocar **todas** las sesiones del usuario, **incluida la del pedido**; se borra la cookie y hay que volver a entrar (etapa 2, ver "Cambio de contraseña")   |
-| Restablecimiento (por un `ADMINISTRADOR` en HU4.5; antes, por el procedimiento técnico) | Contraseña temporal generada, `debeCambiarPassword`, revocar todas sus sesiones                                                                                                                                              |
-| Desactivación                                                                           | En una transacción: `activo = false` y revocar todas sus sesiones. Además, cada pedido verifica `usuario.activo` (defensa en profundidad)                                                                                    |
-| Cambio de rol                                                                           | Revoca las sesiones del usuario: vuelve a entrar con el rol nuevo                                                                                                                                                            |
+| Evento                                                                                  | Qué pasa                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Login correcto                                                                          | Se crea una sesión **nueva** (nunca se reutiliza un token recibido). Si el pedido traía una cookie de sesión válida, esa sesión se revoca. Se borran de forma oportunista las sesiones vencidas o revocadas de más de 7 días                                                                                                                                                             |
+| Cada pedido autenticado                                                                 | Se busca la sesión vigente (hash + no revocada + no vencida por inactividad ni por tiempo absoluto) junto con el usuario activo, en **una** consulta                                                                                                                                                                                                                                     |
+| Actividad                                                                               | `UPDATE … SET ultimaActividadEn = ahora WHERE id = :id AND revocadaEn IS NULL AND ultimaActividadEn < ahora − 60 s`. Condicional e idempotente: como mucho una escritura por minuto por sesión, sin transacción                                                                                                                                                                          |
+| Logout                                                                                  | `UPDATE … SET revocadaEn = ahora WHERE tokenHash = :hash AND revocadaEn IS NULL` y se borra la cookie con los mismos atributos con que se creó. Idempotente: 204 aunque la sesión ya no exista                                                                                                                                                                                           |
+| Cambio de la propia contraseña                                                          | En una transacción: nuevo hash, `debeCambiarPassword = false` y revocar **todas** las sesiones del usuario, **incluida la del pedido**. Obligatorio: se borra la cookie y hay que volver a entrar. Voluntario (HU4.2): en la misma transacción se abre una sesión nueva para este navegador, con una cookie nueva (rotación). El tipo lo decide el servidor (ver "Cambio de contraseña") |
+| Restablecimiento (por un `ADMINISTRADOR` en HU4.5; antes, por el procedimiento técnico) | Contraseña temporal generada, `debeCambiarPassword`, revocar todas sus sesiones                                                                                                                                                                                                                                                                                                          |
+| Desactivación                                                                           | En una transacción: `activo = false` y revocar todas sus sesiones. Además, cada pedido verifica `usuario.activo` (defensa en profundidad)                                                                                                                                                                                                                                                |
+| Cambio de rol                                                                           | Revoca las sesiones del usuario: vuelve a entrar con el rol nuevo                                                                                                                                                                                                                                                                                                                        |
 
 - **Límite de sesiones por usuario**: 10 vigentes (**propuesta técnica, sin aprobación funcional registrada**). Al crear la undécima se revoca la de actividad más vieja (`ultimaActividadEn`, después `createdAt`): así se cierra antes un dispositivo abandonado que uno en uso. Las revocadas y las vencidas no cuentan.
 - **Reloj**: el de la aplicación, inyectado (`ahora()`), para testear los bordes como `esAtrasada` (ADR-0005). Hay una sola instancia.
@@ -152,29 +152,64 @@ El backend es **el mismo** para 3 y 4; solo cambia la configuración. La segurid
   - **Revocación con el reloj atrasado:** `revocadaEn` usa `GREATEST(ahora, createdAt)`, así un reloj que retrocede no viola `ck_sesion_fechas_coherentes`.
   - **Validación seguida de revocación:** un pedido que ya validó su sesión termina, y los siguientes la encuentran revocada.
 
-#### Cambio de contraseña (implementado en el cierre de la etapa 2)
+#### Cambio de contraseña (obligatorio desde la etapa 2 de HU4.1; voluntario con rotación desde HU4.2)
 
-`PUT /auth/password` con `{ actual, nueva }` (`CambiarContrasenaSchema` en shared). Resuelve el cambio obligatorio del primer acceso (`debeCambiarPassword = true`) y sirve también sin esa marca, para que HU4.2 lo reutilice.
+`PUT /auth/password` con `{ actual, nueva }` (`CambiarContrasenaSchema` en shared). Un solo endpoint para los dos cambios: el **obligatorio** (primer acceso o restablecimiento: `debeCambiarPassword = true`) y el **voluntario**, desde el menú de cuenta (HU4.2). **El tipo de cambio lo decide el servidor** con `debeCambiarPassword` leído bajo el bloqueo de la fila del usuario; nunca el pedido ni la sesión validada antes.
 
-**Decisión de este bloque:** el cambio revoca **todas** las sesiones, incluida la del pedido, borra la cookie y exige iniciar sesión otra vez con la contraseña nueva. Reemplaza la rotación que proponía este ADR (revocar todo y crear una sesión nueva para el pedido actual). Para el cambio voluntario de HU4.2, el borrador UX propone que la sesión actual siga: **queda pendiente** decidir si HU4.2 rota o también exige volver a entrar.
+**Decisiones:**
 
-| Orden | Paso                                                                                                   | Si falla                                                                     |
-| ----- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| 1     | `Origin` exacto (como toda escritura en `/auth`)                                                       | `403 ORIGEN_NO_PERMITIDO`                                                    |
-| 2     | Sesión válida (`requerirSesion`, la misma que usa `GET /auth/sesion`)                                  | `401 SESION_REQUERIDA` o `SESION_VENCIDA`, borra la cookie; base caída `503` |
-| 3     | Cuerpo: `actual` no vacía (≤ 128); `nueva` con formato y largo; `nueva ≠ actual` (comparadas tras NFC) | `400 VALIDATION_ERROR` en el campo                                           |
-| 4     | Política completa de la nueva: lista de bloqueo, contexto (email y nombre), repetición trivial         | `400` en `nueva`, sin consumir la protección ni argon2                       |
-| 5     | Reserva en la protección del login, con el email de la cuenta                                          | `429` (`DEMASIADOS_INTENTOS` o `INTENTO_EN_CURSO`)                           |
-| 6     | Verificar `actual` y calcular el hash de `nueva`, ambos por `limiteDeHash`, fuera de la transacción    | `400` en `actual` (cuenta como fallo); capacidad agotada `503`               |
-| 7     | Transacción (abajo)                                                                                    | Nada se confirma; `401` si la sesión dejó de valer, `503` si la base falla   |
-| 8     | Borrar la cookie y responder `204` sin cuerpo                                                          | —                                                                            |
+- En los dos casos se revocan **todas** las sesiones del usuario, **incluida la del pedido**.
+- **Obligatorio (igual que en HU4.1):** `204`, se borra la cookie y hay que volver a iniciar sesión con la contraseña nueva.
+- **Voluntario (HU4.2), con rotación:** en la misma transacción se abre una sesión nueva para el navegador que hizo el cambio (`abrirSesionEnTransaccion`, el mismo paso que usa el login). El `204` la emite en una cookie nueva, con los mismos atributos. El token anterior no se conserva: queda revocado con los demás. La persona sigue dentro y sus otras sesiones (otros navegadores y equipos) quedan cerradas. Es la rotación que proponía este ADR antes de la etapa 2 de HU4.1, que solo se había reemplazado por "revocar todo y volver a entrar".
+- **Cómo vence la sesión rotada:** con plazos nuevos desde el cambio, 24 h de inactividad y 7 días de duración máxima (`fechasDeSesionNueva`; P2 sigue pendiente).
+  - Verificar la contraseña actual es una reautenticación. NIST SP 800-63B-4 §5.2 indica que una reautenticación correcta reinicia los dos plazos (_"successful reauthentication during a session SHALL reset both timeouts"_).
+  - No da nada que un login no dé: exige la contraseña y pasa por la misma protección de intentos.
+  - No actualiza `ultimoAccesoEn`, porque no es un inicio de sesión.
+  - El límite de 10 vigentes se cumple solo: antes de abrir la sesión rotada se revocaron todas.
+- El token nunca viaja en un cuerpo. El frontend confirma con `GET /auth/sesion` que la cookie nueva vale.
 
-**La transacción** (READ COMMITTED, como `crearSesion`):
+| Orden | Paso                                                                                                                                                     | Si falla                                                                                                         |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 1     | `Origin` exacto (como toda escritura en `/auth`)                                                                                                         | `403 ORIGEN_NO_PERMITIDO`                                                                                        |
+| 2     | Sesión válida (`requerirSesion`, la misma que usa `GET /auth/sesion`)                                                                                    | `401 SESION_REQUERIDA` o `SESION_VENCIDA` (borra la cookie, salvo si está revocada: ver abajo); base caída `503` |
+| 3     | Cuerpo: `actual` no vacía (≤ 128); `nueva` con formato y largo; `nueva ≠ actual` (comparadas tras NFC)                                                   | `400 VALIDATION_ERROR` en el campo                                                                               |
+| 4     | Política completa de la nueva: lista de bloqueo, contexto (email y nombre), repetición trivial                                                           | `400` en `nueva`, sin consumir la protección ni argon2                                                           |
+| 5     | Reserva en la protección del login, con el email de la cuenta                                                                                            | `429` (`DEMASIADOS_INTENTOS` o `INTENTO_EN_CURSO`)                                                               |
+| 6     | Verificar `actual` y calcular el hash de `nueva`, ambos por `limiteDeHash`, fuera de la transacción                                                      | `400` en `actual` (cuenta como fallo); capacidad agotada `503`                                                   |
+| 7     | Transacción (abajo)                                                                                                                                      | Nada se confirma; `401` si la sesión o la cuenta dejaron de valer, `503` si la base falla                        |
+| 8     | Confirmación del `COMMIT`: una lectura aparte del hash guardado (abajo)                                                                                  | `500` si no es el nuevo (`CambioNoConfirmadoError`); `503` si la base no responde. La cookie no se toca          |
+| 9     | Obligatorio: borrar la cookie. Voluntario: cookie nueva con el token de la sesión rotada. `204` sin cuerpo; evento `auth.password.cambiada` con `cambio` | —                                                                                                                |
 
-1. `SELECT … FROM "Usuario" … FOR UPDATE`: el mismo bloqueo que toma `crearSesion`.
-2. La cuenta sigue activa, la sesión del pedido sigue vigente (otro cambio o un logout pudo revocarla mientras se calculaba argon2) y el hash sigue siendo el que se verificó.
+Una base caída, la capacidad de argon2 agotada o una sesión que dejó de valer no cuentan como intento fallido: solo la contraseña actual incorrecta suma a la demora por cuenta.
+
+**La transacción** (READ COMMITTED, como `crearSesion`; sin argon2 adentro y sin transacciones anidadas):
+
+1. `SELECT "activo", "passwordHash", "debeCambiarPassword" FROM "Usuario" … FOR UPDATE`: el mismo bloqueo que toma `crearSesion`.
+2. Tres comprobaciones:
+   - la cuenta sigue activa (si no, `401` y ninguna sesión nueva);
+   - la sesión del pedido sigue vigente (otro cambio o un logout pudo revocarla mientras se calculaba argon2);
+   - el hash sigue siendo el que se verificó (si cambió en paralelo, `400` en `actual` y ninguna sesión nueva).
 3. Guarda el hash nuevo, `debeCambiarPassword = false` y `passwordActualizadaEn`.
 4. Revoca todas las sesiones del usuario (`revocarSesionesDeUsuario` con la transacción).
+5. Solo si el cambio es voluntario según el paso 1, abre la sesión rotada con `abrirSesionEnTransaccion`: borra las sesiones cerradas hace más de 7 días, aplica el límite de vigentes y da de alta la nueva, guardando solo el hash del token.
+
+**Confirmación posterior al `COMMIT` (HU4.2).**
+
+- Prisma 5.22 puede resolver `$transaction` aunque el `COMMIT` falle: lo registra como `transaction failed to commit` y no lanza el error.
+  - Lo comprobamos con un trigger de restricción diferido que lanza un error al confirmar: `$transaction` resuelve igual.
+  - Con una restricción única diferida, en cambio, sí lanza (`P2002`).
+- Sin defensa, el servidor respondía `204` con la cookie de una sesión que no existe, y la contraseña quedaba sin cambiar.
+- Por eso, después del `COMMIT`, una lectura aparte compara el hash guardado con el nuevo.
+  - El salt aleatorio hace único ese hash: si está guardado, se confirmó la transacción entera, con la revocación y la sesión rotada.
+  - Si no está, responde `500`, sin cookie y sin el evento de cambio.
+
+**Un `401` por sesión revocada no borra la cookie (cambio de contrato, HU4.2).**
+
+- Un pedido que salió con el token anterior a una rotación puede responder después del `204`.
+- Si ese `401` borrara la cookie, el navegador perdería la sesión nueva: una cookie no se puede borrar "solo si todavía tiene tal valor".
+- La cookie revocada no da acceso a nada: el token se rechaza en cada pedido, el próximo login la reemplaza y el logout la borra.
+- Las demás causas de `401` (vencida, inexistente, mal formada, cuenta inactiva) la siguen borrando.
+- Aplica a `requerirSesion`, es decir a toda la API, y al `401` de la transacción del cambio.
 
 **Garantías frente a sesiones concurrentes**, todas comprobadas con PostgreSQL real:
 
@@ -183,7 +218,29 @@ El backend es **el mismo** para 3 y 4; solo cambia la configuración. La segurid
   - La prueba retiene una fila para dejar el cambio en medio de su transacción y lanza el login desde otra instancia. Con la comparación desactivada, el login recibe `200` y una sesión utilizable; con la comparación, `401`, y no queda ninguna sesión vigente.
 - **Dos cambios simultáneos desde dos sesiones de la misma cuenta:** uno confirma; el otro encuentra su sesión revocada (`401`) o, en la misma instancia, recibe `429 INTENTO_EN_CURSO`. El hash final corresponde a exactamente una de las dos contraseñas nuevas.
 - **La base falla en medio** (se terminó la conexión con `pg_terminate_backend` después de actualizar el usuario y antes de revocar): `503`, el hash, la marca y las sesiones quedan como estaban y la cookie no se borra; reintentar funciona.
-- **Límite conocido:** si la conexión se corta justo durante el `COMMIT`, el cliente recibe `503` aunque PostgreSQL pudo confirmar. Es fail-closed: las sesiones quedaron revocadas y el siguiente pedido recibe `401`. Nunca se informa un cambio que no ocurrió.
+- **Cambio voluntario (HU4.2):**
+  - **Rotación:**
+    - El token nuevo es distinto del anterior.
+    - Las sesiones anteriores, incluida la del pedido, responden `401` sin borrar la cookie.
+    - Queda una sola sesión vigente, con 7 días de duración y `ultimoAccesoEn` sin cambios.
+    - La contraseña vieja ya no entra y la nueva sí.
+    - La sesión rotada sirve en la API de negocio y puede volver a rotar.
+    - Con 10 sesiones vigentes, queda 1.
+  - **Un restablecimiento prende `debeCambiarPassword` mientras se calculaba argon2:** el cambio se trata como obligatorio. Borra la cookie y no abre ninguna sesión.
+  - **Una desactivación concurrente** (cuenta inactiva y sesiones revocadas): `401`, ninguna sesión nueva y la contraseña sin cambiar.
+  - **Un logout de la misma sesión, o una revocación de todas, mientras se calculaba:** `401` sin tocar la cookie y sin cambios. Con el logout, la otra sesión del usuario sigue.
+  - **Dos cambios voluntarios simultáneos desde dos instancias:** uno rota (`204`) y el otro recibe `401` sin cookie. Queda una sola sesión, la del ganador, y la contraseña es la suya.
+  - **Un login con la contraseña vieja que espera el bloqueo:** `401 CREDENCIALES_INVALIDAS` y ninguna sesión. Queda solo la rotada.
+  - **PostgreSQL corta la transacción al abrir la sesión rotada** (ya guardado el hash y revocadas las sesiones):
+    - `503` con `Retry-After`;
+    - no persiste nada y la cookie sigue;
+    - no cuenta como intento;
+    - al reintentar, rota.
+  - **Falla el `COMMIT`** (trigger de restricción diferido, temporal y limitado al usuario de la prueba): `500`, ninguna cookie y nada persiste. Reintentar funciona.
+- **Límite conocido:** el cliente puede recibir `503` (o `500`) aunque PostgreSQL haya confirmado. Pasa si la conexión se corta justo durante el `COMMIT`, o si PostgreSQL deja de responder entre el `COMMIT` y la lectura de confirmación.
+  - Es fail-closed: la contraseña nueva quedó guardada y todas las sesiones revocadas, también la del navegador, que conserva su cookie vieja.
+  - El siguiente pedido recibe `401` y la persona entra con la contraseña nueva.
+  - Nunca se informa un cambio que no ocurrió.
 
 **Primer acceso:** una cuenta con `debeCambiarPassword = true` inicia sesión (`200`, con la marca en el cuerpo de login y de `/auth/sesion`), consulta su sesión, cambia la contraseña y cierra sesión. La marca solo la apaga este cambio y nunca llega del cliente. Fuera de `/auth/*` recibe `403 CAMBIO_DE_PASSWORD_REQUERIDO` (`exigirPasswordDefinitiva`, implementado en la etapa 3), también en rutas inexistentes.
 
@@ -191,7 +248,10 @@ El backend es **el mismo** para 3 y 4; solo cambia la configuración. La segurid
 
 - **Se falla cerrado**: si la sesión no se puede verificar, el pedido **no** pasa. No hay caché de sesiones en memoria (rompería la revocación inmediata).
 - La respuesta es `503 SERVICE_UNAVAILABLE`, **no** 401: un 401 haría que el frontend borre la caché y mande a todos a iniciar sesión por un problema que no es de la sesión.
-- Se reconocen como "base no disponible" los errores de conexión y de pool de Prisma (inicialización, `P1001`, `P1002`, `P1017`, `P2024`) y, desde el cierre de la etapa 2, `P2010` con un SQLSTATE de conexión perdida (clase `08`, o `57P01` a `57P03`). Es lo que reciben las consultas raw (`FOR UPDATE`, revocaciones) cuando PostgreSQL termina la conexión a mitad de una transacción; comprobado con `pg_terminate_backend`, que da `P2010` con `57P01`. Antes daba 500. Cualquier otro error sigue siendo 500.
+- Se reconocen como "base no disponible" los errores de conexión y de pool de Prisma (inicialización, `P1001`, `P1002`, `P1017`, `P2024`) y, desde el cierre de la etapa 2, `P2010` con un SQLSTATE de conexión perdida (clase `08`, o `57P01` a `57P03`). Es lo que reciben las consultas raw (`FOR UPDATE`, revocaciones) cuando PostgreSQL termina la conexión a mitad de una transacción; comprobado con `pg_terminate_backend`, que da `P2010` con `57P01`. Antes daba 500.
+  - **Desde HU4.2, también `PrismaClientUnknownRequestError`** cuando el SQLSTATE de conexión perdida aparece en el mensaje del conector (`PostgresError { code: "57P01", … }`).
+  - Es lo que recibe una consulta del cliente (`deleteMany`, `create`…) dentro de una transacción interactiva cuando se termina la conexión, sin código de Prisma. Comprobado con `pg_terminate_backend` durante la limpieza que abre la sesión rotada.
+  - Daba 500 en el login y en el cambio. Cualquier otro error sigue siendo 500.
 - El login con la base caída también responde 503, sin calcular hashes.
 - **Implementado (Backend 2B):** `lib/baseDeDatosNoDisponible.ts` traduce esos errores a `BaseDeDatosNoDisponibleError`, sin causa ni detalles (el mensaje de Prisma incluye el host). Todas las operaciones del servicio de sesiones la lanzan. Con la base caída, Prisma lanza `PrismaClientInitializationError` (comprobado con una conexión real a un puerto cerrado), y una validación nunca concede acceso. La traducción a 503 es de la capa HTTP (Backend 2C).
 
@@ -248,7 +308,7 @@ Si alguna verificación falla, la alternativa es `@node-rs/argon2` (MIT, binario
 | Lista de bloqueo                | Sí (ver abajo)                                                                                                                                                                      |
 | Contraseñas temporales          | Las genera el sistema: 20 caracteres de un CSPRNG, sin caracteres ambiguos. Se muestran una sola vez y obligan a elegir una propia                                                  |
 
-**Discrepancia sobre el largo mínimo (documentada, no resuelta):** las versiones 0A y 0B de este ADR recomendaban 12 caracteres; la versión 0C y el borrador UX usan 15. Ninguna de las dos cifras tiene una aprobación registrada del cliente o del PO. **Recomendación técnica (no adoptada): 15**, porque la contraseña es el único factor de autenticación (no hay MFA) y NIST SP 800-63B-4 fija ese mínimo para ese caso; 12 sería razonable solo si se agregara un segundo factor. Las frases con espacios hacen que 15 sea manejable. Hasta que se confirme, la implementación usa 15 en un solo lugar (`@realpolitik/shared`), de modo que cambiarlo no exige migración.
+**Discrepancia sobre el largo mínimo (documentada, no resuelta):** las versiones 0A y 0B de este ADR recomendaban 12 caracteres; la versión 0C y el borrador UX usan 15. Ninguna de las dos cifras tiene una aprobación registrada del cliente o del PO. **Recomendación técnica (no adoptada): 15**, porque la contraseña es el único factor de autenticación (no hay MFA) y NIST SP 800-63B-4 fija ese mínimo para ese caso; 12 sería razonable solo si se agregara un segundo factor. Las frases con espacios hacen que 15 sea manejable. **El usuario decidió 8 el 2026-11-12 (P5), y es lo que usa la implementación**, en un solo lugar (`@realpolitik/shared`), de modo que cambiarlo no exige migración (solo regenerar la lista de bloqueo). La diferencia con 15 queda registrada como recomendación pendiente de la respuesta del cliente (ver "Recomendaciones pendientes registradas en HU4.2").
 
 **Lista de bloqueo, sin servicios externos:**
 
@@ -388,18 +448,18 @@ En el frontend (`headers` de `vercel.json`, al poner en producción): CSP con `d
 
 #### 401, 403, 429 y 503
 
-| Código                    | `motivo`                       | Cuándo                                                                  | Qué hace el frontend                                                              |
-| ------------------------- | ------------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `401 UNAUTHENTICATED`     | `SESION_REQUERIDA`             | Sin cookie, cookie desconocida o revocada, usuario inactivo             | Limpia la caché y va a `/login?volverA=…`                                         |
-| `401 UNAUTHENTICATED`     | `SESION_VENCIDA`               | La cookie corresponde a una sesión vencida por inactividad o por tiempo | Igual, con el aviso "Tu sesión venció"                                            |
-| `401 UNAUTHENTICATED`     | `CREDENCIALES_INVALIDAS`       | Login fallido                                                           | Mensaje genérico en el formulario                                                 |
-| `403 FORBIDDEN`           | `PERMISO_INSUFICIENTE`         | El rol no tiene el permiso                                              | Aviso "No tenés permiso para esta acción"; **no** cierra la sesión                |
-| `403 FORBIDDEN`           | `CAMBIO_DE_PASSWORD_REQUERIDO` | Contraseña temporal sin cambiar                                         | Lleva a la pantalla de cambio obligatorio                                         |
-| `403 FORBIDDEN`           | `ORIGEN_NO_PERMITIDO`          | `Origin` ausente o ajeno en un método que escribe                       | Error inesperado                                                                  |
-| `403 FORBIDDEN`           | `ROL_NO_HABILITADO`            | Regla temporal de HU4.1: `CONSULTA` en cualquier ruta de negocio        | "Tu cuenta todavía no tiene acceso al sistema." y Cerrar sesión (borrador UX 3.8) |
-| `429 TOO_MANY_REQUESTS`   | `DEMASIADOS_INTENTOS`          | Demoras y límites del login (con `Retry-After`)                         | Mensaje con el tiempo de espera                                                   |
-| `429 TOO_MANY_REQUESTS`   | `INTENTO_EN_CURSO`             | Otro intento de la misma cuenta en curso (`Retry-After: 1`)             | Reintentar en un momento (o evitar el doble envío)                                |
-| `503 SERVICE_UNAVAILABLE` | —                              | Base no disponible o capacidad de login agotada                         | Estado "servicio no disponible" con Reintentar; no cierra la sesión               |
+| Código                    | `motivo`                       | Cuándo                                                                  | Qué hace el frontend                                                                                                                                              |
+| ------------------------- | ------------------------------ | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `401 UNAUTHENTICATED`     | `SESION_REQUERIDA`             | Sin cookie, cookie desconocida o revocada, usuario inactivo             | Lo confirma con `GET /auth/sesion` (HU4.2); si no hay sesión, limpia la caché y va a `/login?motivo=terminada&volverA=…` ("Tu sesión terminó. Ingresá de nuevo.") |
+| `401 UNAUTHENTICATED`     | `SESION_VENCIDA`               | La cookie corresponde a una sesión vencida por inactividad o por tiempo | Igual, con `motivo=vencida` ("Tu sesión venció. Ingresá de nuevo para continuar.")                                                                                |
+| `401 UNAUTHENTICATED`     | `CREDENCIALES_INVALIDAS`       | Login fallido                                                           | Mensaje genérico en el formulario                                                                                                                                 |
+| `403 FORBIDDEN`           | `PERMISO_INSUFICIENTE`         | El rol no tiene el permiso                                              | Aviso "No tenés permiso para esta acción"; **no** cierra la sesión                                                                                                |
+| `403 FORBIDDEN`           | `CAMBIO_DE_PASSWORD_REQUERIDO` | Contraseña temporal sin cambiar                                         | Lleva a la pantalla de cambio obligatorio                                                                                                                         |
+| `403 FORBIDDEN`           | `ORIGEN_NO_PERMITIDO`          | `Origin` ausente o ajeno en un método que escribe                       | Error inesperado                                                                                                                                                  |
+| `403 FORBIDDEN`           | `ROL_NO_HABILITADO`            | Regla temporal de HU4.1: `CONSULTA` en cualquier ruta de negocio        | "Tu cuenta todavía no tiene acceso al sistema." y Cerrar sesión (borrador UX 3.8)                                                                                 |
+| `429 TOO_MANY_REQUESTS`   | `DEMASIADOS_INTENTOS`          | Demoras y límites del login (con `Retry-After`)                         | Mensaje con el tiempo de espera                                                                                                                                   |
+| `429 TOO_MANY_REQUESTS`   | `INTENTO_EN_CURSO`             | Otro intento de la misma cuenta en curso (`Retry-After: 1`)             | Reintentar en un momento (o evitar el doble envío)                                                                                                                |
+| `503 SERVICE_UNAVAILABLE` | —                              | Base no disponible o capacidad de login agotada                         | Estado "servicio no disponible" con Reintentar; no cierra la sesión                                                                                               |
 
 Orden de los controles en cada pedido: origen (en métodos que escriben) → sesión (401/503) → contraseña temporal (403) → permiso (403) → lectura del cuerpo multipart → validación (400) → existencia (404) → reglas de negocio (409).
 
@@ -523,8 +583,29 @@ En [`schema.prisma`](../../apps/backend/prisma/schema.prisma) y la migración `2
 
 - **Implementado, sin activar:** `VITE_API_URL` admite un path de mismo origen (`/api`; nunca `/`, que compartiría las rutas de la SPA) además de una URL absoluta. `http()` valida que la URL no salga del prefijo y envía la URL relativa. Las credenciales quedan en el modo por defecto de `fetch` (`same-origin`): la cookie viaja sola por `/api` y nunca a otro origen. `server.proxy` de Vite reenvía `/api` a un backend **local** (`API_PROXY_TARGET`, por defecto `http://localhost:3000`). En producción, `VITE_API_URL=/api` se define al activar.
 - **Implementado (etapa 4):** `/login` y `/cambiar-contrasena` fuera de `AppLayout`. La guarda es un componente (`RequiereSesion`) que envuelve al layout, no un loader: decide con el estado de la sesión y no monta el shell ni ninguna página hasta que haya un usuario habilitado. `volverA` solo admite rutas internas.
-- **Estado de sesión, una sola fuente de verdad:** la caché de TanStack Query bajo `['sesion']`, llenada solo con lo que responde el servidor (`GET /auth/sesion` o el login). Pendiente = inicializando; `{ usuario }` = autenticado; `null` = no autenticado (401, logout confirmado, cambio de contraseña); query en error = error temporal (503, red), que **no** termina la sesión. Nada se guarda en `localStorage` ni `sessionStorage`.
-- **Implementado:** `QueryCache`/`MutationCache` con `onError` (`manejarErrorGlobal`): 401 termina la sesión y descarta los datos en memoria; 403 `CAMBIO_DE_PASSWORD_REQUERIDO` y `ROL_NO_HABILITADO` descartan los datos y revalidan la sesión; 403 `PERMISO_INSUFICIENTE` solo revalida; 429, 503, red y 403 de origen nunca tocan la sesión.
+- **Estado de sesión, una sola fuente de verdad:** la caché de TanStack Query bajo `['sesion']`, llenada solo con lo que responde el servidor (`GET /auth/sesion` o el login). Pendiente = inicializando; `{ usuario }` = autenticado; `null` = no autenticado (401 confirmado, logout confirmado, cambio obligatorio); query en error = error temporal (503, red), que **no** termina la sesión. Nada se guarda en `localStorage` ni `sessionStorage`.
+- **El servidor es la autoridad de la expiración (HU4.2):** el frontend no lleva relojes de sesión.
+  - **Al volver a la pestaña o recuperar la red**, si pasó un minuto, se pregunta otra vez por la sesión (`staleTime` 60 s, `refetchOnWindowFocus`, `refetchOnReconnect`). No hay polling.
+    - Así una pestaña se entera de un cierre, de un cambio de contraseña o de un vencimiento ocurridos en otra pestaña o en otro equipo.
+    - Si la sesión pasó a ser de otra cuenta (otra pestaña entró con otra), se descartan los datos de la anterior.
+    - Si esa consulta falla (503, red), la sesión sigue.
+  - **En la carga inicial, una cookie vencida (`SESION_VENCIDA`)** lleva a `/login?motivo=vencida`. Sin cookie, o con una revocada, no se muestra ningún aviso: quien entra por primera vez no ve "venció".
+- **Implementado:** `QueryCache`/`MutationCache` con `onError` (`manejarErrorGlobal`).
+  - **401:** desde HU4.2 se confirma con el servidor antes de terminar la sesión (`confirmarSesion`).
+    - Una sola confirmación para varios 401 simultáneos: un solo `GET /auth/sesion`, una sola limpieza y una sola navegación, con `volverA`.
+    - Espera a que termine un cambio de contraseña en curso.
+    - Si la cookie actual vale, el 401 era atrasado: un pedido con el token anterior a una rotación, en esta pestaña o en otra. La sesión sigue y la consulta que falló se pide una vez más, sin bucles.
+    - Si no vale, la sesión termina con el motivo del primer 401 (`vencida` o `terminada`; la confirmación solo puede sumar el vencimiento) y descarta los datos en memoria. Si algún 401 vino de un envío de formulario, `/login` agrega "Lo que estabas guardando no se guardó." (`sinGuardar=1`).
+    - Si la confirmación no tiene respuesta, la sesión no se da por terminada.
+  - **403 `CAMBIO_DE_PASSWORD_REQUERIDO` y `ROL_NO_HABILITADO`:** descartan los datos y revalidan la sesión.
+  - **403 `PERMISO_INSUFICIENTE`:** solo revalida.
+  - **429, 503, red y 403 de origen:** nunca tocan la sesión.
+- **Menú de cuenta y cambio voluntario (HU4.2):**
+  - El menú, al pie del sidebar, muestra nombre, email y rol, y ofrece "Cambiar contraseña" y "Cerrar sesión" ("Usuarios" llega con HU4.5).
+  - "Cambiar contraseña" abre un panel (`CambiarContrasenaSheet`, montado en `AppLayout`) sobre la pantalla actual.
+  - Valida con el schema de shared y la confirmación.
+  - Con el `204`, confirma la cookie nueva con `GET /auth/sesion`, deja la identidad en `['sesion']`, cierra el panel y avisa "Cambiaste tu contraseña. Cerramos tus otras sesiones abiertas.". Se queda en la misma pantalla, sin recargar los datos.
+  - Si el servidor trató el cambio como obligatorio (borró la cookie), va a `/login?motivo=contrasena`.
 - **Cierre de sesión:** la sesión local termina solo cuando el servidor lo confirma (204, o 401 porque ya no existía). Con 503 o sin red, la interfaz informa el error y la sesión sigue: no simula un cierre.
 - La interfaz oculta acciones según los permisos (experiencia de uso, no seguridad). El mapa rol → permisos del frontend (`modules/auth/permisos.ts`) es un espejo de la matriz, comparado con ella por un test; la respuesta de sesión no trae `permisos`.
 - **Las pantallas nuevas no se diseñan sin revisar antes el handoff visual**, que no está en el repositorio.
@@ -540,15 +621,15 @@ Reglas:
 
 ### Historias y dependencias
 
-| Historia                                         | Contenido técnico                                                                                                                                                                                                                                                                          | Depende de                                                                                   |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| Prerrequisito                                    | Verificación del proxy al activarlo (pedidos de lectura) y de `argon2` en el primer despliegue del núcleo (Anexo A). Para desarrollo local no bloquea                                                                                                                                      | Dominio público del backend y hosts de producción del frontend (de los proyectos existentes) |
-| **HU4.1** — inicio de sesión y primer acceso     | Ver "Delimitación de HU4.1"                                                                                                                                                                                                                                                                | Prerrequisito (para desplegar en producción)                                                 |
-| **HU4.2** — gestión de sesión y contraseña       | Cambio voluntario de contraseña, menú de cuenta completo, avisos de sesión vencida con regreso a la página, cierre de las otras sesiones (si se decide)                                                                                                                                    | HU4.1                                                                                        |
-| **HU4.3** — Consulta en modo lectura             | **Infraestructura de permisos** (`crearRouter`, `autorizar`, `PERMISOS_POR_ROL`, `soloLecturaParaConsulta`, tests de inventario y de matriz, si no la trajo antes HU4.5); habilitar el rol `CONSULTA`; vistas de solo lectura (ficha del cliente y contactos); la interfaz oculta acciones | HU4.1                                                                                        |
-| **HU4.4** — protección y acceso a documentos     | Permisos de documentos verificados (lectura y descarga para los tres roles, operaciones solo para los operativos), política de habilitación documental, validación de 10 MB y caché del proxy                                                                                              | HU4.1 e infraestructura de permisos                                                          |
-| **HU4.5** — administración de usuarios           | `/usuarios` con `usuarios:administrar` (solo `ADMINISTRADOR`), autoprotección, pantalla, contraseña temporal                                                                                                                                                                               | HU4.1 e infraestructura de permisos (la trae si llega antes que HU4.3)                       |
-| **HU4.6** — responsable de los cambios de estado | `registradoPorId` en el historial, coordinado con la épica 3                                                                                                                                                                                                                               | HU4.1 y los endpoints de cambio de estado de la épica 3                                      |
+| Historia                                         | Contenido técnico                                                                                                                                                                                                                                                                                | Depende de                                                                                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Prerrequisito                                    | Verificación del proxy al activarlo (pedidos de lectura) y de `argon2` en el primer despliegue del núcleo (Anexo A). Para desarrollo local no bloquea                                                                                                                                            | Dominio público del backend y hosts de producción del frontend (de los proyectos existentes) |
+| **HU4.1** — inicio de sesión y primer acceso     | Ver "Delimitación de HU4.1"                                                                                                                                                                                                                                                                      | Prerrequisito (para desplegar en producción)                                                 |
+| **HU4.2** — gestión de sesión y contraseña       | Cambio voluntario de contraseña con rotación de la sesión (cierra las otras sesiones), menú de cuenta completo, avisos de sesión vencida o terminada con regreso a la página, revalidación al volver a la pestaña. **Implementada** (sin pantalla de sesiones activas ni cierre por dispositivo) | HU4.1                                                                                        |
+| **HU4.3** — Consulta en modo lectura             | **Infraestructura de permisos** (`crearRouter`, `autorizar`, `PERMISOS_POR_ROL`, `soloLecturaParaConsulta`, tests de inventario y de matriz, si no la trajo antes HU4.5); habilitar el rol `CONSULTA`; vistas de solo lectura (ficha del cliente y contactos); la interfaz oculta acciones       | HU4.1                                                                                        |
+| **HU4.4** — protección y acceso a documentos     | Permisos de documentos verificados (lectura y descarga para los tres roles, operaciones solo para los operativos), política de habilitación documental, validación de 10 MB y caché del proxy                                                                                                    | HU4.1 e infraestructura de permisos                                                          |
+| **HU4.5** — administración de usuarios           | `/usuarios` con `usuarios:administrar` (solo `ADMINISTRADOR`), autoprotección, pantalla, contraseña temporal                                                                                                                                                                                     | HU4.1 e infraestructura de permisos (la trae si llega antes que HU4.3)                       |
+| **HU4.6** — responsable de los cambios de estado | `registradoPorId` en el historial, coordinado con la épica 3                                                                                                                                                                                                                                     | HU4.1 y los endpoints de cambio de estado de la épica 3                                      |
 
 ### Delimitación de HU4.1
 
@@ -655,6 +736,8 @@ Los documentos siguen **deshabilitados** en producción. `DOCUMENTOS_HABILITADOS
 | `CONSULTA` con escritura durante una implementación parcial                           | Regla temporal de HU4.1 (`CONSULTA` sin acceso) y script que no crea `CONSULTA` hasta HU4.3                                   |
 | Pérdida del acceso administrativo                                                     | Siempre un `ADMINISTRADOR` activo; nadie cambia su propio rol; el script técnico como recuperación                            |
 | Base caída                                                                            | Falla cerrado con 503                                                                                                         |
+| Un `COMMIT` fallido que Prisma no informa (HU4.2)                                     | Lectura de confirmación del hash después del cambio: `500`, sin cookie ni evento                                              |
+| Un 401 atrasado borra o cierra la sesión rotada (HU4.2)                               | El 401 de una sesión revocada no borra la cookie; el frontend confirma cada 401 con `GET /auth/sesion`                        |
 | Los Previews hablan con la API de producción                                          | Rewrite condicionado al host de producción                                                                                    |
 | Sin recuperación por correo                                                           | Restablecimiento con contraseña temporal (procedimiento técnico hasta HU4.5)                                                  |
 
@@ -685,7 +768,7 @@ Los documentos siguen **deshabilitados** en producción. `DOCUMENTOS_HABILITADOS
 | #   | Decisión                                                                                                             | Recomendación                                                                                                                             | Mientras tanto                                                                |
 | --- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | P1b | ¿Hay o habrá un dominio propio?                                                                                      | Usarlo cuando exista                                                                                                                      | Proxy, si pasa el Anexo A                                                     |
-| P2  | Inactividad y duración máxima de la sesión. **Propuesta funcional: 24 h y 7 días, sin confirmar**                    | Confirmar sabiendo que 24 h protege menos una computadora olvidada; el cierre de sesión mitiga                                            | Valores configurables; 24 h / 7 días como valores por defecto propuestos      |
+| P2  | Inactividad y duración máxima de la sesión. **Propuesta funcional: 24 h y 7 días, sin confirmar**                    | Confirmar sabiendo que 24 h protege menos una computadora olvidada; el cierre de sesión mitiga (revisión registrada en HU4.2, abajo)      | Valores configurables; 24 h / 7 días como valores por defecto propuestos      |
 | P5  | Largo mínimo de contraseña (12 en 0A/0B, 15 en 0C y en el borrador UX). **Decidido por el usuario el 2026-11-12: 8** | Se recomendaba 15 (único factor, NIST SP 800-63B-4); con 8 la lista de bloqueo, la demora por cuenta y el contexto pasan a ser la defensa | 8, en un solo lugar de shared; la lista de bloqueo se regeneró con ese mínimo |
 | P9  | ¿Las operaciones irreversibles (anular) piden la contraseña otra vez?                                                | No; diálogo de confirmación como hoy                                                                                                      | Como hoy                                                                      |
 | P10 | ¿Se cargan documentos reales en producción?                                                                          | Solo después de la política de habilitación (HU4.4)                                                                                       | Deshabilitados                                                                |
@@ -700,6 +783,20 @@ Los documentos siguen **deshabilitados** en producción. `DOCUMENTOS_HABILITADOS
 | P14 | Fuente y licencia de la lista de contraseñas comunes            | Implementada con SecLists (MIT), filtrada al largo mínimo: confirmar si alcanza su cobertura (§2) |
 | P15 | Umbral del límite por origen                                    | Según el Anexo A                                                                                  |
 | P16 | Cookie persistente (`Max-Age`) o de sesión del navegador        | Depende de P2: persistente si se confirman 24 h / 7 días                                          |
+
+### Recomendaciones pendientes registradas en HU4.2 (sin activar)
+
+Ninguna cambia el comportamiento implementado; quedan para la decisión del cliente o del PO.
+
+- **Largo mínimo de contraseña: 15 frente a 8 (P5).**
+  - Sigue en 8, decidido por el usuario. HU4.2 no lo cambia: el cambio voluntario usa la misma política que el obligatorio.
+  - Las fuentes consideran débil una contraseña de menos de 15 caracteres cuando es el único factor, y alcanza con 8 cuando hay MFA: OWASP Authentication Cheat Sheet y NIST SP 800-63B-4 §3.1.1.2.
+  - Recomendación técnica: subir a 15 o agregar un segundo factor.
+  - Cómo se aplicaría: en un solo lugar de shared, regenerando la lista de bloqueo; sin migración. Las contraseñas existentes siguen valiendo hasta que se cambien.
+- **Revisión de la duración de la sesión: 24 h de inactividad y 7 días de máximo (P2).**
+  - Sin cambios en HU4.2: la sesión rotada usa los mismos valores, contados desde el cambio.
+  - Como referencia, NIST SP 800-63B-4 §2.2.3 fija para AAL2 una reautenticación de a lo sumo 24 h y una inactividad de a lo sumo 1 h; para AAL1, hasta 30 días.
+  - Con un solo factor, los valores propuestos están dentro de AAL1. Si se agrega MFA o se busca AAL2, hay que acortar la inactividad.
 
 **Resueltas en esta consolidación:** quién administra las cuentas (antes P3: `ADMINISTRADOR`); qué ve `CONSULTA` (antes P4a–P4e: lectura completa, incluida la descarga); si se registra el responsable de los cambios de estado (antes P7: sí, HU4.6); administración de usuarios en el sistema (antes P11: HU4.5, alcance de pantalla a refinar). Dispositivo reconocido: descartado en 0C. Proxy o dominio propio (antes P1): proxy en los proyectos existentes (2026-11-11); si la verificación falla, P1b.
 
@@ -732,6 +829,29 @@ Los documentos siguen **deshabilitados** en producción. `DOCUMENTOS_HABILITADOS
 - Sesiones: propuesta de 24 h / 7 días como pendiente (antes se recomendaban 30 min / 12 h), con la decisión dependiente sobre la cookie (P16).
 - Contraseñas: el largo mínimo de 15 pasa de "resuelto" a propuesta técnica pendiente, con la discrepancia con 12 documentada. Verificado que `crypto.argon2` no existe en Node 22.
 - Contexto actualizado a `main` en `ceefb44`.
+
+**HU4.2 — gestión de sesión y contraseña (2026-11-14):**
+
+- **Backend:**
+  - `PUT /auth/password` distingue el tipo de cambio con `debeCambiarPassword` leído bajo el bloqueo.
+    - El obligatorio no cambia: `204`, revoca todo, borra la cookie y hay que volver a entrar.
+    - El voluntario revoca todo y abre en la misma transacción una sesión nueva, emitida en una cookie nueva (rotación, §1 "Cambio de contraseña").
+  - `abrirSesionEnTransaccion` es el paso común del login y de la rotación.
+  - Evento `auth.password.cambiada` con `cambio: obligatorio | voluntario`.
+- **Cambio de contrato:** el `401` de una sesión **revocada** ya no borra la cookie. Un pedido atrasado podría borrar la cookie rotada; las demás causas de 401 la siguen borrando.
+- **Fallas encontradas y corregidas con las pruebas nuevas:**
+  - Prisma 5.22 resolvía `$transaction` con el `COMMIT` fallido. Ahora hay una lectura de confirmación del hash: `500` sin cookie, en lugar de un `204` falso.
+  - Una conexión terminada durante una consulta del cliente dentro de la transacción daba `500`. Ahora es `503` (`PrismaClientUnknownRequestError` con SQLSTATE de conexión).
+- **Frontend:**
+  - Menú de cuenta completo y cambio voluntario en un panel.
+  - Confirmación de cada 401 con el servidor: una por ráfaga, que espera la rotación en curso, repite una vez la consulta atrasada y respeta el motivo original.
+  - Revalidación al volver a la pestaña o recuperar la red, sin polling.
+  - Avisos "Tu sesión venció. Ingresá de nuevo para continuar." y "Tu sesión terminó. Ingresá de nuevo.", más "Lo que estabas guardando no se guardó." si el 401 vino de un envío.
+  - Cookie vencida en la carga inicial con su aviso.
+  - El cambio obligatorio comparte la validación y los requisitos con el voluntario.
+- **Sin cambios:** la política de contraseñas (mínimo de 8, Argon2id, lista de bloqueo), las duraciones (P2) y la matriz de permisos (solo se actualizó la descripción de `PUT /auth/password`). Tampoco hay migraciones nuevas.
+- Las recomendaciones de 15 caracteres y de revisar 24 h / 7 días quedan registradas sin activar.
+- **Pruebas y corridas:** ver la devolución de este bloque. La integración corre contra `realpolitik_test`, al que se le aplicaron las dos migraciones pendientes de HU3.7 y HU3.10 con `migrate deploy`.
 
 **HU4.1, etapa 3: verificación y cierre (2026-11-12).**
 
