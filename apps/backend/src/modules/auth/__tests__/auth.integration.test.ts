@@ -322,7 +322,6 @@ describe.skipIf(url === undefined)('GET /auth/sesion', () => {
       { ultimaActividadEn: new Date(Date.now() - 25 * 60 * 60 * 1000) },
       'SESION_VENCIDA',
     ],
-    ['revocada', { revocadaEn: new Date() }, 'SESION_REQUERIDA'],
   ])('%s → 401 %s y borra la cookie', async (_caso, cambio, motivo) => {
     const { app } = nuevaApp();
     const usuario = await crearUsuario();
@@ -338,6 +337,22 @@ describe.skipIf(url === undefined)('GET /auth/sesion', () => {
     expect(res.status).toBe(401);
     expect(errorDe(res).details).toEqual({ motivo });
     expect(setCookie(res)[0]).toMatch(new RegExp(`^${COOKIE}=; Path=/; Expires=Thu, 01 Jan 1970`));
+  });
+
+  it('revocada → 401 SESION_REQUERIDA y la cookie NO se toca (HU4.2: puede ser un pedido anterior a una rotación)', async () => {
+    const { app } = nuevaApp();
+    const usuario = await crearUsuario();
+    const token = tokenDe(await login(app, usuario.email));
+    await prisma.sesion.update({
+      where: { tokenHash: sha256(token) },
+      data: { revocadaEn: new Date() },
+    });
+
+    const res = await request(app).get('/auth/sesion').set('Cookie', `${COOKIE}=${token}`);
+
+    expect(res.status).toBe(401);
+    expect(errorDe(res).details).toEqual({ motivo: 'SESION_REQUERIDA' });
+    expect(setCookie(res)).toEqual([]);
   });
 
   it('con la cuenta desactivada → 401 SESION_REQUERIDA', async () => {

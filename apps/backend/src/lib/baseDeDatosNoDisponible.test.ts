@@ -35,7 +35,26 @@ describe('esBaseDeDatosNoDisponible', () => {
     expect(esBaseDeDatosNoDisponible(conocido('P2010', { code: sqlstate }))).toBe(true);
   });
 
+  /** El mensaje que deja Prisma 5.22 cuando PostgreSQL termina la conexión en un `deleteMany`. */
+  const desconocido = (sqlstate: string) =>
+    new Prisma.PrismaClientUnknownRequestError(
+      `\nInvalid \`tx.sesion.deleteMany()\` invocation:\n\nError occurred during query execution:\nConnectorError(ConnectorError { user_facing_error: None, kind: QueryError(PostgresError { code: "${sqlstate}", message: "terminating connection due to administrator command", severity: "FATAL", detail: None, column: None, hint: None }), transient: false })`,
+      { clientVersion: '5.22.0' },
+    );
+
+  it.each(['57P01', '08006'])(
+    'error desconocido con SQLSTATE %s en el mensaje: conexión perdida en una consulta del cliente dentro de una transacción',
+    (sqlstate) => {
+      expect(esBaseDeDatosNoDisponible(desconocido(sqlstate))).toBe(true);
+    },
+  );
+
   it.each([
+    ['desconocido con otro SQLSTATE (23514)', desconocido('23514')],
+    [
+      'desconocido sin SQLSTATE',
+      new Prisma.PrismaClientUnknownRequestError('falla', { clientVersion: '5.22.0' }),
+    ],
     ['P2010 con una violación de CHECK (23514)', conocido('P2010', { code: '23514' })],
     ['P2010 con una consulta cancelada (57014)', conocido('P2010', { code: '57014' })],
     ['P2010 sin SQLSTATE', conocido('P2010', { code: 'N/A' })],

@@ -14,7 +14,9 @@
 // - Bajo ese bloqueo, la creación compara el hash de contraseña con el que se verificó. Un cambio de
 //   contraseña bloquea la misma fila: si confirma mientras un login espera el bloqueo, el login
 //   encuentra otro hash y no crea la sesión; si el login confirmó antes, el cambio revoca su sesión.
-//   Ninguna sesión nacida de la contraseña vieja sobrevive al cambio.
+//   Ninguna sesión nacida de la contraseña vieja sobrevive al cambio. La única que nace en el
+//   cambio voluntario (la rotada, HU4.2) se abre bajo ese mismo bloqueo, después de revocar las
+//   demás y en la misma transacción que el hash nuevo (`abrirSesionEnTransaccion`).
 // - Actividad y revocación son UNA escritura condicional cada una: PostgreSQL vuelve a evaluar el
 //   WHERE sobre la fila ya actualizada por otra transacción, así una escritura tardía no pisa una
 //   más reciente, una sesión revocada o vencida no revive y revocar dos veces escribe una sola.
@@ -117,16 +119,69 @@ function revocar(db: ClienteDeBase, condicion: Prisma.Sql, ahora: Date): Promise
 }
 
 /**
+ * Abre una sesión nueva DENTRO de una transacción del llamador, que ya bloqueó la fila del usuario
+ * (`SELECT … FOR UPDATE`) y comprobó que la cuenta sigue activa. Es el paso común a `crearSesion`
+ * (inicio de sesión) y a la rotación del cambio voluntario de contraseña (`cambiarContrasena`):
+ * 1. borra las sesiones del usuario revocadas o vencidas hace más de
+ *    `RETENCION_DE_SESIONES_CERRADAS_MS`;
+ * 2. si ya tiene `LIMITE_DE_SESIONES_VIGENTES` vigentes, revoca las de actividad más vieja;
+ * 3. guarda la sesión nueva (solo el hash del token), con duraciones nuevas (`fechasDeSesionNueva`).
+ *
+ * No abre su propia transacción (no se anida) ni toca `ultimoAccesoEn`: eso lo decide el llamador.
+ * El token solo sale de acá en el valor devuelto, para la cookie.
+ */
+export async function abrirSesionEnTransaccion(
+  tx: Prisma.TransactionClient,
+  usuarioId: string,
+  ahora: Date,
+): Promise<SesionCreada> {
+  const cerradasAntesDe = new Date(ahora.getTime() - RETENCION_DE_SESIONES_CERRADAS_MS);
+  await tx.sesion.deleteMany({
+    where: {
+      usuarioId,
+      OR: [{ revocadaEn: { lt: cerradasAntesDe } }, { expiraEn: { lt: cerradasAntesDe } }],
+    },
+  });
+
+  const abiertas = await tx.sesion.findMany({
+    where: { usuarioId, revocadaEn: null, expiraEn: { gt: ahora } },
+    select: {
+      id: true,
+      createdAt: true,
+      ultimaActividadEn: true,
+      expiraEn: true,
+      revocadaEn: true,
+    },
+    orderBy: [{ ultimaActividadEn: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+  });
+  const vigentes = abiertas.filter((sesion) => evaluarSesion(sesion, ahora) === 'VIGENTE');
+  const sobrantes = vigentes.slice(
+    0,
+    Math.max(0, vigentes.length - LIMITE_DE_SESIONES_VIGENTES + 1),
+  );
+  if (sobrantes.length > 0) {
+    const ids = sobrantes.map((sesion) => sesion.id);
+    await revocar(tx, Prisma.sql`"id" = ANY(${ids}::uuid[])`, ahora);
+  }
+
+  const { token, tokenHash } = generarTokenDeSesion();
+  const sesion = await tx.sesion.create({
+    data: { usuarioId, tokenHash, ...fechasDeSesionNueva(ahora) },
+    select: { id: true, expiraEn: true },
+  });
+  return { token, sesionId: sesion.id, expiraEn: sesion.expiraEn };
+}
+
+/**
  * Crea una sesión para un usuario cuya identidad ya se verificó contra `passwordHashVerificado` (el
  * hash leído de la base antes de verificar la contraseña). Todo en una transacción con la fila del
  * usuario bloqueada:
  * 1. el usuario tiene que existir y estar activo (si no, `UsuarioNoHabilitadoError`);
  * 2. su hash tiene que seguir siendo el verificado (si no, `CredencialesDesactualizadasError`);
- * 3. borra sus sesiones revocadas o vencidas hace más de `RETENCION_DE_SESIONES_CERRADAS_MS`;
- * 4. revoca la sesión de `reemplazaA` (el token que traía el navegador), si la hay: el reemplazo es
+ * 3. revoca la sesión de `reemplazaA` (el token que traía el navegador), si la hay: el reemplazo es
  *    atómico, o quedan la nueva y no la vieja, o queda la vieja y no la nueva;
- * 5. si ya tiene `LIMITE_DE_SESIONES_VIGENTES` vigentes, revoca las de actividad más vieja;
- * 6. guarda la sesión nueva (solo el hash del token) y el último acceso del usuario.
+ * 4. abre la sesión nueva (`abrirSesionEnTransaccion`: limpieza, límite de vigentes y alta);
+ * 5. guarda el último acceso del usuario.
  * @throws {BaseDeDatosNoDisponibleError} si PostgreSQL no responde: no se crea ni se revoca nada.
  */
 export async function crearSesion(
@@ -146,48 +201,14 @@ export async function crearSesion(
         throw new CredencialesDesactualizadasError();
       }
 
-      const cerradasAntesDe = new Date(ahora.getTime() - RETENCION_DE_SESIONES_CERRADAS_MS);
-      await tx.sesion.deleteMany({
-        where: {
-          usuarioId,
-          OR: [{ revocadaEn: { lt: cerradasAntesDe } }, { expiraEn: { lt: cerradasAntesDe } }],
-        },
-      });
-
       if (tieneFormatoDeTokenDeSesion(reemplazaA)) {
         const hashAnterior = hashDeTokenDeSesion(reemplazaA);
         await revocar(tx, Prisma.sql`"tokenHash" = ${hashAnterior}`, ahora);
       }
 
-      const abiertas = await tx.sesion.findMany({
-        where: { usuarioId, revocadaEn: null, expiraEn: { gt: ahora } },
-        select: {
-          id: true,
-          createdAt: true,
-          ultimaActividadEn: true,
-          expiraEn: true,
-          revocadaEn: true,
-        },
-        orderBy: [{ ultimaActividadEn: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      });
-      const vigentes = abiertas.filter((sesion) => evaluarSesion(sesion, ahora) === 'VIGENTE');
-      const sobrantes = vigentes.slice(
-        0,
-        Math.max(0, vigentes.length - LIMITE_DE_SESIONES_VIGENTES + 1),
-      );
-      if (sobrantes.length > 0) {
-        const ids = sobrantes.map((sesion) => sesion.id);
-        await revocar(tx, Prisma.sql`"id" = ANY(${ids}::uuid[])`, ahora);
-      }
-
-      const { token, tokenHash } = generarTokenDeSesion();
-      const sesion = await tx.sesion.create({
-        data: { usuarioId, tokenHash, ...fechasDeSesionNueva(ahora) },
-        select: { id: true, expiraEn: true },
-      });
+      const sesion = await abrirSesionEnTransaccion(tx, usuarioId, ahora);
       await tx.usuario.update({ where: { id: usuarioId }, data: { ultimoAccesoEn: ahora } });
-
-      return { token, sesionId: sesion.id, expiraEn: sesion.expiraEn };
+      return sesion;
     }),
   );
 }

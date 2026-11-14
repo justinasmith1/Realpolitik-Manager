@@ -1,4 +1,5 @@
-// Inicio de sesión (ADR-0006 §3) y cambio de la propia contraseña (§1, primer acceso de HU4.1).
+// Inicio de sesión (ADR-0006 §3) y cambio de la propia contraseña (§1): el obligatorio del primer
+// acceso (HU4.1) y el voluntario con rotación de la sesión (HU4.2).
 //
 // El inicio de sesión orquesta, en este orden:
 // 1. la reserva del intento (`ProteccionDeLogin`, sincrónica y ANTES de cualquier cálculo);
@@ -29,6 +30,7 @@ import { limiteDeHash } from './limiteDeHash';
 import { evaluarContrasenaNueva } from './politicaDeContrasenas';
 import type { MotivoDeLimite, ProteccionDeLogin } from './proteccionDeLogin';
 import {
+  abrirSesionEnTransaccion,
   crearSesion,
   CredencialesDesactualizadasError,
   type MotivoDeSesionInvalida,
@@ -72,6 +74,18 @@ export class ContrasenaNuevaRechazadaError extends Error {
   constructor(readonly mensaje: string) {
     super('La contraseña nueva no cumple la política.');
     this.name = 'ContrasenaNuevaRechazadaError';
+  }
+}
+
+/**
+ * La transacción del cambio terminó sin error, pero el hash nuevo no está guardado: el COMMIT no se
+ * confirmó. Prisma 5.22 puede resolver `$transaction` aunque el COMMIT falle (lo registra como
+ * "transaction failed to commit" y no lanza). Nunca se informa un éxito ni se emite una cookie.
+ */
+export class CambioNoConfirmadoError extends Error {
+  constructor() {
+    super('El cambio de contraseña no quedó confirmado en la base.');
+    this.name = 'CambioNoConfirmadoError';
   }
 }
 
@@ -195,8 +209,20 @@ export async function iniciarSesion(
 }
 
 /**
+ * Resultado de un cambio de contraseña confirmado. El tipo lo decide la base (`debeCambiarPassword`
+ * de la fila bloqueada), nunca el pedido:
+ * - `obligatorio` (primer acceso o contraseña restablecida): se revocaron todas las sesiones,
+ *   también la del pedido, y no queda ninguna: hay que volver a iniciar sesión (HU4.1).
+ * - `voluntario` (la persona ya tenía una contraseña propia): se revocaron todas las sesiones y se
+ *   abrió UNA nueva para el navegador que hizo el cambio (rotación, HU4.2). Su token va a la cookie.
+ */
+export type ResultadoDeCambioDeContrasena =
+  | { tipo: 'obligatorio'; sesionesRevocadas: number }
+  | { tipo: 'voluntario'; sesionesRevocadas: number; sesion: SesionCreada };
+
+/**
  * Cambia la contraseña de la persona de una sesión ya validada (`PUT /auth/password`). Sirve para el
- * cambio obligatorio del primer acceso (`debeCambiarPassword`) y para un cambio voluntario.
+ * cambio obligatorio del primer acceso (`debeCambiarPassword`) y para el cambio voluntario (HU4.2).
  *
  * 1. La nueva pasa por la política completa (con el email y el nombre como contexto) antes de
  *    cualquier cálculo: rechazarla no consume la protección ni argon2.
@@ -205,20 +231,34 @@ export async function iniciarSesion(
  *    cambios simultáneos de la misma cuenta no se calculan a la vez.
  * 3. Verifica la actual y calcula el hash de la nueva, ambos por `limiteDeHash`, FUERA de la
  *    transacción (no se bloquea la fila durante argon2).
- * 4. En UNA transacción, con la fila del usuario bloqueada (`FOR UPDATE`, el mismo bloqueo que
- *    `crearSesion`): comprueba que la cuenta siga activa, que la sesión del pedido siga vigente y que
- *    el hash siga siendo el verificado; guarda el hash nuevo con `debeCambiarPassword = false` y
- *    `passwordActualizadaEn`, y revoca TODAS las sesiones del usuario, incluida la del pedido. Si
- *    algo falla, no cambia nada.
+ * 4. En UNA transacción READ COMMITTED, con la fila del usuario bloqueada (`FOR UPDATE`, el mismo
+ *    bloqueo que `crearSesion`): lee bajo el bloqueo `activo`, `passwordHash` y
+ *    `debeCambiarPassword`; comprueba que la cuenta siga activa, que la sesión del pedido siga
+ *    vigente y que el hash siga siendo el verificado; guarda el hash nuevo con
+ *    `debeCambiarPassword = false` y `passwordActualizadaEn`, y revoca TODAS las sesiones del
+ *    usuario, incluida la del pedido. Si el cambio era voluntario, abre ahí mismo la sesión nueva
+ *    (`abrirSesionEnTransaccion`): se confirma junto con el hash y la revocación, o no se confirma
+ *    nada.
+ * 5. Después del COMMIT, relee el hash en una consulta aparte y solo informa éxito si es el nuevo
+ *    (`CambioNoConfirmadoError` si no): Prisma 5.22 puede resolver `$transaction` aunque el COMMIT
+ *    haya fallado.
  *
- * El indicador de primer acceso solo lo apaga este cambio: nunca llega del cliente.
- * @returns cuántas sesiones se revocaron (al menos la del pedido).
+ * El indicador de primer acceso solo lo apaga este cambio: nunca llega del cliente. El tipo de
+ * cambio se decide con el valor leído bajo el bloqueo: si un restablecimiento lo prendió mientras se
+ * calculaba argon2, el cambio se trata como obligatorio (no se abre una sesión nueva).
+ *
+ * La sesión rotada empieza de cero (inactividad y duración máxima nuevas, `fechasDeSesionNueva`):
+ * verificar la contraseña actual es una reautenticación, como un inicio de sesión, y NIST SP
+ * 800-63B-4 §5.2 indica que una reautenticación correcta reinicia ambos plazos. No regala nada que
+ * un login no dé: exige la contraseña y pasa por la misma protección de intentos.
  * @throws {ContrasenaNuevaRechazadaError} si la nueva no cumple la política.
  * @throws {IntentosLimitadosError} si un límite no permite el intento.
  * @throws {ContrasenaActualIncorrectaError} si la actual no es la vigente.
  * @throws {SesionNoVigenteError} si la sesión o la cuenta dejaron de valer en el medio.
  * @throws {CapacidadAgotadaError} si no hay lugar para argon2 (no cuenta como fallo).
- * @throws {BaseDeDatosNoDisponibleError} si PostgreSQL no responde: no se confirma nada.
+ * @throws {BaseDeDatosNoDisponibleError} si PostgreSQL no responde: no se confirma nada (o, si se
+ *   cae justo después del COMMIT, no se puede confirmar: tampoco se informa éxito).
+ * @throws {CambioNoConfirmadoError} si el COMMIT no dejó guardado el hash nuevo (un 500).
  */
 export async function cambiarContrasena(
   {
@@ -229,7 +269,7 @@ export async function cambiarContrasena(
   }: { sesion: SesionValidada; actual: string; nueva: string; ip: string | undefined },
   proteccion: ProteccionDeLogin,
   ahora: Date = new Date(),
-): Promise<{ sesionesRevocadas: number }> {
+): Promise<ResultadoDeCambioDeContrasena> {
   const { usuario, sesionId } = sesion;
   const politica = evaluarContrasenaNueva(nueva, { email: usuario.email, nombre: usuario.nombre });
   if (!politica.aceptada) throw new ContrasenaNuevaRechazadaError(politica.mensaje);
@@ -265,10 +305,13 @@ export async function cambiarContrasena(
 
     const hashNuevo = await limiteDeHash.ejecutar(() => hashearContrasena(nueva));
 
-    const sesionesRevocadas = await conLaBaseDeDatos(() =>
-      prisma.$transaction(async (tx) => {
-        const [fila] = await tx.$queryRaw<{ activo: boolean; passwordHash: string }[]>`
-          SELECT "activo", "passwordHash" FROM "Usuario" WHERE "id" = ${usuario.id}::uuid FOR UPDATE`;
+    const resultado = await conLaBaseDeDatos(() =>
+      prisma.$transaction(async (tx): Promise<ResultadoDeCambioDeContrasena> => {
+        const [fila] = await tx.$queryRaw<
+          { activo: boolean; passwordHash: string; debeCambiarPassword: boolean }[]
+        >`
+          SELECT "activo", "passwordHash", "debeCambiarPassword"
+          FROM "Usuario" WHERE "id" = ${usuario.id}::uuid FOR UPDATE`;
         if (!fila?.activo) throw new SesionNoVigenteError('USUARIO_INACTIVO');
 
         // Otro cambio de contraseña o un cierre de sesión pudo revocarla mientras se calculaba.
@@ -291,12 +334,26 @@ export async function cambiarContrasena(
             passwordActualizadaEn: ahora,
           },
         });
-        return revocarSesionesDeUsuario(usuario.id, { ahora, tx });
+        const sesionesRevocadas = await revocarSesionesDeUsuario(usuario.id, { ahora, tx });
+        if (fila.debeCambiarPassword) return { tipo: 'obligatorio', sesionesRevocadas };
+
+        // Rotación: la del pedido ya quedó revocada con las demás; el navegador que hizo el cambio
+        // sigue con un token nuevo, nacido de la contraseña nueva y bajo el mismo bloqueo.
+        const rotada = await abrirSesionEnTransaccion(tx, usuario.id, ahora);
+        return { tipo: 'voluntario', sesionesRevocadas, sesion: rotada };
       }),
     );
 
+    // Confirmación posterior al COMMIT, en una lectura aparte: `$transaction` puede resolver aunque
+    // el COMMIT haya fallado (`CambioNoConfirmadoError`). El hash nuevo es único (salt aleatorio):
+    // si está guardado, se confirmó la transacción entera, con la revocación y la sesión rotada.
+    const confirmado = await conLaBaseDeDatos(() =>
+      prisma.usuario.findUnique({ where: { id: usuario.id }, select: { passwordHash: true } }),
+    );
+    if (confirmado?.passwordHash !== hashNuevo) throw new CambioNoConfirmadoError();
+
     intento.exito();
-    return { sesionesRevocadas };
+    return resultado;
   } finally {
     // Sin veredicto (base caída, capacidad agotada, sesión que dejó de valer): no cuenta como fallo.
     intento.liberar();

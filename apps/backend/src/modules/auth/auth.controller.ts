@@ -5,8 +5,12 @@
 // | Situación                                   | Respuesta                                                      |
 // | ------------------------------------------- | -------------------------------------------------------------- |
 // | Credenciales incorrectas o cuenta inactiva  | 401 UNAUTHENTICATED, motivo CREDENCIALES_INVALIDAS             |
-// | Sin sesión, revocada, inexistente, inactiva | 401 UNAUTHENTICATED, motivo SESION_REQUERIDA (borra la cookie) |
+// | Sin cookie                                  | 401 UNAUTHENTICATED, motivo SESION_REQUERIDA                   |
+// | Inexistente, mal formada o cuenta inactiva  | 401 UNAUTHENTICATED, motivo SESION_REQUERIDA (borra la cookie) |
+// | Revocada (logout, cambio de contraseña…)    | 401 UNAUTHENTICATED, motivo SESION_REQUERIDA (NO la borra)     |
 // | Sesión vencida (duración o inactividad)     | 401 UNAUTHENTICATED, motivo SESION_VENCIDA (borra la cookie)   |
+// | Cambio de contraseña obligatorio confirmado | 204, borra la cookie (hay que volver a entrar)                 |
+// | Cambio de contraseña voluntario confirmado  | 204, cookie NUEVA (sesión rotada; las demás, revocadas)        |
 // | Demora por cuenta o límite por origen       | 429 TOO_MANY_REQUESTS, motivo DEMASIADOS_INTENTOS, Retry-After |
 // | Contadores llenos y email sin entrada       | 429 TOO_MANY_REQUESTS, motivo DEMASIADOS_INTENTOS, Retry-After |
 // | Otro intento de la misma cuenta en curso    | 429 TOO_MANY_REQUESTS, motivo INTENTO_EN_CURSO, Retry-After    |
@@ -14,6 +18,7 @@
 // | Contraseña nueva rechazada por la política  | 400 VALIDATION_ERROR en `nueva`                                |
 // | Capacidad de argon2 agotada                 | 503 SERVICE_UNAVAILABLE, Retry-After                           |
 // | PostgreSQL no responde                      | 503 SERVICE_UNAVAILABLE (la cookie NO se borra)                |
+// | Cambio no confirmado después del COMMIT     | 500 INTERNAL_ERROR (la cookie NO se toca, no se afirma nada)   |
 
 import type {
   CambiarContrasenaSchema,
@@ -40,6 +45,7 @@ import {
   CredencialesInvalidasError,
   iniciarSesion,
   IntentosLimitadosError,
+  type ResultadoDeCambioDeContrasena,
   SesionNoVigenteError,
 } from './autenticacion.service';
 import type { LocalsDeSesion } from './autorizacion';
@@ -115,9 +121,23 @@ function sesionInvalida(motivo: MotivoDeSesionInvalida) {
 }
 
 /**
+ * El 401 de una cookie que no vale. La borra (con los mismos atributos), SALVO que la sesión haya
+ * sido revocada: el cambio voluntario de contraseña revoca la sesión del navegador y le emite otra
+ * (HU4.2), y un pedido que salió antes con el token viejo puede responder después que el cambio. Si
+ * esa respuesta borrara la cookie, el navegador perdería la sesión nueva (una cookie no se borra
+ * "solo si todavía tiene tal valor"). Dejarla no da acceso a nada: el token está revocado en la base
+ * y se rechaza en cada pedido; el próximo login la reemplaza y el logout la borra.
+ */
+function rechazarSesion(res: Response, motivo: MotivoDeSesionInvalida): AppError {
+  if (motivo !== 'REVOCADA') borrarCookieDeSesion(res);
+  return sesionInvalida(motivo);
+}
+
+/**
  * Exige una sesión válida y la deja en `res.locals.sesion`. Sin cookie: 401 sin tocar nada. Cookie
- * inválida: la borra y responde 401. Base caída: 503 y la cookie queda (la falla no es de la sesión).
- * La usan `GET /auth/sesion`, `PUT /auth/password` y, en `createApp`, toda la API de negocio.
+ * inválida: 401, y la borra salvo que esté revocada (`rechazarSesion`). Base caída: 503 y la cookie
+ * queda (la falla no es de la sesión). La usan `GET /auth/sesion`, `PUT /auth/password` y, en
+ * `createApp`, toda la API de negocio.
  */
 export async function requerirSesion(
   req: Request,
@@ -133,10 +153,7 @@ export async function requerirSesion(
   } catch (error) {
     throw traducirFallaDeSesion(error);
   }
-  if (!resultado.valida) {
-    borrarCookieDeSesion(res);
-    throw sesionInvalida(resultado.motivo);
-  }
+  if (!resultado.valida) throw rechazarSesion(res, resultado.motivo);
   res.locals.sesion = resultado.sesion;
   next();
 }
@@ -184,8 +201,12 @@ export function sesionController(_req: Request, res: Response<SesionActual, Loca
 
 /**
  * `PUT /auth/password`, detrás de `requerirSesion` y de la validación del cuerpo. Con éxito revoca
- * todas las sesiones (también esta), borra la cookie y responde 204: hay que volver a iniciar
- * sesión con la contraseña nueva. Si la base falla, no se borra la cookie ni se afirma nada.
+ * todas las sesiones (también esta) y responde 204 sin cuerpo. Qué pasa con la cookie lo decide el
+ * tipo de cambio, que sale de la base (`ResultadoDeCambioDeContrasena`):
+ * - obligatorio (HU4.1): la borra; hay que volver a iniciar sesión con la contraseña nueva;
+ * - voluntario (HU4.2): la reemplaza por la de la sesión rotada; el navegador sigue adentro.
+ * El token nuevo viaja solo en `Set-Cookie`, nunca en un cuerpo. Si la base falla, no se toca la
+ * cookie ni se afirma nada.
  */
 export function crearCambioDeContrasenaController(proteccion: ProteccionDeLogin) {
   return async function cambioDeContrasenaController(
@@ -195,8 +216,9 @@ export function crearCambioDeContrasenaController(proteccion: ProteccionDeLogin)
     const { sesion } = res.locals;
     const { actual, nueva } = res.locals.validated.body;
     const usuarioId = sesion.usuario.id;
+    let resultado: ResultadoDeCambioDeContrasena;
     try {
-      await cambiarContrasena({ sesion, actual, nueva, ip: req.ip }, proteccion);
+      resultado = await cambiarContrasena({ sesion, actual, nueva, ip: req.ip }, proteccion);
     } catch (error) {
       if (error instanceof ContrasenaNuevaRechazadaError) {
         throw validationError([{ campo: 'nueva', mensaje: error.mensaje }]);
@@ -217,10 +239,7 @@ export function crearCambioDeContrasenaController(proteccion: ProteccionDeLogin)
         });
         throw intentosLimitados(error);
       }
-      if (error instanceof SesionNoVigenteError) {
-        borrarCookieDeSesion(res);
-        throw sesionInvalida(error.motivo);
-      }
+      if (error instanceof SesionNoVigenteError) throw rechazarSesion(res, error.motivo);
       if (error instanceof CapacidadAgotadaError) {
         registrarEventoDeAuth('auth.password.fallo', {
           usuarioId,
@@ -232,8 +251,13 @@ export function crearCambioDeContrasenaController(proteccion: ProteccionDeLogin)
       throw traducirFallaDeSesion(error);
     }
 
-    registrarEventoDeAuth('auth.password.cambiada', { usuarioId, ip: req.ip });
-    borrarCookieDeSesion(res);
+    registrarEventoDeAuth('auth.password.cambiada', {
+      usuarioId,
+      cambio: resultado.tipo,
+      ip: req.ip,
+    });
+    if (resultado.tipo === 'voluntario') emitirCookieDeSesion(res, resultado.sesion.token);
+    else borrarCookieDeSesion(res);
     res.status(204).end();
   };
 }

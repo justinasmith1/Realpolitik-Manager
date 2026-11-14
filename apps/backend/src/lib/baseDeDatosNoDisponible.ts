@@ -28,6 +28,15 @@ const CODIGOS_DE_BASE_NO_DISPONIBLE: ReadonlySet<string> = new Set([
  */
 const SQLSTATE_DE_CONEXION_PERDIDA = /^(?:08[0-9A-Z]{3}|57P0[123])$/;
 
+/**
+ * En una consulta del cliente de Prisma (`deleteMany`, `create`…) DENTRO de una transacción
+ * interactiva, la misma conexión perdida llega como `PrismaClientUnknownRequestError`, sin código:
+ * el SQLSTATE solo aparece en el mensaje del conector (`PostgresError { code: "57P01", … }`).
+ * Comprobado con `pg_terminate_backend` contra PostgreSQL 16 y Prisma 5.22 (HU4.2). Se extrae solo
+ * ese campo y se le aplica la misma lista: cualquier otro error desconocido sigue siendo un 500.
+ */
+const SQLSTATE_EN_EL_MENSAJE = /PostgresError \{ code: "([0-9A-Z]{5})"/;
+
 /** La base no está disponible. Sin causa ni detalles: ni host, ni puerto, ni consulta. */
 export class BaseDeDatosNoDisponibleError extends Error {
   constructor() {
@@ -38,6 +47,10 @@ export class BaseDeDatosNoDisponibleError extends Error {
 
 export function esBaseDeDatosNoDisponible(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientInitializationError) return true;
+  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    const sqlstate = SQLSTATE_EN_EL_MENSAJE.exec(error.message)?.[1];
+    return sqlstate !== undefined && SQLSTATE_DE_CONEXION_PERDIDA.test(sqlstate);
+  }
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (CODIGOS_DE_BASE_NO_DISPONIBLE.has(error.code)) return true;
   const sqlstate = (error.meta as { code?: unknown } | undefined)?.code;
