@@ -40,10 +40,13 @@ export const idDeTarjeta = (rendicionId: string) => `rendicion-${rendicionId}`;
 
 interface RendicionCardProps {
   rendicion: RendicionResumen;
-  /** Resultado de la anulación, para avisarlo en la página. */
-  onAnulada: (rendicion: RendicionResumen) => void;
+  /**
+   * Resultado de la anulación, para avisarlo en la página. Sin esto (quien no opera rendiciones,
+   * como CONSULTA), la tarjeta es de solo lectura: no hay "Anular" ni su diálogo.
+   */
+  onAnulada?: ((rendicion: RendicionResumen) => void) | undefined;
   /** La rendición ya no existía al anular: el diálogo se cierra y se avisa. */
-  onYaNoExiste: (rendicion: RendicionResumen) => void;
+  onYaNoExiste?: ((rendicion: RendicionResumen) => void) | undefined;
 }
 
 /**
@@ -64,6 +67,7 @@ export function RendicionCard({ rendicion, onAnulada, onYaNoExiste }: RendicionC
   const completo = checklistCompleto(rendicion.resumen);
   const idTitulo = `${idDeTarjeta(rendicion.id)}-titulo`;
   const anulada = rendicion.vigencia === 'ANULADA';
+  const puedeAnular = onAnulada !== undefined;
 
   async function confirmar() {
     if (enCurso.current) return;
@@ -75,14 +79,14 @@ export function RendicionCard({ rendicion, onAnulada, onYaNoExiste }: RendicionC
       enCurso.current = false;
       if (cierraTrasFallarAnulacion(interpretarFalloAnulacion(fallo))) {
         setConfirmando(false);
-        onYaNoExiste(rendicion);
+        onYaNoExiste?.(rendicion);
         return;
       }
       setError(MENSAJE_FALLO_ANULACION);
       return;
     }
     setConfirmando(false);
-    onAnulada(rendicion);
+    onAnulada?.(rendicion);
   }
 
   return (
@@ -138,8 +142,9 @@ export function RendicionCard({ rendicion, onAnulada, onYaNoExiste }: RendicionC
         </p>
       </div>
       <div className="flex items-center gap-3">
-        {/* Encima del enlace estirado: el clic anula, no navega. Una anulada no lo ofrece. */}
-        {!anulada && (
+        {/* Encima del enlace estirado: el clic anula, no navega. Una anulada no lo ofrece, ni
+            quien no puede anular. */}
+        {!anulada && puedeAnular && (
           <Button
             ref={botonRef}
             type="button"
@@ -162,42 +167,44 @@ export function RendicionCard({ rendicion, onAnulada, onYaNoExiste }: RendicionC
         </span>
       </div>
 
-      <AlertDialog
-        open={confirmando}
-        onOpenChange={(abrir) => {
-          if (!abrir && !anulacion.isPending) setConfirmando(false);
-        }}
-        onOpenChangeComplete={(abierto) => {
-          if (!abierto) {
-            enCurso.current = false;
-            setError(null);
-          }
-        }}
-      >
-        <AlertDialogContent finalFocus={botonRef}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Anular la rendición de {periodo}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              La factura {rendicion.numeroFactura} queda libre para abrir otra rendición. La
-              rendición y su checklist no se borran: se pueden consultar con el filtro «Anuladas».
-              No se puede deshacer.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {error !== null && <Alert>{error}</Alert>}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={anulacion.isPending}>Cancelar</AlertDialogCancel>
-            <LoadingButton
-              variant="destructive"
-              loading={anulacion.isPending}
-              loadingText="Anulando…"
-              onClick={() => void confirmar()}
-              className="min-w-40"
-            >
-              Anular rendición
-            </LoadingButton>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {puedeAnular && (
+        <AlertDialog
+          open={confirmando}
+          onOpenChange={(abrir) => {
+            if (!abrir && !anulacion.isPending) setConfirmando(false);
+          }}
+          onOpenChangeComplete={(abierto) => {
+            if (!abierto) {
+              enCurso.current = false;
+              setError(null);
+            }
+          }}
+        >
+          <AlertDialogContent finalFocus={botonRef}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Anular la rendición de {periodo}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                La factura {rendicion.numeroFactura} queda libre para abrir otra rendición. La
+                rendición y su checklist no se borran: se pueden consultar con el filtro «Anuladas».
+                No se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {error !== null && <Alert>{error}</Alert>}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={anulacion.isPending}>Cancelar</AlertDialogCancel>
+              <LoadingButton
+                variant="destructive"
+                loading={anulacion.isPending}
+                loadingText="Anulando…"
+                onClick={() => void confirmar()}
+                className="min-w-40"
+              >
+                Anular rendición
+              </LoadingButton>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </article>
   );
 }

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { enfocarYMostrar } from '@/lib/focus';
+import { usePermiso } from '@/modules/auth/hooks/useSesion';
 import {
   opcionesDeAnio,
   opcionesDeMes,
@@ -96,8 +97,13 @@ const SIN_RENDICIONES: Record<FiltroVigenciaRendiciones, { siempre: string; enPe
  * más vieja, con filtros de año, mes, vigencia y estado (HU3.1) guardados en la URL. Cada una
  * muestra su estado con un badge. Por defecto, solo las activas:
  * las anuladas se consultan con el filtro, sin mezclarse (con "Todas", van después de las
- * activas, como las ordena el backend). Cada tarjeta lleva a su detalle. Solo un cliente ACTIVO puede abrir rendiciones nuevas; anular se permite en cualquier
- * estado (contrato 4.6).
+ * activas, como las ordena el backend). Cada tarjeta lleva a su detalle. Solo un cliente ACTIVO
+ * puede abrir rendiciones nuevas; anular se permite en cualquier estado (contrato 4.6).
+ *
+ * Abrir y anular piden además `rendiciones:operar` (HU4.3). Sin ese permiso (CONSULTA) la sección
+ * es de lectura: el listado, los filtros y el acceso al detalle quedan; no hay "Abrir rendición",
+ * ni "Anular", ni se monta la hoja de alta, ni se avisa que el cliente inactivo no puede abrir
+ * rendiciones (no las abriría igual: no es por el estado).
  */
 export function RendicionesSection({
   cliente,
@@ -119,7 +125,8 @@ export function RendicionesSection({
   const consulta = useRendiciones(cliente.id, filtros);
   const [abriendo, setAbriendo] = useState(false);
   const tituloRef = useRef<HTMLHeadingElement>(null);
-  const puedeAbrir = cliente.estado === 'ACTIVO';
+  const puedeOperar = usePermiso('rendiciones:operar');
+  const puedeAbrir = puedeOperar && cliente.estado === 'ACTIVO';
   const opcionesAnio = useMemo(() => [OPCION_TODOS, ...opcionesDeAnio()], []);
   const opcionesMes = useMemo(() => [OPCION_TODOS, ...opcionesDeMes], []);
 
@@ -207,7 +214,11 @@ export function RendicionesSection({
       <ul className="flex flex-col gap-2">
         {consulta.data.map((rendicion) => (
           <li key={rendicion.id}>
-            <RendicionCard rendicion={rendicion} onAnulada={alAnular} onYaNoExiste={alNoExistir} />
+            <RendicionCard
+              rendicion={rendicion}
+              onAnulada={puedeOperar ? alAnular : undefined}
+              onYaNoExiste={puedeOperar ? alNoExistir : undefined}
+            />
           </li>
         ))}
       </ul>
@@ -235,7 +246,7 @@ export function RendicionesSection({
           </Button>
         )}
       </div>
-      {!puedeAbrir && (
+      {puedeOperar && !puedeAbrir && (
         <p className="text-sm text-muted-foreground">
           El cliente no está activo: no se pueden abrir rendiciones nuevas.
         </p>
@@ -306,14 +317,16 @@ export function RendicionesSection({
         })}
       </div>
       {contenido}
-      <AbrirRendicionSheet
-        abierto={abriendo}
-        onAbiertoChange={setAbriendo}
-        cliente={cliente}
-        onAbierta={alAbrir}
-        onVerRendicion={verRendicion}
-        onConfigurarMatriz={onConfigurarMatriz === undefined ? undefined : configurarMatriz}
-      />
+      {puedeOperar && (
+        <AbrirRendicionSheet
+          abierto={abriendo}
+          onAbiertoChange={setAbriendo}
+          cliente={cliente}
+          onAbierta={alAbrir}
+          onVerRendicion={verRendicion}
+          onConfigurarMatriz={onConfigurarMatriz === undefined ? undefined : configurarMatriz}
+        />
+      )}
     </section>
   );
 }

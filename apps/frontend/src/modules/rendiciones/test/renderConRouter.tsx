@@ -1,9 +1,11 @@
+import type { RolUsuarioType } from '@realpolitik/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { createMemoryRouter, RouterProvider, useLocation, useParams } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import type { EstadoDeDetalle } from '@/modules/rendiciones/rendiciones.rutas';
 
 /** Página de detalle de mentira: deja ver a dónde se navegó y con qué aviso. */
@@ -23,9 +25,19 @@ function DetalleDePrueba() {
  * Renderiza `elemento` en la matriz de un cliente (`/clientes/:id/matriz`) dentro de un router en
  * memoria, con el detalle de una rendición como página de mentira. Devuelve el router para leer
  * la URL (`router.state.location`).
+ *
+ * Con una sesión de prueba (`sembrarSesion`): por defecto ADMINISTRATIVO; `rol` cambia el rol
+ * para ver la interfaz de otro (HU4.3).
  */
-export function renderEnMatriz(elemento: ReactNode, entrada = '/clientes/x/matriz') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+export function renderEnMatriz(
+  elemento: ReactNode,
+  entrada = '/clientes/x/matriz',
+  rol: RolUsuarioType = 'ADMINISTRATIVO',
+) {
+  const queryClient = sembrarSesion(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    { rol },
+  );
   const router = createMemoryRouter(
     [
       { path: '/clientes/:id/matriz', element: elemento },

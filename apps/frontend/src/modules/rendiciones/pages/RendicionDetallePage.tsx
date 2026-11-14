@@ -22,6 +22,7 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { enfocarYMostrar } from '@/lib/focus';
 import { cn } from '@/lib/utils';
+import { usePermiso } from '@/modules/auth/hooks/useSesion';
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
 import { etiquetasCanalEntrega } from '@/modules/clientes/clientes.etiquetas';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
@@ -109,6 +110,13 @@ const formatoDeFecha = new Intl.DateTimeFormat('es-AR', {
  *
  * Cada ítem muestra su documento vigente (HU2.8): se descarga y se consulta su historial; en una
  * activa, a un pendiente se le asocia uno ya cargado y el vigente se puede reemplazar.
+ *
+ * Lo que se ofrece depende también de los permisos de la sesión (HU4.3). Sin `rendiciones:operar`
+ * (CONSULTA) no hay cambios de estado, "Editar OC", acciones de cobro, casillas ni "Enviar", ni se
+ * corrige el canal; sin `documentos:operar` no se asocia ni se reemplaza un documento. Esas
+ * acciones no aparecen, tampoco deshabilitadas, y sus paneles y diálogos no se montan. Todo lo
+ * que se lee queda: datos, OC y montos, estado e historial, rechazo, cobro, checklist con "Ver solo
+ * faltantes", descargas e historial de cada documento (`documentos:ver`). La API autoriza.
  */
 export function RendicionDetallePage() {
   const { id, rendicionId } = useParams();
@@ -219,6 +227,10 @@ function DetalleDeRendicion({
   onClienteActualizado,
   tituloRef,
 }: DetalleDeRendicionProps) {
+  const puedeOperar = usePermiso('rendiciones:operar');
+  const puedeVerDocumentos = usePermiso('documentos:ver');
+  const puedeOperarDocumentos = usePermiso('documentos:operar');
+  const puedeEditarCliente = usePermiso('clientes:editar');
   const idSoloFaltantes = useId();
   const idFaltantes = useId();
   const idRendicionBloqueada = useId();
@@ -280,8 +292,11 @@ function DetalleDeRendicion({
   // Aprobada ya no se modifica, pero se cobra. Una anulada con cobro lo muestra en solo lectura.
   const cobro = rendicion.cobro;
   const puedeCobrar = !anulada && esEstadoCobrable(rendicion.estado);
-  // Los cambios de estado (HU3.6 a HU3.9): solo en una rendición activa que no esté Aprobada.
-  const conAccionesDeEstado = !anulada && rendicion.estado !== 'APROBADA';
+  // Los cambios de estado (HU3.6 a HU3.9): solo en una rendición activa que no esté Aprobada, y
+  // para quien opera rendiciones.
+  const conAccionesDeEstado = puedeOperar && !anulada && rendicion.estado !== 'APROBADA';
+  // Elegir ítems y prepararlos para enviar (`preparar-envio` es de operar): en una activa.
+  const conEnvio = puedeOperar && !anulada;
   // "Checklist completo" con la misma regla que el botón (pendientes y reunidos sin documento
   // vigente): nunca dice "completo" con "Marcar como completa" deshabilitado.
   const completo = puedeCompletarse;
@@ -323,7 +338,12 @@ function DetalleDeRendicion({
       setPedidoDeDocumento({ modo, itemId: item.id });
     };
     return {
-      ...(modificable && { onAsociar: abrir('asociar'), onReemplazar: abrir('reemplazar') }),
+      ...(modificable &&
+        puedeOperarDocumentos && {
+          onAsociar: abrir('asociar'),
+          onReemplazar: abrir('reemplazar'),
+        }),
+      soloLectura: !puedeOperarDocumentos,
       onVerHistorial: () => setHistorialDe(item.id),
       onDescargar: () => {
         if (vigente !== null) {
@@ -527,7 +547,8 @@ function DetalleDeRendicion({
             etiqueta="Número de OC"
             apagado={rendicion.numeroOc === null}
             accion={
-              !anulada && (
+              !anulada &&
+              puedeOperar && (
                 <Button
                   type="button"
                   variant="ghost"
@@ -583,22 +604,25 @@ function DetalleDeRendicion({
           </div>
         </dl>
         {/* El cobro informado por el cliente (HU3.10): una marca, no un estado; va en su franja. */}
+        {/* Sin `rendiciones:operar` la franja se lee igual, sin botones. */}
         <CobroDeRendicion
           estado={rendicion.estado}
           anulada={anulada}
           cobro={cobro}
-          onRegistrar={() => {
-            setAvisoDelChecklist(null);
-            setRegistrandoCobro(true);
-          }}
-          onEditar={() => {
-            setAvisoDelChecklist(null);
-            setRegistrandoCobro(true);
-          }}
-          onQuitar={() => {
-            setAvisoDelChecklist(null);
-            setQuitandoCobro(true);
-          }}
+          {...(puedeOperar && {
+            onRegistrar: () => {
+              setAvisoDelChecklist(null);
+              setRegistrandoCobro(true);
+            },
+            onEditar: () => {
+              setAvisoDelChecklist(null);
+              setRegistrandoCobro(true);
+            },
+            onQuitar: () => {
+              setAvisoDelChecklist(null);
+              setQuitandoCobro(true);
+            },
+          })}
         />
         <HistorialDeEstados historial={rendicion.historial} />
       </header>
@@ -612,7 +636,9 @@ function DetalleDeRendicion({
           conserva como historial: no se puede modificar.
         </Alert>
       )}
-      {cerrada && !anulada && (
+      {/* Por qué ya no se cambian documentos y canales: es para quien podría cambiarlos. El estado
+          (y el motivo de un rechazo) se ven igual para todos. */}
+      {cerrada && !anulada && puedeOperar && (
         <Alert variant="warning">
           <span id={idRendicionBloqueada}>{textoDeCerrada}</span>
         </Alert>
@@ -641,7 +667,7 @@ function DetalleDeRendicion({
                   Ver solo faltantes ({avance.faltantes.length})
                 </label>
               </div>
-              {!anulada && (
+              {conEnvio && (
                 <LoadingButton
                   ref={enviarRef}
                   type="button"
@@ -680,23 +706,27 @@ function DetalleDeRendicion({
                 <ItemChecklistFila
                   key={item.id}
                   item={item}
-                  {...(!anulada && {
+                  {...(conEnvio && {
                     seleccion: {
                       marcado: seleccion.has(item.id),
                       onCambio: (marcado: boolean) => alternar(item.id, marcado),
                       noEnviable: textoNoEnviable(item),
                     },
                   })}
-                  {...(modificable && {
-                    onCambiarCanal: () => {
-                      setAvisoDelChecklist(null);
-                      setItemACorregir(item);
-                    },
-                  })}
-                  {...(cerrada && !anulada && { bloqueadoPor: idRendicionBloqueada })}
-                  {...(item.documento !== undefined && {
-                    documento: accionesDeDocumento(item),
-                  })}
+                  {...(modificable &&
+                    puedeOperar && {
+                      onCambiarCanal: () => {
+                        setAvisoDelChecklist(null);
+                        setItemACorregir(item);
+                      },
+                    })}
+                  {...(cerrada &&
+                    !anulada &&
+                    puedeOperar && { bloqueadoPor: idRendicionBloqueada })}
+                  {...(item.documento !== undefined &&
+                    puedeVerDocumentos && {
+                      documento: accionesDeDocumento(item),
+                    })}
                 />
               ))}
             </ul>
@@ -707,78 +737,90 @@ function DetalleDeRendicion({
         </div>
       </div>
 
-      <CambiarCanalDialog
-        item={itemACorregir}
-        clienteId={rendicion.clienteId}
-        rendicionId={rendicion.id}
-        onCerrar={() => setItemACorregir(null)}
-        onCambiado={(texto) => {
-          setItemACorregir(null);
-          setAvisoDelChecklist({ variant: 'success', texto });
-        }}
-      />
-      <ElegirDocumentoDeItemSheet
-        pedido={pedidoDeDocumento}
-        rendicion={rendicion}
-        onCerrar={() => setPedidoDeDocumento(null)}
-        onListo={(texto) => {
-          setPedidoDeDocumento(null);
-          setAvisoDelChecklist({ variant: 'success', texto });
-        }}
-      />
-      <HistorialDeItemSheet
-        itemId={historialDe}
-        rendicion={rendicion}
-        onCerrar={() => setHistorialDe(null)}
-      />
-      <EnvioDialog
-        envio={envio}
-        cliente={cliente}
-        onCerrar={() => setEnvio(null)}
-        onEditarCliente={() => {
-          setEnvio(null);
-          setEditandoCliente(true);
-        }}
-        {...(!anulada &&
-          rendicion.estado === 'COMPLETA' && {
-            onYaLaEnvie: () => {
+      {/* Los paneles y diálogos que escriben se montan solo con el permiso de lo que hacen. */}
+      {puedeOperar && (
+        <CambiarCanalDialog
+          item={itemACorregir}
+          clienteId={rendicion.clienteId}
+          rendicionId={rendicion.id}
+          onCerrar={() => setItemACorregir(null)}
+          onCambiado={(texto) => {
+            setItemACorregir(null);
+            setAvisoDelChecklist({ variant: 'success', texto });
+          }}
+        />
+      )}
+      {puedeOperarDocumentos && (
+        <ElegirDocumentoDeItemSheet
+          pedido={pedidoDeDocumento}
+          rendicion={rendicion}
+          onCerrar={() => setPedidoDeDocumento(null)}
+          onListo={(texto) => {
+            setPedidoDeDocumento(null);
+            setAvisoDelChecklist({ variant: 'success', texto });
+          }}
+        />
+      )}
+      {puedeVerDocumentos && (
+        <HistorialDeItemSheet
+          itemId={historialDe}
+          rendicion={rendicion}
+          onCerrar={() => setHistorialDe(null)}
+        />
+      )}
+      {puedeOperar && (
+        <>
+          <EnvioDialog
+            envio={envio}
+            cliente={cliente}
+            onCerrar={() => setEnvio(null)}
+            // Solo lo ven quienes operan rendiciones, que en la matriz también editan clientes.
+            onEditarCliente={() => {
               setEnvio(null);
-              setRegistrandoEnvio(true);
-            },
-          })}
-        focoAlCerrar={enviarRef}
-      />
-      <MarcarEnviadaDialog
-        rendicion={registrandoEnvio ? rendicion : null}
-        onCerrar={() => setRegistrandoEnvio(false)}
-        onEnviada={(texto) => {
-          setRegistrandoEnvio(false);
-          setSeleccion(new Set());
-          setAvisoDelChecklist({ variant: 'success', texto });
-        }}
-        // El botón "Marcar como enviada" desaparece al enviarla: el foco vuelve a "Enviar".
-        focoAlCerrar={enviarRef}
-      />
-      {/* Los botones "Aprobada" y "Rechazada" desaparecen al registrar la respuesta: el foco vuelve al título. */}
-      <AprobarRendicionDialog
-        rendicion={aprobando ? rendicion : null}
-        onCerrar={() => setAprobando(false)}
-        onAprobada={(texto) => {
-          setAprobando(false);
-          setAvisoDelChecklist({ variant: 'success', texto });
-        }}
-        focoAlCerrar={tituloRef}
-      />
-      <RechazarDialog
-        rendicion={rechazando ? rendicion : null}
-        onCerrar={() => setRechazando(false)}
-        onRechazada={(texto) => {
-          setRechazando(false);
-          setAvisoDelChecklist({ variant: 'success', texto });
-        }}
-        focoAlCerrar={tituloRef}
-      />
-      {puedeCobrar && (
+              setEditandoCliente(true);
+            }}
+            {...(!anulada &&
+              rendicion.estado === 'COMPLETA' && {
+                onYaLaEnvie: () => {
+                  setEnvio(null);
+                  setRegistrandoEnvio(true);
+                },
+              })}
+            focoAlCerrar={enviarRef}
+          />
+          <MarcarEnviadaDialog
+            rendicion={registrandoEnvio ? rendicion : null}
+            onCerrar={() => setRegistrandoEnvio(false)}
+            onEnviada={(texto) => {
+              setRegistrandoEnvio(false);
+              setSeleccion(new Set());
+              setAvisoDelChecklist({ variant: 'success', texto });
+            }}
+            // El botón "Marcar como enviada" desaparece al enviarla: el foco vuelve a "Enviar".
+            focoAlCerrar={enviarRef}
+          />
+          {/* Los botones "Aprobada" y "Rechazada" desaparecen al registrar la respuesta: el foco vuelve al título. */}
+          <AprobarRendicionDialog
+            rendicion={aprobando ? rendicion : null}
+            onCerrar={() => setAprobando(false)}
+            onAprobada={(texto) => {
+              setAprobando(false);
+              setAvisoDelChecklist({ variant: 'success', texto });
+            }}
+            focoAlCerrar={tituloRef}
+          />
+          <RechazarDialog
+            rendicion={rechazando ? rendicion : null}
+            onCerrar={() => setRechazando(false)}
+            onRechazada={(texto) => {
+              setRechazando(false);
+              setAvisoDelChecklist({ variant: 'success', texto });
+            }}
+            focoAlCerrar={tituloRef}
+          />
+        </>
+      )}
+      {puedeOperar && puedeCobrar && (
         <RegistrarCobroSheet
           rendicion={rendicion}
           abierto={registrandoCobro}
@@ -795,16 +837,18 @@ function DetalleDeRendicion({
         />
       )}
       {/* El botón "Quitar cobro" desaparece al quitar la marca: el foco vuelve al título. */}
-      <QuitarCobroDialog
-        rendicion={quitandoCobro && !anulada ? rendicion : null}
-        onCerrar={() => setQuitandoCobro(false)}
-        onQuitado={(texto) => {
-          setQuitandoCobro(false);
-          setAvisoDelChecklist({ variant: 'success', texto });
-        }}
-        focoAlCerrar={tituloRef}
-      />
-      {cliente !== undefined && (
+      {puedeOperar && (
+        <QuitarCobroDialog
+          rendicion={quitandoCobro && !anulada ? rendicion : null}
+          onCerrar={() => setQuitandoCobro(false)}
+          onQuitado={(texto) => {
+            setQuitandoCobro(false);
+            setAvisoDelChecklist({ variant: 'success', texto });
+          }}
+          focoAlCerrar={tituloRef}
+        />
+      )}
+      {cliente !== undefined && puedeEditarCliente && (
         <EditarClienteSheet
           cliente={editandoCliente ? cliente : null}
           onClose={() => setEditandoCliente(false)}
@@ -814,7 +858,7 @@ function DetalleDeRendicion({
           }}
         />
       )}
-      {!anulada && (
+      {!anulada && puedeOperar && (
         <EditarOcSheet
           rendicion={rendicion}
           abierto={editandoOc}
