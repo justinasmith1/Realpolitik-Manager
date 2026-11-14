@@ -8,7 +8,6 @@ import { sinCache } from './middleware/sinCache';
 import { requerirSesion } from './modules/auth/auth.controller';
 import { crearAuthRouter } from './modules/auth/auth.routes';
 import {
-  bloquearRolesNoHabilitados,
   esRouterProtegido,
   exigirPasswordDefinitiva,
   rutasDe,
@@ -69,8 +68,8 @@ const unirRuta = (prefijo: string, ruta: string) => (ruta === '/' ? prefijo : `$
  * Arma la aplicación Express. No abre ningún puerto: de eso se ocupa server.ts.
  *
  * Orden (ADR-0006 §5): sin caché → CORS (preflight) → `Origin` en toda escritura → rutas públicas
- * (`/health`, `/auth`) → sesión obligatoria (401 / 503) → contraseña definitiva (403) → roles no
- * habilitados todavía (403, temporal de HU4.1: CONSULTA) → CONSULTA solo lee (403) → cuerpo JSON → routers de negocio, cada ruta con `autorizar(PERMISO)` primero (y
+ * (`/health`, `/auth`) → sesión obligatoria (401 / 503) → contraseña definitiva (403) → CONSULTA
+ * solo lee (403) → cuerpo JSON → routers de negocio, cada ruta con `autorizar(PERMISO)` primero (y
  * recién después multer o la validación) → 404 → errores. Ningún cuerpo se lee, ningún archivo se
  * recibe y ninguna operación corre antes de saber quién pide y si puede.
  */
@@ -101,8 +100,6 @@ export function createApp({
   // Desde acá, TODO exige sesión, también una ruta inexistente (401 para un anónimo).
   app.use(requerirSesion);
   app.use(exigirPasswordDefinitiva);
-  // TEMPORAL (HU4.1): CONSULTA no usa el negocio hasta HU4.3. Se borra esta línea al habilitarlo.
-  app.use(bloquearRolesNoHabilitados);
   app.use(soloLecturaParaConsulta);
   app.use(json({ limit: LIMITE_CUERPO_JSON }));
 

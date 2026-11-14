@@ -26,8 +26,7 @@ export type MotivoDeEvento =
   | 'concurrencia'
   | 'saturacion'
   | 'capacidad'
-  | 'solo-lectura'
-  | 'rol-no-habilitado';
+  | 'solo-lectura';
 
 interface DatosDelEvento {
   usuarioId?: string;

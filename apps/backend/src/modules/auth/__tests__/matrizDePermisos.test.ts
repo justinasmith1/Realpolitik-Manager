@@ -7,10 +7,8 @@
 // 2. El catálogo del código (`PERMISOS_POR_ROL`) coincide con las columnas Sí/No de la matriz.
 // 3. Cada ruta, pedida como anónimo, con cada rol y con la contraseña temporal pendiente, responde
 //    lo que dice la matriz. Ningún pedido denegado toca la base de negocio (solo la tabla de
-//    sesiones, simulada) ni el almacenamiento.
-//    Regla temporal de HU4.1: un rol de `ROLES_NO_HABILITADOS_HASTA_HU4_3` (CONSULTA) recibe 403
-//    `ROL_NO_HABILITADO` en todas, aunque la matriz (y `PERMISOS_POR_ROL`, comprobado en el punto 2)
-//    ya le conceda las lecturas. Al habilitarlo en HU4.3, esta prueba pasa sola a esperar la matriz.
+//    sesiones, simulada) ni el almacenamiento. Los tres roles, CONSULTA incluido (HU4.3), responden
+//    según su columna de la matriz.
 //
 // La cadena de autorización corre entera; solo la base está simulada (ver `sesionSimulada.ts`).
 
@@ -23,7 +21,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp, rutasProtegidasDe } from '../../../app';
 import { AlmacenamientoEnMemoria } from '../../../lib/almacenamiento/memoria';
-import { ROLES_NO_HABILITADOS_HASTA_HU4_3 } from '../autorizacion';
 import { PERMISOS, tienePermiso, type Permiso } from '../permisos';
 
 import { clienteConCabeceras, clienteDePrueba, cookieDe, ORIGEN_DE_PRUEBA } from './sesionSimulada';
@@ -195,17 +192,7 @@ describe.each(IMPLEMENTADAS.map((f) => [clave(f.metodo, f.ruta), f] as const))(
         const res = await pedir(clienteDePrueba(app, rol), fila);
 
         expect(res.headers['cache-control']).toMatch(/no-store/);
-        if (ROLES_NO_HABILITADOS_HASTA_HU4_3.has(rol)) {
-          expect(res.status).toBe(403);
-          expect(res.body).toEqual({
-            error: {
-              code: 'FORBIDDEN',
-              message: 'Tu cuenta todavía no tiene acceso al sistema.',
-              details: { motivo: 'ROL_NO_HABILITADO' },
-            },
-          });
-          expect(accesos).toEqual([]);
-        } else if (fila.porRol[rol]) {
+        if (fila.porRol[rol]) {
           expect([401, 403]).not.toContain(res.status);
         } else {
           expect(res.status).toBe(403);
@@ -331,14 +318,62 @@ describe('fuera de las rutas de negocio', () => {
     expect((await request(app).get('/usuarios')).status).toBe(401);
     expect((await clienteDePrueba(app, 'CAMBIO_PENDIENTE').get('/usuarios')).status).toBe(403);
     expect((await clienteDePrueba(app, 'ADMINISTRADOR').get('/usuarios')).status).toBe(404);
+    // CONSULTA, como los demás roles, recibe 404 al leer; escribir corta antes (solo lectura).
+    expect((await clienteDePrueba(app, 'CONSULTA').get('/usuarios')).status).toBe(404);
+    expect((await clienteDePrueba(app, 'CONSULTA').post('/usuarios')).status).toBe(403);
+    expect(accesos).toEqual([]);
   });
 
-  it('el rol del cliente no cuenta: una cabecera o un cuerpo con "rol" no cambian nada', async () => {
-    const res = await clienteDePrueba(app, 'CONSULTA')
+  it('el rol del cliente no cuenta: una cabecera, el cuerpo o la query con "rol" no cambian nada', async () => {
+    const consulta = clienteDePrueba(app, 'CONSULTA');
+    const alta = await consulta
       .post('/clientes')
       .set('X-Rol', 'ADMINISTRADOR')
       .send({ rol: 'ADMINISTRADOR' });
+    const operacion = await consulta
+      .get(`/clientes/${UUID}/ultima-oc?rol=ADMINISTRADOR`)
+      .set('X-Rol', 'ADMINISTRADOR');
 
-    expect(res.status).toBe(403);
+    for (const res of [alta, operacion]) {
+      expect(res.status).toBe(403);
+      expect(res.body).toMatchObject({ error: { details: { motivo: 'PERMISO_INSUFICIENTE' } } });
+    }
+    expect(accesos).toEqual([]);
+  });
+});
+
+describe('CONSULTA (HU4.3): un GET no se autoriza solo por ser GET', () => {
+  // Lecturas que preparan una operación: su permiso es de operación, no de lectura.
+  const GET_DE_OPERACION = IMPLEMENTADAS.filter(
+    (f) => f.metodo === 'GET' && !f.permiso.endsWith(':ver'),
+  );
+
+  it('son exactamente la sugerencia de OC y los candidatos de un documento', () => {
+    expect(GET_DE_OPERACION.map((f) => clave(f.metodo, f.ruta)).sort()).toEqual([
+      'GET /clientes/:id/ultima-oc',
+      'GET /documentos/:id/candidatos',
+    ]);
+  });
+
+  it.each(GET_DE_OPERACION.map((f) => [clave(f.metodo, f.ruta), f] as const))(
+    '%s: 403 PERMISO_INSUFICIENTE para CONSULTA, sin tocar la base; ADMINISTRATIVO pasa',
+    async (_nombre, fila) => {
+      const res = await pedir(clienteDePrueba(app, 'CONSULTA'), fila);
+      expect(res.status).toBe(403);
+      expect(res.body).toMatchObject({ error: { details: { motivo: 'PERMISO_INSUFICIENTE' } } });
+      expect(accesos).toEqual([]);
+
+      const control = await pedir(clienteDePrueba(app, 'ADMINISTRATIVO'), fila);
+      expect([401, 403]).not.toContain(control.status);
+    },
+  );
+
+  it('todas las demás lecturas de negocio le responden (ni 401 ni 403)', async () => {
+    const lecturas = IMPLEMENTADAS.filter((f) => f.metodo === 'GET' && f.permiso.endsWith(':ver'));
+    expect(lecturas.length).toBeGreaterThan(0);
+    for (const fila of lecturas) {
+      const res = await pedir(clienteDePrueba(app, 'CONSULTA'), fila);
+      expect([401, 403], clave(fila.metodo, fila.ruta)).not.toContain(res.status);
+    }
   });
 });

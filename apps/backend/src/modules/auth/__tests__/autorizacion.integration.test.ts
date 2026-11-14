@@ -1,8 +1,8 @@
 // Autenticación obligatoria y autorización de la API contra PostgreSQL REAL, con sesiones reales y
 // pedidos directos a Express (sin proxy de por medio). Complementa `matrizDePermisos.test.ts`,
-// que recorre las 44 rutas con la base simulada.
+// que recorre las 46 rutas con la base simulada.
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type { PrismaClient } from '@prisma/client';
 import { validateCuit } from '@realpolitik/shared';
@@ -181,40 +181,95 @@ describe.skipIf(url === undefined)('permisos por rol', () => {
     },
   );
 
-  it('CONSULTA (regla temporal de HU4.1): 403 ROL_NO_HABILITADO en lecturas y escrituras, nada cambia', async () => {
-    const alta = await sesiones
-      .cliente(app, 'ADMINISTRATIVO')
-      .post('/clientes')
-      .send(clienteNuevo());
+  /** Un cliente con un contacto y observaciones internas, cargado por ADMINISTRATIVO. */
+  async function clienteConDatos() {
+    const api = sesiones.cliente(app, 'ADMINISTRATIVO');
+    const alta = await api.post('/clientes').send(clienteNuevo());
     expect(alta.status).toBe(201);
     const id = (alta.body as { id: string }).id;
     clientesCreados.push(id);
-    const antes = await prisma.cliente.findUniqueOrThrow({ where: { id } });
+    const contacto = await api
+      .post(`/clientes/${id}/contactos`)
+      .send({ nombre: 'Ana Pérez', area: 'Tesorería', email: 'ana@ejemplo.example' });
+    expect(contacto.status).toBe(201);
+    const notas = await api
+      .put(`/clientes/${id}/observaciones`)
+      .send({ observaciones: 'Nota interna de integración.' });
+    expect(notas.status).toBe(200);
+    return id;
+  }
+
+  it('CONSULTA (HU4.3): lee clientes, contactos, observaciones, requisitos, tipos y rendiciones', async () => {
+    const id = await clienteConDatos();
+    const consulta = sesiones.cliente(app, 'CONSULTA');
+
+    const lecturas = {
+      lista: await consulta.get('/clientes'),
+      ficha: await consulta.get(`/clientes/${id}`),
+      contactos: await consulta.get(`/clientes/${id}/contactos`),
+      observaciones: await consulta.get(`/clientes/${id}/observaciones`),
+      requisitos: await consulta.get(`/clientes/${id}/requisitos`),
+      indicaciones: await consulta.get(`/clientes/${id}/indicaciones-armado`),
+      rendicionesDelCliente: await consulta.get(`/clientes/${id}/rendiciones`),
+      tipos: await consulta.get('/tipos-documento'),
+      rendiciones: await consulta.get('/rendiciones?anio=2026&mes=1'),
+      atrasadas: await consulta.get('/rendiciones/atrasadas'),
+    };
+    for (const [nombre, res] of Object.entries(lecturas)) {
+      expect(res.status, nombre).toBe(200);
+      expect(res.headers['cache-control'], nombre).toBe('no-store');
+    }
+    expect((lecturas.ficha.body as { id: string }).id).toBe(id);
+    expect(lecturas.contactos.body).toEqual([expect.objectContaining({ nombre: 'Ana Pérez' })]);
+    expect(lecturas.observaciones.body).toEqual({ observaciones: 'Nota interna de integración.' });
+  });
+
+  it('CONSULTA (HU4.3): toda escritura y todo GET de operación son 403 PERMISO_INSUFICIENTE, nada cambia', async () => {
+    const id = await clienteConDatos();
+    const antes = await prisma.cliente.findUniqueOrThrow({
+      where: { id },
+      include: { contactos: true },
+    });
     const consulta = sesiones.cliente(app, 'CONSULTA');
     const cuerpoNuevo = clienteNuevo();
+    const contactoId = antes.contactos[0]?.id ?? '';
 
     const pedidos = [
-      // Lecturas que la matriz le concederá en HU4.3.
-      await consulta.get('/clientes'),
-      await consulta.get(`/clientes/${id}`),
-      await consulta.get(`/clientes/${id}/rendiciones`),
-      await consulta.get('/tipos-documento'),
-      await consulta.get('/rendiciones/atrasadas'),
-      // Escrituras, que nunca tendrá.
-      await consulta.post('/clientes').send(cuerpoNuevo),
+      // Un rol en el cuerpo no cambia nada: la identidad y el rol los decide la sesión.
+      await consulta.post('/clientes').send({ ...cuerpoNuevo, rol: 'ADMINISTRADOR' }),
       await consulta.patch(`/clientes/${id}`).send({ telefono: '+54 11 0000-0000' }),
       await consulta.patch(`/clientes/${id}/estado`).send({ estado: 'INACTIVO' }),
       await consulta.put(`/clientes/${id}/observaciones`).send({ observaciones: 'no' }),
+      await consulta
+        .post(`/clientes/${id}/contactos`)
+        .send({ nombre: 'Intruso', area: 'Ninguna', email: 'x@ejemplo.example' }),
+      await consulta.delete(`/clientes/${id}/contactos/${contactoId}`),
+      await consulta.put(`/clientes/${id}/indicaciones-armado`).send({ indicacionesArmado: 'no' }),
       await consulta.post(`/clientes/${id}/rendiciones`).send({ anio: 2026, mes: 1 }),
+      await consulta.post('/tipos-documento').send({ nombre: `${MARCA} tipo` }),
+      // Lectura que prepara una operación: su permiso es `rendiciones:operar`.
+      await consulta.get(`/clientes/${id}/ultima-oc`),
     ];
     for (const res of pedidos) {
       expect(res.status).toBe(403);
-      expect(motivoDe(res)).toBe('ROL_NO_HABILITADO');
+      expect(motivoDe(res)).toBe('PERMISO_INSUFICIENTE');
       expect(res.headers['cache-control']).toBe('no-store');
     }
-    expect(await prisma.cliente.findUniqueOrThrow({ where: { id } })).toEqual(antes);
+    expect(
+      await prisma.cliente.findUniqueOrThrow({ where: { id }, include: { contactos: true } }),
+    ).toEqual(antes);
     expect(await prisma.cliente.count({ where: { cuit: cuerpoNuevo.cuit } })).toBe(0);
     expect(await prisma.rendicion.count({ where: { clienteId: id } })).toBe(0);
+    expect(await prisma.tipoDocumento.count({ where: { nombre: `${MARCA} tipo` } })).toBe(0);
+  });
+
+  it('documentos sin habilitar (como en producción hasta HU4.4): 404 también para CONSULTA', async () => {
+    const consulta = sesiones.cliente(app, 'CONSULTA');
+    for (const ruta of ['/documentos?anio=2026&mes=1', `/documentos/${randomUUID()}/archivo`]) {
+      expect((await consulta.get(ruta)).status).toBe(404);
+    }
+    // Sin sesión, ni siquiera eso: 401 como cualquier ruta.
+    expect((await request(app).get('/documentos?anio=2026&mes=1')).status).toBe(401);
   });
 
   it('CONSULTA conserva /auth/*: consulta su sesión y cierra sesión', async () => {
