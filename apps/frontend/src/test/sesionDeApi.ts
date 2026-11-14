@@ -10,8 +10,9 @@
 // pedido. Lo único que este archivo hace por el navegador es lo que jsdom no hace: guardar la
 // cookie y mandar `Cookie` y `Origin` (en el navegador van solos, por ser el mismo origen).
 //
-// Uso:
+// Uso (por defecto, una cuenta ADMINISTRATIVO; `{ rol: 'CONSULTA' }` para probar la lectura, HU4.3):
 //   const sesion = sesionDeApi(API);
+//   const consulta = sesionDeApi(API, { rol: 'CONSULTA' });
 //   const fetchReal = sesion.fetch;            // en lugar de `globalThis.fetch`
 //   beforeAll(async () => { await sesion.iniciar(); });
 //   afterAll(async () => { await sesion.cerrar(); });
@@ -27,7 +28,13 @@ const SCRIPT = 'src/modules/auth/__tests__/usuarioDeApiDeTest.ts';
 /** Un origen que el backend de pruebas acepta (`CORS_ORIGINS`). Por defecto, el del CI. */
 const ORIGEN = process.env.TEST_API_ORIGIN ?? 'http://localhost:5173';
 
-export function sesionDeApi(api: string | undefined) {
+/** Los roles que puede tener la cuenta de prueba. Nunca ADMINISTRADOR (el script lo rechaza). */
+export type RolDeCuentaDeApi = 'ADMINISTRATIVO' | 'CONSULTA';
+
+export function sesionDeApi(
+  api: string | undefined,
+  { rol = 'ADMINISTRATIVO' }: { rol?: RolDeCuentaDeApi } = {},
+) {
   // El `fetch` real: `setup.ts` bloquea el global para que ningún otro test salga a la red.
   const fetchBase = fetchDeRed;
   // Vitest corre con la raíz del frontend como directorio de trabajo.
@@ -58,7 +65,7 @@ export function sesionDeApi(api: string | undefined) {
     async iniciar(): Promise<void> {
       if (api === undefined) return;
       const password = `api ${randomBytes(18).toString('base64url')} prueba`;
-      email = script(['crear'], `${password}\n`);
+      email = script(['crear', rol], `${password}\n`);
 
       const respuesta = await conSesion(`${api}/auth/login`, {
         method: 'POST',
