@@ -10,6 +10,7 @@ import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useIsCompactLayout } from '@/hooks/use-media-query';
 import { enfocarYMostrar } from '@/lib/focus';
+import { usePermiso } from '@/modules/auth/hooks/useSesion';
 import {
   causaDeError,
   diagnosticoDeError,
@@ -31,6 +32,7 @@ import {
   type CambioAConfirmar,
   type ResultadoCambioEstado,
 } from '@/modules/clientes/components/CambiarEstadoClienteDialog';
+import { ClienteDetalleSheet } from '@/modules/clientes/components/ClienteDetalleSheet';
 import { ClientesEmptyState } from '@/modules/clientes/components/ClientesEmptyState';
 import { ClientesErrorState } from '@/modules/clientes/components/ClientesErrorState';
 import { ClientesFiltros } from '@/modules/clientes/components/ClientesFiltros';
@@ -39,6 +41,7 @@ import { ClientesLoadingState } from '@/modules/clientes/components/ClientesLoad
 import { ClientesSinActivos } from '@/modules/clientes/components/ClientesSinActivos';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 import type { EnlaceDeCliente } from '@/modules/clientes/components/ClienteTarjeta';
+import { ContactosClienteSheet } from '@/modules/clientes/components/ContactosClienteSheet';
 import { EditarClienteSheet } from '@/modules/clientes/components/EditarClienteSheet';
 import { mensajeFalloCambioEstado } from '@/modules/clientes/components/erroresDeEnvio';
 import { GestionarContactosSheet } from '@/modules/clientes/components/GestionarContactosSheet';
@@ -71,9 +74,17 @@ type AvisoPagina = {
 const DURACION_AVISO_MS = 8000;
 
 export function ClientesPage() {
+  // Qué se ofrece según los permisos de la sesión (HU4.3). Solo decide qué se muestra: quien
+  // autoriza es la API. Sin `clientes:editar` (CONSULTA) no hay alta, edición, editor de contactos
+  // ni cambios de estado: la ficha y los contactos se abren en solo lectura.
+  const puedeEditar = usePermiso('clientes:editar');
+  const puedeVerRequisitos = usePermiso('requisitos:ver');
   const [altaAbierta, setAltaAbierta] = useState(false);
   const [clienteAAdministrar, setClienteAAdministrar] = useState<Cliente | null>(null);
   const [clienteAEditar, setClienteAEditar] = useState<Cliente | null>(null);
+  // Vistas de solo lectura: la ficha y los contactos.
+  const [clienteEnFicha, setClienteEnFicha] = useState<Cliente | null>(null);
+  const [clienteEnContactos, setClienteEnContactos] = useState<Cliente | null>(null);
   const [cambioAConfirmar, setCambioAConfirmar] = useState<CambioAConfirmar | null>(null);
   const [aviso, setAviso] = useState<AvisoPagina>(null);
   // Destino del foco cuando lo que lo tenía desaparece: la fila que salió del listado al
@@ -212,6 +223,16 @@ export function ClientesPage() {
     void navigate(to, { state });
   };
 
+  const verFicha = (cliente: Cliente) => {
+    setAviso(null);
+    setClienteEnFicha(cliente);
+  };
+
+  const verContactos = (cliente: Cliente) => {
+    setAviso(null);
+    setClienteEnContactos(cliente);
+  };
+
   const alGuardarContactos = (cliente: Cliente) => {
     avisarExito(`Se guardaron los contactos de ${cliente.razonSocial}.`);
     setClienteAAdministrar(null);
@@ -250,10 +271,12 @@ export function ClientesPage() {
             Catálogo de clientes y su configuración de rendición.
           </p>
         </div>
-        <Button variant="brand" onClick={abrirAlta} className="max-sm:w-full">
-          <PlusIcon aria-hidden="true" />
-          Nuevo cliente
-        </Button>
+        {puedeEditar && (
+          <Button variant="brand" onClick={abrirAlta} className="max-sm:w-full">
+            <PlusIcon aria-hidden="true" />
+            Nuevo cliente
+          </Button>
+        )}
       </div>
 
       <ClientesNav />
@@ -284,7 +307,7 @@ export function ClientesPage() {
           onReintentar={() => void consulta.refetch()}
         />
       ) : sinClientes ? (
-        <ClientesEmptyState onNuevoCliente={abrirAlta} />
+        <ClientesEmptyState onNuevoCliente={puedeEditar ? abrirAlta : undefined} />
       ) : (
         <>
           <ClientesFiltros
@@ -316,47 +339,66 @@ export function ClientesPage() {
             <ClientesSinActivos
               cantidadInactivos={cantidadInactivos}
               onVerInactivos={() => acciones.elegirEstado('INACTIVO')}
+              puedeReactivar={puedeEditar}
             />
           ) : sinInactivos ? (
-            <ClientesInactivosVacio />
+            <ClientesInactivosVacio puedeReactivar={puedeEditar} />
           ) : (
             <ClientesTabla
               clientes={clientes ?? []}
               columnasVisibles={columnas.visibleIds}
               onLimpiarFiltros={acciones.limpiar}
-              onAdministrarContactos={abrirContactos}
-              onEditar={abrirEdicion}
-              onVerMatriz={verMatriz}
-              enlaceDe={enlaceDe}
-              onDesactivar={(cliente) => setCambioAConfirmar({ cliente, accion: 'desactivar' })}
-              onReactivar={(cliente) => setCambioAConfirmar({ cliente, accion: 'reactivar' })}
+              {...(puedeEditar
+                ? {
+                    onEditar: abrirEdicion,
+                    onAdministrarContactos: abrirContactos,
+                    onDesactivar: (cliente: Cliente) =>
+                      setCambioAConfirmar({ cliente, accion: 'desactivar' }),
+                    onReactivar: (cliente: Cliente) =>
+                      setCambioAConfirmar({ cliente, accion: 'reactivar' }),
+                  }
+                : { onVerFicha: verFicha, onVerContactos: verContactos })}
+              onVerMatriz={puedeVerRequisitos ? verMatriz : undefined}
+              enlaceDe={puedeVerRequisitos ? enlaceDe : undefined}
               idsCambiandoEstado={idsCambiandoEstado}
             />
           )}
         </>
       )}
 
-      <NuevoClienteSheet
-        abierto={altaAbierta}
-        onAbiertoChange={setAltaAbierta}
-        onCreado={alCrear}
-      />
-      <EditarClienteSheet
-        cliente={clienteAEditar}
-        onClose={() => setClienteAEditar(null)}
-        onActualizado={alActualizar}
-      />
-      <CambiarEstadoClienteDialog
-        cambio={cambioAConfirmar}
-        onConfirmar={confirmarCambio}
-        onCancelar={() => setCambioAConfirmar(null)}
-        focoTrasConfirmar={tituloRef}
-      />
-      <GestionarContactosSheet
-        cliente={clienteAAdministrar}
-        onClose={() => setClienteAAdministrar(null)}
-        onGuardado={alGuardarContactos}
-      />
+      {puedeEditar ? (
+        <>
+          <NuevoClienteSheet
+            abierto={altaAbierta}
+            onAbiertoChange={setAltaAbierta}
+            onCreado={alCrear}
+          />
+          <EditarClienteSheet
+            cliente={clienteAEditar}
+            onClose={() => setClienteAEditar(null)}
+            onActualizado={alActualizar}
+          />
+          <CambiarEstadoClienteDialog
+            cambio={cambioAConfirmar}
+            onConfirmar={confirmarCambio}
+            onCancelar={() => setCambioAConfirmar(null)}
+            focoTrasConfirmar={tituloRef}
+          />
+          <GestionarContactosSheet
+            cliente={clienteAAdministrar}
+            onClose={() => setClienteAAdministrar(null)}
+            onGuardado={alGuardarContactos}
+          />
+        </>
+      ) : (
+        <>
+          <ClienteDetalleSheet cliente={clienteEnFicha} onClose={() => setClienteEnFicha(null)} />
+          <ContactosClienteSheet
+            cliente={clienteEnContactos}
+            onClose={() => setClienteEnContactos(null)}
+          />
+        </>
+      )}
     </div>
   );
 }

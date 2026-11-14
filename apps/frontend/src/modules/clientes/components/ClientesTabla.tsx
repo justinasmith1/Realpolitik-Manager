@@ -10,7 +10,11 @@ import {
   type ClienteColumnaConfigurableId,
 } from '@/modules/clientes/clientes.columnas';
 import { CanalEntregaBadge } from '@/modules/clientes/components/CanalEntregaBadge';
-import { ClienteAccionesMenu } from '@/modules/clientes/components/ClienteAccionesMenu';
+import {
+  ClienteAccionesMenu,
+  hayAccionesDeCliente,
+  type AccionesDeCliente,
+} from '@/modules/clientes/components/ClienteAccionesMenu';
 import { ClienteTarjeta, type EnlaceDeCliente } from '@/modules/clientes/components/ClienteTarjeta';
 import { EstadoBadge } from '@/modules/clientes/components/EstadoBadge';
 import { PeriodicidadTexto } from '@/modules/clientes/components/PeriodicidadTexto';
@@ -21,7 +25,8 @@ interface ClientesTablaProps {
   clientes: Cliente[];
   /**
    * Columnas opcionales de la tabla de escritorio, en el orden en que se muestran. "Cliente" va
-   * siempre primera y "Acciones" siempre última. No afecta a las tarjetas del layout compacto.
+   * siempre primera y "Acciones" siempre última (si hay alguna acción: sin ninguna, la columna no
+   * se dibuja). No afecta a las tarjetas del layout compacto.
    */
   columnasVisibles: readonly ClienteColumnaConfigurableId[];
   /** Acción del aviso "sin resultados", cuando la lista filtrada queda vacía. */
@@ -90,6 +95,8 @@ export function ClientesTabla({
   clientes,
   columnasVisibles,
   onLimpiarFiltros,
+  onVerFicha,
+  onVerContactos,
   onAdministrarContactos,
   onEditar,
   onVerMatriz,
@@ -97,21 +104,16 @@ export function ClientesTabla({
   onReactivar,
   idsCambiandoEstado = [],
   enlaceDe,
-}: ClientesTablaProps & {
-  /**
-   * Hace del nombre un enlace estirado sobre su celda (o la tarjeta). Sin esto, el nombre es
-   * texto: la tabla no depende del router.
-   */
-  enlaceDe?: (cliente: Cliente) => EnlaceDeCliente;
-  onAdministrarContactos?: (cliente: Cliente) => void;
-  onEditar?: (cliente: Cliente) => void;
-  onVerMatriz?: (cliente: Cliente) => void;
-  /** Pide desactivar un cliente activo (la confirmación la resuelve quien la usa). */
-  onDesactivar?: (cliente: Cliente) => void;
-  onReactivar?: (cliente: Cliente) => void;
-  /** Clientes con un cambio de estado en curso: su Desactivar/Reactivar se deshabilita. */
-  idsCambiandoEstado?: readonly string[];
-}) {
+}: ClientesTablaProps &
+  AccionesDeCliente & {
+    /**
+     * Hace del nombre un enlace estirado sobre su celda (o la tarjeta). Sin esto, el nombre es
+     * texto: la tabla no depende del router.
+     */
+    enlaceDe?: ((cliente: Cliente) => EnlaceDeCliente) | undefined;
+    /** Clientes con un cambio de estado en curso: su Desactivar/Reactivar se deshabilita. */
+    idsCambiandoEstado?: readonly string[];
+  }) {
   const compacto = useIsCompactLayout();
 
   if (clientes.length === 0) {
@@ -128,15 +130,21 @@ export function ClientesTabla({
     );
   }
 
-  const accionesDe = (cliente: Cliente) => ({
+  // Qué acciones se ofrecen lo decide la página según los permisos: son las mismas en cada fila.
+  const acciones: AccionesDeCliente = {
+    onVerFicha,
     onEditar,
+    onVerContactos,
     onAdministrarContactos,
     onVerMatriz,
     onDesactivar,
     onReactivar,
+  };
+  const conAcciones = hayAccionesDeCliente(acciones);
+  const accionesDe = (cliente: Cliente) => ({
+    ...acciones,
     cambiandoEstado: idsCambiandoEstado.includes(cliente.id),
   });
-
   if (compacto) {
     return (
       // Las columnas dependen del ancho del listado (container query), no del de la ventana: a
@@ -170,15 +178,17 @@ export function ClientesTabla({
                 {etiquetasColumnasClientes[id]}
               </th>
             ))}
-            <th
-              scope="col"
-              className={cn(
-                claseEncabezado,
-                'sticky right-0 bg-table-head text-right shadow-[-1px_0_0_var(--border)]',
-              )}
-            >
-              Acciones
-            </th>
+            {conAcciones && (
+              <th
+                scope="col"
+                className={cn(
+                  claseEncabezado,
+                  'sticky right-0 bg-table-head text-right shadow-[-1px_0_0_var(--border)]',
+                )}
+              >
+                Acciones
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -220,11 +230,13 @@ export function ClientesTabla({
                 {columnasVisibles.map((id) => (
                   <Fragment key={id}>{celdas[id](cliente)}</Fragment>
                 ))}
-                <td className={cn(claseAcciones, 'group-hover:bg-panel-alt')}>
-                  <div className="flex justify-end">
-                    <ClienteAccionesMenu cliente={cliente} {...accionesDe(cliente)} />
-                  </div>
-                </td>
+                {conAcciones && (
+                  <td className={cn(claseAcciones, 'group-hover:bg-panel-alt')}>
+                    <div className="flex justify-end">
+                      <ClienteAccionesMenu cliente={cliente} {...accionesDe(cliente)} />
+                    </div>
+                  </td>
+                )}
               </tr>
             );
           })}

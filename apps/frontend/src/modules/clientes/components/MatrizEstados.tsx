@@ -140,14 +140,19 @@ export function MatrizClienteAusente({ tituloRef }: { tituloRef: Ref<HTMLHeading
 /**
  * El cliente existe y no tiene requisitos activos. No es un error y no se inventa la factura:
  * también se carga como un requisito, cuando haya alta.
+ *
+ * Esa indicación es para quien configura la matriz (por defecto). Quien solo consulta ve el
+ * título, sin instrucciones para algo que no puede hacer.
  */
-export function MatrizVacia() {
+export function MatrizVacia({ paraQuienConfigura = true }: { paraQuienConfigura?: boolean }) {
   return (
     <div className="flex flex-col items-start gap-2 rounded-card border bg-card p-6">
       <h2 className="text-base font-semibold">Este cliente todavía no tiene requisitos</h2>
-      <p className="max-w-140 text-sm leading-normal text-content-secondary">
-        La factura también se configura como un requisito. No se agrega sola.
-      </p>
+      {paraQuienConfigura && (
+        <p className="max-w-140 text-sm leading-normal text-content-secondary">
+          La factura también se configura como un requisito. No se agrega sola.
+        </p>
+      )}
     </div>
   );
 }

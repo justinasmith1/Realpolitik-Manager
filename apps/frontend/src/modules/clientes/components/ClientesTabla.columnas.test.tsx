@@ -5,6 +5,18 @@ import userEvent from '@testing-library/user-event';
 import type { ClienteColumnaConfigurableId } from '@/modules/clientes/clientes.columnas';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 
+/**
+ * Las acciones que la página le pasa a quien puede editar clientes (ADMINISTRATIVO y
+ * ADMINISTRADOR). Desde HU4.3 el menú solo muestra las acciones que recibe.
+ */
+const accionesOperativas = {
+  onEditar: () => undefined,
+  onAdministrarContactos: () => undefined,
+  onVerMatriz: () => undefined,
+  onDesactivar: () => undefined,
+  onReactivar: () => undefined,
+};
+
 // Datos ficticios, validados con el schema compartido como los que devuelve la API.
 const base = {
   denominacion: 'Empresa Ejemplo',
@@ -40,6 +52,7 @@ const municipio: Cliente = ClienteSchema.parse({
 function renderTabla(columnasVisibles: readonly ClienteColumnaConfigurableId[]) {
   render(
     <ClientesTabla
+      {...accionesOperativas}
       clientes={[privada, municipio]}
       columnasVisibles={columnasVisibles}
       onLimpiarFiltros={() => undefined}
@@ -136,6 +149,7 @@ describe('ClientesTabla: columnas visibles en escritorio', () => {
     const onEditar = vi.fn();
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[privada]}
         columnasVisibles={['sector']}
         onLimpiarFiltros={() => undefined}
@@ -152,7 +166,11 @@ describe('ClientesTabla: columnas visibles en escritorio', () => {
 
   it('cambiar el orden no genera advertencias de React (keys por columna)', () => {
     const errores = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const props = { clientes: [privada, municipio], onLimpiarFiltros: () => undefined };
+    const props = {
+      ...accionesOperativas,
+      clientes: [privada, municipio],
+      onLimpiarFiltros: () => undefined,
+    };
     const { rerender } = render(<ClientesTabla {...props} columnasVisibles={['cuit', 'email']} />);
 
     rerender(<ClientesTabla {...props} columnasVisibles={['email', 'canal', 'cuit']} />);

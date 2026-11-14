@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
+
 import { MatricesPage } from './MatricesPage';
 
 let mockClientes: typeof clientesBase = [];
@@ -82,9 +84,11 @@ vi.mock('@/modules/tipos-documento/hooks/useTiposDocumento', () => ({
 }));
 
 function renderMatrices(entrada = '/clientes/matrices') {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+  const queryClient = sembrarSesion(
+    new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    }),
+  );
   const router = createMemoryRouter(
     [
       { path: '/clientes/matrices', element: <MatricesPage /> },

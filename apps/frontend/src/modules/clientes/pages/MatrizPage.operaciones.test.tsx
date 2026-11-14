@@ -3,6 +3,7 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
 import { elegirOpcion } from '@/test/select';
 
@@ -179,9 +180,11 @@ function preparar(parcial: Partial<Escena> = {}) {
 }
 
 function renderMatriz() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  const queryClient = sembrarSesion(
+    new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    }),
+  );
   const router = createMemoryRouter(
     [
       { path: '/clientes/:id/matriz', element: <MatrizPage /> },

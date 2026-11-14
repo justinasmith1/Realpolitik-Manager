@@ -5,6 +5,18 @@ import userEvent from '@testing-library/user-event';
 import { CLIENTES_COLUMNAS_DEFAULT } from '@/modules/clientes/clientes.columnas';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 
+/**
+ * Las acciones que la página le pasa a quien puede editar clientes (ADMINISTRATIVO y
+ * ADMINISTRADOR). Desde HU4.3 el menú solo muestra las acciones que recibe.
+ */
+const accionesOperativas = {
+  onEditar: () => undefined,
+  onAdministrarContactos: () => undefined,
+  onVerMatriz: () => undefined,
+  onDesactivar: () => undefined,
+  onReactivar: () => undefined,
+};
+
 // Datos ficticios, validados con el schema compartido como los que devuelve la API.
 const base = {
   razonSocial: 'Empresa de Ejemplo S.A.',
@@ -57,6 +69,7 @@ describe('ClientesTabla: periodicidad (HU1.5)', () => {
   beforeEach(() => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={clientes}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -115,6 +128,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   it('cada fila tiene un solo botón de menú, con la razón social en su nombre accesible', () => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[activo, inactivo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -132,6 +146,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   it('el botón del menú está en la columna Acciones, a la derecha de la fila', () => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[activo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -150,6 +165,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   it('un cliente activo se identifica sin badge y su menú ofrece Editar, Contactos y Desactivar', async () => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[activo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -166,6 +182,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   it('un cliente inactivo lleva el badge "Inactivo" y su menú ofrece Editar, Contactos y Reactivar', async () => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[inactivo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -182,6 +199,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   it('Desactivar es destructivo (rojo) y Reactivar es de éxito (verde); los dos van separados', async () => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[activo, inactivo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -228,6 +246,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
       };
       render(
         <ClientesTabla
+          {...accionesOperativas}
           clientes={[activo, inactivo]}
           columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
           onLimpiarFiltros={() => undefined}
@@ -249,6 +268,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     const onAdministrarContactos = vi.fn();
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[activo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -278,6 +298,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
     const onEditar = vi.fn();
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[activo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -295,6 +316,7 @@ describe('ClientesTabla: estado y menú de acciones (HU1.8)', () => {
   it('deshabilita Desactivar/Reactivar del cliente cuyo cambio de estado está en curso', async () => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[activo, inactivo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}

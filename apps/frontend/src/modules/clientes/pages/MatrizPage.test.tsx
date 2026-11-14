@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { stateDeRequisitos } from '@/modules/clientes/matriz.navegacion';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
@@ -86,7 +87,9 @@ function servir(cliente: unknown, lista: unknown, indicaciones: string | null = 
 }
 
 function renderEn(entrada: string | { pathname: string; state?: unknown }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = sembrarSesion(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
   const router = createMemoryRouter(
     [
       { path: '/clientes', element: <ClientesPage /> },

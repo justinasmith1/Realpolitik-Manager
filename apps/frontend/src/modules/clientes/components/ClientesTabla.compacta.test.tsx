@@ -8,6 +8,18 @@ import {
 } from '@/modules/clientes/clientes.columnas';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 
+/**
+ * Las acciones que la página le pasa a quien puede editar clientes (ADMINISTRATIVO y
+ * ADMINISTRADOR). Desde HU4.3 el menú solo muestra las acciones que recibe.
+ */
+const accionesOperativas = {
+  onEditar: () => undefined,
+  onAdministrarContactos: () => undefined,
+  onVerMatriz: () => undefined,
+  onDesactivar: () => undefined,
+  onReactivar: () => undefined,
+};
+
 // En pantallas angostas (< 1280px) el listado son tarjetas, no una tabla comprimida.
 function simularViewportCompacto() {
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string): MediaQueryList => ({
@@ -61,6 +73,7 @@ describe('ClientesTabla en pantallas angostas', () => {
   it('muestra una lista de tarjetas en lugar de la tabla, con un ítem por cliente', () => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[privado, publicoInactivo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -75,6 +88,7 @@ describe('ClientesTabla en pantallas angostas', () => {
   it('cada tarjeta conserva la información de la fila: clasificación, estado, CUIT, email, canal y periodicidad', () => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[publicoInactivo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -97,6 +111,7 @@ describe('ClientesTabla en pantallas angostas', () => {
     const contenidoDeTarjetas = (columnasVisibles: readonly ClienteColumnaConfigurableId[]) => {
       const { unmount } = render(
         <ClientesTabla
+          {...accionesOperativas}
           clientes={[privado, publicoInactivo]}
           columnasVisibles={columnasVisibles}
           onLimpiarFiltros={() => undefined}
@@ -125,6 +140,7 @@ describe('ClientesTabla en pantallas angostas', () => {
     const onReactivar = vi.fn();
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[privado, publicoInactivo]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
@@ -153,6 +169,7 @@ describe('ClientesTabla en pantallas angostas', () => {
   it('sin resultados muestra el mismo aviso que en escritorio', () => {
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}
