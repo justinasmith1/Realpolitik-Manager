@@ -1,7 +1,6 @@
 import {
   cantidadDeRendicionesEnElMes,
   MENSAJE_COBRO_ESTADO_INVALIDO,
-  MENSAJE_COBRO_REGISTRADO,
   nombreDeItem,
   numeroDeWhatsappLegible,
   textoDeCobro,
@@ -93,10 +92,7 @@ describe('textos del cobro', () => {
 
   it('los textos de error del cobro son los acordados', () => {
     expect(MENSAJE_COBRO_ESTADO_INVALIDO).toBe(
-      'Solo se puede registrar el cobro de una rendición enviada o aprobada.',
-    );
-    expect(MENSAJE_COBRO_REGISTRADO).toBe(
-      'Tiene un cobro registrado: quitalo antes de rechazarla.',
+      'Solo se puede registrar el cobro de una rendición enviada, aprobada o rechazada.',
     );
   });
 });

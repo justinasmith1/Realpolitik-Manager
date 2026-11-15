@@ -167,7 +167,7 @@ describe('RegistrarCobroSheet', () => {
   it('un 409 COBRO_ESTADO_INVALIDO se explica en la hoja, que sigue abierta con lo escrito', async () => {
     fetchMock.mockImplementation(() =>
       Promise.resolve(
-        errorJson(409, 'CONFLICT', { motivo: 'COBRO_ESTADO_INVALIDO', estadoActual: 'RECHAZADA' }),
+        errorJson(409, 'CONFLICT', { motivo: 'COBRO_ESTADO_INVALIDO', estadoActual: 'EN_CURSO' }),
       ),
     );
     const { user, onGuardada } = renderHoja();
@@ -177,7 +177,7 @@ describe('RegistrarCobroSheet', () => {
 
     expect(
       await screen.findByText(
-        'Solo se puede registrar el cobro de una rendición enviada o aprobada.',
+        'Solo se puede registrar el cobro de una rendición enviada, aprobada o rechazada.',
       ),
     ).toBeVisible();
     expect(nota()).toHaveValue('Pagó');

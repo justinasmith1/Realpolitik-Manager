@@ -364,10 +364,7 @@ export const AVISO_COBRO_QUITADO = 'Se quitó la marca de cobrada.';
 
 /** Una acción sobre el cobro se pidió a una rendición que ya no es cobrable (otra persona la cambió). */
 export const MENSAJE_COBRO_ESTADO_INVALIDO =
-  'Solo se puede registrar el cobro de una rendición enviada o aprobada.';
-/** Rechazar una Enviada con cobro: hay que quitar antes la marca. */
-export const MENSAJE_COBRO_REGISTRADO = 'Tiene un cobro registrado: quitalo antes de rechazarla.';
-
+  'Solo se puede registrar el cobro de una rendición enviada, aprobada o rechazada.';
 /** El día del cobro como se lee en el detalle y el resumen: "Cobrada el 10/11/2026". */
 export const textoDeCobro = (dia: string): string => `${TEXTO_COBRADA} el ${diaLegible(dia)}`;
 

@@ -22,7 +22,6 @@ import type { CampoCobro } from '@/modules/rendiciones/components/registrarCobro
 import {
   etiquetaDePeriodo,
   MENSAJE_COBRO_ESTADO_INVALIDO,
-  MENSAJE_COBRO_REGISTRADO,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 
 /** Lo que se puede hacer a partir del error, además de leerlo. */
@@ -272,8 +271,6 @@ export function mensajeFalloCambioDeEstado(
       return 'La rendición está anulada: ya no se puede modificar.';
     case 'transicion-invalida':
       return transicionInvalida;
-    case 'cobro-registrado':
-      return MENSAJE_COBRO_REGISTRADO;
     case 'no-existe':
       return 'La rendición ya no existe. Volvé a cargar la página.';
     case 'inesperado':

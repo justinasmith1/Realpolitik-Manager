@@ -63,7 +63,7 @@ describe('CobroDeRendicion: sin cobro', () => {
     expect(franja().querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it.each<EstadoRendicionType>(['EN_CURSO', 'COMPLETA', 'RECHAZADA'])(
+  it.each<EstadoRendicionType>(['EN_CURSO', 'COMPLETA'])(
     'una %s no se cobra: no se dibuja nada',
     (estado) => {
       const { container } = renderFranja({ estado });
@@ -110,7 +110,7 @@ describe('CobroDeRendicion: con cobro', () => {
     expect(within(franja()).getByText('Cobrada el 01/01/2026')).toBeVisible();
   });
 
-  it('en una activa Enviada o Aprobada ofrece "Editar cobro" (outline sm) y "Quitar cobro" (ghost sm)', async () => {
+  it('en una activa Enviada, Aprobada o Rechazada ofrece "Editar cobro" (outline sm) y "Quitar cobro" (ghost sm)', async () => {
     const { user, onEditar, onQuitar } = renderFranja({ estado: 'APROBADA', cobro: COBRO });
 
     expect(boton('Registrar cobro')).not.toBeInTheDocument();
@@ -126,8 +126,16 @@ describe('CobroDeRendicion: con cobro', () => {
     expect(onQuitar).toHaveBeenCalledTimes(1);
   });
 
-  it('si la rendición ya no es cobrable pero tiene cobro (p. ej. rechazada con el cobro viejo), no se edita pero se puede quitar', () => {
+  it('una Rechazada con cobro ofrece "Editar cobro" y "Quitar cobro" (también es cobrable)', () => {
     renderFranja({ estado: 'RECHAZADA', cobro: COBRO });
+
+    expect(within(franja()).getByText('Cobrada el 10/11/2026')).toBeVisible();
+    expect(boton('Editar cobro')).toBeVisible();
+    expect(boton('Quitar cobro')).toBeVisible();
+  });
+
+  it('si la rendición ya no es cobrable pero tiene cobro (p. ej. reabierta a En curso), no se edita pero se puede quitar', () => {
+    renderFranja({ estado: 'EN_CURSO', cobro: COBRO });
 
     expect(within(franja()).getByText('Cobrada el 10/11/2026')).toBeVisible();
     expect(boton('Editar cobro')).not.toBeInTheDocument();

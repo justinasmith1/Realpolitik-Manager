@@ -33,7 +33,8 @@ interface CobroDeRendicionProps {
  * Estado · Vigencia · Avance y con el estilo de la tarjeta de cabecera. Es una marca de la
  * rendición, no un estado.
  *
- * - Sin cobro, en una activa Enviada o Aprobada: "Sin cobro registrado" y "Registrar cobro".
+ * - Sin cobro, en una activa Enviada, Aprobada o Rechazada: "Sin cobro registrado" y "Registrar
+ *   cobro".
  * - Con cobro: fondo y borde `success-*`, "Cobrada el dd/mm/aaaa" en negrita, la nota debajo (dos
  *   líneas como máximo, con el texto completo en el `title`) y, en una activa, "Editar cobro" (si
  *   sigue siendo cobrable) y "Quitar cobro".
