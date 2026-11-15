@@ -32,8 +32,9 @@ describe('index: constantes de la respuesta del cliente (HU3.8)', () => {
 
 describe('index: cobro informado por el cliente (HU3.10)', () => {
   it('exporta los estados cobrables, el tope de la nota, los mensajes y las reglas', () => {
-    expect([...ESTADOS_COBRABLES]).toEqual(['ENVIADA', 'APROBADA']);
+    expect([...ESTADOS_COBRABLES]).toEqual(['ENVIADA', 'APROBADA', 'RECHAZADA']);
     expect(esEstadoCobrable('ENVIADA')).toBe(true);
+    expect(esEstadoCobrable('RECHAZADA')).toBe(true);
     expect(COBRO_NOTA_MAX).toBe(300);
     expect(MENSAJE_FECHA_COBRO_INVALIDA).toBeTypeOf('string');
     expect(MENSAJE_FECHA_COBRO_FUTURA).toBeTypeOf('string');
