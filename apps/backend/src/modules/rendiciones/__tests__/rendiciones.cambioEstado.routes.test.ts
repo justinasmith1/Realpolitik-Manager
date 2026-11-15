@@ -485,20 +485,22 @@ describe('PATCH /rendiciones/:id/estado — respuesta del cliente (HU3.8)', () =
     expect(historial.map((paso) => paso.motivo)).toEqual([null, 'Faltó el CUIT 20-12345678-4']);
   });
 
-  it('ENVIADA → RECHAZADA con un cobro registrado: 409 COBRO_REGISTRADO, sin escribir (HU3.10)', async () => {
+  it('ENVIADA → RECHAZADA con un cobro registrado: 200, el rechazo no toca el cobro (HU3.10)', async () => {
     devolverConEntrada();
     transaccion.rendicion.findFirst
       .mockResolvedValueOnce(lecturaDe('ENVIADA'))
-      .mockResolvedValueOnce({
-        estado: 'ENVIADA',
-        cobroFecha: new Date('2026-11-10T00:00:00.000Z'),
-      });
+      .mockResolvedValueOnce({ estado: 'ENVIADA' });
 
     const res = await responder({ estado: 'RECHAZADA', motivo: 'Faltó la firma' });
 
-    expect(res.status).toBe(409);
-    expect(detalles(res)).toEqual({ motivo: 'COBRO_REGISTRADO' });
-    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ estado: 'RECHAZADA' });
+    expect(transaccion.rendicion.update).toHaveBeenCalledTimes(1);
+    // Solo cambia el estado y suma la entrada: ni `cobroFecha` ni `cobroNota` se escriben.
+    const [{ data }] = transaccion.rendicion.update.mock.calls[0] as [
+      { data: Record<string, unknown> },
+    ];
+    expect(Object.keys(data).sort()).toEqual(['estado', 'historial']);
   });
 
   it('ENVIADA → APROBADA con un cobro registrado: 200, el cobro no impide aprobar (HU3.10)', async () => {
@@ -517,7 +519,7 @@ describe('PATCH /rendiciones/:id/estado — respuesta del cliente (HU3.8)', () =
     expect(transaccion.rendicion.update).toHaveBeenCalledTimes(1);
   });
 
-  it('APROBADA → RECHAZADA con un cobro: sigue siendo TRANSICION_INVALIDA, no COBRO_REGISTRADO (HU3.10)', async () => {
+  it('APROBADA → RECHAZADA con un cobro: sigue siendo TRANSICION_INVALIDA (HU3.10)', async () => {
     transaccion.rendicion.findFirst.mockResolvedValueOnce(
       lecturaDe('APROBADA', [true, true], { cobroFecha: new Date('2026-11-10T00:00:00.000Z') }),
     );

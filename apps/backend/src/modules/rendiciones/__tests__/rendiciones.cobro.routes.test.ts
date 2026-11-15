@@ -287,7 +287,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
     expect(detalles(res)).toEqual({ motivo: 'RENDICION_ANULADA' });
   });
 
-  it.each(['EN_CURSO', 'COMPLETA', 'RECHAZADA'])(
+  it.each(['EN_CURSO', 'COMPLETA'])(
     'una %s: 409 COBRO_ESTADO_INVALIDO con el estado actual, sin escribir',
     async (estado) => {
       transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe(estado));

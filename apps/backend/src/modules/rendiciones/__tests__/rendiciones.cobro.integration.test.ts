@@ -1,8 +1,8 @@
 // Integración del cobro informado por el cliente (HU3.10) contra PostgreSQL REAL:
 // - `PUT` y `DELETE /rendiciones/:id/cobro`: alta, edición y quita de la marca
 // - la columna `DATE` hace el viaje de ida y vuelta sin correr el día (Buenos Aires es UTC-3)
-// - solo una Enviada o Aprobada se marca; una anulada no se toca; el cobro no toca el historial
-// - rechazar una rendición con cobro es 409 COBRO_REGISTRADO, y sin cobro se puede
+// - solo una Enviada, Aprobada o Rechazada se marca; una anulada no se toca; el cobro no toca el historial
+// - rechazar una rendición con cobro se puede, y el cobro se conserva
 // - los CHECK `ck_rendicion_cobro_nota_con_fecha` y `ck_rendicion_cobro_nota_no_vacia` fallan con
 //   su SQLSTATE (23514) y su nombre
 //
@@ -99,7 +99,7 @@ async function crearCliente() {
 }
 
 /** Abre una rendición del cliente y la deja en `estado`. */
-async function rendicionEn(estado: 'EN_CURSO' | 'ENVIADA' | 'APROBADA' | 'RECHAZADA') {
+async function rendicionEn(estado: 'EN_CURSO' | 'COMPLETA' | 'ENVIADA' | 'APROBADA' | 'RECHAZADA') {
   const cliente = await crearCliente();
   const alta = await sesiones
     .cliente(app)
@@ -183,7 +183,7 @@ describe.skipIf(url === undefined)(
       expect(despues.historial).toEqual(antes.historial);
     });
 
-    it.each(['EN_CURSO', 'RECHAZADA'] as const)(
+    it.each(['EN_CURSO', 'COMPLETA'] as const)(
       'una %s no se puede marcar: 409 COBRO_ESTADO_INVALIDO',
       async (estado) => {
         const id = await rendicionEn(estado);
@@ -220,27 +220,44 @@ describe.skipIf(url === undefined)(
       });
     });
 
-    it('rechazar una Enviada con cobro es 409 COBRO_REGISTRADO; quitando la marca, se puede', async () => {
+    it('rechazar una Enviada con cobro se puede y conserva el cobro (decisión del 13/11/2026)', async () => {
       const id = await rendicionEn('ENVIADA');
-      await registrar(id, { fecha: '2026-11-10' });
+      await registrar(id, { fecha: '2026-11-10', nota: 'Pagó junto con octubre' });
 
-      const bloqueado = await sesiones
+      const res = await sesiones
         .cliente(app)
         .patch(`/rendiciones/${id}/estado`)
         .send({ estado: 'RECHAZADA', motivo: 'Faltó la firma' });
-      expect(bloqueado.status).toBe(409);
-      expect(bloqueado.body).toMatchObject({
-        error: { details: { motivo: 'COBRO_REGISTRADO' } },
+
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body).toMatchObject({
+        estado: 'RECHAZADA',
+        cobro: { fecha: '2026-11-10', nota: 'Pagó junto con octubre' },
       });
-      expect((await prisma.rendicion.findUniqueOrThrow({ where: { id } })).estado).toBe('ENVIADA');
+      const fila = await prisma.rendicion.findUniqueOrThrow({ where: { id } });
+      expect(fila.estado).toBe('RECHAZADA');
+      expect(fila.cobroNota).toBe('Pagó junto con octubre');
+    });
 
-      await quitar(id);
-      const permitido = await sesiones
-        .cliente(app)
-        .patch(`/rendiciones/${id}/estado`)
-        .send({ estado: 'RECHAZADA', motivo: 'Faltó la firma' });
-      expect(permitido.status, JSON.stringify(permitido.body)).toBe(200);
-      expect(permitido.body).toMatchObject({ estado: 'RECHAZADA', cobro: null });
+    it('una Rechazada se marca y se edita (decisión del 13/11/2026), sin tocar el estado', async () => {
+      const id = await rendicionEn('RECHAZADA');
+
+      const alta = await registrar(id, { fecha: '2026-11-12', nota: 'Pagó aunque la rechazó' });
+      expect(alta.status, JSON.stringify(alta.body)).toBe(200);
+      expect(alta.body).toMatchObject({
+        estado: 'RECHAZADA',
+        cobro: { fecha: '2026-11-12', nota: 'Pagó aunque la rechazó' },
+      });
+
+      const edicion = await registrar(id, { fecha: '2026-11-13' });
+      expect(edicion.status, JSON.stringify(edicion.body)).toBe(200);
+      expect(edicion.body).toMatchObject({
+        estado: 'RECHAZADA',
+        cobro: { fecha: '2026-11-13', nota: null },
+      });
+      const fila = await prisma.rendicion.findUniqueOrThrow({ where: { id } });
+      expect(fila.estado).toBe('RECHAZADA');
+      expect(fila.cobroFecha?.toISOString()).toBe('2026-11-13T00:00:00.000Z');
     });
 
     it('aprobar una Enviada con cobro conserva el cobro', async () => {
