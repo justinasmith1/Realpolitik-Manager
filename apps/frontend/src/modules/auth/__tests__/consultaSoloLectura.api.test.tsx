@@ -15,12 +15,13 @@
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
-import { validateCuit } from '@realpolitik/shared';
+import { validateCuit, type SesionActual } from '@realpolitik/shared';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 
 import { crearQueryClient } from '@/app/providers';
+import { CLAVE_SESION } from '@/modules/auth/sesion';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
 import { sesionDeApi } from '@/test/sesionDeApi';
 
@@ -241,9 +242,10 @@ describe.skipIf(API === undefined)('CONSULTA contra la API real (HU4.3)', () => 
   it('la pantalla Clientes, con la sesión real de CONSULTA, lee y no ofrece escribir', async () => {
     vi.stubGlobal('fetch', consulta.fetch);
     vi.stubEnv('VITE_API_URL', API ?? '');
+    const queryClient = crearQueryClient();
     try {
       render(
-        <QueryClientProvider client={crearQueryClient()}>
+        <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={[`/clientes?q=${MARCA}`]}>
             <ClientesPage />
           </MemoryRouter>
@@ -253,10 +255,21 @@ describe.skipIf(API === undefined)('CONSULTA contra la API real (HU4.3)', () => 
       expect(
         await screen.findByText(`${MARCA} Cliente de consulta`, {}, { timeout: 15_000 }),
       ).toBeInTheDocument();
+      // Mientras `GET /auth/sesion` está pendiente ningún rol ve "Nuevo cliente": la ausencia solo
+      // dice algo con la sesión real ya resuelta como CONSULTA (la respondió el servidor, no se
+      // siembra).
+      await vi.waitFor(
+        () =>
+          expect(queryClient.getQueryData<SesionActual>(CLAVE_SESION)?.usuario.rol).toBe(
+            'CONSULTA',
+          ),
+        { timeout: 15_000 },
+      );
       expect(screen.queryByRole('button', { name: /Nuevo cliente/ })).not.toBeInTheDocument();
     } finally {
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
     }
-  });
+    // Red real + jsdom, con dos esperas de hasta 15 s: el default de 5 s cortaría antes que ellas.
+  }, 30_000);
 });

@@ -317,8 +317,15 @@ describe.skipIf(API === undefined)('MatrizPage contra la API real', () => {
     renderMatriz(cliente.id);
 
     expect(await screen.findByText(tipo.nombre, {}, ESPERA)).toBeInTheDocument();
+    // El aviso es para quien tiene `requisitos:editar` (HU4.3), que llega con `GET /auth/sesion`:
+    // el listado puede aparecer antes que la sesión. Esperarlo también asegura que las ausencias
+    // de abajo se comprueban con el permiso ya resuelto, no por una sesión todavía pendiente.
     expect(
-      screen.getByText('Este cliente debe estar activo para modificar sus requisitos.'),
+      await screen.findByText(
+        'Este cliente debe estar activo para modificar sus requisitos.',
+        {},
+        ESPERA,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /agregar|quitar|editar requisito/i }),

@@ -192,7 +192,11 @@ describe.skipIf(API === undefined)('TiposDocumentoPage contra la API real', () =
     renderPagina();
 
     const fila = await filaDe(NOMBRE_EXISTENTE);
-    expect(within(fila).getByRole('button', { name: NOMBRE_EXISTENTE })).toBeInTheDocument();
+    // El nombre es un botón solo con `tipos-documento:editar`, que llega con `GET /auth/sesion`:
+    // la fila puede aparecer antes que la sesión. Si el permiso no llega nunca, esto falla.
+    expect(
+      await within(fila).findByRole('button', { name: NOMBRE_EXISTENTE }, ESPERA_RED),
+    ).toBeInTheDocument();
     expect(within(fila).getByText('Activo')).toBeInTheDocument();
   });
 
@@ -275,8 +279,13 @@ describe.skipIf(API === undefined)('TiposDocumentoPage contra la API real', () =
     const filaInactiva = await filaDe(NOMBRE_NUEVO);
     expect(within(filaInactiva).getByText('Desactivado')).toBeInTheDocument();
 
+    // El menú también depende del permiso de la sesión (ver el primer caso).
     await user.click(
-      within(filaInactiva).getByRole('button', { name: `Acciones de ${NOMBRE_NUEVO}` }),
+      await within(filaInactiva).findByRole(
+        'button',
+        { name: `Acciones de ${NOMBRE_NUEVO}` },
+        ESPERA_RED,
+      ),
     );
     await user.click(
       within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Reactivar' }),
