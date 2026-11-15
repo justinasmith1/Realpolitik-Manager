@@ -4,10 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AppError } from '../../../errors/app-error';
 import {
   autorizar,
-  bloquearRolesNoHabilitados,
   crearRouter,
   esRouterProtegido,
-  ROLES_NO_HABILITADOS_HASTA_HU4_3,
   rutasDe,
   soloLecturaParaConsulta,
 } from '../autorizacion';
@@ -134,42 +132,44 @@ const conRol = (rol: string) => ({
   sesion: { usuario: { id: '0000a000-0000-4000-8000-000000000009', rol } },
 });
 
-describe('regla temporal de HU4.1: CONSULTA sin acceso al negocio (se borra en HU4.3)', () => {
-  it('solo CONSULTA está en la lista de roles no habilitados', () => {
-    expect([...ROLES_NO_HABILITADOS_HASTA_HU4_3]).toEqual(['CONSULTA']);
+describe('CONSULTA habilitado (HU4.3): lee lo que dice la matriz, nada más', () => {
+  const LECTURAS = [
+    'cuenta:propia',
+    'clientes:ver',
+    'requisitos:ver',
+    'tipos-documento:ver',
+    'rendiciones:ver',
+    'documentos:ver',
+  ] as const;
+  const OPERACIONES = PERMISOS.filter((p) => !(LECTURAS as readonly string[]).includes(p));
+
+  it('ya no existe la regla temporal de HU4.1 que lo dejaba fuera del negocio', async () => {
+    const modulo: Record<string, unknown> = await import('../autorizacion');
+    expect(modulo).not.toHaveProperty('bloquearRolesNoHabilitados');
+    expect(modulo).not.toHaveProperty('ROLES_NO_HABILITADOS_HASTA_HU4_3');
   });
 
-  it.each(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'])(
-    'CONSULTA con %s: 403 ROL_NO_HABILITADO',
-    (metodo) => {
-      const { error } = ejecutarMiddleware(bloquearRolesNoHabilitados, metodo, conRol('CONSULTA'));
-      expect(error?.status).toBe(403);
-      expect(error?.details).toEqual({ motivo: 'ROL_NO_HABILITADO' });
-      expect(error?.message).toBe('Tu cuenta todavía no tiene acceso al sistema.');
-    },
-  );
+  it('sus permisos son exactamente las 6 lecturas de la matriz', () => {
+    expect([...PERMISOS_POR_ROL.CONSULTA].sort()).toEqual([...LECTURAS].sort());
+    expect(OPERACIONES).toHaveLength(6);
+  });
 
-  it.each(['ADMINISTRATIVO', 'ADMINISTRADOR'])('%s pasa sin error', (rol) => {
-    const { llamado, error } = ejecutarMiddleware(bloquearRolesNoHabilitados, 'POST', conRol(rol));
+  it.each(LECTURAS)('autorizar(%s) lo deja pasar', (permiso) => {
+    const { llamado, error } = ejecutarMiddleware(autorizar(permiso), 'GET', conRol('CONSULTA'));
     expect(llamado).toBe(true);
     expect(error).toBeUndefined();
   });
 
-  it('sin sesión: 401, nunca acceso', () => {
-    expect(ejecutarMiddleware(bloquearRolesNoHabilitados, 'GET', {}).error?.status).toBe(401);
-  });
-
-  it('los permisos futuros de CONSULTA siguen implementados: autorizar le deja leer, no editar', () => {
-    expect(ejecutarMiddleware(autorizar('clientes:ver'), 'GET', conRol('CONSULTA')).error).toBe(
-      undefined,
-    );
-    expect(
-      ejecutarMiddleware(autorizar('documentos:ver'), 'GET', conRol('CONSULTA')).error,
-    ).toBeUndefined();
-    expect(
-      ejecutarMiddleware(autorizar('clientes:editar'), 'POST', conRol('CONSULTA')).error?.status,
-    ).toBe(403);
-  });
+  it.each(OPERACIONES)(
+    'autorizar(%s): 403 PERMISO_INSUFICIENTE aunque el pedido sea un GET',
+    (permiso) => {
+      for (const metodo of ['GET', 'HEAD', 'POST']) {
+        const { error } = ejecutarMiddleware(autorizar(permiso), metodo, conRol('CONSULTA'));
+        expect(error?.status).toBe(403);
+        expect(error?.details).toEqual({ motivo: 'PERMISO_INSUFICIENTE' });
+      }
+    },
+  );
 });
 
 describe('soloLecturaParaConsulta (permanente)', () => {

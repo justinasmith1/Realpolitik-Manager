@@ -11,7 +11,6 @@
 //
 // ESLint impide importar `Router` de express fuera de este archivo.
 
-import type { RolUsuario } from '@prisma/client';
 import { Router, type RequestHandler } from 'express';
 
 import { forbidden, unauthenticated } from '../../errors/app-error';
@@ -29,7 +28,6 @@ export const MENSAJE_SIN_SESION = 'Iniciá sesión para continuar.';
 export const MENSAJE_PERMISO_INSUFICIENTE = 'No tenés permiso para esta acción.';
 export const MENSAJE_CAMBIO_DE_PASSWORD_REQUERIDO =
   'Tenés que cambiar tu contraseña antes de continuar.';
-export const MENSAJE_ROL_NO_HABILITADO = 'Tu cuenta todavía no tiene acceso al sistema.';
 
 const METODOS_DE_LECTURA: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -57,46 +55,14 @@ export const exigirPasswordDefinitiva: RequestHandler = (_req, res, next) => {
   next();
 };
 
-// ─── TEMPORAL: regla de HU4.1, se quita al habilitar CONSULTA en HU4.3 ─────────────────────────
-//
-// Decisión funcional documentada (matriz de permisos, ADR-0006 "Delimitación de HU4.1"): durante
-// HU4.1 solo ADMINISTRADOR y ADMINISTRATIVO usan el negocio. CONSULTA puede usar `/auth/*` (iniciar
-// sesión, ver su sesión, cambiar la contraseña, salir), pero recibe 403 en TODA ruta de negocio,
-// también en las lecturas que la matriz le concede.
-//
-// Sus permisos (`PERMISOS_POR_ROL.CONSULTA`) quedan implementados y probados contra la matriz: la
-// regla no los cambia, solo corta antes. Para habilitar el rol (HU4.3) se borran este bloque, su
-// montaje en `createApp` y el test "regla temporal de HU4.1"; no hay que tocar ningún permiso ni
-// ninguna ruta. No es un interruptor configurable a propósito: no existe un modo que lo apague.
-
-/** Roles con sesión pero sin acceso al negocio todavía. Solo CONSULTA, hasta HU4.3. */
-export const ROLES_NO_HABILITADOS_HASTA_HU4_3: ReadonlySet<RolUsuario> = new Set(['CONSULTA']);
-
-/** 403 `ROL_NO_HABILITADO` en cualquier método de cualquier ruta de negocio (también inexistente). */
-export const bloquearRolesNoHabilitados: RequestHandler = (req, res, next) => {
-  const sesion = sesionDe(res.locals);
-  if (!sesion) {
-    next(sinSesion());
-    return;
-  }
-  if (ROLES_NO_HABILITADOS_HASTA_HU4_3.has(sesion.usuario.rol)) {
-    registrarEventoDeAuth('auth.permiso_denegado', {
-      usuarioId: sesion.usuario.id,
-      motivo: 'rol-no-habilitado',
-      ip: req.ip,
-    });
-    next(forbidden('ROL_NO_HABILITADO', MENSAJE_ROL_NO_HABILITADO));
-    return;
-  }
-  next();
-};
-
-// ─── Fin de la regla temporal ─────────────────────────────────────────────────────────────────
-
 /**
- * Red de seguridad global y PERMANENTE: CONSULTA nunca escribe. Rechaza sus `POST`, `PUT`, `PATCH` y `DELETE`
- * fuera de `/auth/*` aunque una ruta, por error, le concediera un permiso de escritura. Corre antes
- * de leer el cuerpo.
+ * Red de seguridad global y PERMANENTE: CONSULTA nunca escribe. Rechaza sus `POST`, `PUT`,
+ * `PATCH` y `DELETE` fuera de `/auth/*` aunque una ruta, por error, le concediera un permiso de
+ * escritura. Corre antes de leer el cuerpo.
+ *
+ * Que deje pasar un `GET` no autoriza nada: el permiso de cada ruta lo decide `autorizar`. Un `GET`
+ * que prepara una operación (`GET /documentos/:id/candidatos`, `GET /clientes/:id/ultima-oc`) es
+ * 403 para CONSULTA aunque sea una lectura.
  */
 export const soloLecturaParaConsulta: RequestHandler = (req, res, next) => {
   const sesion = sesionDe(res.locals);

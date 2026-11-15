@@ -255,6 +255,10 @@ En el CI todo esto lo hace el workflow con una base efímera. Esos archivos (`Ed
 
 **Sesión (desde HU4.1).** La API exige sesión, así que cada archivo inicia una de verdad con `src/test/sesionDeApi.ts`: crea una cuenta `ADMINISTRATIVO` de prueba en la base de `TEST_DATABASE_URL` (script `usuarioDeApiDeTest.ts` del backend, con la misma guarda `*_audit` / `*_test`; la contraseña es al azar y viaja por stdin), entra por `POST /auth/login`, manda la cookie y un `Origin` permitido en cada pedido, y al terminar cierra la sesión y borra la cuenta. No hay ningún atajo de autenticación. El `Origin` es `http://localhost:5173` (el del CI): el backend de prueba tiene que tenerlo en `CORS_ORIGINS`, o se cambia con `TEST_API_ORIGIN`.
 
+**Cuenta CONSULTA (desde HU4.3).** `sesionDeApi(API, { rol: 'CONSULTA' })` crea la cuenta de prueba con el rol `CONSULTA` (`usuarioDeApiDeTest.ts crear CONSULTA`); sin opción, `ADMINISTRATIVO`. El script rechaza cualquier otro rol: nunca crea un `ADMINISTRADOR`. Cada sesión tiene su propia cuenta y su cookie, y se borra con ella: un archivo que necesita los dos roles (como `consultaSoloLectura.api.test.tsx`) abre dos sesiones. Esas cuentas efímeras son distintas de la de QA manual ([qa-consulta.md](qa-consulta.md)).
+
+**El backend de prueba tiene que correr el código y el cliente Prisma actuales.** Un proceso sin modo _watch_ sigue con el código con el que arrancó, y unos `node_modules` en un volumen pueden tener un cliente Prisma generado con un schema anterior (síntoma: `500` con `PrismaClientValidationError`). Ante la duda, levantalo desde el host como el CI (`PORT=3999 CORS_ORIGINS=http://localhost:5173 NODE_ENV=test` y `DATABASE_URL` igual a `TEST_DATABASE_URL`).
+
 > **El seed no es para estas bases.** `db:seed` borra todos los clientes de la base a la que apunta, y su guarda solo exige un host local: no distingue la base de desarrollo de la de tests. Nunca lo corras con `DATABASE_URL` apuntando a `realpolitik_test`. Para probar el seed, creá otra base descartable (p. ej. `realpolitik_seed_audit`), migrala y corré el seed con `DATABASE_URL` apuntando explícitamente a ella.
 
 ## Siguiente lectura

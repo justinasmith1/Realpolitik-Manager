@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
 import {
   CLIENTE_ID,
@@ -304,7 +305,7 @@ function renderDetalle() {
   );
   render(
     <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      client={sembrarSesion(new QueryClient({ defaultOptions: { queries: { retry: false } } }))}
     >
       <RouterProvider router={router} />
     </QueryClientProvider>,
@@ -663,7 +664,9 @@ describe('RendicionDetallePage: documentos del checklist', () => {
     expect(
       screen.queryByRole('button', { name: /^Asociar documento existente/ }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText('Sin documento')).not.toBeInTheDocument();
+    // Desde HU4.3 "Sin documento" es información, también en una anulada: se dice que el pendiente
+    // no tiene archivo, sin ofrecer asociarle uno.
+    expect(screen.getAllByText('Sin documento').length).toBeGreaterThan(0);
 
     await user.click(print1.getByRole('button', { name: 'Ver historial de Print 1 de 2' }));
     expect(await screen.findByRole('dialog', { name: 'Historial de Print 1 de 2' })).toBeVisible();

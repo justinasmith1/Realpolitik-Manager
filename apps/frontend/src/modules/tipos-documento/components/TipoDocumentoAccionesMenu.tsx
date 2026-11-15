@@ -10,12 +10,20 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-/** Lo que se puede pedir desde una fila o tarjeta del catálogo. */
+/**
+ * Lo que se puede pedir desde una fila o tarjeta del catálogo. Cada acción aparece solo si quien
+ * lo usa la pasa: sin ninguna (quien no edita el catálogo, como CONSULTA) no hay menú (HU4.3).
+ */
 export interface AccionesTipoDocumento {
-  onEditar: (tipo: TipoDocumento) => void;
+  onEditar?: ((tipo: TipoDocumento) => void) | undefined;
   /** Pide desactivar un tipo activo (la confirmación la resuelve quien la usa). */
-  onDesactivar: (tipo: TipoDocumento) => void;
-  onReactivar: (tipo: TipoDocumento) => void;
+  onDesactivar?: ((tipo: TipoDocumento) => void) | undefined;
+  onReactivar?: ((tipo: TipoDocumento) => void) | undefined;
+}
+
+/** Si hay alguna acción: la tabla y las tarjetas no dejan una columna o un hueco vacíos. */
+export function hayAccionesDeTipo({ onEditar, onDesactivar, onReactivar }: AccionesTipoDocumento) {
+  return onEditar !== undefined || onDesactivar !== undefined || onReactivar !== undefined;
 }
 
 interface TipoDocumentoAccionesMenuProps extends AccionesTipoDocumento {
@@ -38,6 +46,9 @@ export function TipoDocumentoAccionesMenu({
   onReactivar,
   cambiandoEstado,
 }: TipoDocumentoAccionesMenuProps) {
+  const cambioDeEstado = tipo.activo ? onDesactivar : onReactivar;
+  if (onEditar === undefined && cambioDeEstado === undefined) return null;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -46,31 +57,34 @@ export function TipoDocumentoAccionesMenu({
         <EllipsisIcon aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem onClick={() => onEditar(tipo)}>
-          <PencilIcon aria-hidden="true" />
-          Editar
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {tipo.activo ? (
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={cambiandoEstado}
-            onClick={() => onDesactivar(tipo)}
-          >
-            <PowerIcon aria-hidden="true" />
-            Desactivar
-          </DropdownMenuItem>
-        ) : (
-          // Verde de éxito, en espejo del rojo de Desactivar: vuelve a dejarlo disponible.
-          <DropdownMenuItem
-            variant="success"
-            disabled={cambiandoEstado}
-            onClick={() => onReactivar(tipo)}
-          >
-            <RotateCcwIcon aria-hidden="true" />
-            Reactivar
+        {onEditar !== undefined && (
+          <DropdownMenuItem onClick={() => onEditar(tipo)}>
+            <PencilIcon aria-hidden="true" />
+            Editar
           </DropdownMenuItem>
         )}
+        {onEditar !== undefined && cambioDeEstado !== undefined && <DropdownMenuSeparator />}
+        {cambioDeEstado !== undefined &&
+          (tipo.activo ? (
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={cambiandoEstado}
+              onClick={() => cambioDeEstado(tipo)}
+            >
+              <PowerIcon aria-hidden="true" />
+              Desactivar
+            </DropdownMenuItem>
+          ) : (
+            // Verde de éxito, en espejo del rojo de Desactivar: vuelve a dejarlo disponible.
+            <DropdownMenuItem
+              variant="success"
+              disabled={cambiandoEstado}
+              onClick={() => cambioDeEstado(tipo)}
+            >
+              <RotateCcwIcon aria-hidden="true" />
+              Reactivar
+            </DropdownMenuItem>
+          ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );

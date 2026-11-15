@@ -3,6 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { MatrizPage } from '@/modules/clientes/pages/MatrizPage';
 
 // Las observaciones internas en la pantalla del cliente (HU2.10): el panel las muestra y su botón
@@ -104,7 +105,7 @@ function renderMatriz() {
   });
   render(
     <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      client={sembrarSesion(new QueryClient({ defaultOptions: { queries: { retry: false } } }))}
     >
       <RouterProvider router={router} />
     </QueryClientProvider>,

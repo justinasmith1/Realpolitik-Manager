@@ -55,15 +55,11 @@ export function tienePermiso(rol: RolUsuarioType, permiso: Permiso): boolean {
 }
 
 /**
- * TEMPORAL (HU4.1): roles con sesión pero sin acceso a las pantallas de negocio. Solo CONSULTA,
- * hasta HU4.3; es el espejo de `ROLES_NO_HABILITADOS_HASTA_HU4_3` del backend. Al habilitarlo se
- * borra esta lista y la pantalla "Rol no habilitado".
+ * Los tres roles del catálogo entran al shell (desde HU4.3, también CONSULTA): lo que cada uno ve
+ * lo decide cada pantalla con `usePermiso`. Un rol desconocido no entra: denegado por defecto.
  */
-const ROLES_NO_HABILITADOS: ReadonlySet<string> = new Set<RolUsuarioType>(['CONSULTA']);
-
-/** Solo los roles conocidos y habilitados entran al shell. */
-export function rolHabilitado(rol: RolUsuarioType): boolean {
-  return rol in PERMISOS_POR_ROL && !ROLES_NO_HABILITADOS.has(rol);
+export function rolConocido(rol: RolUsuarioType): boolean {
+  return Object.hasOwn(PERMISOS_POR_ROL, rol);
 }
 
 export const ETIQUETA_DE_ROL: Readonly<Record<RolUsuarioType, string>> = {

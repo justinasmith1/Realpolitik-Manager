@@ -4,6 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 import { stateDeListado } from '@/modules/clientes/matriz.navegacion';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
@@ -97,7 +98,9 @@ function Ubicacion() {
 const FILTROS = '?q=Muni&sector=PUBLICO';
 
 function renderApp(url = `/clientes${FILTROS}`) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = sembrarSesion(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[url]}>

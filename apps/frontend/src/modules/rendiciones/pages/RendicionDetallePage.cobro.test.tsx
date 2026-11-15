@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
 import { TEXTO_RENDICION_YA_APROBADA } from '@/modules/rendiciones/rendiciones.etiquetas';
 import {
@@ -105,7 +106,7 @@ function renderDetalle() {
   );
   render(
     <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      client={sembrarSesion(new QueryClient({ defaultOptions: { queries: { retry: false } } }))}
     >
       <RouterProvider router={router} />
     </QueryClientProvider>,

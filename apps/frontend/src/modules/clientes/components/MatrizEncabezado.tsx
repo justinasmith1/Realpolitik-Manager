@@ -17,6 +17,12 @@ interface MatrizEncabezadoProps {
   /** Solo con un cliente activo y la matriz ya cargada. */
   onAgregar?: (() => void) | undefined;
   agregarRef?: Ref<HTMLButtonElement> | undefined;
+  /**
+   * Si se avisa que un cliente no activo no se puede modificar. Es para quien podría editar sus
+   * requisitos (por defecto). Para quien solo consulta (CONSULTA) no: no edita por su rol, no por
+   * el estado del cliente, y el aviso le daría un motivo falso.
+   */
+  avisoDeInactivo?: boolean;
 }
 
 /**
@@ -31,9 +37,10 @@ export function MatrizEncabezado({
   tituloRef,
   onAgregar,
   agregarRef,
+  avisoDeInactivo = true,
 }: MatrizEncabezadoProps) {
   const mismaDenominacion = cliente.razonSocial.trim() === cliente.denominacion.trim();
-  const soloLectura = cliente.estado !== 'ACTIVO';
+  const soloLectura = avisoDeInactivo && cliente.estado !== 'ACTIVO';
 
   return (
     <header className="flex flex-col gap-3">

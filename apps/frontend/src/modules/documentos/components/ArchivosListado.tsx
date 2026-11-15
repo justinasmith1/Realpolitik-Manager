@@ -20,7 +20,11 @@ const claseEncabezado = 'px-4 py-3 font-medium whitespace-nowrap';
 export interface AccionesDeArchivo {
   onVerDetalle: (documento: DocumentoResumen) => void;
   onDescargar: (documento: DocumentoResumen) => void;
-  onAplicar: (documento: DocumentoResumen) => void;
+  /**
+   * Abre el asistente para aplicarlo. Sin esto (quien no opera documentos, como CONSULTA) no hay
+   * "Aplicar": quedan ver el detalle y descargar.
+   */
+  onAplicar?: ((documento: DocumentoResumen) => void) | undefined;
 }
 
 interface ArchivosListadoProps extends AccionesDeArchivo {
@@ -85,16 +89,18 @@ function Acciones({
       >
         <DownloadIcon aria-hidden="true" />
       </LoadingButton>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => onAplicar(documento)}
-        aria-label={`Aplicar ${documento.nombreOriginal}`}
-      >
-        <FileCheckIcon aria-hidden="true" />
-        Aplicar
-      </Button>
+      {onAplicar !== undefined && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onAplicar(documento)}
+          aria-label={`Aplicar ${documento.nombreOriginal}`}
+        >
+          <FileCheckIcon aria-hidden="true" />
+          Aplicar
+        </Button>
+      )}
     </div>
   );
 }

@@ -22,6 +22,8 @@ export interface ObservacionesClientePanelProps {
   cliente: Pick<Cliente, 'id'>;
   /** Abre la edición en la ficha. Sin esto, solo lectura. */
   onEditarCliente?: (() => void) | undefined;
+  /** Nivel del título: `h2` en la pantalla del cliente; `h3` dentro de un panel con su propio título. */
+  nivelDeTitulo?: 'h2' | 'h3';
 }
 
 /**
@@ -36,6 +38,7 @@ export interface ObservacionesClientePanelProps {
 export function ObservacionesClientePanel({
   cliente,
   onEditarCliente,
+  nivelDeTitulo: Titulo = 'h2',
 }: ObservacionesClientePanelProps) {
   const { data, isLoading, isError, isFetching, refetch } = useObservacionesCliente(cliente.id);
   const contenido = data?.observaciones?.trim();
@@ -47,9 +50,9 @@ export function ObservacionesClientePanel({
       className="flex flex-col gap-3 rounded-panel border bg-panel p-5 shadow-xs"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id={idTitulo} className="text-base font-semibold text-foreground">
+        <Titulo id={idTitulo} className="text-base font-semibold text-foreground">
           {TEXTOS.titulo}
-        </h2>
+        </Titulo>
         {onEditarCliente !== undefined && (
           <Button
             type="button"

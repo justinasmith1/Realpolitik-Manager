@@ -9,7 +9,7 @@
 //   E. Contraseña temporal → cambio obligatorio → volver a entrar
 //   F. Cierre de sesión (204 y 503)
 //   G. Recuperación de la sesión y pérdida durante la navegación (401, 403)
-//   H. CONSULTA bloqueado y servicio no disponible al entrar
+//   H. CONSULTA en el sistema (HU4.3) y servicio no disponible al entrar
 //   I. Menú de cuenta y cambio voluntario de contraseña, con la sesión rotada (HU4.2)
 //   J. Expiración, revocación, 401 atrasados y varias pestañas (HU4.2)
 
@@ -688,57 +688,164 @@ describe('G. recuperación y pérdida de la sesión', () => {
   });
 });
 
-describe('H. CONSULTA bloqueado y servicio no disponible al entrar', () => {
-  it('CONSULTA inicia sesión pero no ve el sistema: pantalla de rol no habilitado', async () => {
-    loginResponde({ rol: 'CONSULTA', nombre: 'Carla Consulta' });
-    const { donde } = abrir('/clientes');
+describe('H. CONSULTA en el sistema (HU4.3) y servicio no disponible al entrar', () => {
+  const CONSULTA = {
+    rol: 'CONSULTA',
+    nombre: 'Carla Consulta',
+    email: 'consulta@realpolitik.test',
+  } as const;
+  const MATRIZ = '/clientes/11111111-1111-4111-a111-111111111111/matriz';
+
+  it('CONSULTA inicia sesión, ve el shell y vuelve a la página pedida; el menú dice su rol', async () => {
+    loginResponde(CONSULTA);
+    const { donde } = abrir('/clientes?estado=INACTIVO');
     await completarLogin();
+
+    await enElShell();
+    expect(donde()).toBe('/clientes?estado=INACTIVO');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Cuenta de Carla Consulta (Consulta)' }),
+    );
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByText('consulta@realpolitik.test')).toBeVisible();
+    expect(within(menu).getByText('Consulta')).toBeVisible();
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Cambiar contraseña', 'Cerrar sesión']);
+  });
+
+  it.each([
+    '/clientes',
+    '/clientes/matrices',
+    MATRIZ,
+    '/rendiciones?anio=2026&mes=10',
+    '/documentos/tipos?desactivados=1',
+    '/documentos/archivos?anio=2026&mes=10',
+  ])(
+    'CONSULTA entra por URL directa a %s, con su query, y la página pide sus datos',
+    async (ruta) => {
+      servidor.sesion = sesionDePrueba(CONSULTA);
+      const { donde } = abrir(ruta);
+
+      await enElShell();
+      expect(donde()).toBe(ruta);
+      // Antes de los datos de negocio se confirmó la sesión con el servidor.
+      expect(pedidos()[0]).toBe('GET /api/auth/sesion');
+      expect(screen.queryByText(/todavía no tiene acceso/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('una ruta inexistente, con la sesión de CONSULTA, es "Página no encontrada" dentro del shell', async () => {
+    servidor.sesion = sesionDePrueba(CONSULTA);
+    const { donde } = abrir('/no-existe');
+
+    expect(await screen.findByRole('heading', { name: 'Página no encontrada' })).toBeVisible();
+    expect(screen.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+    expect(donde()).toBe('/no-existe');
+  });
+
+  it('un rol que la interfaz no conoce no entra: sin shell ni pedidos de negocio, y puede salir', async () => {
+    // El contrato no lo admite: se simula con la sesión ya en la caché, como si hubiera llegado.
+    servidor.sesion = sesionDePrueba();
+    queryClient.setQueryData(CLAVE_SESION, sesionDePrueba({ rol: 'INVENTADO' as never }));
+    abrir('/clientes');
 
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Tu cuenta todavía no tiene acceso al sistema.',
+        name: 'Tu cuenta no tiene acceso al sistema.',
       }),
     ).toBeVisible();
-    expect(screen.getByText('Carla Consulta')).toBeVisible();
     sinShell();
-    expect(screen.queryByRole('link', { name: 'Clientes' })).not.toBeInTheDocument();
-    // Ni una pantalla de negocio se montó: no hubo pedidos de negocio.
     expect(pedidosDeNegocio()).toEqual([]);
-    expect(donde()).toBe('/clientes');
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
   });
 
-  it.each(['/rendiciones', '/clientes/1/matriz', '/documentos/archivos', '/no-existe'])(
-    'CONSULTA tampoco entra por URL directa a %s, y puede cerrar sesión',
-    async (ruta) => {
-      servidor.sesion = sesionDePrueba({ rol: 'CONSULTA' });
-      abrir(ruta);
+  it('CONSULTA con contraseña temporal: primero el cambio, sin shell ni datos, también por URL directa', async () => {
+    servidor.sesion = sesionDePrueba({ ...CONSULTA, debeCambiarPassword: true });
+    const { donde } = abrir('/rendiciones?mes=2026-10');
 
-      expect(
-        await screen.findByRole('heading', {
-          name: 'Tu cuenta todavía no tiene acceso al sistema.',
-        }),
-      ).toBeVisible();
-      sinShell();
-      expect(pedidosDeNegocio()).toEqual([]);
+    expect(await screen.findByRole('heading', { name: 'Configurá tu contraseña' })).toBeVisible();
+    expect(donde()).toBe('/cambiar-contrasena?volverA=%2Frendiciones%3Fmes%3D2026-10');
+    sinShell();
+    expect(pedidosDeNegocio()).toEqual([]);
+  });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
-      expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
-      expect(pedidos()).toContain('POST /api/auth/logout');
-    },
-  );
+  it('CONSULTA cambia la temporal, vuelve a entrar con la nueva y llega a la página pedida', async () => {
+    const TEMPORAL = 'Temporal-7Kq2-Xp9';
+    const NUEVA = 'una frase larga y propia';
+    loginResponde({ ...CONSULTA, debeCambiarPassword: true });
+    servidor.forzadas.set('PUT /api/auth/password', () => {
+      servidor.sesion = null; // el servidor revocó todas las sesiones y borró la cookie
+      return new Response(null, { status: 204 });
+    });
+    const { donde } = abrir('/clientes/matrices');
+    const usuario = await completarLogin('consulta@realpolitik.test', TEMPORAL);
+    await screen.findByRole('heading', { level: 1, name: 'Configurá tu contraseña' });
+    await usuario.type(screen.getByLabelText('Contraseña temporal'), TEMPORAL);
+    await usuario.type(screen.getByLabelText('Nueva contraseña'), NUEVA);
+    await usuario.type(screen.getByLabelText('Confirmar nueva contraseña'), NUEVA);
+    await usuario.click(screen.getByRole('button', { name: 'Guardar contraseña' }));
 
-  it('403 ROL_NO_HABILITADO de la API: revalida y bloquea, sin cerrar la sesión', async () => {
-    servidor.sesion = sesionDePrueba();
-    servidor.negocio = () => {
-      servidor.sesion = sesionDePrueba({ rol: 'CONSULTA' }); // le cambiaron el rol
-      return error(403, 'FORBIDDEN', { motivo: 'ROL_NO_HABILITADO' });
-    };
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(pedidosDeNegocio()).toEqual([]);
+
+    loginResponde(CONSULTA);
+    await completarLogin('consulta@realpolitik.test', NUEVA);
+    await enElShell();
+    expect(donde()).toBe('/clientes/matrices');
+  });
+
+  it('CONSULTA cierra sesión desde el menú de cuenta', async () => {
+    servidor.sesion = sesionDePrueba(CONSULTA);
     abrir('/clientes');
+    await enElShell();
 
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Cuenta de Carla Consulta (Consulta)' }),
+    );
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Cerrar sesión' }));
+
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(pedidos()).toContain('POST /api/auth/logout');
+    expect(queryClient.getQueryData(CLAVE_SESION)).toBeNull();
+  });
+
+  it('un 403 PERMISO_INSUFICIENTE con CONSULTA no cierra la sesión ni manda a /login', async () => {
+    servidor.sesion = sesionDePrueba(CONSULTA);
+    servidor.negocio = () => error(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' });
+    const { donde } = abrir('/clientes');
+    await enElShell();
+
+    expect(donde()).toBe('/clientes');
+    expect(pedidos()).not.toContain('POST /api/auth/logout');
+    expect(queryClient.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba(CONSULTA));
+    expect(screen.queryByRole('heading', { name: 'Iniciar sesión' })).not.toBeInTheDocument();
+  });
+
+  it('si le cambian el rol con la sesión abierta, el 403 revalida y la pantalla se ajusta, sin cerrar la sesión', async () => {
+    servidor.sesion = sesionDePrueba();
+    const { donde } = abrir('/clientes');
+    await enElShell();
+    expect(await screen.findByRole('button', { name: /Nuevo cliente/ })).toBeVisible();
+
+    // Pasa a CONSULTA en el servidor: su próxima escritura (o lectura operativa) es 403.
+    servidor.sesion = sesionDePrueba({ rol: 'CONSULTA' });
+    servidor.negocio = () => error(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' });
+    await act(async () => {
+      await queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] !== 'sesion' });
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /Nuevo cliente/ })).not.toBeInTheDocument(),
+    );
     expect(
-      await screen.findByRole('heading', { name: 'Tu cuenta todavía no tiene acceso al sistema.' }),
+      screen.getByRole('button', { name: 'Cuenta de Ana Administrativa (Consulta)' }),
     ).toBeVisible();
+    expect(donde()).toBe('/clientes');
     expect(pedidos()).not.toContain('POST /api/auth/logout');
   });
 
@@ -821,6 +928,7 @@ describe('I. menú de cuenta y cambio voluntario de contraseña (HU4.2)', () => 
   it.each([
     ['ADMINISTRATIVO', 'Administrativo'],
     ['ADMINISTRADOR', 'Administrador'],
+    ['CONSULTA', 'Consulta'],
   ] as const)(
     'el menú de cuenta (%s) muestra nombre, email y rol, y ofrece "Cambiar contraseña" y "Cerrar sesión", sin "Usuarios"',
     async (rol, etiquetaDeRol) => {
@@ -949,6 +1057,19 @@ describe('I. menú de cuenta y cambio voluntario de contraseña (HU4.2)', () => 
     await waitFor(() => expect(cuenta).toHaveFocus());
     expect(window.localStorage).toHaveLength(0);
     expect(window.sessionStorage).toHaveLength(0);
+  });
+
+  it('CONSULTA también cambia su contraseña: la sesión rota y sigue en la misma pantalla', async () => {
+    servidor.sesion = sesionDePrueba({ rol: 'CONSULTA' });
+    cambioCorrecto();
+    const { usuario, donde } = await abrirCambio('/rendiciones');
+
+    await completarCambio(usuario);
+
+    expect(await screen.findByText(AVISO_DE_EXITO, {}, { timeout: 3000 })).toBeVisible();
+    await waitFor(() => expect(panelAbierto()).not.toBeInTheDocument());
+    enLaMismaPantalla(donde, '/rendiciones');
+    expect(queryClient.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba({ rol: 'CONSULTA' }));
   });
 
   it('cerrar el panel (Escape o Cancelar) descarta lo escrito: no hay borradores de contraseñas', async () => {

@@ -9,6 +9,18 @@ import {
 } from '@/modules/clientes/clientes.columnas';
 import { ClientesTabla } from '@/modules/clientes/components/ClientesTabla';
 
+/**
+ * Las acciones que la página le pasa a quien puede editar clientes (ADMINISTRATIVO y
+ * ADMINISTRADOR). Desde HU4.3 el menú solo muestra las acciones que recibe.
+ */
+const accionesOperativas = {
+  onEditar: () => undefined,
+  onAdministrarContactos: () => undefined,
+  onVerMatriz: () => undefined,
+  onDesactivar: () => undefined,
+  onReactivar: () => undefined,
+};
+
 // Chequeo de tipos (lo verifica `tsc`): solo se aceptan ids de columnas configurables.
 // @ts-expect-error: 'telefono' no es una columna de Clientes.
 const _idInexistente: ClienteColumnaConfigurableId = 'telefono';
@@ -49,6 +61,7 @@ describe('columnas de Clientes', () => {
     const labels = new Map(CLIENTES_COLUMNAS_CONFIGURABLES.map((c) => [c.id, c.label]));
     render(
       <ClientesTabla
+        {...accionesOperativas}
         clientes={[cliente]}
         columnasVisibles={CLIENTES_COLUMNAS_DEFAULT}
         onLimpiarFiltros={() => undefined}

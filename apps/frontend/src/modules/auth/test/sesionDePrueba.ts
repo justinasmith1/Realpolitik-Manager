@@ -1,4 +1,5 @@
 import type { SesionActual, UsuarioDeSesion } from '@realpolitik/shared';
+import type { QueryClient } from '@tanstack/react-query';
 
 import { queryClient } from '@/app/providers';
 import { CLAVE_SESION } from '@/modules/auth/sesion';
@@ -22,5 +23,19 @@ export const sesionDePrueba = (cambios: Partial<UsuarioDeSesion> = {}): SesionAc
  */
 export function conSesionDePrueba(cambios: Partial<UsuarioDeSesion> = {}): void {
   queryClient.clear();
-  queryClient.setQueryData(CLAVE_SESION, sesionDePrueba(cambios));
+  sembrarSesion(queryClient, cambios);
+}
+
+/**
+ * Lo mismo sobre un QueryClient propio del test (los que montan una página suelta, sin la app):
+ * `usePermiso` lee esa sesión y no pide `GET /auth/sesion`. Por defecto, ADMINISTRATIVO; para ver
+ * la interfaz de otro rol, `sembrarSesion(queryClient, { rol: 'CONSULTA' })`. Devuelve el mismo
+ * cliente, para usarlo al crearlo: `sembrarSesion(new QueryClient(…))`.
+ */
+export function sembrarSesion(
+  cliente: QueryClient,
+  cambios: Partial<UsuarioDeSesion> = {},
+): QueryClient {
+  cliente.setQueryData(CLAVE_SESION, sesionDePrueba(cambios));
+  return cliente;
 }

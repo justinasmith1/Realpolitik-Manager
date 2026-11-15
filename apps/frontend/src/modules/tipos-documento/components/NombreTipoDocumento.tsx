@@ -4,7 +4,8 @@ import { cn } from '@/lib/utils';
 
 interface NombreTipoDocumentoProps {
   tipo: TipoDocumento;
-  onEditar: (tipo: TipoDocumento) => void;
+  /** Abre la edición. Sin esto (quien no edita el catálogo, como CONSULTA), el nombre es texto. */
+  onEditar?: ((tipo: TipoDocumento) => void) | undefined;
   className?: string;
 }
 
@@ -14,6 +15,10 @@ interface NombreTipoDocumentoProps {
  * el del tipo; `aria-haspopup` anuncia que abre un panel.
  */
 export function NombreTipoDocumento({ tipo, onEditar, className }: NombreTipoDocumentoProps) {
+  if (onEditar === undefined) {
+    // Mismo texto y estilo, sin nada interactivo: ni botón, ni `aria-haspopup`.
+    return <span className={cn('block leading-snug break-words', className)}>{tipo.nombre}</span>;
+  }
   return (
     <button
       type="button"

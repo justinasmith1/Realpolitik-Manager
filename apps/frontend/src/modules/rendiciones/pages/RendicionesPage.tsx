@@ -12,6 +12,7 @@ import { Link, type To } from 'react-router';
 import { Alert } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePermiso } from '@/modules/auth/hooks/useSesion';
 import { esRendicionInexistente } from '@/modules/rendiciones/api/rendiciones.api';
 import { FiltrosActivos } from '@/modules/rendiciones/components/FiltrosActivos';
 import { FiltrosRendicionesDelMes } from '@/modules/rendiciones/components/FiltrosRendicionesDelMes';
@@ -58,6 +59,8 @@ import {
  * existe), el panel se cierra y el parámetro se quita.
  */
 export function RendicionesPage() {
+  // La pantalla es de lectura para todos los roles; el permiso solo cambia el texto del mes vacío.
+  const puedeOperar = usePermiso('rendiciones:operar');
   const { periodo, anterior, siguiente, elegir } = useMesDeRendiciones();
   const consulta = useRendicionesDelMes(periodo);
   const consultaAtrasadas = useRendicionesAtrasadas();
@@ -160,8 +163,12 @@ export function RendicionesPage() {
     const mesVacio = (
       <div className="flex flex-col items-start gap-3 rounded-card border bg-card p-6">
         <h2 className="text-base font-semibold">No hay rendiciones en {nombreDelMes}</h2>
+        {/* Quien no opera rendiciones (CONSULTA) no las abre: no se le explica cómo. "Ir a
+            Clientes" queda para todos: consultar clientes es una lectura. */}
         <p className="text-sm text-content-secondary">
-          Las rendiciones se abren desde la ficha de cada cliente.
+          {puedeOperar
+            ? 'Las rendiciones se abren desde la ficha de cada cliente.'
+            : 'No hay rendiciones registradas para este período.'}
         </p>
         <Link to="/clientes" className={buttonVariants({ variant: 'outline' })}>
           Ir a Clientes

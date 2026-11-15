@@ -1,8 +1,8 @@
 # Matriz de permisos
 
-> **Estado:** propuesta técnica (Proposed), junto con [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md). Los **roles y su alcance están aprobados**; el catálogo de permisos y su implementación son propuestas. **Implementada en el backend (etapa 3 de HU4.1):** toda ruta de negocio exige sesión y el permiso de esta matriz. Verificado localmente (tests); todavía no desplegado ni validado en Vercel y Railway.
+> **Estado:** propuesta técnica (Proposed), junto con [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md). Los **roles y su alcance están aprobados**; el catálogo de permisos y su implementación son propuestas. **Implementada en el backend (etapa 3 de HU4.1) y aplicada a los tres roles desde HU4.3:** toda ruta de negocio exige sesión y el permiso de esta matriz, y `CONSULTA` usa el sistema con sus seis permisos de lectura (backend y frontend). Verificado localmente (tests unitarios, de integración con PostgreSQL y contra la API real); pendiente del CI con Node 24, de la QA manual y del despliegue.
 >
-> Esta matriz es la fuente de verdad de lo que cada rol puede hacer y, cuando exista la infraestructura de permisos (HU4.3 o HU4.5, la que llegue primero), la base del test que recorre cada ruta con cada rol. Inventario verificado contra `main` en `abf3800`: 46 endpoints de negocio más `/health`, que es técnico y queda aparte (desde `6c3b9e8` se sumaron `PATCH /rendiciones/:id/estado`, HU3.6, y `PUT` y `DELETE /rendiciones/:id/cobro`, HU3.10; las HU3.7 a HU3.9 usan esa misma ruta de estado). Si el código y esta matriz no coinciden, el test de inventario falla y se corrige el que corresponda en el mismo PR.
+> Esta matriz es la fuente de verdad de lo que cada rol puede hacer y la base del test que recorre cada ruta con cada rol (`matrizDePermisos.test.ts`, desde HU4.1). Inventario verificado contra `main` en `abf3800`: 46 endpoints de negocio más `/health`, que es técnico y queda aparte (desde `6c3b9e8` se sumaron `PATCH /rendiciones/:id/estado`, HU3.6, y `PUT` y `DELETE /rendiciones/:id/cobro`, HU3.10; las HU3.7 a HU3.9 usan esa misma ruta de estado). Si el código y esta matriz no coinciden, el test de inventario falla y se corrige el que corresponda en el mismo PR.
 
 ## Roles (aprobados)
 
@@ -16,15 +16,15 @@
 - Los permisos se componen: `CONSULTA` ⊂ `ADMINISTRATIVO` ⊂ `ADMINISTRADOR`.
 - El rol es independiente del área o categoría de la persona: una categoría como "Contabilidad" no concede permisos.
 - No hay permisos por cliente ni por organización.
-- **Durante HU4.1** solo `ADMINISTRADOR` y `ADMINISTRATIVO` usan el sistema: `CONSULTA` recibe `403 ROL_NO_HABILITADO` en todo lo que no es `/auth/*` y el script de alta no crea usuarios `CONSULTA`. Se habilita en HU4.3. **Estado:** los permisos de `CONSULTA` de esta matriz ya están implementados y probados; la regla temporal (`bloquearRolesNoHabilitados`, un único middleware global) corta antes, y es lo único que hay que quitar en HU4.3.
+- **Desde HU4.3** los tres roles usan el sistema según esta matriz. `CONSULTA` tiene exactamente los seis permisos de lectura (`cuenta:propia` y los cinco `:ver`) y ninguno operativo; `ADMINISTRATIVO` y `ADMINISTRADOR` no cambiaron. La regla temporal de HU4.1 (`bloquearRolesNoHabilitados`, `403 ROL_NO_HABILITADO` a `CONSULTA` en todo el negocio) se retiró del backend y su espejo (`ROLES_NO_HABILITADOS`) del frontend; el backend ya no emite ese motivo.
 
 ## Principios
 
 1. **Denegado por defecto, también en ejecución.** Desde la infraestructura de permisos, una ruta de negocio solo se registra con `crearRouter()` y un `autorizar(PERMISO)` como primer handler: si falta, la aplicación **no arranca** (y el CI falla). Lo público se declara con `crearRouterPublico()` (solo `/health` y `/auth`). Un permiso que no figura para un rol en `PERMISOS_POR_ROL` está denegado (ADR-0006 §5). Antes de eso, desde HU4.1, toda ruta de negocio exige sesión.
 2. **El backend decide.** La interfaz oculta acciones, pero eso es experiencia de uso: un pedido directo a la API se autoriza igual.
-3. **Orden de los controles** (implementado; el cuerpo JSON se lee después de la regla global de `CONSULTA` y antes del permiso de la ruta, ver ADR-0006 §5): origen (en métodos que escriben) → sesión (401) → contraseña temporal (403) → permiso (403) → lectura del cuerpo → validación (400) → existencia (404) → negocio (409). Un pedido sin permiso no recibe detalles de validación ni sabe si el recurso existe. Un anónimo recibe 401 también en rutas inexistentes.
+3. **Orden de los controles** (implementado; el cuerpo JSON se lee después de la regla global de solo lectura de `CONSULTA` y antes del permiso de la ruta, ver ADR-0006 §5): origen (en métodos que escriben) → sesión (401) → contraseña temporal (403) → permiso (403) → lectura del cuerpo → validación (400) → existencia (404) → negocio (409). Un pedido sin permiso no recibe detalles de validación ni sabe si el recurso existe. Un anónimo recibe 401 también en rutas inexistentes.
 4. **Ningún `GET` es inocuo por ser `GET`, ningún `POST` es equivalente a otro.** Cada ruta se decide por lo que expone o produce.
-5. **`CONSULTA` nunca escribe.** Además del permiso de cada ruta, una regla global le rechaza `POST`, `PUT`, `PATCH` y `DELETE` fuera de `/auth/*`.
+5. **`CONSULTA` nunca escribe.** Además del permiso de cada ruta, una regla global y permanente (`soloLecturaParaConsulta`) le rechaza `POST`, `PUT`, `PATCH` y `DELETE` fuera de `/auth/*`. Al revés no vale: dejar pasar un `GET` no autoriza nada; lo decide el permiso de la ruta.
 6. **Permisos administrativos separados de los operativos.** `usuarios:administrar` es el único permiso administrativo y solo lo tiene `ADMINISTRADOR`.
 7. **Sin autorización por objeto.** Una sola organización, usuarios internos: quien tiene el permiso lo tiene sobre todos los clientes. Si algún día accede alguien externo, esto cambia y requiere otro ADR.
 8. **La identidad sale de la sesión**, nunca del cuerpo del pedido.
@@ -69,11 +69,11 @@ El frontend tiene un espejo de este catálogo (`apps/frontend/src/modules/auth/p
 | `PATCH /usuarios/:id/estado`              | Desactivar / reactivar a otra persona (revoca sus sesiones)                                                                | `usuarios:administrar`          | 401        | No         | No               | Sí              | HU4.5         |
 | `POST /usuarios/:id/restablecer-password` | Contraseña temporal para otra persona (revoca sus sesiones)                                                                | `usuarios:administrar`          | 401        | No         | No               | Sí              | HU4.5         |
 
-- `CONSULTA` usa `/auth/*` también durante HU4.1 (puede iniciar sesión, cambiar la contraseña temporal y salir), pero recibe `403 ROL_NO_HABILITADO` en las rutas de negocio hasta HU4.3. Las columnas `CONSULTA` de esta matriz describen lo que podrá hacer desde entonces.
+- `CONSULTA` usa `/auth/*` como los demás roles (iniciar sesión, consultar su sesión, cambiar su contraseña y salir) y, desde HU4.3, las rutas de negocio de su columna. Toda escritura de negocio le responde `403 PERMISO_INSUFICIENTE` antes de leer el cuerpo, y también los `GET` de operación (`ultima-oc`, `candidatos`).
 - Con una contraseña temporal, solo `/auth/*` responde; todo lo demás es `403 CAMBIO_DE_PASSWORD_REQUERIDO`.
 - **Autoprotección** (409, reglas de negocio de HU4.5): siempre queda al menos un `ADMINISTRADOR` activo; nadie cambia su propio rol ni se desactiva a sí mismo (lo hace otro `ADMINISTRADOR`); el restablecimiento de la propia contraseña no pasa por `/usuarios` (se usa el cambio voluntario).
 - **Datos que nunca salen de la API:** hash de contraseña, tokens e ids de sesión, contadores de intentos. `/usuarios` devuelve id, nombre, email, rol, estado, `debeCambiarPassword` y último acceso.
-- Hasta HU4.5, las altas, bajas, cambios de rol y restablecimientos se hacen con el procedimiento técnico (script), que no crea usuarios `CONSULTA` antes de HU4.3.
+- Hasta HU4.5, las altas, bajas, cambios de rol y restablecimientos se hacen con el procedimiento técnico. El script del repositorio solo da de alta al primer `ADMINISTRADOR`; las cuentas `CONSULTA` de prueba se crean con el procedimiento local de QA (`docs/development/qa-consulta.md`), solo en la base de pruebas, o con las cuentas efímeras de los tests.
 - Fuera del alcance actual: ver y cerrar mis otras sesiones una por una (`GET /auth/sesiones`, `DELETE /auth/sesiones/:id`). HU4.2 no los agrega: el cambio voluntario de contraseña cierra todas las otras sesiones, y una pantalla de sesiones activas queda como posible evolución.
 
 ## Clientes y contactos

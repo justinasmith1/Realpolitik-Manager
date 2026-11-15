@@ -18,9 +18,14 @@ interface CobroDeRendicionProps {
   anulada: boolean;
   /** El cobro que informó el cliente, o `null` si no hay. */
   cobro: { fecha: string; nota: string | null } | null;
-  onRegistrar: () => void;
-  onEditar: () => void;
-  onQuitar: () => void;
+  /**
+   * Las acciones sobre el cobro. Cada botón aparece solo si recibe la suya: sin ninguna (quien no
+   * opera rendiciones, como CONSULTA) la franja es de lectura, con el cobro o "Sin cobro
+   * registrado".
+   */
+  onRegistrar?: (() => void) | undefined;
+  onEditar?: (() => void) | undefined;
+  onQuitar?: (() => void) | undefined;
 }
 
 /**
@@ -35,6 +40,9 @@ interface CobroDeRendicionProps {
  * - Anulada con cobro: lo muestra, sin botones. Anulada sin cobro o no cobrable sin cobro: nada.
  *
  * Es una región con el nombre "Cobro". Con el ancho chico, el texto y los botones se apilan.
+ *
+ * Sin acciones (HU4.3) se lee igual: "Sin cobro registrado" en una cobrable, o el cobro con su
+ * fecha y su nota; no hay botones ni un hueco para ellos.
  */
 export function CobroDeRendicion({
   estado,
@@ -47,6 +55,11 @@ export function CobroDeRendicion({
   const idTitulo = useId();
   const puedeCobrar = !anulada && esEstadoCobrable(estado);
   if (cobro === null && !puedeCobrar) return null;
+  // Los botones que corresponden a este estado y que quien lo usa ofrece.
+  const registrar = cobro === null ? onRegistrar : undefined;
+  const editar = cobro !== null && !anulada && puedeCobrar ? onEditar : undefined;
+  const quitar = cobro !== null && !anulada ? onQuitar : undefined;
+  const conAcciones = registrar !== undefined || editar !== undefined || quitar !== undefined;
 
   return (
     <section
@@ -91,24 +104,23 @@ export function CobroDeRendicion({
           </>
         )}
       </div>
-      {(cobro === null || !anulada) && (
+      {conAcciones && (
         <div className="flex flex-wrap gap-2 sm:shrink-0">
-          {cobro === null ? (
-            <Button type="button" variant="outline" size="sm" onClick={onRegistrar}>
+          {registrar !== undefined && (
+            <Button type="button" variant="outline" size="sm" onClick={registrar}>
               {TEXTO_REGISTRAR_COBRO}
             </Button>
-          ) : (
-            <>
-              {puedeCobrar && (
-                <Button type="button" variant="outline" size="sm" onClick={onEditar}>
-                  <PencilIcon aria-hidden="true" />
-                  {TEXTO_EDITAR_COBRO}
-                </Button>
-              )}
-              <Button type="button" variant="ghost" size="sm" onClick={onQuitar}>
-                {TEXTO_QUITAR_COBRO}
-              </Button>
-            </>
+          )}
+          {editar !== undefined && (
+            <Button type="button" variant="outline" size="sm" onClick={editar}>
+              <PencilIcon aria-hidden="true" />
+              {TEXTO_EDITAR_COBRO}
+            </Button>
+          )}
+          {quitar !== undefined && (
+            <Button type="button" variant="ghost" size="sm" onClick={quitar}>
+              {TEXTO_QUITAR_COBRO}
+            </Button>
           )}
         </div>
       )}

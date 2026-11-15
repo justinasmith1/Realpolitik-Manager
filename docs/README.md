@@ -16,6 +16,7 @@ Si un documento contradice al código, el código manda y el documento debe corr
 
 - [Contexto de negocio](product/contexto-negocio.md): qué problema resuelve el producto.
 - [Primeros pasos](development/getting-started.md): requisitos, instalación y scripts actuales.
+- [QA manual del rol Consulta](development/qa-consulta.md): procedimiento local con una cuenta CONSULTA en la base de pruebas (HU4.3).
 - [Convenciones](development/conventions.md): Git, Pull Requests y criterios de desarrollo.
 - [Despliegue](deployment.md): CI, configuración de Vercel y Railway, variables y migraciones.
 - [Baseline de seguridad](security/security-baseline.md): reglas mínimas y decisiones pendientes.

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { usePermiso } from '@/modules/auth/hooks/useSesion';
 import { etiquetasSubtipo } from '@/modules/clientes/clientes.etiquetas';
 import { CargaMasivaWizard } from '@/modules/clientes/components/carga-masiva/CargaMasivaWizard';
 import { useClientes } from '@/modules/clientes/hooks/useClientes';
@@ -37,6 +38,9 @@ export function MatricesPage() {
   const location = useLocation();
   const searchId = useId();
   const ordenId = useId();
+  // La carga masiva escribe requisitos: sin `requisitos:editar` (CONSULTA) no se ofrece ni se
+  // monta el asistente. El listado, los filtros y el orden son de lectura y quedan igual.
+  const puedeEditarRequisitos = usePermiso('requisitos:editar');
 
   const [wizardAbierto, setWizardAbierto] = useState(false);
   const [avisoExito, setAvisoExito] = useState<string | null>(null);
@@ -132,7 +136,7 @@ export function MatricesPage() {
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-5 pb-10 md:px-6 md:pt-6">
-      {/* Header con botón "Añadir requisitos a varios clientes" arriba a la izquierda */}
+      {/* Header con botón "Añadir requisitos a varios clientes" (si se puede editar requisitos) */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 tabIndex={-1} className="text-xl font-semibold tracking-tight">
@@ -144,18 +148,20 @@ export function MatricesPage() {
         </div>
 
         {/* CTA de la pantalla: la variante `brand` (tinta de la marca con el ícono en su rojo). */}
-        <Button
-          variant="brand"
-          onClick={() => {
-            setAvisoExito(null);
-            setAvisoWarning(null);
-            setWizardAbierto(true);
-          }}
-          className="max-sm:w-full"
-        >
-          <PlusIcon aria-hidden="true" />
-          Añadir requisitos a varios clientes
-        </Button>
+        {puedeEditarRequisitos && (
+          <Button
+            variant="brand"
+            onClick={() => {
+              setAvisoExito(null);
+              setAvisoWarning(null);
+              setWizardAbierto(true);
+            }}
+            className="max-sm:w-full"
+          >
+            <PlusIcon aria-hidden="true" />
+            Añadir requisitos a varios clientes
+          </Button>
+        )}
       </div>
 
       <ClientesNav />
@@ -367,11 +373,13 @@ export function MatricesPage() {
       )}
 
       {/* Wizard de carga masiva */}
-      <CargaMasivaWizard
-        open={wizardAbierto}
-        onOpenChange={setWizardAbierto}
-        onSuccess={handleExitoMasivo}
-      />
+      {puedeEditarRequisitos && (
+        <CargaMasivaWizard
+          open={wizardAbierto}
+          onOpenChange={setWizardAbierto}
+          onSuccess={handleExitoMasivo}
+        />
+      )}
     </div>
   );
 }

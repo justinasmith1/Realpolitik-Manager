@@ -4,7 +4,10 @@ import { Link } from 'react-router';
 
 import { cn } from '@/lib/utils';
 import { CanalEntregaBadge } from '@/modules/clientes/components/CanalEntregaBadge';
-import { ClienteAccionesMenu } from '@/modules/clientes/components/ClienteAccionesMenu';
+import {
+  ClienteAccionesMenu,
+  hayAccionesDeCliente,
+} from '@/modules/clientes/components/ClienteAccionesMenu';
 import { ClienteMonogram } from '@/modules/clientes/components/ClienteMonogram';
 import { EstadoBadge } from '@/modules/clientes/components/EstadoBadge';
 import { PeriodicidadTexto } from '@/modules/clientes/components/PeriodicidadTexto';
@@ -57,10 +60,12 @@ export function ClienteTarjeta({ cliente, acciones, enlace }: ClienteTarjetaProp
           </p>
           <p className="truncate text-sm text-content-secondary">{cliente.denominacion}</p>
         </div>
-        {/* Encima del enlace estirado: el menú no navega. */}
-        <div className="relative z-10 -mt-2 -mr-2 shrink-0">
-          <ClienteAccionesMenu cliente={cliente} {...acciones} />
-        </div>
+        {/* Encima del enlace estirado: el menú no navega. Sin acciones no queda el hueco. */}
+        {hayAccionesDeCliente(acciones) && (
+          <div className="relative z-10 -mt-2 -mr-2 shrink-0">
+            <ClienteAccionesMenu cliente={cliente} {...acciones} />
+          </div>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">

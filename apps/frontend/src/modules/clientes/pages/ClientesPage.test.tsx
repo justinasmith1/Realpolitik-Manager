@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
 import { elegirOpcion, etiquetaDeOpcion } from '@/test/select';
 import { avanzar, congelarTiempo, esperar } from '@/test/tiempo-congelado';
@@ -13,7 +14,9 @@ vi.mock('@/hooks/use-exito-breve', () => import('@/test/exito-breve-sin-espera')
 const fetchMock = vi.fn<typeof fetch>();
 
 function renderPage(url = '/clientes') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = sembrarSesion(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[url]}>

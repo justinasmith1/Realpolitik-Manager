@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { ClientesPage } from '@/modules/clientes/pages/ClientesPage';
 import { elegirOpcion } from '@/test/select';
 
@@ -75,7 +76,9 @@ afterEach(() => {
 
 /** Monta la página como al entrar (o al volver a abrir el navegador). */
 async function abrirPagina(url = '/clientes') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = sembrarSesion(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
   const vista = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[url]}>
@@ -208,7 +211,9 @@ describe('ClientesPage: columnas de la tabla', () => {
       removeListener: () => undefined,
       dispatchEvent: () => false,
     }));
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = sembrarSesion(
+      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    );
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/clientes']}>

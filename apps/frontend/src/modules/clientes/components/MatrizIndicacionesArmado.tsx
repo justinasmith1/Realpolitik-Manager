@@ -16,6 +16,8 @@ export interface MatrizIndicacionesArmadoProps {
   cliente: Pick<Cliente, 'id'>;
   /** Abre la edición en la ficha. Sin esto (p. ej. en el detalle de una rendición), solo lectura. */
   onEditarCliente?: (() => void) | undefined;
+  /** Nivel del título: `h2` en la pantalla del cliente; `h3` dentro de un panel con su propio título. */
+  nivelDeTitulo?: 'h2' | 'h3';
 }
 
 /**
@@ -27,6 +29,7 @@ export interface MatrizIndicacionesArmadoProps {
 export function MatrizIndicacionesArmado({
   cliente,
   onEditarCliente,
+  nivelDeTitulo: Titulo = 'h2',
 }: MatrizIndicacionesArmadoProps) {
   const { data, isLoading, isError, isFetching, refetch } = useIndicacionesArmado(cliente.id);
   const contenido = data?.indicacionesArmado?.trim();
@@ -38,9 +41,9 @@ export function MatrizIndicacionesArmado({
       className="flex flex-col gap-3 rounded-panel border bg-panel p-5 shadow-xs"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id={idTitulo} className="text-base font-semibold text-foreground">
+        <Titulo id={idTitulo} className="text-base font-semibold text-foreground">
           Indicaciones de armado
-        </h2>
+        </Titulo>
         {onEditarCliente !== undefined && (
           <Button
             type="button"

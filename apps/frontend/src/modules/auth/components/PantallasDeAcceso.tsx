@@ -1,5 +1,5 @@
 // Pantallas completas, fuera del shell, para los estados en los que no se puede mostrar el
-// sistema: sesión resolviéndose, servicio no disponible y rol no habilitado.
+// sistema: sesión resolviéndose, servicio no disponible y un rol que la interfaz no conoce.
 
 import { Loader2Icon } from 'lucide-react';
 
@@ -7,7 +7,6 @@ import { Alert } from '@/components/ui/alert';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { causaDeError, diagnosticoDeError } from '@/lib/errores-api';
 import { AccesoLayout, EncabezadoDeAcceso } from '@/modules/auth/components/AccesoLayout';
-import { MENSAJE_ROL_NO_HABILITADO } from '@/modules/auth/erroresDeAuth';
 import { useCerrarSesion } from '@/modules/auth/hooks/useSesion';
 
 /** Mientras se resuelve `GET /auth/sesion`: sin shell, para no mostrar navegación y después echar. */
@@ -71,18 +70,21 @@ export function ServicioNoDisponible({
   );
 }
 
+export const MENSAJE_ROL_DESCONOCIDO = 'Tu cuenta no tiene acceso al sistema.';
+
 /**
- * TEMPORAL (HU4.1): una cuenta con sesión cuyo rol todavía no entra al sistema (CONSULTA, hasta
- * HU4.3). No se muestra el shell ni ninguna pantalla de negocio; solo se puede salir.
+ * Una sesión cuyo rol no es ninguno de los del catálogo (`PERMISOS_POR_ROL`). No debería pasar
+ * (el contrato de la sesión solo admite los tres roles), pero si pasa, denegado por defecto: no
+ * se muestra el shell ni ninguna pantalla de negocio; solo se puede salir.
  */
-export function RolNoHabilitado({ nombre }: { nombre: string }) {
+export function RolDesconocido({ nombre }: { nombre: string }) {
   const { cerrar, cerrando, error } = useCerrarSesion();
   return (
     <AccesoLayout pie="Si creés que deberías tener acceso, consultalo con quien administra las cuentas.">
       <EncabezadoDeAcceso
         quien={nombre}
-        titulo={MENSAJE_ROL_NO_HABILITADO}
-        bajada="Iniciaste sesión correctamente, pero tu cuenta todavía no está habilitada para usar Realpolitik Manager."
+        titulo={MENSAJE_ROL_DESCONOCIDO}
+        bajada="Iniciaste sesión correctamente, pero el rol de tu cuenta no es uno de los que usa Realpolitik Manager."
       />
       {error !== null && <Alert>{error}</Alert>}
       <LoadingButton

@@ -14,6 +14,7 @@ import { useAvisoDePagina } from '@/hooks/use-aviso-de-pagina';
 import { causaDeError, diagnosticoDeError } from '@/lib/errores-api';
 import { enfocarYMostrar } from '@/lib/focus';
 import { ApiClientError } from '@/lib/http';
+import { usePermiso } from '@/modules/auth/hooks/useSesion';
 import { esIdDeRuta } from '@/modules/clientes/api/clientes.api';
 import { interpretarFalloRequisito } from '@/modules/clientes/api/requisitos.api';
 import {
@@ -62,8 +63,17 @@ function esClienteAusente(error: unknown): boolean {
  * Matriz de requisitos de un cliente (`/clientes/:id/matriz`). Consulta, alta, edición y baja
  * lógica. Los datos salen de `useCliente` y `useRequisitos`. Un cliente que no está activo se
  * lee y no se modifica.
+ *
+ * Lo que se ofrece depende también de los permisos de la sesión (HU4.3): sin `requisitos:editar`
+ * no hay alta, edición ni baja de requisitos; sin `clientes:editar`, las notas no abren la hoja
+ * "Editar cliente"; sin `rendiciones:operar`, no se ofrece sumar un requisito ni propagar un
+ * canal a las rendiciones abiertas. CONSULTA lee todo eso en solo lectura. Quien autoriza de
+ * verdad es la API.
  */
 export function MatrizPage() {
+  const puedeEditarRequisitos = usePermiso('requisitos:editar');
+  const puedeEditarCliente = usePermiso('clientes:editar');
+  const puedeOperarRendiciones = usePermiso('rendiciones:operar');
   const { id } = useParams();
   const location = useLocation();
   const tituloRef = useRef<HTMLHeadingElement>(null);
@@ -90,8 +100,10 @@ export function MatrizPage() {
   // En paralelo con el cliente, salvo que ya se sepa que no existe o el id no sirve.
   // Si el cliente falla, esta consulta no se muestra: un 404 no se suma a otro error.
   const requisitosQuery = useRequisitos(id, { enabled: idValido && !clienteQuery.isError });
-  // Todas las abiertas, sin los filtros del listado: para ofrecer sumar un requisito nuevo.
-  const rendicionesAbiertas = useRendiciones(idValido ? id : undefined);
+  // Todas las abiertas, sin los filtros del listado: para ofrecer sumar un requisito nuevo. Solo
+  // las pide quien puede hacerlo.
+  const ofreceSumar = puedeEditarRequisitos && puedeOperarRendiciones;
+  const rendicionesAbiertas = useRendiciones(idValido && ofreceSumar ? id : undefined);
   // Una Enviada ya no se modifica (HU3.7): no se le ofrece sumar el requisito.
   const rendicionesModificables = (rendicionesAbiertas.data ?? []).filter((rendicion) =>
     esRendicionModificable(rendicion.estado),
@@ -126,7 +138,9 @@ export function MatrizPage() {
       : { pathname: destino.pathname, search: destino.search };
   const textoVolver =
     destino.origen === 'requisitos' ? TEXTO_VOLVER_A_REQUISITOS : TEXTO_VOLVER_A_CLIENTES;
-  const puedeModificar = cliente?.estado === 'ACTIVO' && requisitosQuery.isSuccess;
+  // El permiso, el estado del cliente y la matriz cargada: sin cualquiera de los tres, solo lectura.
+  const puedeModificar =
+    puedeEditarRequisitos && cliente?.estado === 'ACTIVO' && requisitosQuery.isSuccess;
 
   function abrirAlta() {
     aviso.limpiar();
@@ -157,7 +171,7 @@ export function MatrizPage() {
    * falla no se ofrece nada: el requisito ya quedó guardado y el aviso lo dice.
    */
   async function ofrecerPropagarCanal(anterior: RequisitoCliente, actualizado: RequisitoCliente) {
-    if (cliente === undefined) return;
+    if (cliente === undefined || !puedeOperarRendiciones) return;
     const canal = actualizado.canalEntrega ?? cliente.canalEntrega;
     if (canal === (anterior.canalEntrega ?? cliente.canalEntrega)) return;
     let rendiciones: RendicionResumen[];
@@ -230,7 +244,11 @@ export function MatrizPage() {
   } else if (requisitosQuery.isError) {
     contenido = (
       <>
-        <MatrizEncabezado cliente={cliente} tituloRef={tituloRef} />
+        <MatrizEncabezado
+          cliente={cliente}
+          tituloRef={tituloRef}
+          avisoDeInactivo={puedeEditarRequisitos}
+        />
         <MatrizError
           recurso="requisitos"
           causa={causaDeError(requisitosQuery.error)}
@@ -242,7 +260,11 @@ export function MatrizPage() {
   } else if (!requisitosQuery.isSuccess) {
     contenido = (
       <>
-        <MatrizEncabezado cliente={cliente} tituloRef={tituloRef} />
+        <MatrizEncabezado
+          cliente={cliente}
+          tituloRef={tituloRef}
+          avisoDeInactivo={puedeEditarRequisitos}
+        />
         <MatrizCargando incluirEncabezado={false} />
       </>
     );
@@ -254,8 +276,9 @@ export function MatrizPage() {
           tituloRef={tituloRef}
           onAgregar={puedeModificar ? abrirAlta : undefined}
           agregarRef={agregarRef}
+          avisoDeInactivo={puedeEditarRequisitos}
         />
-        <MatrizVacia />
+        <MatrizVacia paraQuienConfigura={puedeEditarRequisitos} />
       </>
     );
   } else {
@@ -266,6 +289,7 @@ export function MatrizPage() {
           tituloRef={tituloRef}
           onAgregar={puedeModificar ? abrirAlta : undefined}
           agregarRef={agregarRef}
+          avisoDeInactivo={puedeEditarRequisitos}
         />
         <MatrizListado
           denominacion={cliente.denominacion}
@@ -304,17 +328,25 @@ export function MatrizPage() {
         </Alert>
       )}
       {contenido}
-      {/* Las dos notas, en el mismo orden que la hoja "Editar cliente". */}
+      {/* Las dos notas, en el mismo orden que la hoja "Editar cliente", donde se editan. Las
+          indicaciones piden además `requisitos:editar` (su PUT es de requisitos). Sin permiso,
+          los paneles quedan en solo lectura. */}
       {cliente !== undefined && (
         <MatrizIndicacionesArmado
           cliente={cliente}
-          onEditarCliente={() => setEdicionDeCliente({ enfocar: 'indicaciones' })}
+          onEditarCliente={
+            puedeEditarCliente && puedeEditarRequisitos
+              ? () => setEdicionDeCliente({ enfocar: 'indicaciones' })
+              : undefined
+          }
         />
       )}
       {cliente !== undefined && (
         <ObservacionesClientePanel
           cliente={cliente}
-          onEditarCliente={() => setEdicionDeCliente({ enfocar: 'observaciones' })}
+          onEditarCliente={
+            puedeEditarCliente ? () => setEdicionDeCliente({ enfocar: 'observaciones' }) : undefined
+          }
         />
       )}
       {cliente !== undefined && (
@@ -324,17 +356,20 @@ export function MatrizPage() {
           onConfigurarMatriz={puedeModificar ? abrirAlta : undefined}
         />
       )}
-      {cliente !== undefined && (
+      {/* Los paneles y diálogos que escriben se montan solo para quien tiene el permiso. */}
+      {cliente !== undefined && puedeEditarCliente && (
+        <EditarClienteSheet
+          cliente={edicionDeCliente !== null ? cliente : null}
+          enfocar={edicionDeCliente?.enfocar}
+          onClose={() => setEdicionDeCliente(null)}
+          onActualizado={() => {
+            setEdicionDeCliente(null);
+            void clienteQuery.refetch();
+          }}
+        />
+      )}
+      {cliente !== undefined && puedeEditarRequisitos && (
         <>
-          <EditarClienteSheet
-            cliente={edicionDeCliente !== null ? cliente : null}
-            enfocar={edicionDeCliente?.enfocar}
-            onClose={() => setEdicionDeCliente(null)}
-            onActualizado={() => {
-              setEdicionDeCliente(null);
-              void clienteQuery.refetch();
-            }}
-          />
           <RequisitoSheet
             modo={modo}
             cliente={cliente}
@@ -343,7 +378,7 @@ export function MatrizPage() {
             onGuardado={(texto, guardado) => {
               aviso.avisar('success', texto);
               setModo(null);
-              if (guardado.tipo === 'alta' && rendicionesModificables.length > 0) {
+              if (guardado.tipo === 'alta' && ofreceSumar && rendicionesModificables.length > 0) {
                 setRequisitoASumar(guardado.creado);
               }
               if (guardado.tipo === 'edicion') {
@@ -357,25 +392,29 @@ export function MatrizPage() {
               }
             }}
           />
-          <SumarRequisitoDialog
-            requisito={requisitoASumar}
-            rendiciones={rendicionesModificables}
-            onCerrar={() => setRequisitoASumar(null)}
-            onTerminado={(variante, texto) => {
-              aviso.avisar(variante, texto);
-              setRequisitoASumar(null);
-            }}
-            focoAlCerrar={tituloRef}
-          />
-          <PropagarCanalDialog
-            propagacion={propagacion}
-            onCerrar={() => setPropagacion(null)}
-            onTerminado={(texto) => {
-              aviso.avisar('success', texto);
-              setPropagacion(null);
-            }}
-            focoAlCerrar={tituloRef}
-          />
+          {puedeOperarRendiciones && (
+            <>
+              <SumarRequisitoDialog
+                requisito={requisitoASumar}
+                rendiciones={rendicionesModificables}
+                onCerrar={() => setRequisitoASumar(null)}
+                onTerminado={(variante, texto) => {
+                  aviso.avisar(variante, texto);
+                  setRequisitoASumar(null);
+                }}
+                focoAlCerrar={tituloRef}
+              />
+              <PropagarCanalDialog
+                propagacion={propagacion}
+                onCerrar={() => setPropagacion(null)}
+                onTerminado={(texto) => {
+                  aviso.avisar('success', texto);
+                  setPropagacion(null);
+                }}
+                focoAlCerrar={tituloRef}
+              />
+            </>
+          )}
           <QuitarRequisitoDialog
             requisito={requisitoAQuitar}
             denominacion={cliente.denominacion}

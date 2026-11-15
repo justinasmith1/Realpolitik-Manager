@@ -4,23 +4,24 @@ import { Navigate, useLocation } from 'react-router';
 
 import {
   CargandoSesion,
-  RolNoHabilitado,
+  RolDesconocido,
   ServicioNoDisponible,
 } from '@/modules/auth/components/PantallasDeAcceso';
 import { useSesion } from '@/modules/auth/hooks/useSesion';
-import { rolHabilitado } from '@/modules/auth/permisos';
+import { rolConocido } from '@/modules/auth/permisos';
 import { urlDeCambioDeContrasena, urlDeLogin } from '@/modules/auth/sesion';
 
 /**
  * Guarda de las rutas protegidas. Decide con el estado de la sesión (`['sesion']`), que viene
- * siempre del servidor, y no muestra nada del sistema hasta que haya un usuario habilitado:
+ * siempre del servidor, y no muestra nada del sistema hasta que haya un usuario con acceso:
  *
  * - resolviendo → carga de pantalla completa;
  * - error temporal (503, red) → "Servicio no disponible", sin ir a `/login`;
  * - sin sesión → `/login?volverA=<ruta y query actuales>`, reemplazando el historial;
  * - contraseña temporal → `/cambiar-contrasena`;
- * - rol no habilitado (CONSULTA, hasta HU4.3) → pantalla de bloqueo;
- * - si no, el contenido.
+ * - un rol que la interfaz no conoce → pantalla sin acceso (denegado por defecto);
+ * - si no, el contenido, para los tres roles (CONSULTA incluido desde HU4.3). Qué ofrece cada
+ *   pantalla lo decide `usePermiso`.
  *
  * Es solo presentación: la API rechaza por su cuenta cada pedido sin sesión o sin permiso.
  */
@@ -49,8 +50,8 @@ export function RequiereSesion({ children }: { children: ReactNode }) {
   if (usuario.debeCambiarPassword) {
     return <Navigate to={urlDeCambioDeContrasena(volverA)} replace />;
   }
-  if (!rolHabilitado(usuario.rol)) {
-    return <RolNoHabilitado nombre={usuario.nombre} />;
+  if (!rolConocido(usuario.rol)) {
+    return <RolDesconocido nombre={usuario.nombre} />;
   }
   return children;
 }

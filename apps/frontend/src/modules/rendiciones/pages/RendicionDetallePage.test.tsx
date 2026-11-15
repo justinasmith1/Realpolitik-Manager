@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
+import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { etiquetasEmisor } from '@/modules/clientes/clientes.etiquetas';
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
 import { TEXTO_SIN_EMISOR } from '@/modules/rendiciones/rendiciones.etiquetas';
@@ -94,7 +95,7 @@ function renderDetalle(ruta = `/clientes/${CLIENTE_ID}/rendiciones/${RENDICION_I
   );
   render(
     <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      client={sembrarSesion(new QueryClient({ defaultOptions: { queries: { retry: false } } }))}
     >
       <RouterProvider router={router} />
     </QueryClientProvider>,
