@@ -1275,3 +1275,103 @@ Exige `Origin` permitido. No exige una sesión válida.
 **204:** con cookie, revoca esa sesión en la base y borra la cookie; sin cookie, solo la borra. Es idempotente: repetirlo, o hacerlo con una sesión ya revocada o vencida, también responde 204.
 
 **Errores:** `503` si PostgreSQL no responde. En ese caso **no** se borra la cookie ni se informa que la sesión se cerró: el frontend mantiene la sesión local y muestra el error.
+
+## 9. Administración de usuarios (`/usuarios`, HU4.5)
+
+Diseño en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) §5 ("Autoprotección"); permisos en la [matriz](../security/matriz-permisos.md); schemas en `packages/shared/src/schemas/usuario.schema.ts`. Las cinco rutas exigen `usuarios:administrar` (solo `ADMINISTRADOR`) y siguen las [reglas globales](#reglas-globales-de-la-api-de-negocio): sin sesión 401, contraseña temporal pendiente 403 `CAMBIO_DE_PASSWORD_REQUERIDO`, `CONSULTA` y `ADMINISTRATIVO` 403 `PERMISO_INSUFICIENTE` antes de validar el cuerpo y sin tocar la base (a `CONSULTA` una escritura se le rechaza antes de leerlo), y `Origin` permitido en toda escritura. Toda respuesta lleva `Cache-Control: no-store`. No hay `DELETE`: una cuenta se desactiva.
+
+**Quién opera:** el actor es siempre el usuario de la sesión. Un `actorId`, una cabecera o un rol enviados en el pedido no cuentan (en los cuerpos, son un error de validación).
+
+**Cuerpos estrictos:** a diferencia del resto de la API, una clave que no corresponde no se descarta: es `400 VALIDATION_ERROR` con un detalle en esa clave (`"Este dato no se puede enviar."`), junto con los demás errores. Así, una `password`, un `activo` o un `debeCambiarPassword` enviados nunca parecen aceptados.
+
+### Usuario
+
+```json
+{
+  "id": "1f0e…",
+  "nombre": "María Gómez",
+  "email": "maria@ejemplo.com",
+  "rol": "ADMINISTRATIVO",
+  "activo": true,
+  "debeCambiarPassword": true,
+  "ultimoAccesoEn": null
+}
+```
+
+Nunca incluye el hash de la contraseña, tokens, ids de sesión ni contadores. `ultimoAccesoEn` es ISO 8601 o `null` (nunca entró). `debeCambiarPassword`: tiene una contraseña temporal sin cambiar.
+
+- **Nombre:** obligatorio, sin espacios en los bordes, hasta 150 caracteres, sin caracteres de control.
+- **Email:** el formato y la normalización del login (sin espacios en los bordes, en minúsculas). Único, también contra cuentas desactivadas. No se modifica en HU4.5.
+- **Rol:** `ADMINISTRADOR`, `ADMINISTRATIVO` o `CONSULTA`.
+
+### Contraseñas temporales
+
+- Las genera el servidor (24 bytes aleatorios, 32 caracteres); nadie las elige. Se guardan solo como hash argon2id.
+- Llegan **una sola vez**, en `contrasenaTemporal`, en la respuesta exitosa de `POST /usuarios` o de `POST /usuarios/:id/restablecer-password`, y solo si la operación quedó confirmada en la base. Ninguna otra respuesta (ni el listado, ni un error) la vuelve a incluir, y no se registra en ningún log.
+- La cuenta queda con `debeCambiarPassword: true`: al entrar con la temporal solo responde `/auth/*` hasta elegir una propia (`PUT /auth/password`).
+
+### Resultados no confirmados
+
+Una escritura puede terminar sin que se pueda confirmar su resultado: la base dejó de responder en el medio (`503`) o el COMMIT no quedó confirmado (`500`). En los dos casos `details.motivo` es `RESULTADO_NO_CONFIRMADO` y la respuesta **no afirma** que se haya guardado ni que no: hay que releer el estado (`GET /usuarios`) antes de volver a intentar. Excepción: el alta (`POST /usuarios`) es una sola inserción, sin transacción interactiva, y un COMMIT fallido llega como `500 INTERNAL_ERROR` genérico, sin ese motivo. Quien consume la API trata cualquier `5xx` de una escritura como un resultado no confirmado, como hace el frontend. No lleva `Retry-After` y no trae contraseña temporal; si el alta o el restablecimiento sí quedaron guardados, la contraseña generada se perdió y la cuenta necesita un restablecimiento nuevo. El backend nunca repite solo una escritura con resultado incierto.
+
+```json
+{
+  "error": {
+    "code": "SERVICE_UNAVAILABLE",
+    "message": "No pudimos confirmar el resultado. Actualizá el listado antes de volver a intentarlo.",
+    "details": { "motivo": "RESULTADO_NO_CONFIRMADO" }
+  }
+}
+```
+
+### Errores comunes
+
+| Situación                                                 | Respuesta                                                                                                                 |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Datos inválidos, clave no permitida, `id` que no es UUID  | `400 VALIDATION_ERROR`, un detalle por campo                                                                              |
+| La cuenta no existe                                       | `404 NOT_FOUND`                                                                                                           |
+| El email ya es de otra cuenta (activa o no)               | `409 CONFLICT`, motivo `EMAIL_EN_USO`, `campo: "email"`                                                                   |
+| Operación sobre la propia cuenta                          | `409 CONFLICT`, motivo `OPERACION_SOBRE_CUENTA_PROPIA`, `operacion`: `cambiar-rol`, `desactivar` o `restablecer-password` |
+| Dejaría sin ningún `ADMINISTRADOR` activo                 | `409 CONFLICT`, motivo `ULTIMO_ADMINISTRADOR`, `operacion`: `cambiar-rol` o `desactivar`                                  |
+| Choque con otra operación simultánea (nada se guardó)     | `409 CONFLICT`, motivo `CONFLICTO_DE_CONCURRENCIA`: se puede reintentar                                                   |
+| Sin capacidad para calcular el hash (antes de escribir)   | `503 SERVICE_UNAVAILABLE`, `Retry-After: 5`                                                                               |
+| PostgreSQL no responde al listar                          | `503 SERVICE_UNAVAILABLE`, `Retry-After: 5`                                                                               |
+| PostgreSQL no responde al escribir / COMMIT no confirmado | `503` / `500`, motivo `RESULTADO_NO_CONFIRMADO` (ver arriba)                                                              |
+
+### `GET /usuarios`
+
+| Parámetro             | Obligatorio | Descripción                                                                                        |
+| --------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
+| `q`                   | No          | Busca en el nombre y el email, sin distinguir mayúsculas. Hasta 150 caracteres. Vacío = sin filtro |
+| `rol`                 | No          | Uno de los tres roles                                                                              |
+| `incluirDesactivados` | No          | `true` incluye las cuentas desactivadas. Sin el parámetro (o con `false`), solo las activas        |
+
+- **Respuesta 200:** arreglo de usuarios ordenado por nombre y después por email. Sin paginación.
+- **Errores:** `400` (parámetro inválido, `incluirDesactivados` que no es `true`/`false`), `503`.
+
+### `POST /usuarios`
+
+- **Pedido:** `{ "nombre": "María Gómez", "email": "maria@ejemplo.com", "rol": "ADMINISTRATIVO" }`. Nada más: ni contraseña, ni `activo`, ni `debeCambiarPassword`.
+- **Respuesta 201:** `{ "usuario": { … }, "contrasenaTemporal": "…" }`. La cuenta nace activa, con `debeCambiarPassword: true`, sin último acceso y sin sesiones. Con dos altas simultáneas del mismo email se crea una sola; la otra recibe `409 EMAIL_EN_USO`.
+- **Errores:** `400`, `409 EMAIL_EN_USO`, `503` (capacidad o resultado no confirmado), `500 INTERNAL_ERROR` (el COMMIT de la inserción falló: tratarlo como no confirmado, ver arriba).
+
+### `PATCH /usuarios/:id`
+
+- **Pedido:** `nombre` y/o `rol`, al menos uno (`{}` es `400`).
+- **Qué hace:** guarda solo lo que difiere del valor actual. Cambiar el nombre no cierra sesiones; cambiar el rol revoca **todas** las sesiones de esa cuenta (vuelve a entrar con el rol nuevo). Se puede cambiar el propio nombre, nunca el propio rol. Si el rol se rechaza, tampoco se guarda el nombre del mismo pedido.
+- **Respuesta 200:** `{ "usuario": { … }, "modificados": ["rol"], "sesionesRevocadas": 2 }`. `modificados` vacío: nada era distinto y no se escribió.
+- **Errores:** `400`, `404`, `409` (`OPERACION_SOBRE_CUENTA_PROPIA`, `ULTIMO_ADMINISTRADOR`, `CONFLICTO_DE_CONCURRENCIA`), `503`, `500`.
+
+### `PATCH /usuarios/:id/estado`
+
+- **Pedido:** `{ "activo": false }` o `{ "activo": true }` (booleano; un texto es `400`).
+- **Qué hace:** desactivar revoca todas las sesiones de la cuenta y le impide entrar; la cuenta sigue en la base y en el listado con `incluirDesactivados=true`. Reactivar conserva su contraseña, su rol y `debeCambiarPassword`, y no revive sesiones. Nadie se desactiva a sí mismo.
+- **Respuesta 200:** `{ "usuario": { … }, "cambio": true, "sesionesRevocadas": 1 }`. Pedir el estado que ya tiene responde `cambio: false` sin escribir ni revocar.
+- **Errores:** `400`, `404`, `409` (`OPERACION_SOBRE_CUENTA_PROPIA`, `ULTIMO_ADMINISTRADOR`, `CONFLICTO_DE_CONCURRENCIA`), `503`, `500`.
+
+### `POST /usuarios/:id/restablecer-password`
+
+- **Pedido:** sin cuerpo (o `{}`). Una contraseña elegida o cualquier otra clave es `400`.
+- **Qué hace:** genera una contraseña temporal nueva, prende `debeCambiarPassword` y revoca todas las sesiones de la cuenta; la anterior deja de servir. Conserva nombre, email, rol y estado: una cuenta desactivada sigue desactivada. La propia contraseña no se restablece por acá (se usa `PUT /auth/password`).
+- **Respuesta 200:** `{ "usuario": { … }, "contrasenaTemporal": "…", "sesionesRevocadas": 1 }`.
+- **Errores:** `400`, `404`, `409` (`OPERACION_SOBRE_CUENTA_PROPIA`, `CONFLICTO_DE_CONCURRENCIA`), `503`, `500`.

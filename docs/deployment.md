@@ -242,7 +242,7 @@ Frontend y backend se necesitan mutuamente (la URL del backend para `VITE_API_UR
 
 ## Primer administrador (HU4.1)
 
-Sin administración de usuarios (HU4.5), la primera cuenta se crea con un comando del backend. Crea **solo** un `ADMINISTRADOR`, y solo si no hay ninguno activo:
+La primera cuenta se crea con un comando del backend; las demás, desde la pantalla Usuarios (HU4.5), que necesita un administrador para empezar. Crea **solo** un `ADMINISTRADOR`, y solo si no hay ninguno activo:
 
 - Nunca modifica una cuenta existente: no cambia contraseñas, no reactiva cuentas desactivadas y no cambia roles. Si el email ya existe (activo o no) lo informa y termina.
 - Repetirlo no duplica nada (sale con código 2). Dos ejecuciones simultáneas crean una sola cuenta (bloqueo de aviso de PostgreSQL y email único).

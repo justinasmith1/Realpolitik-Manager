@@ -46,7 +46,7 @@ Criterio: un permiso propio solo cuando **un rol podría tenerlo y otro no**. Co
 | `tipos-documento:editar` | Operativo      | Alta, edición y estado de tipos                                                                      | No         | Sí               | Sí              |
 | `rendiciones:operar`     | Operativo      | Abrir, sugerencia de OC, editar OC, checklist, canal, anular, preparar envío, cambiar estado, cobros | No         | Sí               | Sí              |
 | `documentos:operar`      | Operativo      | Cargar, candidatos, aplicar, reemplazar                                                              | No         | Sí               | Sí              |
-| `usuarios:administrar`   | Administrativo | Listar, crear, cambiar rol, desactivar, reactivar y restablecer contraseña de **otras** personas     | No         | No               | Sí              |
+| `usuarios:administrar`   | Administrativo | Listar, crear, editar el nombre (también el propio); rol, estado y contraseña de **otras** personas  | No         | No               | Sí              |
 
 El frontend tiene un espejo de este catálogo (`apps/frontend/src/modules/auth/permisos.ts`) solo para decidir qué mostrar; un test lo compara con esta tabla. Quien autoriza es siempre la API.
 
@@ -65,7 +65,7 @@ El frontend tiene un espejo de este catálogo (`apps/frontend/src/modules/auth/p
 | `PUT /auth/password`                      | Cambiar mi contraseña (obligatorio en HU4.1, voluntario en HU4.2); revoca todas las sesiones; el voluntario rota la actual | `cuenta:propia`                 | 401        | Sí         | Sí               | Sí              | HU4.1 / HU4.2 |
 | `GET /usuarios`                           | Listar usuarios                                                                                                            | `usuarios:administrar`          | 401        | No         | No               | Sí              | HU4.5         |
 | `POST /usuarios`                          | Crear con contraseña temporal                                                                                              | `usuarios:administrar`          | 401        | No         | No               | Sí              | HU4.5         |
-| `PATCH /usuarios/:id`                     | Cambiar nombre o rol de otra persona (revoca sus sesiones)                                                                 | `usuarios:administrar`          | 401        | No         | No               | Sí              | HU4.5         |
+| `PATCH /usuarios/:id`                     | Cambiar el nombre (también el propio; no revoca sesiones) o el rol de otra persona (revoca sus sesiones)                   | `usuarios:administrar`          | 401        | No         | No               | Sí              | HU4.5         |
 | `PATCH /usuarios/:id/estado`              | Desactivar / reactivar a otra persona (revoca sus sesiones)                                                                | `usuarios:administrar`          | 401        | No         | No               | Sí              | HU4.5         |
 | `POST /usuarios/:id/restablecer-password` | Contraseña temporal para otra persona (revoca sus sesiones)                                                                | `usuarios:administrar`          | 401        | No         | No               | Sí              | HU4.5         |
 
