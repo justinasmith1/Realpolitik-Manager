@@ -66,6 +66,9 @@ const facturaUnica = () =>
 
 /** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
 const sesiones = sesionesDePrueba();
+// Los cambios que el test hace con el servicio, en nombre de la operadora de prueba (HU4.6): el
+// responsable es obligatorio y tiene que ser una cuenta real (FK a Usuario).
+const porLaOperadora = () => ({ registradoPorId: sesiones.idDe(), origen: 'MANUAL' as const });
 
 beforeAll(async () => {
   if (url === undefined) return;
@@ -284,7 +287,7 @@ describe.skipIf(url === undefined)('Marcar como Enviada (HU3.7) contra PostgreSQ
     const { cliente } = await clienteConMatriz();
     const enCurso = await abrir(cliente.id);
     const rechazada = await abrir(cliente.id);
-    await registrarCambioDeEstado(rechazada.id, 'RECHAZADA');
+    await registrarCambioDeEstado(rechazada.id, 'RECHAZADA', porLaOperadora());
     const { rendicion: anulada } = await completa();
     await sesiones
       .cliente(app)

@@ -34,6 +34,9 @@ const PERIODO = mesActual();
 
 /** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
 const sesiones = sesionesDePrueba();
+// Los cambios que el test hace con el servicio, en nombre de la operadora de prueba (HU4.6): el
+// responsable es obligatorio y tiene que ser una cuenta real (FK a Usuario).
+const porLaOperadora = () => ({ registradoPorId: sesiones.idDe(), origen: 'MANUAL' as const });
 
 beforeAll(async () => {
   if (url === undefined) return;
@@ -105,6 +108,8 @@ interface HistorialJson {
   fecha: string;
   fechaEfectiva?: string | null;
   motivo?: string | null;
+  registradoPor: { id: string; nombre: string } | null;
+  origen: string | null;
 }
 interface RendicionJson {
   id: string;
@@ -144,6 +149,9 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
         fecha: expect.any(String) as unknown,
         fechaEfectiva: null,
         motivo: null,
+        // Quien la abrió, con su nombre actual (HU4.6).
+        registradoPor: { id: sesiones.idDe(), nombre: 'Prueba ADMINISTRATIVO' },
+        origen: 'MANUAL',
       },
     ]);
     // La entrada se escribió en la misma alta: es del momento en que se creó la rendición.
@@ -156,7 +164,13 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
       where: { rendicionId: abierta.id },
     });
     expect(filas).toEqual([
-      expect.objectContaining({ estadoAnterior: null, estadoNuevo: 'EN_CURSO', motivo: null }),
+      expect.objectContaining({
+        estadoAnterior: null,
+        estadoNuevo: 'EN_CURSO',
+        motivo: null,
+        registradoPorId: sesiones.idDe(),
+        origen: 'MANUAL',
+      }),
     ]);
   });
 
@@ -164,7 +178,7 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
     const cliente = await clienteConMatriz();
     const enCurso = await abrir(cliente.id);
     const completa = await abrir(cliente.id);
-    await registrarCambioDeEstado(completa.id, 'COMPLETA');
+    await registrarCambioDeEstado(completa.id, 'COMPLETA', porLaOperadora());
 
     const ids = (lista: RendicionJson[]) => lista.map((r) => [r.id, r.estado]);
     expect(ids(await listar(cliente.id, '?estado=COMPLETA'))).toEqual([[completa.id, 'COMPLETA']]);
@@ -187,8 +201,8 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
   it('el detalle trae el historial, del cambio más viejo al más nuevo', async () => {
     const cliente = await clienteConMatriz();
     const abierta = await abrir(cliente.id);
-    await registrarCambioDeEstado(abierta.id, 'COMPLETA');
-    await registrarCambioDeEstado(abierta.id, 'ENVIADA');
+    await registrarCambioDeEstado(abierta.id, 'COMPLETA', porLaOperadora());
+    await registrarCambioDeEstado(abierta.id, 'ENVIADA', porLaOperadora());
 
     const visto = await detalle(abierta.id);
 
@@ -205,7 +219,7 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
   it('una rendición anulada conserva el último estado que tenía', async () => {
     const cliente = await clienteConMatriz();
     const abierta = await abrir(cliente.id);
-    await registrarCambioDeEstado(abierta.id, 'COMPLETA');
+    await registrarCambioDeEstado(abierta.id, 'COMPLETA', porLaOperadora());
 
     const anulacion = await sesiones
       .cliente(app)
@@ -226,8 +240,8 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
   it('aprobar una ENVIADA (HU3.8): historial con APROBADA, motivo null y fechaEfectiva null', async () => {
     const cliente = await clienteConMatriz();
     const abierta = await abrir(cliente.id);
-    await registrarCambioDeEstado(abierta.id, 'COMPLETA');
-    await registrarCambioDeEstado(abierta.id, 'ENVIADA');
+    await registrarCambioDeEstado(abierta.id, 'COMPLETA', porLaOperadora());
+    await registrarCambioDeEstado(abierta.id, 'ENVIADA', porLaOperadora());
 
     const res = await sesiones
       .cliente(app)
@@ -245,6 +259,8 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
         estadoNuevo: 'APROBADA',
         motivo: null,
         fechaEfectiva: null,
+        registradoPorId: sesiones.idDe(),
+        origen: 'MANUAL',
       }),
     ]);
   });
@@ -253,8 +269,8 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
   it('rechazar una ENVIADA con motivo (HU3.8): historial con RECHAZADA y ese motivo', async () => {
     const cliente = await clienteConMatriz();
     const abierta = await abrir(cliente.id);
-    await registrarCambioDeEstado(abierta.id, 'COMPLETA');
-    await registrarCambioDeEstado(abierta.id, 'ENVIADA');
+    await registrarCambioDeEstado(abierta.id, 'COMPLETA', porLaOperadora());
+    await registrarCambioDeEstado(abierta.id, 'ENVIADA', porLaOperadora());
     const motivo = 'Faltó el CUIT 20-12345678-4';
 
     const res = await sesiones
@@ -268,7 +284,13 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
       where: { rendicionId: abierta.id, estadoNuevo: 'RECHAZADA' },
     });
     expect(filas).toEqual([
-      expect.objectContaining({ estadoAnterior: 'ENVIADA', motivo, fechaEfectiva: null }),
+      expect.objectContaining({
+        estadoAnterior: 'ENVIADA',
+        motivo,
+        fechaEfectiva: null,
+        registradoPorId: sesiones.idDe(),
+        origen: 'MANUAL',
+      }),
     ]);
     const visto = await detalle(abierta.id);
     expect(visto.historial?.at(-1)).toMatchObject({ estadoNuevo: 'RECHAZADA', motivo });
@@ -278,8 +300,8 @@ describe.skipIf(url === undefined)('Estado de la rendición (HU3.1) contra Postg
   it('rechazar sin motivo (HU3.8): 400 en motivo y la rendición sigue ENVIADA', async () => {
     const cliente = await clienteConMatriz();
     const abierta = await abrir(cliente.id);
-    await registrarCambioDeEstado(abierta.id, 'COMPLETA');
-    await registrarCambioDeEstado(abierta.id, 'ENVIADA');
+    await registrarCambioDeEstado(abierta.id, 'COMPLETA', porLaOperadora());
+    await registrarCambioDeEstado(abierta.id, 'ENVIADA', porLaOperadora());
 
     const res = await sesiones
       .cliente(app)

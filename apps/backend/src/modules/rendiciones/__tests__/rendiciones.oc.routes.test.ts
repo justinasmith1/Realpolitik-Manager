@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
+import { clienteDePrueba, responsableDe } from '../../auth/__tests__/sesionSimulada';
 
 // Orden de compra (HU2.11), con la base simulada:
 // - `POST /clientes/:id/rendiciones` con datos de OC opcionales
@@ -56,7 +56,16 @@ function filaRendicionConItems(extra: Record<string, unknown> = {}) {
     montoMensual: null,
     montoTotal: null,
     estado: 'EN_CURSO',
-    historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA }],
+    // El alta, registrada por la operadora de la sesión simulada (HU4.6).
+    historial: [
+      {
+        estadoAnterior: null,
+        estadoNuevo: 'EN_CURSO',
+        fecha: AHORA,
+        registradoPor: responsableDe(),
+        origen: 'MANUAL',
+      },
+    ],
     isDeleted: false,
     deletedAt: null,
     createdAt: AHORA,

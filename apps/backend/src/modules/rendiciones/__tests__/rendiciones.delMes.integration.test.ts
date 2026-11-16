@@ -37,6 +37,9 @@ const ABRIL = { anio: 2021, mes: 4 };
 
 /** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
 const sesiones = sesionesDePrueba();
+// Los cambios que el test hace con el servicio, en nombre de la operadora de prueba (HU4.6): el
+// responsable es obligatorio y tiene que ser una cuenta real (FK a Usuario).
+const porLaOperadora = () => ({ registradoPorId: sesiones.idDe(), origen: 'MANUAL' as const });
 
 beforeAll(async () => {
   if (url === undefined) return;
@@ -176,7 +179,7 @@ describe.skipIf(url === undefined)('Pantalla Rendiciones (HU3.2) contra PostgreS
     await reunir(completa, 2);
     await reunir(mitadBeta, 1);
     await reunir(mitadAlfa, 1);
-    await registrarCambioDeEstado(rechazada, 'RECHAZADA');
+    await registrarCambioDeEstado(rechazada, 'RECHAZADA', porLaOperadora());
 
     const filas = await filasDe({ anio: 2021, mes: 5 });
 
@@ -194,9 +197,9 @@ describe.skipIf(url === undefined)('Pantalla Rendiciones (HU3.2) contra PostgreS
     const enviada = await abrir(gamma.id, { anio: 2021, mes: 6 });
     const enCurso = await abrir(gamma.id, { anio: 2021, mes: 6 });
     const completa = await abrir(gamma.id, { anio: 2021, mes: 6 });
-    await registrarCambioDeEstado(completa, 'COMPLETA');
-    await registrarCambioDeEstado(enviada, 'COMPLETA');
-    const detalle = await registrarCambioDeEstado(enviada, 'ENVIADA');
+    await registrarCambioDeEstado(completa, 'COMPLETA', porLaOperadora());
+    await registrarCambioDeEstado(enviada, 'COMPLETA', porLaOperadora());
+    const detalle = await registrarCambioDeEstado(enviada, 'ENVIADA', porLaOperadora());
     const entradaDeEnvio = detalle.historial.at(-1);
 
     const filas = await filasDe({ anio: 2021, mes: 6 });
@@ -215,8 +218,8 @@ describe.skipIf(url === undefined)('Pantalla Rendiciones (HU3.2) contra PostgreS
     const epsilon = await cliente('Epsilon');
     const cobrada = await abrir(epsilon.id, { anio: 2021, mes: 8 });
     const sinCobro = await abrir(epsilon.id, { anio: 2021, mes: 8 });
-    await registrarCambioDeEstado(cobrada, 'APROBADA'); // solo una Aprobada se cobra
-    await registrarCambioDeEstado(sinCobro, 'ENVIADA');
+    await registrarCambioDeEstado(cobrada, 'APROBADA', porLaOperadora()); // solo una Aprobada se cobra
+    await registrarCambioDeEstado(sinCobro, 'ENVIADA', porLaOperadora());
     const marca = await sesiones
       .cliente(app)
       .put(`/rendiciones/${cobrada}/cobro`)

@@ -38,6 +38,9 @@ const MARCA_NORMALIZADA = normalizar(MARCA);
 
 /** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
 const sesiones = sesionesDePrueba();
+// Los cambios que el test hace con el servicio, en nombre de la operadora de prueba (HU4.6): el
+// responsable es obligatorio y tiene que ser una cuenta real (FK a Usuario).
+const porLaOperadora = () => ({ registradoPorId: sesiones.idDe(), origen: 'MANUAL' as const });
 
 beforeAll(async () => {
   if (url === undefined) return;
@@ -110,7 +113,7 @@ async function rendicionEn(estado: 'EN_CURSO' | 'COMPLETA' | 'ENVIADA' | 'APROBA
     .send({ anio: 2026, mes: 9, numeroFactura: facturaUnica() });
   expect(alta.status, JSON.stringify(alta.body)).toBe(201);
   const id = (alta.body as { id: string }).id;
-  if (estado !== 'EN_CURSO') await registrarCambioDeEstado(id, estado);
+  if (estado !== 'EN_CURSO') await registrarCambioDeEstado(id, estado, porLaOperadora());
   return id;
 }
 

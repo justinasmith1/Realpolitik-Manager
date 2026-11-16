@@ -51,6 +51,9 @@ const MUY_VIEJO = { anio: 2021, mes: 6 };
 
 /** Cuentas y sesiones reales de este archivo (ADMINISTRATIVO por defecto). */
 const sesiones = sesionesDePrueba();
+// Los cambios que el test hace con el servicio, en nombre de la operadora de prueba (HU4.6): el
+// responsable es obligatorio y tiene que ser una cuenta real (FK a Usuario).
+const porLaOperadora = () => ({ registradoPorId: sesiones.idDe(), origen: 'MANUAL' as const });
 
 beforeAll(async () => {
   if (url === undefined) return;
@@ -168,9 +171,9 @@ describe.skipIf(url === undefined)('Rendiciones atrasadas (HU3.4, integración)'
 
     ids.dosAtrasEnCurso = await abrir(a.id, DOS_ATRAS);
     ids.dosAtrasCompleta = await abrir(b.id, DOS_ATRAS);
-    await registrarCambioDeEstado(ids.dosAtrasCompleta, 'COMPLETA');
+    await registrarCambioDeEstado(ids.dosAtrasCompleta, 'COMPLETA', porLaOperadora());
     ids.dosAtrasEnviada = await abrir(a.id, DOS_ATRAS);
-    await registrarCambioDeEstado(ids.dosAtrasEnviada, 'ENVIADA');
+    await registrarCambioDeEstado(ids.dosAtrasEnviada, 'ENVIADA', porLaOperadora());
     ids.dosAtrasAnulada = await abrir(b.id, DOS_ATRAS);
     const anulada = await sesiones
       .cliente(app)
@@ -229,7 +232,7 @@ describe.skipIf(url === undefined)('Rendiciones atrasadas (HU3.4, integración)'
   });
 
   it('cuando una atrasada se marca como Enviada, deja de figurar', async () => {
-    await registrarCambioDeEstado(ids.tresAtras, 'ENVIADA');
+    await registrarCambioDeEstado(ids.tresAtras, 'ENVIADA', porLaOperadora());
 
     const lista = (await atrasadas()).map((fila) => fila.id);
 

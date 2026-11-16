@@ -109,6 +109,15 @@ export function idDe(identidad: IdentidadDePrueba): string {
   return UUIDS[identidad];
 }
 
+/** La cuenta como la lee el historial de estados de una rendición (HU4.6): solo id y nombre. */
+export function responsableDe(identidad: IdentidadDePrueba = 'ADMINISTRATIVO'): {
+  id: string;
+  nombre: string;
+} {
+  const { id, nombre } = (porIdentidad.get(identidad) as CuentaSimulada).usuario;
+  return { id, nombre };
+}
+
 /** Valor de la cabecera `Cookie` de la identidad. */
 export function cookieDe(identidad: IdentidadDePrueba = 'ADMINISTRATIVO'): string {
   const cuenta = porIdentidad.get(identidad);
