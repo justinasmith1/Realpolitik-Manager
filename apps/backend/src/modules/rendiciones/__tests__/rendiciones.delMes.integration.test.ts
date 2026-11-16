@@ -215,7 +215,7 @@ describe.skipIf(url === undefined)('Pantalla Rendiciones (HU3.2) contra PostgreS
     const epsilon = await cliente('Epsilon');
     const cobrada = await abrir(epsilon.id, { anio: 2021, mes: 8 });
     const sinCobro = await abrir(epsilon.id, { anio: 2021, mes: 8 });
-    await registrarCambioDeEstado(cobrada, 'ENVIADA');
+    await registrarCambioDeEstado(cobrada, 'APROBADA'); // solo una Aprobada se cobra
     await registrarCambioDeEstado(sinCobro, 'ENVIADA');
     const marca = await sesiones
       .cliente(app)

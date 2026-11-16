@@ -544,8 +544,9 @@ async function registrarCambioDeEstadoEnTx(
   if (rendicion === null) {
     throw notFound('Rendición no encontrada');
   }
-  // El cobro (HU3.10) no cuelga del estado: un cambio de estado, también el rechazo, lo conserva
-  // tal cual (decisión del negocio del 13/11/2026, ADR-0005 punto 13).
+  // Un cambio de estado, también el rechazo, no lee ni escribe el cobro (HU3.10): lo conserva tal
+  // cual. Solo una Aprobada se cobra, pero un cobro viejo en otro estado no bloquea nada y se puede
+  // quitar (ADR-0005, punto 13).
 
   const actualizada = await tx.rendicion.update({
     where: { id: rendicionId },
@@ -731,12 +732,11 @@ export async function actualizarRendicion(
 /**
  * Registra o corrige el cobro que el cliente informó (HU3.10): `PUT /rendiciones/:id/cobro`.
  * Reemplaza el cobro entero: sin nota, la nota queda en `null`. Solo en una rendición activa
- * (anulada: `409 RENDICION_ANULADA`) y Enviada, Aprobada o Rechazada (`ESTADOS_COBRABLES`; si no,
+ * (anulada: `409 RENDICION_ANULADA`) y Aprobada (`ESTADOS_COBRABLES`; si no,
  * `409 COBRO_ESTADO_INVALIDO` con el `estadoActual`). Es una marca, no un estado: no toca el
  * historial. La fecha no puede ser posterior a hoy (Buenos Aires): se vuelve a comprobar acá con
- * `ahora`, como la fecha de envío. No usa `motivoParaNoModificar`: una Aprobada o una Rechazada no
- * se modifican, pero sí se cobran. Una sola escritura, en transacción serializable junto con los
- * chequeos.
+ * `ahora`, como la fecha de envío. No usa `motivoParaNoModificar`: una Aprobada no se modifica,
+ * pero sí se cobra. Una sola escritura, en transacción serializable junto con los chequeos.
  */
 export async function registrarCobro(
   id: string,
@@ -758,7 +758,7 @@ export async function registrarCobro(
       throw conflict(
         'COBRO_ESTADO_INVALIDO',
         { estadoActual: rendicion.estado },
-        'Solo se registra el cobro de una rendición enviada, aprobada o rechazada',
+        'Solo se puede registrar el cobro de una rendición aprobada.',
       );
     }
     const problema = problemaDeFechaCobro(datos.fecha, ahora);

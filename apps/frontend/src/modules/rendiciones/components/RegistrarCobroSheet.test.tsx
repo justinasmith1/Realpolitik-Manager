@@ -176,9 +176,7 @@ describe('RegistrarCobroSheet', () => {
     await user.click(guardar());
 
     expect(
-      await screen.findByText(
-        'Solo se puede registrar el cobro de una rendición enviada, aprobada o rechazada.',
-      ),
+      await screen.findByText('Solo se puede registrar el cobro de una rendición aprobada.'),
     ).toBeVisible();
     expect(nota()).toHaveValue('Pagó');
     expect(onGuardada).not.toHaveBeenCalled();

@@ -288,8 +288,9 @@ function DetalleDeRendicion({
   const sinDocumentos = rendicion.items.length === 0;
   const puedeCompletarse = !sinDocumentos && faltantesParaCompletar === 0;
   const fechaDeEnvio = enviada ? fechaDeEnvioDe(rendicion) : null;
-  // El cobro (HU3.10) se registra en una activa Enviada, Aprobada o Rechazada. No cuelga de
-  // "modificable": una Aprobada o una Rechazada ya no se modifican, pero se cobran. Una anulada con cobro lo muestra en solo lectura.
+  // El cobro (HU3.10) se registra y se edita solo en una activa Aprobada. No cuelga de
+  // "modificable": una Aprobada ya no se modifica, pero se cobra. Un cobro viejo en otro estado se
+  // ve y se puede quitar. Una anulada con cobro lo muestra en solo lectura.
   const cobro = rendicion.cobro;
   const puedeCobrar = !anulada && esEstadoCobrable(rendicion.estado);
   // Los cambios de estado (HU3.6 a HU3.9): solo en una rendición activa que no esté Aprobada, y

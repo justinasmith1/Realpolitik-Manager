@@ -53,7 +53,7 @@ describe('interpretarFalloCobro', () => {
 describe('mensajeFalloCobro', () => {
   it('estado inválido: el texto acordado', () => {
     expect(mensajeFalloCobro({ tipo: 'estado-invalido' })).toEqual({
-      general: 'Solo se puede registrar el cobro de una rendición enviada, aprobada o rechazada.',
+      general: 'Solo se puede registrar el cobro de una rendición aprobada.',
     });
   });
 

@@ -18,8 +18,9 @@ import {
 } from '@/modules/rendiciones/test/rendiciones.fixtures';
 
 // El cobro informado por el cliente en el detalle de la rendición (HU3.10): se ofrece solo en una
-// Enviada, Aprobada o Rechazada activa; se registra, se corrige y se quita (con confirmación); en una anulada
-// se ve y no se toca.
+// Aprobada activa (aclaración de la operadora del 16/11/2026); se registra, se corrige y se quita
+// (con confirmación). Un cobro viejo en otro estado se ve y solo se quita; en una anulada se ve y no
+// se toca.
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -125,7 +126,7 @@ const itemDeCobro = () => within(franjaDeCobro());
 const botonRegistrar = () => screen.queryByRole('button', { name: 'Registrar cobro' });
 
 describe('RendicionDetallePage: cuándo se ofrece registrar el cobro (HU3.10)', () => {
-  it.each(['EN_CURSO', 'COMPLETA'])(
+  it.each(['EN_CURSO', 'COMPLETA', 'ENVIADA', 'RECHAZADA'])(
     'una %s no ofrece registrar el cobro ni muestra la franja de cobro',
     async (estado) => {
       servir({ inicial: { estado } });
@@ -137,28 +138,31 @@ describe('RendicionDetallePage: cuándo se ofrece registrar el cobro (HU3.10)', 
     },
   );
 
-  it.each(['ENVIADA', 'APROBADA', 'RECHAZADA'])(
-    'una %s activa ofrece registrar el cobro',
-    async (estado) => {
-      servir({ inicial: { estado } });
-      renderDetalle();
-      await titulo();
-
-      expect(botonRegistrar()).toBeInTheDocument();
-      expect(itemDeCobro().getByText('Sin cobro registrado')).toBeInTheDocument();
-    },
-  );
-
-  it('una Rechazada con cobro ofrece "Editar cobro" y "Quitar cobro"', async () => {
-    servir({ inicial: { estado: 'RECHAZADA', cobro: COBRO } });
+  it('una Aprobada activa ofrece registrar el cobro', async () => {
+    servir({ inicial: { estado: 'APROBADA' } });
     renderDetalle();
     await titulo();
 
-    expect(itemDeCobro().getByText('Cobrada el 10/11/2026')).toBeInTheDocument();
-    expect(itemDeCobro().getByRole('button', { name: 'Editar cobro' })).toBeInTheDocument();
-    expect(itemDeCobro().getByRole('button', { name: 'Quitar cobro' })).toBeInTheDocument();
-    expect(botonRegistrar()).not.toBeInTheDocument();
+    expect(botonRegistrar()).toBeInTheDocument();
+    expect(itemDeCobro().getByText('Sin cobro registrado')).toBeInTheDocument();
   });
+
+  it.each(['ENVIADA', 'RECHAZADA'])(
+    'un cobro viejo en una %s se ve con "Quitar cobro", sin "Editar" y con la explicación',
+    async (estado) => {
+      servir({ inicial: { estado, cobro: COBRO } });
+      renderDetalle();
+      await titulo();
+
+      expect(itemDeCobro().getByText('Cobrada el 10/11/2026')).toBeInTheDocument();
+      expect(
+        itemDeCobro().getByText('Solo se puede editar el cobro de una rendición aprobada.'),
+      ).toBeInTheDocument();
+      expect(itemDeCobro().queryByRole('button', { name: 'Editar cobro' })).not.toBeInTheDocument();
+      expect(itemDeCobro().getByRole('button', { name: 'Quitar cobro' })).toBeInTheDocument();
+      expect(botonRegistrar()).not.toBeInTheDocument();
+    },
+  );
 
   it('una anulada Enviada sin cobro no ofrece nada', async () => {
     servir({
@@ -200,7 +204,7 @@ describe('RendicionDetallePage: cuándo se ofrece registrar el cobro (HU3.10)', 
 
 describe('RendicionDetallePage: registrar, corregir y quitar el cobro (HU3.10)', () => {
   it('registra el cobro: la hoja pide la fecha (hoy) y la nota, y el detalle queda cobrado', async () => {
-    servir({ inicial: { estado: 'ENVIADA' } });
+    servir({ inicial: { estado: 'APROBADA' } });
     const { user } = renderDetalle();
     await titulo();
 
@@ -226,7 +230,7 @@ describe('RendicionDetallePage: registrar, corregir y quitar el cobro (HU3.10)',
   });
 
   it('la franja con cobro lleva ícono y texto con los tokens de éxito', async () => {
-    servir({ inicial: { estado: 'ENVIADA', cobro: COBRO } });
+    servir({ inicial: { estado: 'APROBADA', cobro: COBRO } });
     renderDetalle();
     await titulo();
 
@@ -237,7 +241,7 @@ describe('RendicionDetallePage: registrar, corregir y quitar el cobro (HU3.10)',
   });
 
   it('la franja está justo debajo de la línea Estado · Vigencia · Avance y antes del historial', async () => {
-    servir({ inicial: { estado: 'ENVIADA' } });
+    servir({ inicial: { estado: 'APROBADA' } });
     renderDetalle();
     await titulo();
 
@@ -278,7 +282,7 @@ describe('RendicionDetallePage: registrar, corregir y quitar el cobro (HU3.10)',
   });
 
   it('el día del cobro no se corre: el 01/01 se lee 01/01', async () => {
-    servir({ inicial: { estado: 'ENVIADA', cobro: { fecha: '2026-01-01', nota: null } } });
+    servir({ inicial: { estado: 'APROBADA', cobro: { fecha: '2026-01-01', nota: null } } });
     renderDetalle();
     await titulo();
 
@@ -286,7 +290,7 @@ describe('RendicionDetallePage: registrar, corregir y quitar el cobro (HU3.10)',
   });
 
   it('quitar pide confirmación: cancelar no borra nada', async () => {
-    servir({ inicial: { estado: 'ENVIADA', cobro: COBRO } });
+    servir({ inicial: { estado: 'APROBADA', cobro: COBRO } });
     const { user } = renderDetalle();
     await titulo();
 
@@ -302,7 +306,7 @@ describe('RendicionDetallePage: registrar, corregir y quitar el cobro (HU3.10)',
   });
 
   it('quitar con confirmación: la marca desaparece y se puede volver a registrar', async () => {
-    servir({ inicial: { estado: 'ENVIADA', cobro: COBRO } });
+    servir({ inicial: { estado: 'APROBADA', cobro: COBRO } });
     const { user } = renderDetalle();
     await titulo();
 
@@ -319,7 +323,7 @@ describe('RendicionDetallePage: registrar, corregir y quitar el cobro (HU3.10)',
   });
 
   it('desde la hoja, "Quitar marca" lleva a la misma confirmación', async () => {
-    servir({ inicial: { estado: 'ENVIADA', cobro: COBRO } });
+    servir({ inicial: { estado: 'APROBADA', cobro: COBRO } });
     const { user } = renderDetalle();
     await titulo();
 
@@ -335,7 +339,7 @@ describe('RendicionDetallePage: registrar, corregir y quitar el cobro (HU3.10)',
 
   it('si la rendición dejó de ser cobrable mientras tanto (409), la hoja lo explica y sigue abierta', async () => {
     servir({
-      inicial: { estado: 'ENVIADA' },
+      inicial: { estado: 'APROBADA' },
       respuestaDelPut: errorJson(409, 'CONFLICT', {
         motivo: 'COBRO_ESTADO_INVALIDO',
         estadoActual: 'EN_CURSO',
@@ -349,16 +353,14 @@ describe('RendicionDetallePage: registrar, corregir y quitar el cobro (HU3.10)',
     await user.click(hoja.getByRole('button', { name: 'Guardar cobro' }));
 
     expect(
-      await hoja.findByText(
-        'Solo se puede registrar el cobro de una rendición enviada, aprobada o rechazada.',
-      ),
+      await hoja.findByText('Solo se puede registrar el cobro de una rendición aprobada.'),
     ).toBeVisible();
     expect(screen.getByRole('dialog', { name: 'Cobro de la rendición' })).toBeInTheDocument();
   });
 });
 
-describe('RendicionDetallePage: rechazar una rendición con cobro (HU3.10)', () => {
-  it('se rechaza sin pedir quitar el cobro, que se sigue viendo y se puede editar', async () => {
+describe('RendicionDetallePage: rechazar una rendición con un cobro viejo (HU3.10)', () => {
+  it('se rechaza sin pedir quitar el cobro, que se sigue viendo y solo se puede quitar', async () => {
     servir({ inicial: { estado: 'ENVIADA', cobro: COBRO } });
     const { user } = renderDetalle();
     await titulo();
@@ -378,8 +380,8 @@ describe('RendicionDetallePage: rechazar una rendición con cobro (HU3.10)', () 
       ).not.toBeInTheDocument(),
     );
     expect(await itemDeCobro().findByText('Cobrada el 10/11/2026')).toBeVisible();
-    // Una Rechazada también es cobrable: el cobro se edita y se quita.
-    expect(itemDeCobro().getByRole('button', { name: 'Editar cobro' })).toBeInTheDocument();
+    // Una Rechazada no se cobra: el cobro viejo no se edita, pero se puede quitar.
+    expect(itemDeCobro().queryByRole('button', { name: 'Editar cobro' })).not.toBeInTheDocument();
     expect(itemDeCobro().getByRole('button', { name: 'Quitar cobro' })).toBeInTheDocument();
     expect(llamadasA('DELETE')).toHaveLength(0);
   });

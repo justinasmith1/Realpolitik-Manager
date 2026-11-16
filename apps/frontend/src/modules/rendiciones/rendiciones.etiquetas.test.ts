@@ -92,7 +92,7 @@ describe('textos del cobro', () => {
 
   it('los textos de error del cobro son los acordados', () => {
     expect(MENSAJE_COBRO_ESTADO_INVALIDO).toBe(
-      'Solo se puede registrar el cobro de una rendición enviada, aprobada o rechazada.',
+      'Solo se puede registrar el cobro de una rendición aprobada.',
     );
   });
 });

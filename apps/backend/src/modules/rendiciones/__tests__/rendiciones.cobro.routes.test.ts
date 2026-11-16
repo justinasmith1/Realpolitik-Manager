@@ -103,7 +103,7 @@ beforeEach(() => {
   // El resultado refleja lo que se escribió.
   transaccion.rendicion.update.mockImplementation(
     ({ data }: { data: { cobroFecha: Date | null; cobroNota: string | null } }) =>
-      Promise.resolve(filaDetalle('ENVIADA', data)),
+      Promise.resolve(filaDetalle('APROBADA', data)),
   );
 });
 
@@ -112,8 +112,8 @@ afterEach(() => {
 });
 
 describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
-  it('registra el cobro de una Enviada: 200 con el detalle, fecha como día y nota', async () => {
-    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('ENVIADA'));
+  it('registra el cobro de una Aprobada: 200 con el detalle, fecha como día y nota', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('APROBADA'));
 
     const res = await registrar({ fecha: '2026-11-10', nota: 'Avisó por mail Juan, de Tesorería' });
 
@@ -136,7 +136,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
     });
   });
 
-  it('registra el cobro de una Aprobada, aunque una Aprobada ya no se modifique', async () => {
+  it('una Aprobada se cobra aunque ya no se modifique (documentos, canales)', async () => {
     transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('APROBADA'));
 
     const res = await registrar({ fecha: '2026-11-12' });
@@ -147,7 +147,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
 
   it('edita un cobro ya registrado: reemplaza el cobro entero', async () => {
     transaccion.rendicion.findFirst.mockResolvedValueOnce(
-      lecturaDe('ENVIADA', { cobroFecha: columnaDate('2026-11-10') }),
+      lecturaDe('APROBADA', { cobroFecha: columnaDate('2026-11-10') }),
     );
 
     const res = await registrar({ fecha: '2026-11-11', nota: 'Corregida' });
@@ -162,7 +162,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
   });
 
   it('sin nota, la nota queda en null', async () => {
-    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('ENVIADA'));
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('APROBADA'));
 
     const res = await registrar({ fecha: '2026-11-10' });
 
@@ -175,7 +175,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
   });
 
   it('con nota null, la nota queda en null', async () => {
-    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('ENVIADA'));
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('APROBADA'));
 
     const res = await registrar({ fecha: '2026-11-10', nota: null });
 
@@ -184,7 +184,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
   });
 
   it('recorta la nota', async () => {
-    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('ENVIADA'));
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('APROBADA'));
 
     await registrar({ fecha: '2026-11-10', nota: '  Pagó  ' });
 
@@ -196,7 +196,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
   });
 
   it('acepta la fecha de hoy (en Buenos Aires)', async () => {
-    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('ENVIADA'));
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('APROBADA'));
 
     const res = await registrar({ fecha: '2026-11-13' });
 
@@ -204,7 +204,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
   });
 
   it('no toca el estado ni el historial: el cobro es una marca', async () => {
-    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('ENVIADA'));
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('APROBADA'));
 
     await registrar({ fecha: '2026-11-10' });
 
@@ -266,7 +266,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
 
   it('una anulada: 409 RENDICION_ANULADA, sin escribir', async () => {
     transaccion.rendicion.findFirst.mockResolvedValueOnce(
-      lecturaDe('ENVIADA', { isDeleted: true }),
+      lecturaDe('APROBADA', { isDeleted: true }),
     );
 
     const res = await registrar({ fecha: '2026-11-10' });
@@ -276,7 +276,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
     expect(transaccion.rendicion.update).not.toHaveBeenCalled();
   });
 
-  it('una anulada que además no está Enviada ni Aprobada: gana RENDICION_ANULADA', async () => {
+  it('una anulada que además no está Aprobada: gana RENDICION_ANULADA', async () => {
     transaccion.rendicion.findFirst.mockResolvedValueOnce(
       lecturaDe('EN_CURSO', { isDeleted: true }),
     );
@@ -287,12 +287,30 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
     expect(detalles(res)).toEqual({ motivo: 'RENDICION_ANULADA' });
   });
 
-  it.each(['EN_CURSO', 'COMPLETA'])(
-    'una %s: 409 COBRO_ESTADO_INVALIDO con el estado actual, sin escribir',
+  it.each(['EN_CURSO', 'COMPLETA', 'ENVIADA', 'RECHAZADA'])(
+    'una %s: 409 COBRO_ESTADO_INVALIDO con el estado actual, sin escribir (solo una Aprobada se cobra)',
     async (estado) => {
       transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe(estado));
 
       const res = await registrar({ fecha: '2026-11-10' });
+
+      expect(res.status).toBe(409);
+      expect(detalles(res)).toEqual({ motivo: 'COBRO_ESTADO_INVALIDO', estadoActual: estado });
+      expect((res.body as { error: { message: string } }).error.message).toBe(
+        'Solo se puede registrar el cobro de una rendición aprobada.',
+      );
+      expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['ENVIADA', 'RECHAZADA'])(
+    'un cobro viejo en una %s no se edita: 409 COBRO_ESTADO_INVALIDO, sin escribir',
+    async (estado) => {
+      transaccion.rendicion.findFirst.mockResolvedValueOnce(
+        lecturaDe(estado, { cobroFecha: columnaDate('2026-11-10') }),
+      );
+
+      const res = await registrar({ fecha: '2026-11-11' });
 
       expect(res.status).toBe(409);
       expect(detalles(res)).toEqual({ motivo: 'COBRO_ESTADO_INVALIDO', estadoActual: estado });
@@ -312,7 +330,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
   it('un conflicto de serialización (P2034) se reintenta', async () => {
     transaccion.rendicion.findFirst
       .mockRejectedValueOnce(errorPrisma('P2034'))
-      .mockResolvedValueOnce(lecturaDe('ENVIADA'));
+      .mockResolvedValueOnce(lecturaDe('APROBADA'));
 
     const res = await registrar({ fecha: '2026-11-10' });
 
@@ -324,7 +342,7 @@ describe('PUT /rendiciones/:id/cobro (HU3.10)', () => {
 
 describe('registrarCobro: la fecha se vuelve a comprobar con el reloj del servidor (HU3.10)', () => {
   it('una fecha posterior al "ahora" que se le pasa: 400 en fecha, sin escribir', async () => {
-    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('ENVIADA'));
+    transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('APROBADA'));
 
     await expect(
       registrarCobro(RENDICION, { fecha: MANANA }, { ahora: HOY }),
@@ -339,7 +357,7 @@ describe('registrarCobro: la fecha se vuelve a comprobar con el reloj del servid
     const noche = new Date('2026-11-14T01:00:00.000Z'); // 13/11, 22:00 en Buenos Aires
     const hoyDeNoche = hoyEnBuenosAires(noche);
     expect(hoyDeNoche).toBe('2026-11-13');
-    transaccion.rendicion.findFirst.mockResolvedValue(lecturaDe('ENVIADA'));
+    transaccion.rendicion.findFirst.mockResolvedValue(lecturaDe('APROBADA'));
 
     await expect(
       registrarCobro(RENDICION, { fecha: diaSiguiente(hoyDeNoche) }, { ahora: noche }),
@@ -382,8 +400,8 @@ describe('DELETE /rendiciones/:id/cobro (HU3.10)', () => {
     expect(transaccion.rendicion.update).not.toHaveBeenCalled();
   });
 
-  it.each(['EN_CURSO', 'RECHAZADA'])(
-    'no mira el estado: quita un cobro que quedó en una %s',
+  it.each(['ENVIADA', 'RECHAZADA', 'EN_CURSO'])(
+    'no mira el estado: quita un cobro viejo que quedó en una %s',
     async (estado) => {
       transaccion.rendicion.findFirst.mockResolvedValueOnce(
         lecturaDe(estado, { cobroFecha: columnaDate('2026-11-10') }),

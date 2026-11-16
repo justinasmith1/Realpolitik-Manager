@@ -20,16 +20,16 @@ const diaSiguiente = (dia: string): string =>
 // nota y la regla de la fecha.
 
 describe('estados en los que se puede registrar el cobro', () => {
-  it('son Enviada, Aprobada y Rechazada', () => {
-    expect([...ESTADOS_COBRABLES]).toEqual(['ENVIADA', 'APROBADA', 'RECHAZADA']);
+  it('es solo Aprobada (aclaración de la operadora del 16/11/2026)', () => {
+    expect([...ESTADOS_COBRABLES]).toEqual(['APROBADA']);
   });
 
   it.each<[EstadoRendicion, boolean]>([
     ['EN_CURSO', false],
     ['COMPLETA', false],
-    ['ENVIADA', true],
+    ['ENVIADA', false],
     ['APROBADA', true],
-    ['RECHAZADA', true],
+    ['RECHAZADA', false],
   ])('esEstadoCobrable(%s) es %s', (estado, cobrable) => {
     expect(esEstadoCobrable(estado)).toBe(cobrable);
   });

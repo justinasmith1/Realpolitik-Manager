@@ -485,7 +485,7 @@ describe('PATCH /rendiciones/:id/estado — respuesta del cliente (HU3.8)', () =
     expect(historial.map((paso) => paso.motivo)).toEqual([null, 'Faltó el CUIT 20-12345678-4']);
   });
 
-  it('ENVIADA → RECHAZADA con un cobro registrado: 200, el rechazo no toca el cobro (HU3.10)', async () => {
+  it('ENVIADA → RECHAZADA con un cobro viejo (cargado antes de la regla): 200, el rechazo no toca el cobro (HU3.10)', async () => {
     devolverConEntrada();
     transaccion.rendicion.findFirst
       .mockResolvedValueOnce(lecturaDe('ENVIADA'))

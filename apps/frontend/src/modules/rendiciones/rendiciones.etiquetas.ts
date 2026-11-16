@@ -362,9 +362,12 @@ export const DESCRIPCION_QUITAR_COBRO_DIALOG =
 export const AVISO_COBRO_GUARDADO = 'Cobro guardado.';
 export const AVISO_COBRO_QUITADO = 'Se quitó la marca de cobrada.';
 
-/** Una acción sobre el cobro se pidió a una rendición que ya no es cobrable (otra persona la cambió). */
+/** Una acción sobre el cobro se pidió a una rendición que no es cobrable (solo una Aprobada lo es). */
 export const MENSAJE_COBRO_ESTADO_INVALIDO =
-  'Solo se puede registrar el cobro de una rendición enviada, aprobada o rechazada.';
+  'Solo se puede registrar el cobro de una rendición aprobada.';
+/** Un cobro cargado antes de la regla, en una rendición que no está Aprobada: se quita, no se edita. */
+export const TEXTO_COBRO_NO_EDITABLE = 'Solo se puede editar el cobro de una rendición aprobada.';
+
 /** El día del cobro como se lee en el detalle y el resumen: "Cobrada el 10/11/2026". */
 export const textoDeCobro = (dia: string): string => `${TEXTO_COBRADA} el ${diaLegible(dia)}`;
 
