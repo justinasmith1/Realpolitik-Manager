@@ -1,4 +1,4 @@
-import { ChevronsUpDownIcon, KeyRoundIcon, Loader2Icon, LogOutIcon } from 'lucide-react';
+import { ChevronsUpDownIcon, KeyRoundIcon, Loader2Icon, LogOutIcon, UsersIcon } from 'lucide-react';
 import type { Ref } from 'react';
 
 import {
@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useCerrarSesion, useSesion } from '@/modules/auth/hooks/useSesion';
+import { useCerrarSesion, usePermiso, useSesion } from '@/modules/auth/hooks/useSesion';
 import { ETIQUETA_DE_ROL } from '@/modules/auth/permisos';
 import { ClienteMonogram } from '@/modules/clientes/components/ClienteMonogram';
 
@@ -18,19 +18,22 @@ const etiqueta =
 interface CuentaMenuProps {
   /** "Cambiar contraseña": abre el panel del cambio voluntario (lo monta `AppLayout`). */
   onCambiarContrasena: () => void;
+  /** "Usuarios" (HU4.5): lleva a la administración de cuentas. Solo con `usuarios:administrar`. */
+  onUsuarios: () => void;
   /** El disparador del menú: el panel devuelve el foco acá al cerrarse. */
   disparadorRef?: Ref<HTMLButtonElement> | undefined;
 }
 
 /**
  * Cuenta de la persona con sesión, al pie del sidebar: quién es (nombre, email, rol), "Cambiar
- * contraseña" y "Cerrar sesión". "Usuarios" llega con HU4.5.
+ * contraseña", "Usuarios" (solo con `usuarios:administrar`, HU4.5) y "Cerrar sesión".
  *
  * "Cerrar sesión" espera la confirmación del servidor: si no se puede confirmar, la sesión sigue
  * abierta y se avisa acá mismo, sin simular que se cerró.
  */
-export function CuentaMenu({ onCambiarContrasena, disparadorRef }: CuentaMenuProps) {
+export function CuentaMenu({ onCambiarContrasena, onUsuarios, disparadorRef }: CuentaMenuProps) {
   const usuario = useSesion().data?.usuario;
+  const administraUsuarios = usePermiso('usuarios:administrar');
   const { cerrar, cerrando, error, descartarError } = useCerrarSesion();
   // Debajo de la guarda siempre hay usuario; en el render en que la sesión termina, ya no.
   if (!usuario) {
@@ -92,6 +95,12 @@ export function CuentaMenu({ onCambiarContrasena, disparadorRef }: CuentaMenuPro
             <KeyRoundIcon aria-hidden="true" />
             Cambiar contraseña
           </DropdownMenuItem>
+          {administraUsuarios && (
+            <DropdownMenuItem disabled={cerrando} onClick={onUsuarios}>
+              <UsersIcon aria-hidden="true" />
+              Usuarios
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled={cerrando} onClick={cerrar}>
             <LogOutIcon aria-hidden="true" />

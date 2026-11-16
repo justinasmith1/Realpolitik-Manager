@@ -925,13 +925,14 @@ describe('I. menú de cuenta y cambio voluntario de contraseña (HU4.2)', () => 
     ).not.toBeInTheDocument();
   };
 
+  // "Usuarios" solo con `usuarios:administrar` (HU4.5): ADMINISTRADOR.
   it.each([
-    ['ADMINISTRATIVO', 'Administrativo'],
-    ['ADMINISTRADOR', 'Administrador'],
-    ['CONSULTA', 'Consulta'],
+    ['ADMINISTRATIVO', 'Administrativo', ['Cambiar contraseña', 'Cerrar sesión']],
+    ['ADMINISTRADOR', 'Administrador', ['Cambiar contraseña', 'Usuarios', 'Cerrar sesión']],
+    ['CONSULTA', 'Consulta', ['Cambiar contraseña', 'Cerrar sesión']],
   ] as const)(
-    'el menú de cuenta (%s) muestra nombre, email y rol, y ofrece "Cambiar contraseña" y "Cerrar sesión", sin "Usuarios"',
-    async (rol, etiquetaDeRol) => {
+    'el menú de cuenta (%s) muestra nombre, email y rol, y sus opciones',
+    async (rol, etiquetaDeRol, opciones) => {
       servidor.sesion = sesionDePrueba({ rol });
       abrir('/clientes');
       await userEvent.click(
@@ -948,7 +949,7 @@ describe('I. menú de cuenta y cambio voluntario de contraseña (HU4.2)', () => 
         within(menu)
           .getAllByRole('menuitem')
           .map((item) => item.textContent),
-      ).toEqual(['Cambiar contraseña', 'Cerrar sesión']);
+      ).toEqual(opciones);
       expect(within(menu).getByRole('separator')).toBeInTheDocument();
     },
   );
