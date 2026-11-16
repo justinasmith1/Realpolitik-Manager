@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { EditarOcSheet, TEXTO_OC_GUARDADA } from '@/modules/rendiciones/components/EditarOcSheet';
 import {
   CLIENTE_ID,
+  errorJson,
   json,
   RENDICION_ID,
   rendicionJson,
@@ -84,5 +85,37 @@ describe('EditarOcSheet: cierre mientras guarda', () => {
 
     await user.keyboard('{Escape}');
     expect(onAbiertoChange).toHaveBeenCalledWith(false);
+  });
+});
+
+// El foco tras un error del servidor va al primer campo con error en el orden del formulario
+// (`ordenDeCamposOc`), no al último que informó el servidor.
+describe('EditarOcSheet: errores del servidor', () => {
+  it('un 400 en varios campos deja el foco en el primero del formulario', async () => {
+    fetchMock.mockImplementation((entrada, init) => {
+      if (urlDe(entrada).endsWith(`/clientes/${CLIENTE_ID}/ultima-oc`)) {
+        return Promise.resolve(json(null));
+      }
+      if (urlDe(entrada).endsWith(`/rendiciones/${RENDICION_ID}`) && init?.method === 'PATCH') {
+        return Promise.resolve(
+          errorJson(400, 'VALIDATION_ERROR', [
+            { campo: 'numeroOc', mensaje: 'El número de OC es obligatorio.' },
+            { campo: 'montoTotal', mensaje: 'El monto no es válido.' },
+          ]),
+        );
+      }
+      return Promise.resolve(json(null));
+    });
+    const { user } = renderPanel();
+
+    await user.type(screen.getByLabelText(/Número de OC/), 'OC-342');
+    await user.click(screen.getByRole('button', { name: 'Guardar OC' }));
+
+    expect(
+      await screen.findByText('Algunos datos no son válidos. Revisá los campos marcados.'),
+    ).toBeVisible();
+    expect(screen.getByLabelText(/Número de OC/)).toHaveFocus();
+    expect(screen.getByLabelText(/Número de OC/)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(/Monto total/)).toHaveAttribute('aria-invalid', 'true');
   });
 });
