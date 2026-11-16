@@ -140,6 +140,10 @@ function RegistrarCobroForm({ rendicion, onSubmit, onCancel, onQuitar }: Registr
   const { errors, isSubmitting } = formState;
 
   const idDe = (campo: CampoCobro) => `${id}-${campo}`;
+  const enfocarPrimerError = (conError: Partial<Record<CampoCobro, unknown>>) => {
+    const primero = ordenDeCamposCobro.find((campo) => conError[campo] !== undefined);
+    if (primero !== undefined) enfocarYMostrar(document.getElementById(idDe(primero)));
+  };
 
   const enviar = handleSubmit(
     async (datos) => {
@@ -151,14 +155,13 @@ function RegistrarCobroForm({ rendicion, onSubmit, onCancel, onQuitar }: Registr
         string,
       ][]) {
         setError(campo, { type: 'server', message });
-        enfocarYMostrar(document.getElementById(idDe(campo)));
       }
+      // Una sola vez y en el orden del formulario: el foco va al primero con error, no al último
+      // que informó el servidor.
+      enfocarPrimerError(errores.campos ?? {});
       setErrorGeneral(errores.general ?? null);
     },
-    (invalidos) => {
-      const primero = ordenDeCamposCobro.find((campo) => invalidos[campo] !== undefined);
-      if (primero !== undefined) enfocarYMostrar(document.getElementById(idDe(primero)));
-    },
+    (invalidos) => enfocarPrimerError(invalidos),
   );
 
   return (
