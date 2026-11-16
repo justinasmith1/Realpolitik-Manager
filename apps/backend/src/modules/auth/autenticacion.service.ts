@@ -180,9 +180,9 @@ export async function iniciarSesion(
       throw new CredencialesInvalidasError('inactiva');
     }
 
-    let sesion: SesionCreada;
+    let creada: Awaited<ReturnType<typeof crearSesion>>;
     try {
-      sesion = await crearSesion(usuario.id, usuario.passwordHash, ahora, {
+      creada = await crearSesion(usuario.id, usuario.passwordHash, ahora, {
         reemplazaA: tokenAnterior,
       });
     } catch (error) {
@@ -199,8 +199,10 @@ export async function iniciarSesion(
     }
 
     intento.exito();
-    const { id, nombre, rol, debeCambiarPassword } = usuario;
-    return { sesion, usuario: { id, email: usuario.email, nombre, rol, debeCambiarPassword } };
+    // Los datos confirmados bajo el bloqueo de la sesión, no los leídos antes de verificar: un
+    // cambio de rol o de nombre pudo confirmarse mientras se calculaba argon2.
+    const { usuario: confirmado, ...sesion } = creada;
+    return { sesion, usuario: confirmado };
   } finally {
     // Base caída, capacidad agotada o cualquier error sin veredicto: libera sin contar un fallo.
     // Si ya se cerró con `fallo` o `exito`, no hace nada.

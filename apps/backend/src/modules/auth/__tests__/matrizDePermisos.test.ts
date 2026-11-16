@@ -1,9 +1,9 @@
 // La matriz de permisos (docs/security/matriz-permisos.md) contra la app real.
 //
 // 1. Inventario: cada ruta de negocio montada figura en la matriz con el MISMO permiso, y cada fila
-//    de negocio de la matriz está montada (salvo las de historias futuras, listadas acá). Una ruta
-//    nueva sin fila, o con otro permiso, hace fallar este test; una ruta sin `autorizar()` ni
-//    siquiera deja crear la app.
+//    de negocio de la matriz está montada (salvo las de historias futuras, listadas acá; desde HU4.5
+//    no queda ninguna). Una ruta nueva sin fila, o con otro permiso, hace fallar este test; una ruta
+//    sin `autorizar()` ni siquiera deja crear la app.
 // 2. El catálogo del código (`PERMISOS_POR_ROL`) coincide con las columnas Sí/No de la matriz.
 // 3. Cada ruta, pedida como anónimo, con cada rol y con la contraseña temporal pendiente, responde
 //    lo que dice la matriz. Ningún pedido denegado toca la base de negocio (solo la tabla de
@@ -78,14 +78,17 @@ function leerMatriz(): FilaDeMatriz[] {
 const FILAS = leerMatriz();
 /** `/auth/*` aplica sus propias reglas (tests de auth); el resto es negocio. */
 const DE_NEGOCIO = FILAS.filter((f) => !f.ruta.startsWith('/auth'));
-/** En la matriz pero sin ruta todavía: la administración de usuarios es HU4.5. */
-const FUTURAS = new Set([
+/** En la matriz pero sin ruta todavía. Vacío desde HU4.5, que montó las cinco de `/usuarios`. */
+const FUTURAS = new Set<string>();
+
+/** Las rutas de la administración de usuarios (HU4.5): todas con `usuarios:administrar`. */
+const DE_USUARIOS = [
   'GET /usuarios',
   'POST /usuarios',
   'PATCH /usuarios/:id',
   'PATCH /usuarios/:id/estado',
   'POST /usuarios/:id/restablecer-password',
-]);
+];
 
 const clave = (metodo: string, ruta: string) => `${metodo} ${ruta}`;
 
@@ -106,14 +109,14 @@ afterEach(() => {
 });
 
 describe('inventario: rutas montadas ↔ matriz', () => {
-  it('lee una matriz con las 46 rutas de negocio implementadas más las de usuarios (HU4.5)', () => {
-    expect(DE_NEGOCIO).toHaveLength(46 + FUTURAS.size);
+  it('lee una matriz con las 51 rutas de negocio, las cinco de usuarios (HU4.5) incluidas', () => {
+    expect(DE_NEGOCIO).toHaveLength(51 + FUTURAS.size);
   });
 
   it('cada ruta montada figura en la matriz con el mismo permiso', () => {
     const enMatriz = new Map(DE_NEGOCIO.map((f) => [clave(f.metodo, f.ruta), f.permiso]));
     const montadas = rutasProtegidasDe(app);
-    expect(montadas).toHaveLength(46);
+    expect(montadas).toHaveLength(51);
     for (const ruta of montadas) {
       expect(enMatriz.get(clave(ruta.metodo, ruta.ruta)), clave(ruta.metodo, ruta.ruta)).toBe(
         ruta.permiso,
@@ -127,6 +130,12 @@ describe('inventario: rutas montadas ↔ matriz', () => {
       (c) => !montadas.has(c),
     );
     expect(new Set(sinMontar)).toEqual(FUTURAS);
+  });
+
+  it('las cinco rutas de usuarios están montadas, todas con usuarios:administrar', () => {
+    const deUsuarios = rutasProtegidasDe(app).filter((r) => r.ruta.startsWith('/usuarios'));
+    expect(deUsuarios.map((r) => clave(r.metodo, r.ruta)).sort()).toEqual([...DE_USUARIOS].sort());
+    for (const ruta of deUsuarios) expect(ruta.permiso).toBe('usuarios:administrar');
   });
 
   it('PERMISOS_POR_ROL coincide con las columnas Sí/No de cada fila', () => {
@@ -315,12 +324,14 @@ describe('fuera de las rutas de negocio', () => {
   });
 
   it('una ruta no registrada: 401 sin sesión, 403 con contraseña pendiente, 404 con sesión', async () => {
-    expect((await request(app).get('/usuarios')).status).toBe(401);
-    expect((await clienteDePrueba(app, 'CAMBIO_PENDIENTE').get('/usuarios')).status).toBe(403);
-    expect((await clienteDePrueba(app, 'ADMINISTRADOR').get('/usuarios')).status).toBe(404);
+    // Hasta HU4.5 se usaba `/usuarios`; ahora está montada.
+    const NO_REGISTRADA = '/sin-ruta';
+    expect((await request(app).get(NO_REGISTRADA)).status).toBe(401);
+    expect((await clienteDePrueba(app, 'CAMBIO_PENDIENTE').get(NO_REGISTRADA)).status).toBe(403);
+    expect((await clienteDePrueba(app, 'ADMINISTRADOR').get(NO_REGISTRADA)).status).toBe(404);
     // CONSULTA, como los demás roles, recibe 404 al leer; escribir corta antes (solo lectura).
-    expect((await clienteDePrueba(app, 'CONSULTA').get('/usuarios')).status).toBe(404);
-    expect((await clienteDePrueba(app, 'CONSULTA').post('/usuarios')).status).toBe(403);
+    expect((await clienteDePrueba(app, 'CONSULTA').get(NO_REGISTRADA)).status).toBe(404);
+    expect((await clienteDePrueba(app, 'CONSULTA').post(NO_REGISTRADA)).status).toBe(403);
     expect(accesos).toEqual([]);
   });
 
@@ -343,10 +354,21 @@ describe('fuera de las rutas de negocio', () => {
 });
 
 describe('CONSULTA (HU4.3): un GET no se autoriza solo por ser GET', () => {
-  // Lecturas que preparan una operación: su permiso es de operación, no de lectura.
+  // Lecturas que preparan una operación: su permiso es de operación, no de lectura. La lectura
+  // administrativa (`GET /usuarios`) no es de operación: ADMINISTRATIVO tampoco la tiene, y su
+  // fila de la matriz la prueba con cada rol (arriba).
   const GET_DE_OPERACION = IMPLEMENTADAS.filter(
-    (f) => f.metodo === 'GET' && !f.permiso.endsWith(':ver'),
+    (f) =>
+      f.metodo === 'GET' && !f.permiso.endsWith(':ver') && f.permiso !== 'usuarios:administrar',
   );
+
+  it('la única lectura administrativa es GET /usuarios', () => {
+    expect(
+      IMPLEMENTADAS.filter((f) => f.metodo === 'GET' && f.permiso === 'usuarios:administrar').map(
+        (f) => clave(f.metodo, f.ruta),
+      ),
+    ).toEqual(['GET /usuarios']);
+  });
 
   it('son exactamente la sugerencia de OC y los candidatos de un documento', () => {
     expect(GET_DE_OPERACION.map((f) => clave(f.metodo, f.ruta)).sort()).toEqual([

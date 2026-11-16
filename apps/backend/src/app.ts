@@ -28,6 +28,7 @@ import {
   rendicionesRouter,
 } from './modules/rendiciones/rendiciones.routes';
 import { tiposDocumentoRouter } from './modules/tipos-documento/tipos-documento.routes';
+import { usuariosRouter } from './modules/usuarios/usuarios.routes';
 import { healthRouter } from './routes/health';
 
 /**
@@ -121,6 +122,7 @@ export function createApp({
   montar('/requisitos', requisitosRouter);
   montar('/rendiciones', rendicionesRouter);
   montar('/tipos-documento', tiposDocumentoRouter);
+  montar('/usuarios', usuariosRouter);
   if (documentos) {
     montar('/documentos', crearDocumentosRouter(documentos.almacenamiento));
     montar('/rendiciones', documentosDeItemsRouter);
