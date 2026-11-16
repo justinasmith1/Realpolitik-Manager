@@ -31,9 +31,11 @@ import {
   itemJson,
   itemReunidoJson,
   json,
+  OPERADORA,
   RENDICION_ID,
   rendicionJson,
   urlDe,
+  POR_LA_OPERADORA,
 } from '@/modules/rendiciones/test/rendiciones.fixtures';
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -78,25 +80,58 @@ const ITEMS = [
 const OC = { numeroOc: 'OC-2026-88', montoMensual: 1250000, montoTotal: 15000000 };
 
 const HISTORIAL = {
-  EN_CURSO: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-15T15:00:00.000Z' }],
+  EN_CURSO: [
+    {
+      estadoAnterior: null,
+      estadoNuevo: 'EN_CURSO',
+      fecha: '2026-10-15T15:00:00.000Z',
+      ...POR_LA_OPERADORA,
+    },
+  ],
   COMPLETA: [
-    { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-15T15:00:00.000Z' },
-    { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: '2026-10-19T12:00:00.000Z' },
+    {
+      estadoAnterior: null,
+      estadoNuevo: 'EN_CURSO',
+      fecha: '2026-10-15T15:00:00.000Z',
+      ...POR_LA_OPERADORA,
+    },
+    {
+      estadoAnterior: 'EN_CURSO',
+      estadoNuevo: 'COMPLETA',
+      fecha: '2026-10-19T12:00:00.000Z',
+      ...POR_LA_OPERADORA,
+    },
   ],
   ENVIADA: [
-    { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-15T15:00:00.000Z' },
-    { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: '2026-10-19T12:00:00.000Z' },
+    {
+      estadoAnterior: null,
+      estadoNuevo: 'EN_CURSO',
+      fecha: '2026-10-15T15:00:00.000Z',
+      ...POR_LA_OPERADORA,
+    },
+    {
+      estadoAnterior: 'EN_CURSO',
+      estadoNuevo: 'COMPLETA',
+      fecha: '2026-10-19T12:00:00.000Z',
+      ...POR_LA_OPERADORA,
+    },
     {
       estadoAnterior: 'COMPLETA',
       estadoNuevo: 'ENVIADA',
       fecha: '2026-10-20T12:00:00.000Z',
       fechaEfectiva: '2026-10-20',
+      ...POR_LA_OPERADORA,
     },
   ],
 };
 const HISTORIAL_APROBADA = [
   ...HISTORIAL.ENVIADA,
-  { estadoAnterior: 'ENVIADA', estadoNuevo: 'APROBADA', fecha: '2026-11-02T12:00:00.000Z' },
+  {
+    estadoAnterior: 'ENVIADA',
+    estadoNuevo: 'APROBADA',
+    fecha: '2026-11-02T12:00:00.000Z',
+    ...POR_LA_OPERADORA,
+  },
 ];
 const MOTIVO = 'Falta la firma del intendente';
 const HISTORIAL_RECHAZADA = [
@@ -106,6 +141,7 @@ const HISTORIAL_RECHAZADA = [
     estadoNuevo: 'RECHAZADA',
     fecha: '2026-11-05T15:00:00.000Z',
     motivo: MOTIVO,
+    ...POR_LA_OPERADORA,
   },
 ];
 
@@ -277,6 +313,15 @@ describe.each(Object.entries(CASOS))('Detalle con CONSULTA: rendición %s', (_no
     // El historial de estados se despliega y lista cada paso.
     await user.click(screen.getByRole('button', { name: /^Historial/ }));
     expect(screen.getAllByRole('listitem').length).toBeGreaterThanOrEqual(caso.historial.length);
+    // HU4.6: CONSULTA también ve quién registró cada paso, y sobre el historial solo puede
+    // abrirlo y cerrarlo.
+    const historial = within(screen.getByRole('region', { name: 'Historial' }));
+    const pasos = historial.getAllByRole('listitem');
+    expect(pasos).toHaveLength(caso.historial.length);
+    for (const paso of pasos) {
+      expect(paso).toHaveTextContent(`Registrado por ${OPERADORA.nombre} · `);
+    }
+    expect(historial.getAllByRole('button')).toHaveLength(1);
 
     sinAccionesDeEscritura();
     soloLecturas();

@@ -21,6 +21,16 @@ export const urlDe = (entrada: Parameters<typeof fetch>[0]) =>
 
 const FECHA = '2026-10-15T15:00:00.000Z';
 
+/**
+ * Quién registró un paso del historial (HU4.6), como lo manda la API: en estos tests, cada cambio
+ * lo pide la operadora. Una entrada anterior a HU4.6 lleva los dos campos en `null`.
+ */
+export const OPERADORA = {
+  id: 'a7b8c9d0-e1f2-4345-8678-9abcdef01234',
+  nombre: 'Operadora de prueba',
+};
+export const POR_LA_OPERADORA = { registradoPor: OPERADORA, origen: 'MANUAL' } as const;
+
 export function rendicionJson(extra: Record<string, unknown> = {}) {
   return {
     id: RENDICION_ID,
@@ -35,7 +45,9 @@ export function rendicionJson(extra: Record<string, unknown> = {}) {
     creadoEn: FECHA,
     actualizadoEn: FECHA,
     // Solo lo lee el detalle; el listado lo ignora.
-    historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: FECHA }],
+    historial: [
+      { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: FECHA, ...POR_LA_OPERADORA },
+    ],
     ...extra,
   };
 }

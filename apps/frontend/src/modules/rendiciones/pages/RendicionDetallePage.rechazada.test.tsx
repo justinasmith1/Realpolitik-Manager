@@ -13,6 +13,7 @@ import {
   RENDICION_ID,
   rendicionJson,
   urlDe,
+  POR_LA_OPERADORA,
 } from '@/modules/rendiciones/test/rendiciones.fixtures';
 
 // Corregir una rendición rechazada y volver a enviarla (HU3.9): "Corregir" la reabre a En curso,
@@ -56,30 +57,44 @@ const REUNIDO = itemReunidoJson({ id: 'f1a2b3c4-d5e6-4789-8abc-def012345670' });
 
 /** Enviada el 20/10 y rechazada el 05/11 con un motivo. */
 const HASTA_EL_RECHAZO = [
-  { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-02T12:00:00.000Z' },
-  { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: '2026-10-19T12:00:00.000Z' },
+  {
+    estadoAnterior: null,
+    estadoNuevo: 'EN_CURSO',
+    fecha: '2026-10-02T12:00:00.000Z',
+    ...POR_LA_OPERADORA,
+  },
+  {
+    estadoAnterior: 'EN_CURSO',
+    estadoNuevo: 'COMPLETA',
+    fecha: '2026-10-19T12:00:00.000Z',
+    ...POR_LA_OPERADORA,
+  },
   {
     estadoAnterior: 'COMPLETA',
     estadoNuevo: 'ENVIADA',
     fecha: '2026-10-20T12:00:00.000Z',
     fechaEfectiva: '2026-10-20',
+    ...POR_LA_OPERADORA,
   },
   {
     estadoAnterior: 'ENVIADA',
     estadoNuevo: 'RECHAZADA',
     fecha: '2026-11-05T15:00:00.000Z',
     motivo: 'Falta la firma del intendente',
+    ...POR_LA_OPERADORA,
   },
 ];
 const REABIERTA = {
   estadoAnterior: 'RECHAZADA',
   estadoNuevo: 'EN_CURSO',
   fecha: '2026-11-06T12:00:00.000Z',
+  ...POR_LA_OPERADORA,
 };
 const COMPLETADA = {
   estadoAnterior: 'EN_CURSO',
   estadoNuevo: 'COMPLETA',
   fecha: '2026-11-07T12:00:00.000Z',
+  ...POR_LA_OPERADORA,
 };
 
 const RECHAZADA = { estado: 'RECHAZADA', historial: HASTA_EL_RECHAZO };
@@ -114,6 +129,7 @@ function servir(inicial: Record<string, unknown>) {
           estadoNuevo: estado,
           fecha: new Date().toISOString(),
           fechaEfectiva: fechaEnvio ?? null,
+          ...POR_LA_OPERADORA,
         },
       ];
       actual = { ...actual, estado, historial };
@@ -247,12 +263,14 @@ describe('RendicionDetallePage: el motivo del último rechazo, destacado (HU3.9)
           estadoNuevo: 'ENVIADA',
           fecha: '2026-11-08T12:00:00.000Z',
           fechaEfectiva: '2026-11-08',
+          ...POR_LA_OPERADORA,
         },
         {
           estadoAnterior: 'ENVIADA',
           estadoNuevo: 'RECHAZADA',
           fecha: '2026-11-10T15:00:00.000Z',
           motivo: 'La factura tiene otro CUIT',
+          ...POR_LA_OPERADORA,
         },
       ],
     });

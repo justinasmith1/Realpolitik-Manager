@@ -4,7 +4,13 @@ import { useId, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import { EstadoRendicionBadge } from '@/modules/rendiciones/components/EstadoRendicionBadge';
-import { fechaCorta, verboDelPaso } from '@/modules/rendiciones/rendiciones.etiquetas';
+import {
+  fechaCorta,
+  fechaYHora,
+  TEXTO_CAMBIO_AUTOMATICO,
+  TEXTO_SIN_RESPONSABLE,
+  verboDelPaso,
+} from '@/modules/rendiciones/rendiciones.etiquetas';
 
 interface HistorialDeEstadosProps {
   /** Del cambio más viejo al más nuevo, como lo devuelve la API. */
@@ -17,6 +23,11 @@ interface HistorialDeEstadosProps {
  * Completa"), sin repetir el anterior. Es un toggle: cerrado solo dice "Historial (N)" (el estado
  * actual ya está en la línea de Estado); toda la fila abre y cierra la lista. No se recuerda entre
  * visitas.
+ *
+ * Debajo de cada paso, quién lo registró y cuándo (HU4.6): "María González · 16/11/2026 14:32",
+ * con " · Automático" si lo hizo el sistema a partir de una operación de esa persona. La hora es la
+ * del registro (`fecha`), aunque el paso muestre la fecha de envío elegida. Sin responsable (una
+ * entrada anterior a HU4.6), "Sin responsable registrado". Es solo lectura, para todos los roles.
  */
 export function HistorialDeEstados({ historial }: HistorialDeEstadosProps) {
   const idTitulo = useId();
@@ -63,6 +74,27 @@ export function HistorialDeEstados({ historial }: HistorialDeEstadosProps) {
             {paso.motivo !== undefined && paso.motivo !== null && paso.motivo.trim() !== '' && (
               <p className="basis-full pl-1 text-sm text-content-secondary">{paso.motivo}</p>
             )}
+            {/* Quién y cuándo lo registró (HU4.6): el instante real del registro, no el del paso. */}
+            <p className="basis-full pl-1 text-xs wrap-anywhere text-content-secondary">
+              {paso.registradoPor === null ? (
+                TEXTO_SIN_RESPONSABLE
+              ) : (
+                <>
+                  <span className="sr-only">Registrado por </span>
+                  {paso.registradoPor.nombre}
+                </>
+              )}
+              <span aria-hidden="true"> · </span>
+              <time dateTime={paso.fecha.toISOString()} className="font-mono">
+                {fechaYHora(paso.fecha)}
+              </time>
+              {paso.origen === 'AUTOMATICO' && (
+                <>
+                  <span aria-hidden="true"> · </span>
+                  {TEXTO_CAMBIO_AUTOMATICO}
+                </>
+              )}
+            </p>
           </li>
         ))}
       </ol>

@@ -15,6 +15,7 @@ import {
   RENDICION_ID,
   rendicionJson,
   urlDe,
+  POR_LA_OPERADORA,
 } from '@/modules/rendiciones/test/rendiciones.fixtures';
 
 // Marcar como Enviada desde el detalle (HU3.7): el botón y el diálogo con la fecha, "Ya la envié"
@@ -102,6 +103,7 @@ function servir({
           estadoNuevo: estado,
           fecha: new Date().toISOString(),
           fechaEfectiva: fechaEnvio ?? null,
+          ...POR_LA_OPERADORA,
         },
       ];
       actual = { ...actual, estado, historial };
@@ -317,13 +319,24 @@ describe('RendicionDetallePage: una Enviada (HU3.7)', () => {
   const ENVIADA = {
     estado: 'ENVIADA',
     historial: [
-      { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-08T12:00:00.000Z' },
-      { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: '2026-10-09T12:00:00.000Z' },
+      {
+        estadoAnterior: null,
+        estadoNuevo: 'EN_CURSO',
+        fecha: '2026-10-08T12:00:00.000Z',
+        ...POR_LA_OPERADORA,
+      },
+      {
+        estadoAnterior: 'EN_CURSO',
+        estadoNuevo: 'COMPLETA',
+        fecha: '2026-10-09T12:00:00.000Z',
+        ...POR_LA_OPERADORA,
+      },
       {
         estadoAnterior: 'COMPLETA',
         estadoNuevo: 'ENVIADA',
         fecha: '2026-11-12T12:00:00.000Z',
         fechaEfectiva: '2026-10-05',
+        ...POR_LA_OPERADORA,
       },
     ],
   };

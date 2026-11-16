@@ -1,5 +1,9 @@
+import { fechaDelPaso } from '@realpolitik/shared';
+
 import {
   cantidadDeRendicionesEnElMes,
+  fechaCorta,
+  fechaYHora,
   MENSAJE_COBRO_ESTADO_INVALIDO,
   nombreDeItem,
   numeroDeWhatsappLegible,
@@ -10,6 +14,35 @@ import {
   textoDePendientes,
   tipoDeCliente,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
+
+// La fecha y hora del registro de un cambio de estado (HU4.6): dd/mm/aaaa HH:mm, 24 h, en
+// Buenos Aires, la resuelva quien la resuelva (`Intl`, no sumar ni restar horas).
+describe('fechaYHora', () => {
+  it('una tarde: "16/11/2026 14:32"', () => {
+    expect(fechaYHora(new Date('2026-11-16T17:32:00.000Z'))).toBe('16/11/2026 14:32');
+  });
+
+  it('un instante que en UTC ya es el día siguiente se lee con el día de Buenos Aires', () => {
+    expect(fechaYHora(new Date('2026-11-03T02:30:00.000Z'))).toBe('02/11/2026 23:30');
+    // Coincide con el día de `fechaCorta` para el mismo instante.
+    expect(fechaCorta(new Date('2026-11-03T02:30:00.000Z'))).toBe('02/11/2026');
+  });
+
+  it('a medianoche, 24 horas: "00:05", no "24:05" ni "12:05 a. m."', () => {
+    expect(fechaYHora(new Date('2026-11-16T03:05:00.000Z'))).toBe('16/11/2026 00:05');
+  });
+
+  it('en un envío, el día del paso (la fecha elegida) y el del registro no se confunden', () => {
+    const envio = {
+      estadoNuevo: 'ENVIADA',
+      fecha: new Date('2026-11-12T12:00:00.000Z'),
+      fechaEfectiva: '2026-10-05',
+    } as const;
+
+    expect(fechaCorta(fechaDelPaso(envio))).toBe('05/10/2026');
+    expect(fechaYHora(envio.fecha)).toBe('12/11/2026 09:00');
+  });
+});
 
 describe('nombreDeItem', () => {
   it('con un solo ejemplar, solo el nombre; con varios, cuál de cuántos', () => {

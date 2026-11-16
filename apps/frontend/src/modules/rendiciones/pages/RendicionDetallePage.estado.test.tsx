@@ -12,6 +12,7 @@ import {
   RENDICION_ID,
   rendicionJson,
   urlDe,
+  POR_LA_OPERADORA,
 } from '@/modules/rendiciones/test/rendiciones.fixtures';
 
 // La cabecera del detalle muestra el estado actual y el historial de cambios (HU3.1).
@@ -84,8 +85,18 @@ describe('RendicionDetallePage: estado e historial (HU3.1)', () => {
     servir({
       estado: 'COMPLETA',
       historial: [
-        { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-01T15:00:00.000Z' },
-        { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: '2026-10-20T15:00:00.000Z' },
+        {
+          estadoAnterior: null,
+          estadoNuevo: 'EN_CURSO',
+          fecha: '2026-10-01T15:00:00.000Z',
+          ...POR_LA_OPERADORA,
+        },
+        {
+          estadoAnterior: 'EN_CURSO',
+          estadoNuevo: 'COMPLETA',
+          fecha: '2026-10-20T15:00:00.000Z',
+          ...POR_LA_OPERADORA,
+        },
       ],
     });
     renderDetalle();
@@ -97,9 +108,10 @@ describe('RendicionDetallePage: estado e historial (HU3.1)', () => {
     const historial = within(screen.getByRole('region', { name: 'Historial' }));
     expect(historial.queryAllByRole('listitem')).toHaveLength(0);
     await userEvent.setup().click(historial.getByRole('button', { name: 'Historial (2)' }));
+    // Cada paso con quién lo registró y cuándo, en Buenos Aires (HU4.6).
     expect(historial.getAllByRole('listitem').map((li) => li.textContent)).toEqual([
-      '01/10/2026Se abrió enEn curso',
-      '20/10/2026Pasó aCompleta',
+      '01/10/2026Se abrió enEn cursoRegistrado por Operadora de prueba · 01/10/2026 12:00',
+      '20/10/2026Pasó aCompletaRegistrado por Operadora de prueba · 20/10/2026 12:00',
     ]);
   });
 

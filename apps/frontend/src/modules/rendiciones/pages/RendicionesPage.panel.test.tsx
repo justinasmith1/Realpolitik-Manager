@@ -14,6 +14,7 @@ import {
   RENDICION_ID,
   rendicionJson,
   urlDe,
+  POR_LA_OPERADORA,
 } from '@/modules/rendiciones/test/rendiciones.fixtures';
 
 // Pantalla Rendiciones, HU3.5: tocar una fila abre el resumen de su rendición al costado, de solo
@@ -188,11 +189,17 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
         [RENDICION_ID]: detalle({
           estado: 'ENVIADA',
           historial: [
-            { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-11-02T13:00:00.000Z' },
+            {
+              estadoAnterior: null,
+              estadoNuevo: 'EN_CURSO',
+              fecha: '2026-11-02T13:00:00.000Z',
+              ...POR_LA_OPERADORA,
+            },
             {
               estadoAnterior: 'EN_CURSO',
               estadoNuevo: 'ENVIADA',
               fecha: '2026-11-08T13:00:00.000Z',
+              ...POR_LA_OPERADORA,
             },
           ],
         }),
@@ -206,25 +213,38 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
 
   describe('el motivo del rechazo pendiente (HU3.9)', () => {
     const HASTA_EL_RECHAZO = [
-      { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-11-02T13:00:00.000Z' },
-      { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: '2026-11-03T13:00:00.000Z' },
+      {
+        estadoAnterior: null,
+        estadoNuevo: 'EN_CURSO',
+        fecha: '2026-11-02T13:00:00.000Z',
+        ...POR_LA_OPERADORA,
+      },
+      {
+        estadoAnterior: 'EN_CURSO',
+        estadoNuevo: 'COMPLETA',
+        fecha: '2026-11-03T13:00:00.000Z',
+        ...POR_LA_OPERADORA,
+      },
       {
         estadoAnterior: 'COMPLETA',
         estadoNuevo: 'ENVIADA',
         fecha: '2026-11-04T13:00:00.000Z',
         fechaEfectiva: '2026-11-04',
+        ...POR_LA_OPERADORA,
       },
       {
         estadoAnterior: 'ENVIADA',
         estadoNuevo: 'RECHAZADA',
         fecha: '2026-11-09T13:00:00.000Z',
         motivo: 'Falta el sello',
+        ...POR_LA_OPERADORA,
       },
     ];
     const REABIERTA = {
       estadoAnterior: 'RECHAZADA',
       estadoNuevo: 'EN_CURSO',
       fecha: '2026-11-10T13:00:00.000Z',
+      ...POR_LA_OPERADORA,
     };
 
     it.each([
@@ -256,12 +276,14 @@ describe('RendicionesPage, panel de resumen (HU3.5)', () => {
                 estadoAnterior: 'EN_CURSO',
                 estadoNuevo: 'COMPLETA',
                 fecha: '2026-11-11T13:00:00.000Z',
+                ...POR_LA_OPERADORA,
               },
               {
                 estadoAnterior: 'COMPLETA',
                 estadoNuevo: 'ENVIADA',
                 fecha: '2026-11-12T13:00:00.000Z',
                 fechaEfectiva: '2026-11-12',
+                ...POR_LA_OPERADORA,
               },
             ],
           }),
