@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
+import { clienteDePrueba, responsableDe } from '../../auth/__tests__/sesionSimulada';
 
 // Reintentos del alta de una rendición (`POST /clientes/:id/rendiciones`), con la base simulada.
 // Un conflicto de serialización se reintenta siempre, en cualquier punto del alta: también antes
@@ -110,7 +110,16 @@ beforeEach(() => {
         montoMensual: null,
         montoTotal: null,
         estado: 'EN_CURSO',
-        historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA }],
+        // El alta, registrada por la operadora de la sesión simulada (HU4.6).
+        historial: [
+          {
+            estadoAnterior: null,
+            estadoNuevo: 'EN_CURSO',
+            fecha: AHORA,
+            registradoPor: responsableDe(),
+            origen: 'MANUAL',
+          },
+        ],
         isDeleted: false,
         deletedAt: null,
         createdAt: AHORA,

@@ -14,6 +14,7 @@ import {
   RENDICION_ID,
   rendicionJson,
   urlDe,
+  POR_LA_OPERADORA,
 } from '@/modules/rendiciones/test/rendiciones.fixtures';
 
 // Una rendición que ya salió hacia el organismo (Enviada, Aprobada o Rechazada) no se arma ni se
@@ -64,13 +65,24 @@ const PENDIENTE = itemJson({
 });
 
 const HISTORIAL_ENVIADA = [
-  { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-02T12:00:00.000Z' },
-  { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: '2026-10-19T12:00:00.000Z' },
+  {
+    estadoAnterior: null,
+    estadoNuevo: 'EN_CURSO',
+    fecha: '2026-10-02T12:00:00.000Z',
+    ...POR_LA_OPERADORA,
+  },
+  {
+    estadoAnterior: 'EN_CURSO',
+    estadoNuevo: 'COMPLETA',
+    fecha: '2026-10-19T12:00:00.000Z',
+    ...POR_LA_OPERADORA,
+  },
   {
     estadoAnterior: 'COMPLETA',
     estadoNuevo: 'ENVIADA',
     fecha: '2026-10-20T12:00:00.000Z',
     fechaEfectiva: '2026-10-20',
+    ...POR_LA_OPERADORA,
   },
 ];
 const HISTORIAL_RECHAZADA = [
@@ -80,6 +92,7 @@ const HISTORIAL_RECHAZADA = [
     estadoNuevo: 'RECHAZADA',
     fecha: '2026-11-05T15:00:00.000Z',
     motivo: 'Falta la firma del intendente',
+    ...POR_LA_OPERADORA,
   },
 ];
 
@@ -90,7 +103,12 @@ const HISTORIAL: Record<string, unknown[]> = {
   ENVIADA: HISTORIAL_ENVIADA,
   APROBADA: [
     ...HISTORIAL_ENVIADA,
-    { estadoAnterior: 'ENVIADA', estadoNuevo: 'APROBADA', fecha: '2026-11-02T12:00:00.000Z' },
+    {
+      estadoAnterior: 'ENVIADA',
+      estadoNuevo: 'APROBADA',
+      fecha: '2026-11-02T12:00:00.000Z',
+      ...POR_LA_OPERADORA,
+    },
   ],
   RECHAZADA: HISTORIAL_RECHAZADA,
 };
@@ -114,7 +132,12 @@ function servir(inicial: Record<string, unknown>, items: unknown[] = [REUNIDO, P
         estado,
         historial: [
           ...(actual.historial as unknown[]),
-          { estadoAnterior: actual.estado, estadoNuevo: estado, fecha: new Date().toISOString() },
+          {
+            estadoAnterior: actual.estado,
+            estadoNuevo: estado,
+            fecha: new Date().toISOString(),
+            ...POR_LA_OPERADORA,
+          },
         ],
       };
       return Promise.resolve(json(actual));

@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
+import { clienteDePrueba, idDe } from '../../auth/__tests__/sesionSimulada';
 import { registrarCambioDeEstado } from '../rendiciones.service';
 
 // Estado de la rendición (HU3.1, ADR-0005), con la base simulada: nace EN_CURSO con su entrada
@@ -46,7 +46,17 @@ const HOY = new Date('2026-10-15T12:00:00-03:00');
 const AHORA = new Date('2026-10-15T15:00:00.000Z');
 const DESPUES = new Date('2026-10-20T15:00:00.000Z');
 
-const ALTA = { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA };
+// La operadora de la sesión simulada por defecto, como la lee el historial (HU4.6): id y nombre.
+const OPERADORA = { id: idDe('ADMINISTRATIVO'), nombre: 'Persona ADMINISTRATIVO' };
+const POR_LA_OPERADORA = { registradoPorId: OPERADORA.id, origen: 'MANUAL' } as const;
+
+const ALTA = {
+  estadoAnterior: null,
+  estadoNuevo: 'EN_CURSO',
+  fecha: AHORA,
+  registradoPor: OPERADORA,
+  origen: 'MANUAL',
+};
 
 function filaRendicion(extra: Record<string, unknown> = {}) {
   return {
@@ -127,14 +137,57 @@ describe('POST /clientes/:id/rendiciones: nace en curso', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           estado: 'EN_CURSO',
-          historial: { create: { estadoAnterior: null, estadoNuevo: 'EN_CURSO' } },
+          historial: {
+            create: {
+              estadoAnterior: null,
+              estadoNuevo: 'EN_CURSO',
+              registradoPorId: OPERADORA.id,
+              origen: 'MANUAL',
+            },
+          },
         }) as unknown,
       }),
     );
     expect(res.body).toMatchObject({
       estado: 'EN_CURSO',
-      historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA.toISOString() }],
+      historial: [
+        {
+          estadoAnterior: null,
+          estadoNuevo: 'EN_CURSO',
+          fecha: AHORA.toISOString(),
+          registradoPor: OPERADORA,
+          origen: 'MANUAL',
+        },
+      ],
     });
+  });
+
+  // HU4.6: el responsable sale de la sesión. Un responsable en el cuerpo es una clave desconocida:
+  // como en todo el contrato, se descarta sin error (no es 400) y no llega al servicio.
+  it('registra como responsable a quien tiene la sesión, aunque el cuerpo diga otro', async () => {
+    const res = await clienteDePrueba(app, 'ADMINISTRADOR')
+      .post(`/clientes/${CLIENTE}/rendiciones`)
+      .send({
+        anio: 2026,
+        mes: 10,
+        numeroFactura: 'B 00002-00001482',
+        registradoPorId: idDe('ADMINISTRATIVO'),
+        registradoPor: { id: idDe('ADMINISTRATIVO'), nombre: 'Otra persona' },
+        origen: 'AUTOMATICO',
+      });
+
+    expect(res.status).toBe(201);
+    const [{ data }] = transaccion.rendicion.create.mock.calls[0] as [
+      { data: { historial: { create: object } } },
+    ];
+    expect(data.historial.create).toEqual({
+      estadoAnterior: null,
+      estadoNuevo: 'EN_CURSO',
+      registradoPorId: idDe('ADMINISTRADOR'),
+      origen: 'MANUAL',
+    });
+    expect(data).not.toHaveProperty('registradoPorId');
+    expect(data).not.toHaveProperty('origen');
   });
 });
 
@@ -191,7 +244,16 @@ describe('GET /rendiciones/:id: estado e historial', () => {
     prismaMock.rendicion.findFirst.mockResolvedValue(
       filaRendicion({
         estado: 'COMPLETA',
-        historial: [ALTA, { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: DESPUES }],
+        historial: [
+          ALTA,
+          {
+            estadoAnterior: 'EN_CURSO',
+            estadoNuevo: 'COMPLETA',
+            fecha: DESPUES,
+            registradoPor: OPERADORA,
+            origen: 'MANUAL',
+          },
+        ],
       }),
     );
 
@@ -209,6 +271,9 @@ describe('GET /rendiciones/:id: estado e historial', () => {
               fecha: true,
               fechaEfectiva: true,
               motivo: true,
+              // HU4.6: del responsable, solo el id y el nombre; nada de email, rol ni sesiones.
+              registradoPor: { select: { id: true, nombre: true } },
+              origen: true,
             },
           },
         }) as unknown,
@@ -221,8 +286,49 @@ describe('GET /rendiciones/:id: estado e historial', () => {
         { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: DESPUES.toISOString() },
       ],
     });
+    const historial = (res.body as { historial: { registradoPor: unknown; origen: unknown }[] })
+      .historial;
+    expect(historial.map((h) => [h.registradoPor, h.origen])).toEqual([
+      [OPERADORA, 'MANUAL'],
+      [OPERADORA, 'MANUAL'],
+    ]);
     // El motivo (HU3.8) forma parte del contrato: sin valor en la base, viaja como null.
     expect((res.body as { historial: object[] }).historial[0]).toHaveProperty('motivo', null);
+  });
+
+  // HU4.6, CA9: las entradas anteriores a HU4.6 no tienen responsable ni origen, y no se inventan.
+  it('una entrada anterior a HU4.6 viaja con responsable y origen en null', async () => {
+    prismaMock.rendicion.findFirst.mockResolvedValue(
+      filaRendicion({ historial: [{ ...ALTA, registradoPor: null, origen: null }] }),
+    );
+
+    const res = await clienteDePrueba(app, 'CONSULTA').get(`/rendiciones/${RENDICION}`);
+
+    expect(res.status).toBe(200);
+    expect((res.body as { historial: object[] }).historial).toEqual([
+      {
+        estadoAnterior: null,
+        estadoNuevo: 'EN_CURSO',
+        fecha: AHORA.toISOString(),
+        fechaEfectiva: null,
+        motivo: null,
+        registradoPor: null,
+        origen: null,
+      },
+    ]);
+  });
+
+  it('del responsable la respuesta lleva solo el id y el nombre', async () => {
+    prismaMock.rendicion.findFirst.mockResolvedValue(
+      filaRendicion({
+        historial: [{ ...ALTA, registradoPor: { ...OPERADORA, email: 'x@prueba.example' } }],
+      }),
+    );
+
+    const res = await clienteDePrueba(app).get(`/rendiciones/${RENDICION}`);
+
+    const [entrada] = (res.body as { historial: { registradoPor: unknown }[] }).historial;
+    expect(entrada?.registradoPor).toEqual(OPERADORA);
   });
 
   it('una anulada conserva el último estado que tenía', async () => {
@@ -244,14 +350,18 @@ describe('registrarCambioDeEstado (sin endpoint)', () => {
         Promise.resolve(
           filaRendicion({
             estado: data.estado,
-            historial: [ALTA, { ...data.historial.create, fecha: DESPUES }],
+            // Como la lee Prisma: el responsable resuelto a su id y nombre.
+            historial: [
+              ALTA,
+              { ...data.historial.create, fecha: DESPUES, registradoPor: OPERADORA },
+            ],
           }),
         ),
     );
   });
 
   it('actualiza el estado y agrega la entrada con el anterior, en una sola escritura', async () => {
-    const detalle = await registrarCambioDeEstado(RENDICION, 'COMPLETA');
+    const detalle = await registrarCambioDeEstado(RENDICION, 'COMPLETA', POR_LA_OPERADORA);
 
     expect(transaccion.rendicion.update).toHaveBeenCalledTimes(1);
     expect(transaccion.rendicion.update).toHaveBeenCalledWith(
@@ -260,12 +370,19 @@ describe('registrarCambioDeEstado (sin endpoint)', () => {
         data: {
           estado: 'COMPLETA',
           historial: {
-            create: { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', motivo: null },
+            create: {
+              estadoAnterior: 'EN_CURSO',
+              estadoNuevo: 'COMPLETA',
+              motivo: null,
+              registradoPorId: OPERADORA.id,
+              origen: 'MANUAL',
+            },
           },
         },
       }),
     );
     expect(detalle.estado).toBe('COMPLETA');
+    expect(detalle.historial.at(-1)).toMatchObject({ registradoPor: OPERADORA, origen: 'MANUAL' });
     expect(detalle.historial.map((h) => [h.estadoAnterior, h.estadoNuevo])).toEqual([
       [null, 'EN_CURSO'],
       ['EN_CURSO', 'COMPLETA'],
@@ -273,7 +390,7 @@ describe('registrarCambioDeEstado (sin endpoint)', () => {
   });
 
   it('lee el estado anterior y escribe dentro de una transacción serializable', async () => {
-    await registrarCambioDeEstado(RENDICION, 'COMPLETA');
+    await registrarCambioDeEstado(RENDICION, 'COMPLETA', POR_LA_OPERADORA);
 
     expect(prismaMock.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -287,7 +404,7 @@ describe('registrarCambioDeEstado (sin endpoint)', () => {
   it('rechazar una rendición con cobro registrado se puede, y no escribe el cobro (HU3.10)', async () => {
     transaccion.rendicion.findFirst.mockResolvedValue({ estado: 'ENVIADA' });
 
-    await registrarCambioDeEstado(RENDICION, 'RECHAZADA', 'Falta la firma');
+    await registrarCambioDeEstado(RENDICION, 'RECHAZADA', POR_LA_OPERADORA, 'Falta la firma');
 
     expect(transaccion.rendicion.update).toHaveBeenCalledTimes(1);
     const [{ data }] = transaccion.rendicion.update.mock.calls[0] as [
@@ -300,7 +417,7 @@ describe('registrarCambioDeEstado (sin endpoint)', () => {
   it('guarda el motivo cuando viene (lo va a usar el rechazo, HU3.8)', async () => {
     transaccion.rendicion.findFirst.mockResolvedValue({ estado: 'ENVIADA' });
 
-    await registrarCambioDeEstado(RENDICION, 'RECHAZADA', 'Falta la constancia');
+    await registrarCambioDeEstado(RENDICION, 'RECHAZADA', POR_LA_OPERADORA, 'Falta la constancia');
 
     expect(transaccion.rendicion.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -310,6 +427,8 @@ describe('registrarCambioDeEstado (sin endpoint)', () => {
               estadoAnterior: 'ENVIADA',
               estadoNuevo: 'RECHAZADA',
               motivo: 'Falta la constancia',
+              registradoPorId: OPERADORA.id,
+              origen: 'MANUAL',
             },
           },
         }) as unknown,
@@ -320,7 +439,9 @@ describe('registrarCambioDeEstado (sin endpoint)', () => {
   it('si la rendición no existe, es un 404 y no escribe nada', async () => {
     transaccion.rendicion.findFirst.mockResolvedValue(null);
 
-    await expect(registrarCambioDeEstado(RENDICION, 'COMPLETA')).rejects.toMatchObject({
+    await expect(
+      registrarCambioDeEstado(RENDICION, 'COMPLETA', POR_LA_OPERADORA),
+    ).rejects.toMatchObject({
       status: 404,
     });
     expect(transaccion.rendicion.update).not.toHaveBeenCalled();

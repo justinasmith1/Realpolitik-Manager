@@ -47,7 +47,8 @@ type AplicacionVigenteRow = Prisma.AplicacionDocumentoGetPayload<typeof APLICACI
 
 /**
  * El historial de estados de una rendición (HU3.1), del cambio más viejo al más nuevo. Dos cambios
- * con la misma fecha quedan en el orden en que se registraron.
+ * con la misma fecha quedan en el orden en que se registraron. Del responsable (HU4.6), solo el id
+ * y el nombre actual: Prisma lo resuelve en una consulta para todas las entradas, sin N+1.
  */
 export const HISTORIAL_EN_ORDEN = {
   orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }],
@@ -57,6 +58,8 @@ export const HISTORIAL_EN_ORDEN = {
     fecha: true,
     fechaEfectiva: true,
     motivo: true,
+    registradoPor: { select: { id: true, nombre: true } },
+    origen: true,
   },
 } satisfies Prisma.Rendicion$historialArgs;
 
@@ -85,13 +88,20 @@ const cobroDe = (row: { cobroFecha?: Date | null; cobroNota?: string | null }) =
     ? { fecha: diaDeColumnaDate(row.cobroFecha), nota: row.cobroNota ?? null }
     : null;
 
-/** Una entrada del historial como la expone la API (la fecha efectiva como día). */
+/**
+ * Una entrada del historial como la expone la API (la fecha efectiva como día). `registradoPor` y
+ * `origen` (HU4.6) van tal como los leyó Prisma: `null` en las entradas anteriores a HU4.6. Sin
+ * `?? null`: una consulta que no los proyecte tiene que fallar al validar, no pasar como "sin
+ * registro".
+ */
 export const entradaDeHistorial = (row: HistorialRow) => ({
   estadoAnterior: row.estadoAnterior,
   estadoNuevo: row.estadoNuevo,
   fecha: row.fecha,
   fechaEfectiva: diaEfectivoDe(row.fechaEfectiva),
   motivo: row.motivo ?? null,
+  registradoPor: row.registradoPor,
+  origen: row.origen,
 });
 
 /** Un ítem y, si se cargó, su aplicación vigente. */

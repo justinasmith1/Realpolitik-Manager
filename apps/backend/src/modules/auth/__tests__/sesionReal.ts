@@ -15,6 +15,7 @@
 //   afterAll:  await sesiones.limpiar(); await prisma.$disconnect();
 //   await sesiones.cliente(app).post('/clientes').send({ … });         // ADMINISTRATIVO
 //   await sesiones.cliente(app, 'CONSULTA').get('/clientes');
+//   sesiones.idDe('ADMINISTRATIVO');                                   // id de su cuenta (HU4.6)
 
 import type { Express } from 'express';
 
@@ -34,6 +35,7 @@ export const HASH_SIN_CONTRASENA =
 export function sesionesDePrueba() {
   const prefijo = `sesiones-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const tokens = new Map<IdentidadDePrueba, string>();
+  const ids = new Map<IdentidadDePrueba, string>();
 
   return {
     prefijo,
@@ -53,6 +55,7 @@ export function sesionesDePrueba() {
             debeCambiarPassword: identidad === 'CAMBIO_PENDIENTE',
           },
         });
+        ids.set(identidad, usuario.id);
         tokens.set(identidad, (await crearSesion(usuario.id, HASH_SIN_CONTRASENA)).token);
       }
     },
@@ -65,6 +68,16 @@ export function sesionesDePrueba() {
         Cookie: `${NOMBRE_COOKIE_DE_SESION}=${token}`,
         Origin: ORIGEN_DE_PRUEBA,
       });
+    },
+
+    /**
+     * El id de la cuenta de la identidad: el responsable que registra el historial de estados
+     * cuando el pedido va con su sesión (HU4.6), o cuando un test llama al servicio en su nombre.
+     */
+    idDe(identidad: IdentidadDePrueba = 'ADMINISTRATIVO'): string {
+      const id = ids.get(identidad);
+      if (id === undefined) throw new Error('sesionesDePrueba: falta `await preparar()`.');
+      return id;
     },
 
     /** Borra las cuentas de este archivo y, en cascada, sus sesiones. */

@@ -372,12 +372,27 @@ export const ETIQUETAS_ESTADO_RENDICION: Record<EstadoRendicion, string> = {
 };
 
 /**
+ * Quién decidió un cambio de estado (HU4.6, ADR-0006). Isomorfo con el enum de Prisma. `MANUAL`:
+ * lo pidió la persona (abrir, marcar, enviar, aprobar, rechazar, corregir). `AUTOMATICO`: lo hizo
+ * el sistema como consecuencia de una operación de esa persona (la vuelta a En curso al sumar un
+ * requisito a una rendición Completa).
+ */
+export const OrigenCambioEstado = z.enum(['MANUAL', 'AUTOMATICO']);
+
+export type OrigenCambioEstado = z.infer<typeof OrigenCambioEstado>;
+
+/**
  * Un cambio de estado. `estadoAnterior` es `null` solo en la primera entrada, la del alta.
  * `fecha` es cuándo se registró el cambio (y ordena el historial). `fechaEfectiva` (HU3.7) es el
  * día en que ocurrió, si la operadora lo indicó y puede ser anterior al registro: hoy, solo la
  * fecha de envío de la entrada `ENVIADA` (`AAAA-MM-DD`); `null` en las demás. El backend
  * siempre la manda; es opcional en el contrato para no exigirla a quien no la usa. Para mostrar la fecha
  * de un paso, `fechaDelPaso`.
+ *
+ * `registradoPor` y `origen` (HU4.6) son de la respuesta, nunca del pedido: el responsable sale de
+ * la sesión. `registradoPor` es la persona con su nombre actual (sin email, rol ni otros datos);
+ * los dos son `null` en las entradas anteriores a HU4.6, que no tienen responsable registrado.
+ * Las dos claves son obligatorias: una respuesta sin ellas no es válida.
  */
 export const HistorialEstadoRendicionSchema = z.object({
   estadoAnterior: EstadoRendicion.nullable(),
@@ -386,6 +401,8 @@ export const HistorialEstadoRendicionSchema = z.object({
   fechaEfectiva: z.string().refine(esDiaValido).nullable().optional(),
   /** Texto que acompaña el cambio (HU3.8): qué pidió corregir el cliente en `RECHAZADA`. */
   motivo: z.string().nullable().optional(),
+  registradoPor: z.object({ id: z.string().uuid(), nombre: z.string() }).nullable(),
+  origen: OrigenCambioEstado.nullable(),
 });
 
 export type HistorialEstadoRendicion = z.infer<typeof HistorialEstadoRendicionSchema>;

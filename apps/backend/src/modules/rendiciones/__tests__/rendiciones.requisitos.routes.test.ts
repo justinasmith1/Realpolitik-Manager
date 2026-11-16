@@ -3,7 +3,7 @@ import type request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
+import { clienteDePrueba, responsableDe } from '../../auth/__tests__/sesionSimulada';
 
 // `POST /rendiciones/:id/requisitos/:requisitoId` (contrato 4.5), con la base simulada: se
 // recorre route → validate → controller → service → mapper → errorHandler.
@@ -112,7 +112,16 @@ beforeEach(() => {
       mes: 10,
       numeroFactura: 'A 00001-00000001',
       estado: 'EN_CURSO',
-      historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA }],
+      // El alta, registrada por la operadora de la sesión simulada (HU4.6).
+      historial: [
+        {
+          estadoAnterior: null,
+          estadoNuevo: 'EN_CURSO',
+          fecha: AHORA,
+          registradoPor: responsableDe(),
+          origen: 'MANUAL',
+        },
+      ],
       isDeleted: false,
       deletedAt: null,
       createdAt: AHORA,

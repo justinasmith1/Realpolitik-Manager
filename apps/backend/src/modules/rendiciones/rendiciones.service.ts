@@ -26,6 +26,7 @@ import {
   type ItemChecklistNuevo,
   type ListarRendicionesDelMesQuery,
   type ListarRendicionesQuery,
+  type OrigenCambioEstadoType,
   type PreparacionEnvio,
   type RegistrarCobroDto,
   type Rendicion,
@@ -286,6 +287,8 @@ async function insertarRendicion(
   tx: Prisma.TransactionClient,
   clienteId: string,
   input: CreateRendicionDto,
+  /** Quien la abre (HU4.6): el usuario de la sesión. */
+  registradoPorId: string,
 ): Promise<RendicionDetalle> {
   const cliente = await exigirClienteActivo(tx, clienteId);
   const emisor = emisorDeLaRendicion(input.emisor, cliente.emisor);
@@ -308,9 +311,17 @@ async function insertarRendicion(
         ...(input.numeroOc !== undefined && { numeroOc: input.numeroOc }),
         ...(input.montoMensual !== undefined && { montoMensual: input.montoMensual }),
         ...(input.montoTotal !== undefined && { montoTotal: input.montoTotal }),
-        // Nace en curso, con la primera entrada de su historial, en la misma transacción.
+        // Nace en curso, con la primera entrada de su historial, en la misma transacción. Abrirla
+        // es un pedido de la persona: queda como responsable, con origen MANUAL (HU4.6).
         estado: ESTADO_INICIAL,
-        historial: { create: { estadoAnterior: null, estadoNuevo: ESTADO_INICIAL } },
+        historial: {
+          create: {
+            estadoAnterior: null,
+            estadoNuevo: ESTADO_INICIAL,
+            registradoPorId,
+            origen: 'MANUAL',
+          },
+        },
         items: { createMany: { data: items } },
       },
       include: CON_ITEMS,
@@ -338,14 +349,20 @@ async function insertarRendicion(
  * Un conflicto de serialización (P2034) lo reintenta `enTransaccionSerializable`, en cualquier
  * punto del alta (también antes de resolver el emisor): llega acá solo si se agotaron los
  * intentos, y se propaga.
+ *
+ * `registradoPorId` es el usuario de la sesión (HU4.6): queda como responsable de la entrada
+ * inicial del historial.
  */
 export async function abrirRendicion(
   clienteId: string,
   input: CreateRendicionDto,
+  registradoPorId: string,
 ): Promise<RendicionDetalle> {
   for (let intento = 1; ; intento += 1) {
     try {
-      return await enTransaccionSerializable((tx) => insertarRendicion(tx, clienteId, input));
+      return await enTransaccionSerializable((tx) =>
+        insertarRendicion(tx, clienteId, input, registradoPorId),
+      );
     } catch (error) {
       if (!(error instanceof FacturaDuplicadaEnAlta)) {
         throw error;
@@ -512,27 +529,42 @@ export async function obtenerRendicion(id: string): Promise<RendicionDetalle> {
  * HU que cambian el estado (Completa, Enviada, Aprobada, Rechazada y la corrección de una
  * rechazada): no tiene endpoint. No valida transiciones ni la vigencia: eso lo decide cada una de
  * esas HU. `motivo` acompaña el cambio: el rechazo (HU3.8) guarda qué pidió corregir el cliente.
+ * `responsable` es obligatorio (HU4.6): ninguna entrada nueva queda sin quién la registró.
  */
 export async function registrarCambioDeEstado(
   rendicionId: string,
   estadoNuevo: EstadoRendicionType,
+  responsable: ResponsableDelCambio,
   motivo: string | null = null,
 ): Promise<RendicionDetalle> {
   return enTransaccionSerializable((tx) =>
-    registrarCambioDeEstadoEnTx(tx, rendicionId, estadoNuevo, motivo),
+    registrarCambioDeEstadoEnTx(tx, rendicionId, estadoNuevo, responsable, motivo),
   );
+}
+
+/**
+ * Quién registra un cambio de estado (HU4.6, ADR-0006). `registradoPorId` es siempre el usuario de
+ * la sesión cuyo pedido produjo el cambio; nunca sale del cuerpo del pedido. `origen` dice si el
+ * cambio lo pidió esa persona (`MANUAL`) o lo hizo el sistema como consecuencia de su operación
+ * (`AUTOMATICO`: la vuelta a En curso al sumar un requisito a una Completa).
+ */
+export interface ResponsableDelCambio {
+  registradoPorId: string;
+  origen: OrigenCambioEstadoType;
 }
 
 /**
  * Lo que hace `registrarCambioDeEstado`, dentro de una transacción que abre quien llama (HU3.6):
  * así otra operación puede cambiar el estado de forma atómica con su propia escritura (el
  * auto-revert al sumar un requisito). Quien llama la corre en serializable. Mismas reglas: no valida
- * transiciones ni la vigencia.
+ * transiciones ni la vigencia. El responsable va en la misma escritura que el estado: se confirman
+ * o se revierten juntos.
  */
 async function registrarCambioDeEstadoEnTx(
   tx: Prisma.TransactionClient,
   rendicionId: string,
   estadoNuevo: EstadoRendicionType,
+  { registradoPorId, origen }: ResponsableDelCambio,
   motivo: string | null = null,
   /** El día en que ocurrió (`AAAA-MM-DD`), si no es el del registro: la fecha de envío (HU3.7). */
   fechaEfectiva: string | null = null,
@@ -557,6 +589,8 @@ async function registrarCambioDeEstadoEnTx(
           estadoAnterior: rendicion.estado,
           estadoNuevo,
           motivo,
+          registradoPorId,
+          origen,
           ...(fechaEfectiva !== null && { fechaEfectiva: columnaDateDeDia(fechaEfectiva) }),
         },
       },
@@ -607,10 +641,13 @@ const TRANSICIONES_PERMITIDAS: Readonly<
  *   tampoco cambia la fecha de envío). Una anulada es `409 RENDICION_ANULADA`.
  * El chequeo y el cambio van en la misma transacción serializable: si un documento cambia en el
  * medio, se reintenta.
+ * - `registradoPorId` es el usuario de la sesión (HU4.6): queda como responsable del cambio, con
+ *   origen `MANUAL`. Si no se escribe (mismo estado o un error), no queda nada.
  */
 export async function cambiarEstadoDeRendicion(
   rendicionId: string,
   estadoNuevo: EstadoRendicionType,
+  registradoPorId: string,
   {
     fechaEnvio,
     motivo,
@@ -669,7 +706,14 @@ export async function cambiarEstadoDeRendicion(
       }
     }
 
-    return registrarCambioDeEstadoEnTx(tx, rendicionId, estadoNuevo, motivo ?? null, fechaEfectiva);
+    return registrarCambioDeEstadoEnTx(
+      tx,
+      rendicionId,
+      estadoNuevo,
+      { registradoPorId, origen: 'MANUAL' },
+      motivo ?? null,
+      fechaEfectiva,
+    );
   });
 }
 
@@ -887,6 +931,8 @@ async function insertarItemsDeRequisito(
   tx: Prisma.TransactionClient,
   rendicionId: string,
   requisitoId: string,
+  /** Quien suma el requisito (HU4.6): el usuario de la sesión. */
+  registradoPorId: string,
 ): Promise<RendicionDetalle> {
   const rendicion = await tx.rendicion.findFirst({
     where: { id: rendicionId, cliente: { isDeleted: false } },
@@ -940,12 +986,14 @@ async function insertarItemsDeRequisito(
   });
 
   // Una Completa con un ítem pendiente deja de estar completa (HU3.6): vuelve a En curso en esta
-  // misma transacción. El resultado ya trae los ítems nuevos.
+  // misma transacción. El resultado ya trae los ítems nuevos. El cambio lo decide el sistema
+  // (AUTOMATICO), pero lo produjo el pedido de quien sumó el requisito: es su responsable (HU4.6).
   if (rendicion.estado === 'COMPLETA') {
     return registrarCambioDeEstadoEnTx(
       tx,
       rendicionId,
       'EN_CURSO',
+      { registradoPorId, origen: 'AUTOMATICO' },
       'Revertida a En curso al agregar requisito',
     );
   }
@@ -965,14 +1013,18 @@ async function insertarItemsDeRequisito(
  * En una transacción serializable: dos pedidos simultáneos del mismo requisito no pueden sumar
  * dos veces. Si chocan, el reintento ve los ítems confirmados y responde 409; si la base rechaza
  * el ítem repetido (índice único de rendición, requisito y ordinal), también es ese 409.
+ *
+ * `registradoPorId` es el usuario de la sesión (HU4.6): si la rendición estaba Completa, queda como
+ * responsable de la vuelta automática a En curso.
  */
 export async function agregarRequisitoARendicion(
   rendicionId: string,
   requisitoId: string,
+  registradoPorId: string,
 ): Promise<RendicionDetalle> {
   try {
     return await enTransaccionSerializable((tx) =>
-      insertarItemsDeRequisito(tx, rendicionId, requisitoId),
+      insertarItemsDeRequisito(tx, rendicionId, requisitoId, registradoPorId),
     );
   } catch (error) {
     if (esItemDuplicado(error)) {

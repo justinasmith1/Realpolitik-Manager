@@ -57,6 +57,15 @@ enum EstadoRendicion {
   RECHAZADA
 }
 
+/// Quién decidió un cambio de estado (HU4.6, ADR-0006). Isomorfo con `OrigenCambioEstado` de
+/// shared. MANUAL: lo pidió la persona (abrir, marcar, enviar, aprobar, rechazar, corregir).
+/// AUTOMATICO: lo hizo el sistema como consecuencia de una operación de esa persona (la vuelta a
+/// En curso al sumar un requisito a una rendición Completa).
+enum OrigenCambioEstado {
+  MANUAL
+  AUTOMATICO
+}
+
 /// Rol fijo de negocio (épica 4, ADR-0006). Isomorfo con `RolUsuario` de shared. No depende del
 /// área de la persona; los permisos de cada rol se declaran en el código, no en la base.
 enum RolUsuario {
@@ -132,6 +141,11 @@ enum PeriodicidadTipo {
 // Estado de la rendición (HU3.1, ADR-0005): la migración `20261103120000_hu3_1_estado_rendicion`
 // agrega `Rendicion.estado` y la tabla `HistorialEstadoRendicion`, y le da a cada rendición
 // existente (también a las anuladas) el estado EN_CURSO con su entrada inicial de historial.
+//
+// Responsable de cada cambio de estado (HU4.6, ADR-0006): CHECK en la migración
+// `20261116120000_hu4_6_responsable_historial`. No distingue una entrada anterior a HU4.6 de una
+// nueva escrita sin los dos campos: eso lo garantiza el servicio, que los exige.
+//   ck_historial_responsable_con_origen registradoPorId y origen: los dos cargados o los dos NULL
 //
 // Documentos y sus aplicaciones (HU2.8, ADR-0004): CHECK e índice parcial en la migración
 // `20261029120000_hu2_8_documentos_aplicaciones`.
@@ -381,8 +395,19 @@ model HistorialEstadoRendicion {
   /// El día en que ocurrió, si la operadora lo indicó (HU3.7): hoy, solo la fecha de envío de la
   /// entrada ENVIADA, que puede ser anterior al registro. Null en las demás.
   fechaEfectiva  DateTime?        @db.Date
-  /// Por qué (lo usa el rechazo, HU3.8). Hoy siempre null.
+  /// Texto que acompaña el cambio: qué pidió corregir el cliente en el rechazo (HU3.8) y el de la
+  /// vuelta automática a En curso al sumar un requisito (HU3.6). Null en los demás.
   motivo         String?
+
+  // Responsable (HU4.6). `registradoPorId` es la persona de la sesión cuyo pedido produjo el
+  // cambio; en la vuelta automática, la que sumó el requisito. Se guarda la referencia y no una
+  // copia del nombre: se muestra el nombre actual. Restrict: un usuario con cambios registrados no
+  // se puede borrar (se desactiva, HU4.5). Las entradas anteriores a HU4.6 no tienen responsable
+  // ni origen (los dos NULL) y no se completan: no se sabe quién fue. CHECK
+  // ck_historial_responsable_con_origen, en SQL: los dos cargados o los dos NULL.
+  registradoPorId String?             @db.Uuid
+  registradoPor   Usuario?            @relation(fields: [registradoPorId], references: [id], onDelete: Restrict)
+  origen          OrigenCambioEstado?
 
   // Auditoría
   createdAt      DateTime         @default(now())
@@ -552,6 +577,9 @@ model Usuario {
   updatedAt             DateTime   @updatedAt
 
   sesiones Sesion[]
+
+  /// Cambios de estado de rendiciones que registró (HU4.6). Por ellos la cuenta no se borra.
+  cambiosDeEstado HistorialEstadoRendicion[]
 }
 
 /// Sesión opaca y revocable. El token aleatorio solo vive en la cookie del navegador; acá se guarda

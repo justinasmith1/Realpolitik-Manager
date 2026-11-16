@@ -4,7 +4,7 @@ import type request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
+import { clienteDePrueba, responsableDe } from '../../auth/__tests__/sesionSimulada';
 import { registrarCobro } from '../rendiciones.service';
 
 // Cobro informado por el cliente (HU3.10), con la base simulada: `PUT` y `DELETE
@@ -62,7 +62,16 @@ const filaDetalle = (
   cobroFecha,
   cobroNota,
   estado,
-  historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: ALTA }],
+  // El alta, registrada por la operadora de la sesión simulada (HU4.6).
+  historial: [
+    {
+      estadoAnterior: null,
+      estadoNuevo: 'EN_CURSO',
+      fecha: ALTA,
+      registradoPor: responsableDe(),
+      origen: 'MANUAL',
+    },
+  ],
   isDeleted: false,
   deletedAt: null,
   createdAt: ALTA,

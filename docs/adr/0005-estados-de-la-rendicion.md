@@ -6,7 +6,7 @@ Proposed
 
 ## Fecha
 
-2026-11-03 (actualizada el 2026-11-04 con la pantalla Rendiciones, HU3.2: ver punto 6; el 2026-11-06 con su resumen y filtros, HU3.3: ver punto 7; el 2026-11-08 con las atrasadas, HU3.4: ver punto 8; el 2026-11-11 con el cambio a Completa, HU3.6: ver punto 9; el 2026-11-13 con el cobro informado por el cliente, HU3.10: ver punto 13; y el 2026-11-16 con la regla final del cobro, aclarada por la operadora: solo una Aprobada se cobra, también en el punto 13)
+2026-11-03 (actualizada el 2026-11-04 con la pantalla Rendiciones, HU3.2: ver punto 6; el 2026-11-06 con su resumen y filtros, HU3.3: ver punto 7; el 2026-11-08 con las atrasadas, HU3.4: ver punto 8; el 2026-11-11 con el cambio a Completa, HU3.6: ver punto 9; el 2026-11-13 con el cobro informado por el cliente, HU3.10: ver punto 13; el 2026-11-16 con la regla final del cobro, aclarada por la operadora: solo una Aprobada se cobra, también en el punto 13; y el 2026-11-16 con el responsable de cada cambio de estado, HU4.6: ver punto 14)
 
 ## Contexto
 
@@ -90,6 +90,28 @@ Restricciones:
 - **Quitar no deja historial y no es un borrado fiscal.** `DELETE` pone las dos columnas en `NULL` y no registra nada. El cobro es la anotación de lo que el cliente avisó, no un comprobante: la factura, los ítems y el historial (lo que sí conserva valor fiscal) no se tocan. Por eso se puede corregir (el `PUT` pisa el anterior) y quitar. Quitar sobre una rendición sin cobro responde `200` sin escribir, y no mira el estado: es la salida si una marca quedó donde no debía. Una anulada conserva su cobro y no se modifica (`409 RENDICION_ANULADA`). Si hace falta saber quién marcó o quitó un cobro, es una HU de auditoría: hoy no se guarda.
 - **Salidas de Aprobada:** el cobro no es una transición, así que Aprobada sigue sin salidas. Con esto queda resuelto lo que "A resolver" (Consecuencias) dejaba para la HU3.10.
 - **En pantalla:** una franja "Cobro" en el detalle (registrar, editar, quitar), "✓ Cobrada dd/mm" en la fila de la pantalla Rendiciones y de solo lectura en el resumen y en el listado del cliente. Con los tokens `success-*`, con ícono y texto: el rojo sigue reservado para Atrasada.
+
+14. **Responsable de cada cambio de estado (HU4.6, 2026-11-16).** Cada entrada del historial guarda quién la registró y si el cambio lo pidió esa persona o lo hizo el sistema. La identidad, los roles y la sesión son de ADR-0006 ("Integración con la épica 3"); acá, lo que cambia en el historial. No modifica las transiciones ni sus reglas.
+
+- **Dos columnas nuevas en `HistorialEstadoRendicion`, las dos opcionales:**
+  - `registradoPorId`: UUID, FK a `Usuario` con `onDelete: Restrict`.
+  - `origen`: enum `OrigenCambioEstado` con `MANUAL` y `AUTOMATICO`, isomorfo con el de shared (un test lo comprueba).
+- **Referencia, no copia del nombre.** El historial muestra el nombre actual de la cuenta. Una cuenta no se borra: se desactiva (HU4.5). Así, renombrarla, cambiarle el rol o desactivarla no pierde la autoría. `Restrict` hace que la base impida borrar una cuenta con cambios registrados. No hay índice sobre `registradoPorId`: el historial se sigue leyendo por rendición, y ese índice solo lo usaría el chequeo de la FK al borrar una cuenta, que no ocurre.
+- **CHECK `ck_historial_responsable_con_origen`:** `("registradoPorId" IS NULL) = ("origen" IS NULL)`, es decir, los dos cargados o los dos `NULL`. Impide un responsable sin origen o un origen sin responsable. **No obliga** a que una entrada nueva los tenga: eso lo garantiza el servicio, con un parámetro obligatorio. La base no distingue una entrada vieja de una nueva escrita por fuera del servicio (SQL manual, Prisma Studio), igual que con la columna `estado` (Consecuencias).
+- **Historial existente:** las entradas anteriores a HU4.6 quedan con los dos campos en `NULL` y se muestran como "Sin responsable registrado". No hay backfill: no se sabe quién hizo esos cambios. No se les asigna el administrador actual ni se deduce el origen del texto del motivo.
+- **Los tres caminos de escritura, todos con responsable:**
+
+  | Camino                                                       | Responsable                  | `origen`     | Transacción                                                                                              |
+  | ------------------------------------------------------------ | ---------------------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+  | Alta (`null → EN_CURSO`, punto 2)                            | Quien abre la rendición      | `MANUAL`     | La misma creación anidada del alta                                                                       |
+  | `PATCH /rendiciones/:id/estado` (puntos 9 a 12)              | La sesión que pide el cambio | `MANUAL`     | La serializable que lee, valida y escribe                                                                |
+  | Vuelta automática a En curso al sumar un requisito (punto 9) | Quien suma el requisito      | `AUTOMATICO` | La misma serializable que crea los ítems; conserva el motivo `Revertida a En curso al agregar requisito` |
+
+  `registrarCambioDeEstadoEnTx` recibe un `ResponsableDelCambio { registradoPorId, origen }` obligatorio y lo escribe en la misma creación anidada que el estado: se confirman o se revierten juntos. `registrarCambioDeEstado` (punto 2), `cambiarEstadoDeRendicion`, `agregarRequisitoARendicion` y `abrirRendicion` también lo exigen, sin valor por defecto. Pedir el mismo estado, una transición inválida o un requisito repetido siguen sin escribir: no queda una entrada falsa.
+
+- **Por qué un `origen` explícito.** Hasta HU4.6, la vuelta automática solo se reconocía por el texto del motivo, que el rechazo (HU3.8) también usa. Deducirlo del texto era frágil. Se descartó un catálogo de tipos de operación: dos valores alcanzan. En la vuelta automática, el responsable sigue siendo la persona: el sistema decidió el cambio, pero lo produjo su pedido.
+- **Fechas:** no cambian (punto 10). En pantalla, cada paso sigue mostrando su fecha (`fechaDelPaso`: en un envío, el día elegido). Debajo, una línea secundaria dice quién lo registró y cuándo, con la hora de Buenos Aires: "María González · 16/11/2026 14:32", más " · Automático" si corresponde.
+- **Migración:** `20261116120000_hu4_6_responsable_historial`. Es aditiva: un enum, dos columnas, la FK y el CHECK.
 
 ## Alternativas consideradas
 

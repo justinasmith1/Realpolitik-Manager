@@ -3,7 +3,13 @@ import type request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../../app';
-import { clienteDePrueba } from '../../auth/__tests__/sesionSimulada';
+import {
+  clienteConCabeceras,
+  clienteDePrueba,
+  idDe,
+  ORIGEN_DE_PRUEBA,
+  responsableDe,
+} from '../../auth/__tests__/sesionSimulada';
 import { cambiarEstadoDeRendicion, motivoParaNoModificar } from '../rendiciones.service';
 
 // Marcar una rendición como Completa y volverla a En curso (HU3.6, ADR-0005), con la base
@@ -37,6 +43,8 @@ const RENDICION = 'e1f2a3b4-c5d6-4789-8abc-def012345678';
 const REQUISITO = 'd1e2f3a4-b5c6-4789-8abc-def012345678';
 const TIPO = 'c1d2e3f4-a5b6-4789-8abc-def012345678';
 const AHORA = new Date('2026-10-15T15:00:00.000Z');
+// Quien pide los cambios en estos tests: la sesión simulada por defecto (HU4.6).
+const OPERADORA = idDe('ADMINISTRATIVO');
 
 /** La aplicación vigente de un ítem, como la lee `APLICACION_VIGENTE`. */
 const aplicacionVigente = (indice: number) => ({
@@ -76,7 +84,16 @@ const filaDetalle = (estado: string, items = [itemDe(1, true), itemDe(2, true)])
   montoMensual: null,
   montoTotal: null,
   estado,
-  historial: [{ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA }],
+  // El alta, registrada por la operadora de la sesión simulada (HU4.6).
+  historial: [
+    {
+      estadoAnterior: null,
+      estadoNuevo: 'EN_CURSO',
+      fecha: AHORA,
+      registradoPor: responsableDe(),
+      origen: 'MANUAL',
+    },
+  ],
   isDeleted: false,
   deletedAt: null,
   createdAt: AHORA,
@@ -132,7 +149,13 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
         data: {
           estado: 'COMPLETA',
           historial: {
-            create: { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', motivo: null },
+            create: {
+              estadoAnterior: 'EN_CURSO',
+              estadoNuevo: 'COMPLETA',
+              motivo: null,
+              registradoPorId: OPERADORA,
+              origen: 'MANUAL',
+            },
           },
         },
       }),
@@ -176,7 +199,13 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
         data: {
           estado: 'EN_CURSO',
           historial: {
-            create: { estadoAnterior: 'COMPLETA', estadoNuevo: 'EN_CURSO', motivo: null },
+            create: {
+              estadoAnterior: 'COMPLETA',
+              estadoNuevo: 'EN_CURSO',
+              motivo: null,
+              registradoPorId: OPERADORA,
+              origen: 'MANUAL',
+            },
           },
         },
       }),
@@ -224,7 +253,7 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
   it('el servicio rechaza EN_CURSO → ENVIADA: TRANSICION_INVALIDA', async () => {
     transaccion.rendicion.findFirst.mockResolvedValueOnce(lecturaDe('EN_CURSO'));
 
-    await expect(cambiarEstadoDeRendicion(RENDICION, 'ENVIADA')).rejects.toMatchObject({
+    await expect(cambiarEstadoDeRendicion(RENDICION, 'ENVIADA', OPERADORA)).rejects.toMatchObject({
       status: 409,
       details: { motivo: 'TRANSICION_INVALIDA', estadoActual: 'EN_CURSO', estadoNuevo: 'ENVIADA' },
     });
@@ -248,6 +277,79 @@ describe('PATCH /rendiciones/:id/estado (HU3.6)', () => {
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('PATCH /rendiciones/:id/estado — responsable del cambio (HU4.6)', () => {
+  const marcarCompleta = () =>
+    transaccion.rendicion.findFirst
+      .mockResolvedValueOnce(lecturaDe('EN_CURSO'))
+      .mockResolvedValueOnce({ estado: 'EN_CURSO' });
+
+  /** El `create` del historial que recibió el `update`. */
+  const entradaCreada = () =>
+    (
+      transaccion.rendicion.update.mock.calls[0]?.[0] as {
+        data: { historial: { create: Record<string, unknown> } };
+      }
+    ).data.historial.create;
+
+  it('registra a quien tiene la sesión: con ADMINISTRADOR, su cuenta', async () => {
+    marcarCompleta();
+
+    const res = await clienteDePrueba(app, 'ADMINISTRADOR')
+      .patch(`/rendiciones/${RENDICION}/estado`)
+      .send({ estado: 'COMPLETA' });
+
+    expect(res.status).toBe(200);
+    expect(entradaCreada()).toMatchObject({
+      registradoPorId: idDe('ADMINISTRADOR'),
+      origen: 'MANUAL',
+    });
+  });
+
+  // Un responsable en el cuerpo es una clave desconocida: como en todo el contrato, se descarta sin
+  // error (no es 400) y nunca llega al servicio. Vale el de la sesión.
+  it('ignora un responsable y un origen enviados por el cliente', async () => {
+    marcarCompleta();
+
+    const res = await clienteDePrueba(app)
+      .patch(`/rendiciones/${RENDICION}/estado`)
+      .send({
+        estado: 'COMPLETA',
+        registradoPorId: idDe('ADMINISTRADOR'),
+        registradoPor: responsableDe('ADMINISTRADOR'),
+        origen: 'AUTOMATICO',
+      });
+
+    expect(res.status).toBe(200);
+    expect(entradaCreada()).toEqual({
+      estadoAnterior: 'EN_CURSO',
+      estadoNuevo: 'COMPLETA',
+      motivo: null,
+      registradoPorId: OPERADORA,
+      origen: 'MANUAL',
+    });
+  });
+
+  it('CONSULTA no cambia el estado: 403, sin llegar a la base ni registrar historial', async () => {
+    const res = await clienteDePrueba(app, 'CONSULTA')
+      .patch(`/rendiciones/${RENDICION}/estado`)
+      .send({ estado: 'COMPLETA' });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión: 401, sin llegar a la base ni registrar historial', async () => {
+    const res = await clienteConCabeceras(app, { Origin: ORIGEN_DE_PRUEBA })
+      .patch(`/rendiciones/${RENDICION}/estado`)
+      .send({ estado: 'COMPLETA', registradoPorId: OPERADORA });
+
+    expect(res.status).toBe(401);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+  });
 });
 
 describe('PATCH /rendiciones/:id/estado — deuda de la HU3.6', () => {
@@ -321,6 +423,8 @@ describe('PATCH /rendiciones/:id/estado — Enviada (HU3.7)', () => {
       estadoAnterior: 'COMPLETA',
       estadoNuevo: 'ENVIADA',
       motivo: null,
+      registradoPorId: OPERADORA,
+      origen: 'MANUAL',
       fechaEfectiva: new Date('2026-11-12T00:00:00.000Z'),
     });
   });
@@ -443,8 +547,21 @@ describe('PATCH /rendiciones/:id/estado — respuesta del cliente (HU3.8)', () =
         Promise.resolve({
           ...filaDetalle(data.estado),
           historial: [
-            { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: AHORA, motivo: null },
-            { fecha: AHORA, fechaEfectiva: null, ...data.historial.create },
+            {
+              estadoAnterior: null,
+              estadoNuevo: 'EN_CURSO',
+              fecha: AHORA,
+              motivo: null,
+              registradoPor: responsableDe(),
+              origen: 'MANUAL',
+            },
+            // El responsable, como lo lee Prisma: la cuenta de la sesión con su id y nombre.
+            {
+              fecha: AHORA,
+              fechaEfectiva: null,
+              ...data.historial.create,
+              registradoPor: responsableDe(),
+            },
           ],
         }),
     );
@@ -463,6 +580,12 @@ describe('PATCH /rendiciones/:id/estado — respuesta del cliente (HU3.8)', () =
       estadoAnterior: 'ENVIADA',
       estadoNuevo: 'APROBADA',
       motivo: null,
+      registradoPorId: OPERADORA,
+      origen: 'MANUAL',
+    });
+    expect((res.body as { historial: unknown[] }).historial.at(-1)).toMatchObject({
+      registradoPor: responsableDe(),
+      origen: 'MANUAL',
     });
   });
 
@@ -480,6 +603,8 @@ describe('PATCH /rendiciones/:id/estado — respuesta del cliente (HU3.8)', () =
       estadoAnterior: 'ENVIADA',
       estadoNuevo: 'RECHAZADA',
       motivo: 'Faltó el CUIT 20-12345678-4',
+      registradoPorId: OPERADORA,
+      origen: 'MANUAL',
     });
     const historial = (res.body as { historial: Array<{ motivo?: string | null }> }).historial;
     expect(historial.map((paso) => paso.motivo)).toEqual([null, 'Faltó el CUIT 20-12345678-4']);
@@ -588,6 +713,8 @@ describe('PATCH /rendiciones/:id/estado — corregir una rechazada (HU3.9)', () 
     fecha: new Date(fecha),
     fechaEfectiva: null,
     motivo: null,
+    registradoPor: responsableDe(),
+    origen: 'MANUAL',
     ...extra,
   });
   /** Enviada el 20/10 y rechazada el 05/11 (23:30 en Buenos Aires: en UTC ya es 06/11). */
@@ -621,7 +748,13 @@ describe('PATCH /rendiciones/:id/estado — corregir una rechazada (HU3.9)', () 
         data: {
           estado: 'EN_CURSO',
           historial: {
-            create: { estadoAnterior: 'RECHAZADA', estadoNuevo: 'EN_CURSO', motivo: null },
+            create: {
+              estadoAnterior: 'RECHAZADA',
+              estadoNuevo: 'EN_CURSO',
+              motivo: null,
+              registradoPorId: OPERADORA,
+              origen: 'MANUAL',
+            },
           },
         },
       }),
@@ -700,6 +833,8 @@ describe('PATCH /rendiciones/:id/estado — corregir una rechazada (HU3.9)', () 
     expect(data.historial.create).toMatchObject({
       estadoNuevo: 'ENVIADA',
       fechaEfectiva: new Date('2026-11-05T00:00:00.000Z'),
+      registradoPorId: OPERADORA,
+      origen: 'MANUAL',
     });
   });
 });
@@ -768,12 +903,45 @@ describe('POST /rendiciones/:id/requisitos/:requisitoId — auto-revert (HU3.6)'
               estadoAnterior: 'COMPLETA',
               estadoNuevo: 'EN_CURSO',
               motivo: 'Revertida a En curso al agregar requisito',
+              // HU4.6: la decide el sistema, pero el responsable es quien sumó el requisito.
+              registradoPorId: OPERADORA,
+              origen: 'AUTOMATICO',
             },
           },
         },
       }),
     );
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('el responsable de la vuelta automática es la sesión que suma el requisito', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValue(rendicionDe('COMPLETA'));
+
+    const res = await clienteDePrueba(app, 'ADMINISTRADOR').post(
+      `/rendiciones/${RENDICION}/requisitos/${REQUISITO}`,
+    );
+
+    expect(res.status).toBe(200);
+    const [{ data }] = transaccion.rendicion.update.mock.calls[0] as [
+      { data: { historial: { create: Record<string, unknown> } } },
+    ];
+    expect(data.historial.create).toMatchObject({
+      registradoPorId: idDe('ADMINISTRADOR'),
+      origen: 'AUTOMATICO',
+    });
+  });
+
+  it('un requisito que ya está en la rendición: 409, sin cambio de estado ni historial', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValue(rendicionDe('COMPLETA'));
+    transaccion.itemChecklist.findFirst.mockResolvedValue({ id: 'ya-esta' });
+
+    const res = await clienteDePrueba(app).post(
+      `/rendiciones/${RENDICION}/requisitos/${REQUISITO}`,
+    );
+
+    expect(res.status).toBe(409);
+    expect(transaccion.itemChecklist.createMany).not.toHaveBeenCalled();
+    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
   });
 
   it('sobre una EN_CURSO no cambia el estado ni agrega historial', async () => {

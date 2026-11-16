@@ -212,6 +212,34 @@ const formatoDeFechaCorta = new Intl.DateTimeFormat('es-AR', {
 /** Una fecha como la lee la operadora, dd/mm/aaaa en horario de Buenos Aires: "03/11/2026". */
 export const fechaCorta = (fecha: Date): string => formatoDeFechaCorta.format(fecha);
 
+const formatoDeFechaYHora = new Intl.DateTimeFormat('es-AR', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+  timeZone: 'America/Argentina/Buenos_Aires',
+});
+
+/**
+ * Un instante con su hora, dd/mm/aaaa HH:mm (24 h) en horario de Buenos Aires: "16/11/2026 14:32".
+ * La zona la resuelve `Intl`, sin sumar ni restar horas. Se arma con las partes porque es-AR separa
+ * la fecha de la hora con una coma.
+ */
+export function fechaYHora(fecha: Date): string {
+  const partes = formatoDeFechaYHora.formatToParts(fecha);
+  const parte = (tipo: 'day' | 'month' | 'year' | 'hour' | 'minute') =>
+    partes.find((p) => p.type === tipo)?.value ?? '';
+  return `${parte('day')}/${parte('month')}/${parte('year')} ${parte('hour')}:${parte('minute')}`;
+}
+
+// Responsable de cada cambio de estado (HU4.6). Una entrada anterior a HU4.6 no lo tiene: se dice
+// en tono neutro, no como un error. "Automático" marca un cambio que hizo el sistema como
+// consecuencia de una operación de esa persona (sigue siendo su responsable).
+export const TEXTO_SIN_RESPONSABLE = 'Sin responsable registrado';
+export const TEXTO_CAMBIO_AUTOMATICO = 'Automático';
+
 const formatoDeDiaYMes = new Intl.DateTimeFormat('es-AR', {
   day: 'numeric',
   month: 'numeric',

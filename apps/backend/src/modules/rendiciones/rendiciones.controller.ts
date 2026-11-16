@@ -21,6 +21,7 @@ import type {
 import type { Request, Response } from 'express';
 
 import type { ValidatedLocals } from '../../middleware/validate';
+import type { LocalsDeSesion } from '../auth/autorizacion';
 import type { RequisitoParamsSchema } from '../clientes/clientes.routes';
 
 import type {
@@ -46,10 +47,12 @@ import {
   registrarCobro,
 } from './rendiciones.service';
 
-type AbrirRendicionLocals = ValidatedLocals<{
-  params: typeof IdParamsSchema;
-  body: typeof CreateRendicionSchema;
-}>;
+// Los que generan historial (HU4.6) leen el responsable de la sesión, nunca del cuerpo.
+type AbrirRendicionLocals = LocalsDeSesion &
+  ValidatedLocals<{
+    params: typeof IdParamsSchema;
+    body: typeof CreateRendicionSchema;
+  }>;
 type ListarRendicionesLocals = ValidatedLocals<{
   params: typeof IdParamsSchema;
   query: typeof ListarRendicionesQuerySchema;
@@ -65,7 +68,7 @@ export async function abrirRendicionController(
   res: Response<RendicionDetalle, AbrirRendicionLocals>,
 ): Promise<void> {
   const { params, body } = res.locals.validated;
-  const rendicion = await abrirRendicion(params.id, body);
+  const rendicion = await abrirRendicion(params.id, body, res.locals.sesion.usuario.id);
   res.status(201).json(rendicion);
 }
 
@@ -114,10 +117,11 @@ export async function anularRendicionController(
   res.status(200).json(rendicion);
 }
 
-type CambiarEstadoRendicionLocals = ValidatedLocals<{
-  params: typeof IdParamsSchema;
-  body: typeof ActualizarEstadoRendicionSchema;
-}>;
+type CambiarEstadoRendicionLocals = LocalsDeSesion &
+  ValidatedLocals<{
+    params: typeof IdParamsSchema;
+    body: typeof ActualizarEstadoRendicionSchema;
+  }>;
 
 export async function cambiarEstadoDeRendicionController(
   _req: Request,
@@ -125,7 +129,10 @@ export async function cambiarEstadoDeRendicionController(
 ): Promise<void> {
   const { id } = res.locals.validated.params;
   const { estado, fechaEnvio, motivo } = res.locals.validated.body;
-  const rendicion = await cambiarEstadoDeRendicion(id, estado, { fechaEnvio, motivo });
+  const rendicion = await cambiarEstadoDeRendicion(id, estado, res.locals.sesion.usuario.id, {
+    fechaEnvio,
+    motivo,
+  });
   res.status(200).json(rendicion);
 }
 
@@ -175,14 +182,15 @@ export async function obtenerUltimaOcController(
   res.status(200).json(ultimaOc);
 }
 
-type AgregarRequisitoLocals = ValidatedLocals<{ params: typeof RequisitoDeRendicionParamsSchema }>;
+type AgregarRequisitoLocals = LocalsDeSesion &
+  ValidatedLocals<{ params: typeof RequisitoDeRendicionParamsSchema }>;
 
 export async function agregarRequisitoARendicionController(
   _req: Request,
   res: Response<RendicionDetalle, AgregarRequisitoLocals>,
 ): Promise<void> {
   const { id, requisitoId } = res.locals.validated.params;
-  const rendicion = await agregarRequisitoARendicion(id, requisitoId);
+  const rendicion = await agregarRequisitoARendicion(id, requisitoId, res.locals.sesion.usuario.id);
   res.status(200).json(rendicion);
 }
 
