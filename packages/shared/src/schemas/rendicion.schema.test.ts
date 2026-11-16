@@ -446,7 +446,13 @@ describe('entidades de lectura', () => {
     creadoEn: '2026-10-20T12:00:00.000Z',
     actualizadoEn: '2026-10-20T12:00:00.000Z',
     historial: [
-      { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: '2026-10-20T12:00:00.000Z' },
+      {
+        estadoAnterior: null,
+        estadoNuevo: 'EN_CURSO',
+        fecha: '2026-10-20T12:00:00.000Z',
+        registradoPor: null,
+        origen: null,
+      },
     ],
   };
 

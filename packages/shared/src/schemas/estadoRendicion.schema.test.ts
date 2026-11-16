@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { ListarRendicionesQuerySchema } from './listarRendicionesQuery.schema.js';
 import {
+  ActualizarEstadoRendicionSchema,
   ETIQUETAS_ESTADO_RENDICION,
   EstadoRendicion,
   HistorialEstadoRendicionSchema,
   MENSAJE_ESTADO_RENDICION,
+  OrigenCambioEstado,
   RendicionDetalleSchema,
   RendicionResumenSchema,
   RendicionSchema,
@@ -26,7 +28,9 @@ const RENDICION = {
   creadoEn: FECHA,
   actualizadoEn: FECHA,
 };
-const ALTA = { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: FECHA };
+// Una entrada sin responsable registrado (HU4.6): las dos claves van, en null.
+const SIN_RESPONSABLE = { registradoPor: null, origen: null };
+const ALTA = { estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: FECHA, ...SIN_RESPONSABLE };
 
 describe('EstadoRendicion', () => {
   it('tiene los cinco estados, en el orden del proceso', () => {
@@ -63,7 +67,13 @@ describe('EstadoRendicion', () => {
 describe('HistorialEstadoRendicionSchema', () => {
   it('la primera entrada no tiene estado anterior', () => {
     const r = HistorialEstadoRendicionSchema.parse(ALTA);
-    expect(r).toEqual({ estadoAnterior: null, estadoNuevo: 'EN_CURSO', fecha: new Date(FECHA) });
+    expect(r).toEqual({
+      estadoAnterior: null,
+      estadoNuevo: 'EN_CURSO',
+      fecha: new Date(FECHA),
+      registradoPor: null,
+      origen: null,
+    });
   });
 
   it('un cambio lleva el estado anterior y el nuevo', () => {
@@ -71,13 +81,19 @@ describe('HistorialEstadoRendicionSchema', () => {
       estadoAnterior: 'EN_CURSO',
       estadoNuevo: 'COMPLETA',
       fecha: FECHA,
+      ...SIN_RESPONSABLE,
     });
     expect(r.estadoAnterior).toBe('EN_CURSO');
     expect(r.estadoNuevo).toBe('COMPLETA');
   });
 
   it('acepta motivo como texto, como null o sin el campo (HU3.8)', () => {
-    const rechazo = { estadoAnterior: 'ENVIADA', estadoNuevo: 'RECHAZADA', fecha: FECHA };
+    const rechazo = {
+      estadoAnterior: 'ENVIADA',
+      estadoNuevo: 'RECHAZADA',
+      fecha: FECHA,
+      ...SIN_RESPONSABLE,
+    };
     expect(
       HistorialEstadoRendicionSchema.parse({ ...rechazo, motivo: 'Faltó la factura' }).motivo,
     ).toBe('Faltó la factura');
@@ -86,11 +102,89 @@ describe('HistorialEstadoRendicionSchema', () => {
   });
 
   it.each([
-    ['sin estado nuevo', { estadoAnterior: null, fecha: FECHA }],
-    ['sin fecha', { estadoAnterior: null, estadoNuevo: 'EN_CURSO' }],
+    ['sin estado nuevo', { estadoAnterior: null, fecha: FECHA, ...SIN_RESPONSABLE }],
+    ['sin fecha', { estadoAnterior: null, estadoNuevo: 'EN_CURSO', ...SIN_RESPONSABLE }],
     ['con un estado desconocido', { ...ALTA, estadoNuevo: 'ATRASADA' }],
   ])('rechaza una entrada %s', (_caso, entrada) => {
     expect(HistorialEstadoRendicionSchema.safeParse(entrada).success).toBe(false);
+  });
+});
+
+// Responsable del cambio (HU4.6): quién lo registró y si fue manual o automático. Es parte de la
+// respuesta; el pedido no lo trae (sale de la sesión).
+describe('OrigenCambioEstado', () => {
+  it('son exactamente MANUAL y AUTOMATICO', () => {
+    expect(OrigenCambioEstado.options).toEqual(['MANUAL', 'AUTOMATICO']);
+  });
+
+  it.each(['manual', 'SISTEMA', '', 1])('rechaza %j', (valor) => {
+    expect(OrigenCambioEstado.safeParse(valor).success).toBe(false);
+  });
+});
+
+describe('HistorialEstadoRendicionSchema: responsable y origen (HU4.6)', () => {
+  const RESPONSABLE = { id: 'b2c3d4e5-f6a7-4890-8bcd-ef0123456789', nombre: 'Ana Pérez' };
+  const CAMBIO = { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: FECHA } as const;
+
+  it.each(['MANUAL', 'AUTOMATICO'] as const)('lee el responsable con origen %s', (origen) => {
+    const r = HistorialEstadoRendicionSchema.parse({
+      ...CAMBIO,
+      registradoPor: RESPONSABLE,
+      origen,
+    });
+    expect(r.registradoPor).toEqual(RESPONSABLE);
+    expect(r.origen).toBe(origen);
+  });
+
+  it('una entrada sin responsable registrado trae los dos en null', () => {
+    const r = HistorialEstadoRendicionSchema.parse({
+      ...CAMBIO,
+      registradoPor: null,
+      origen: null,
+    });
+    expect(r).toMatchObject({ registradoPor: null, origen: null });
+  });
+
+  // El contrato exige las dos claves: `null` dice "sin registro"; que falte es un error del backend.
+  it.each([
+    ['sin registradoPor ni origen', {}],
+    ['sin registradoPor', { origen: 'MANUAL' }],
+    ['sin origen', { registradoPor: RESPONSABLE }],
+  ])('rechaza una entrada %s', (_caso, campos) => {
+    expect(HistorialEstadoRendicionSchema.safeParse({ ...CAMBIO, ...campos }).success).toBe(false);
+  });
+
+  it('del responsable solo expone el id y el nombre', () => {
+    const r = HistorialEstadoRendicionSchema.parse({
+      ...CAMBIO,
+      registradoPor: { ...RESPONSABLE, email: 'ana@example.com', rol: 'ADMINISTRADOR' },
+      origen: 'MANUAL',
+    });
+    expect(r.registradoPor).toEqual(RESPONSABLE);
+  });
+
+  it.each([
+    ['un id que no es UUID', { registradoPor: { ...RESPONSABLE, id: '123' }, origen: 'MANUAL' }],
+    ['un responsable sin nombre', { registradoPor: { id: RESPONSABLE.id }, origen: 'MANUAL' }],
+    [
+      'un nombre que no es texto',
+      { registradoPor: { ...RESPONSABLE, nombre: 7 }, origen: 'MANUAL' },
+    ],
+    ['el responsable como texto', { registradoPor: 'Ana Pérez', origen: 'MANUAL' }],
+    ['un origen desconocido', { registradoPor: RESPONSABLE, origen: 'SISTEMA' }],
+    ['un origen que no es texto', { registradoPor: RESPONSABLE, origen: true }],
+  ])('rechaza %s', (_caso, campos) => {
+    expect(HistorialEstadoRendicionSchema.safeParse({ ...CAMBIO, ...campos }).success).toBe(false);
+  });
+
+  it('el pedido de cambio de estado no acepta un responsable: lo descarta', () => {
+    const pedido = ActualizarEstadoRendicionSchema.parse({
+      estado: 'COMPLETA',
+      registradoPorId: RESPONSABLE.id,
+      registradoPor: RESPONSABLE,
+      origen: 'AUTOMATICO',
+    });
+    expect(pedido).toEqual({ estado: 'COMPLETA' });
   });
 });
 
@@ -128,7 +222,12 @@ describe('RendicionDetalleSchema con historial', () => {
       items: [],
       historial: [
         ALTA,
-        { estadoAnterior: 'EN_CURSO', estadoNuevo: 'COMPLETA', fecha: '2026-11-04T12:00:00.000Z' },
+        {
+          estadoAnterior: 'EN_CURSO',
+          estadoNuevo: 'COMPLETA',
+          fecha: '2026-11-04T12:00:00.000Z',
+          ...SIN_RESPONSABLE,
+        },
       ],
     });
     expect(r.historial.map((h) => h.estadoNuevo)).toEqual(['EN_CURSO', 'COMPLETA']);
