@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 const detalle = (extra: Record<string, unknown> = {}) =>
-  RendicionDetalleSchema.parse({ ...rendicionJson({ estado: 'ENVIADA', ...extra }), items: [] });
+  RendicionDetalleSchema.parse({ ...rendicionJson({ estado: 'APROBADA', ...extra }), items: [] });
 
 const esPut = (entrada: Parameters<typeof fetch>[0], init?: RequestInit) =>
   urlDe(entrada).endsWith(`/rendiciones/${RENDICION_ID}/cobro`) && init?.method === 'PUT';
@@ -65,7 +65,7 @@ const fecha = () => screen.getByLabelText(/Fecha en que el cliente avisó el pag
 const nota = () => screen.getByLabelText(/Nota/);
 const guardar = () => screen.getByRole('button', { name: 'Guardar cobro' });
 
-const respuestaDeCobro = () => json({ ...rendicionJson({ estado: 'ENVIADA' }), items: [] });
+const respuestaDeCobro = () => json({ ...rendicionJson({ estado: 'APROBADA' }), items: [] });
 
 describe('RegistrarCobroSheet', () => {
   it('la fecha empieza en hoy, no admite una posterior y la nota empieza vacía', () => {
@@ -212,6 +212,28 @@ describe('RegistrarCobroSheet', () => {
       await screen.findByText('La fecha del cobro no puede ser posterior a hoy.'),
     ).toBeVisible();
     expect(fecha()).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('un 400 del servidor en los dos campos deja el foco en el primero del formulario', async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        errorJson(400, 'VALIDATION_ERROR', [
+          { campo: 'fecha', mensaje: 'La fecha del cobro no puede ser posterior a hoy.' },
+          { campo: 'nota', mensaje: 'La nota debe tener entre 1 y 300 caracteres.' },
+        ]),
+      ),
+    );
+    const { user } = renderHoja();
+
+    await user.click(guardar());
+
+    expect(
+      await screen.findByText('La fecha del cobro no puede ser posterior a hoy.'),
+    ).toBeVisible();
+    // El foco va al primero en pantalla (la fecha), no al último que informó el servidor.
+    expect(fecha()).toHaveFocus();
+    expect(fecha()).toHaveAttribute('aria-invalid', 'true');
+    expect(nota()).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('al editar ofrece "Quitar marca", que pide quitarla a quien abrió la hoja', async () => {

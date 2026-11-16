@@ -146,6 +146,10 @@ function EditarOcForm({ rendicion, abierto, onSubmit, onCancel }: EditarOcFormPr
     });
 
   const idDe = (campo: CampoOc) => `${id}-${campo}`;
+  const enfocarPrimerError = (conError: Partial<Record<CampoOc, unknown>>) => {
+    const primero = ordenDeCamposOc.find((campo) => conError[campo] !== undefined);
+    if (primero !== undefined) enfocarYMostrar(document.getElementById(idDe(primero)));
+  };
 
   function repetirUltimaOc(ultima: NonNullable<UltimaOc>) {
     const valores = valoresDeSugerencia(ultima);
@@ -161,14 +165,13 @@ function EditarOcForm({ rendicion, abierto, onSubmit, onCancel }: EditarOcFormPr
       if (errores === undefined) return;
       for (const [campo, message] of Object.entries(errores.campos ?? {}) as [CampoOc, string][]) {
         setError(campo, { type: 'server', message });
-        enfocarYMostrar(document.getElementById(idDe(campo)));
       }
+      // Una sola vez y en el orden del formulario: el foco va al primero con error, no al último
+      // que informó el servidor.
+      enfocarPrimerError(errores.campos ?? {});
       setErrorGeneral(errores.general ?? null);
     },
-    (invalidos) => {
-      const primero = ordenDeCamposOc.find((campo) => invalidos[campo] !== undefined);
-      if (primero !== undefined) enfocarYMostrar(document.getElementById(idDe(primero)));
-    },
+    (invalidos) => enfocarPrimerError(invalidos),
   );
 
   return (
