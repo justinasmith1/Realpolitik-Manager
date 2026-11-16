@@ -208,6 +208,8 @@ La migración `20261112120000_hu3_7_fecha_efectiva_historial` (HU3.7) agrega `fe
 
 Las suites `*.integration.test.ts` del backend (y los `*.api.test.tsx` del frontend) corren contra PostgreSQL real. Sin `TEST_DATABASE_URL` se saltan, y **se niegan a correr** si esa base no se llama `*_audit` o `*_test`: nunca apuntan a la de desarrollo. Cada suite borra lo que crea. Las de requisitos (`requisitos.integration` y `requisitos.masivo`) exigen además que se llame exactamente `realpolitik_test`; el host y el puerto son los de `TEST_DATABASE_URL`, como en las demás.
 
+> **Las suites que escriben datos van contra una instancia descartable.** Si tu `realpolitik_test` local tiene las cuentas de la QA manual (el administrador de QA, la cuenta `CONSULTA` de [qa-consulta.md](qa-consulta.md)), no la uses para `test:integration` ni para `test:api`: usá otra base descartable (por ejemplo, `realpolitik_hu45_test`, ver [Pruebas de HU4.5](#pruebas-de-hu45-administración-de-usuarios)) o, para las de requisitos, otra instancia de PostgreSQL con una base `realpolitik_test` vacía. Los ejemplos de abajo usan ese nombre porque es el del CI, que crea una base efímera. **`docker-compose.yml` también define `TEST_DATABASE_URL` hacia `realpolitik_test`** en el servicio `backend`: antes de correr pruebas, dentro o fuera del contenedor, verificá a qué base apunta de verdad.
+
 En los ejemplos, `<usuario>`, `<clave>` y `<puerto>` son los de tu `.env` de la raíz (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`).
 
 ```bash
@@ -260,6 +262,33 @@ En el CI todo esto lo hace el workflow con una base efímera. Esos archivos (`Ed
 **El backend de prueba tiene que correr el código y el cliente Prisma actuales.** Un proceso sin modo _watch_ sigue con el código con el que arrancó, y unos `node_modules` en un volumen pueden tener un cliente Prisma generado con un schema anterior (síntoma: `500` con `PrismaClientValidationError`). Ante la duda, levantalo desde el host como el CI (`PORT=3999 CORS_ORIGINS=http://localhost:5173 NODE_ENV=test` y `DATABASE_URL` igual a `TEST_DATABASE_URL`).
 
 > **El seed no es para estas bases.** `db:seed` borra todos los clientes de la base a la que apunta, y su guarda solo exige un host local: no distingue la base de desarrollo de la de tests. Nunca lo corras con `DATABASE_URL` apuntando a `realpolitik_test`. Para probar el seed, creá otra base descartable (p. ej. `realpolitik_seed_audit`), migrala y corré el seed con `DATABASE_URL` apuntando explícitamente a ella.
+
+## Pruebas de HU4.5 (administración de usuarios)
+
+Las suites de Usuarios desactivan cuentas, cambian roles, restablecen contraseñas y revocan sesiones, así que cada base tiene un uso:
+
+| Base                    | Uso                                                         | Suites que escriben                    |
+| ----------------------- | ----------------------------------------------------------- | -------------------------------------- |
+| `realpolitik_db`        | Desarrollo (`apps/backend/.env`)                            | Nunca: la rechazan todas las guardas   |
+| `realpolitik_test`      | QA manual, con su administrador y sus cuentas de prueba     | No (ver "Suites de Requisitos" abajo)  |
+| `realpolitik_hu45_test` | Integración automatizada de HU4.5 (y del resto del backend) | Sí, de a una (`--no-file-parallelism`) |
+
+`realpolitik_hu45_test` se crea y se migra como `realpolitik_test` (sección anterior), cambiando el nombre. `usuarios.concurrencia.integration` y `primerAdministrador.integration` necesitan además que no haya **ningún** `ADMINISTRADOR` activo ajeno: si lo hay, fallan con un mensaje sin tocarlo. Por eso no pueden correr en la base de QA manual.
+
+**Guardas de las suites de Usuarios** (`modules/usuarios/__tests__/entornoDeUsuarios.ts`), todas antes de la primera escritura:
+
+- El nombre de la base de `TEST_DATABASE_URL` tiene que terminar en `_audit` o `_test`.
+- Una conexión abierta con esa URL tiene que informar ese nombre en `current_database()`.
+- **Cada** conexión de la suite (la de `lib/prisma` que usa el login, y las de los servicios) tiene que estar en la misma base y en el mismo servidor (inicio del postmaster y puerto) que esa referencia. Una URL válida no alcanza: si `lib/prisma` se cargó antes de fijar `DATABASE_URL`, toma la base del `.env`, y esta comprobación lo detecta.
+- Solo se crean y se borran cuentas cuyo email empieza con la marca de la corrida (`<marca>-…@pruebas.example`). Las sesiones se borran en cascada con ellas.
+- Los `afterAll` limpian solo si la guarda pasó (`verificada`). Si falló, no se ejecuta ninguna escritura, tampoco la limpieza.
+- `lib/prisma` y los servicios se importan dinámicamente después de fijar `DATABASE_URL`, nunca con un import estático.
+
+Motivo: durante el desarrollo de HU4.5, una suite con un `lib/prisma` inicializado antes de tiempo se conectó a la base de desarrollo aunque `TEST_DATABASE_URL` apuntaba a una de prueba. La tercera guarda existe para que eso no pueda volver a escribir en una base equivocada.
+
+**Suites de Requisitos.** `requisitos.integration` y `requisitos.masivo` exigen una base llamada exactamente `realpolitik_test` y rechazan `realpolitik_hu45_test`. Decisión del proyecto: **no se corren contra la instancia de `realpolitik_test` usada para QA manual**. Si hay que correrlas, se usa una instancia de PostgreSQL descartable (otro contenedor u otro puerto) con una base de ese nombre. Sus guardas no se debilitan.
+
+**Vitest en Windows.** Con el directorio de trabajo escrito con la unidad en minúscula (`d:\…`), algunos `vi.mock(ruta, async (original) => …)` parciales no interceptan el módulo y el test termina en el cliente HTTP real (en el frontend, `Pedido no simulado`). Con la unidad en mayúscula (`D:\…`) pasan. Se reprodujo igual con el código de `main`: no es un defecto de la aplicación. El CI corre en Linux y no le afecta. En Windows, abrí la terminal (o el editor) en la ruta con la unidad en mayúscula antes de correr los tests.
 
 ## Siguiente lectura
 

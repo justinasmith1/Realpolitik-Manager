@@ -182,6 +182,10 @@ export async function abrirSesionEnTransaccion(
  *    atómico, o quedan la nueva y no la vieja, o queda la vieja y no la nueva;
  * 4. abre la sesión nueva (`abrirSesionEnTransaccion`: limpieza, límite de vigentes y alta);
  * 5. guarda el último acceso del usuario.
+ *
+ * Devuelve, además de la sesión, los datos del usuario leídos bajo ese bloqueo: son los de la
+ * cuenta a la que pertenece la sesión. Los que el login leyó antes de verificar la contraseña
+ * pueden ser anteriores a un cambio de rol o de nombre confirmado mientras tanto.
  * @throws {BaseDeDatosNoDisponibleError} si PostgreSQL no responde: no se crea ni se revoca nada.
  */
 export async function crearSesion(
@@ -189,13 +193,17 @@ export async function crearSesion(
   passwordHashVerificado: string,
   ahora: Date = new Date(),
   { reemplazaA }: { reemplazaA?: unknown } = {},
-): Promise<SesionCreada> {
+): Promise<SesionCreada & { usuario: UsuarioDeSesion }> {
   if (!FORMATO_UUID.test(usuarioId)) throw new UsuarioNoHabilitadoError();
 
   return conLaBaseDeDatos(() =>
     prisma.$transaction(async (tx) => {
-      const [usuario] = await tx.$queryRaw<{ activo: boolean; passwordHash: string }[]>`
-        SELECT "activo", "passwordHash" FROM "Usuario" WHERE "id" = ${usuarioId}::uuid FOR UPDATE`;
+      const [usuario] = await tx.$queryRaw<
+        (UsuarioDeSesion & { activo: boolean; passwordHash: string })[]
+      >`
+        SELECT "id"::text AS "id" /* auth:crear-sesion */, "email", "nombre", "rol",
+          "debeCambiarPassword", "activo", "passwordHash"
+        FROM "Usuario" WHERE "id" = ${usuarioId}::uuid FOR UPDATE`;
       if (!usuario?.activo) throw new UsuarioNoHabilitadoError();
       if (usuario.passwordHash !== passwordHashVerificado) {
         throw new CredencialesDesactualizadasError();
@@ -208,7 +216,8 @@ export async function crearSesion(
 
       const sesion = await abrirSesionEnTransaccion(tx, usuarioId, ahora);
       await tx.usuario.update({ where: { id: usuarioId }, data: { ultimoAccesoEn: ahora } });
-      return sesion;
+      const { id, email, nombre, rol, debeCambiarPassword } = usuario;
+      return { ...sesion, usuario: { id, email, nombre, rol, debeCambiarPassword } };
     }),
   );
 }

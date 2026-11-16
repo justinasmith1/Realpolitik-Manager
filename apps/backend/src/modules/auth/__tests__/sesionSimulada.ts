@@ -104,6 +104,11 @@ export function conSesionesSimuladas<T extends object>(prismaMock: T): T {
   });
 }
 
+/** Id de la cuenta de la identidad (el actor que ve un controlador detrás de la sesión). */
+export function idDe(identidad: IdentidadDePrueba): string {
+  return UUIDS[identidad];
+}
+
 /** Valor de la cabecera `Cookie` de la identidad. */
 export function cookieDe(identidad: IdentidadDePrueba = 'ADMINISTRATIVO'): string {
   const cuenta = porIdentidad.get(identidad);

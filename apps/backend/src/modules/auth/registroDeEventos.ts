@@ -52,8 +52,13 @@ export function truncarIp(ip: string | undefined): string | undefined {
   return undefined;
 }
 
+function escribir(linea: Record<string, unknown>): void {
+  // process.stdout.write, como el arranque del servidor: evita la regla no-console.
+  process.stdout.write(`${JSON.stringify(linea)}\n`);
+}
+
 export function registrarEventoDeAuth(evento: EventoDeAuth, datos: DatosDelEvento = {}): void {
-  const linea = {
+  escribir({
     fecha: new Date().toISOString(),
     evento,
     ...(datos.usuarioId ? { usuarioId: datos.usuarioId } : {}),
@@ -61,7 +66,54 @@ export function registrarEventoDeAuth(evento: EventoDeAuth, datos: DatosDelEvent
     ...(datos.cambio ? { cambio: datos.cambio } : {}),
     ...(datos.permiso ? { permiso: datos.permiso } : {}),
     ...(datos.ip ? { ip: truncarIp(datos.ip) } : {}),
-  };
-  // process.stdout.write, como el arranque del servidor: evita la regla no-console.
-  process.stdout.write(`${JSON.stringify(linea)}\n`);
+  });
+}
+
+// ─── Administración de usuarios (HU4.5) ──────────────────────────────────────
+//
+// Trazabilidad estructurada en la salida estándar, con el mismo formato: NO es un historial de
+// auditoría persistente ni se consulta desde la aplicación (no hay tabla de auditoría). Cada evento
+// se emite solo después de confirmar que la operación quedó guardada; un rechazo, una transacción
+// revertida o una operación sin cambios no emiten nada.
+//
+// `actorId` es quien ejecutó la operación (el de su sesión) y `usuarioId` la cuenta afectada: son
+// campos distintos y obligatorios, nunca se infiere uno del otro. Nunca se registran la contraseña
+// temporal, hashes, cookies, tokens, datos de sesión, el email ni el cuerpo del pedido.
+
+export type EventoAdministrativo =
+  | 'usuarios.creado'
+  | 'usuarios.nombre_cambiado'
+  | 'usuarios.rol_cambiado'
+  | 'usuarios.desactivado'
+  | 'usuarios.reactivado'
+  | 'auth.password.restablecida';
+
+type RolDeEvento = 'ADMINISTRADOR' | 'ADMINISTRATIVO' | 'CONSULTA';
+
+export interface DatosDelEventoAdministrativo {
+  /** Quién ejecutó la operación. */
+  actorId: string;
+  /** La cuenta afectada. */
+  usuarioId: string;
+  /** Rol con el que se creó la cuenta, o el nuevo en un cambio de rol. */
+  rol?: RolDeEvento;
+  /** Rol anterior en un cambio de rol. */
+  rolAnterior?: RolDeEvento;
+  /** Sesiones revocadas por la operación (cambio de rol, desactivación, restablecimiento). */
+  sesionesRevocadas?: number;
+}
+
+export function registrarEventoAdministrativo(
+  evento: EventoAdministrativo,
+  { actorId, usuarioId, rol, rolAnterior, sesionesRevocadas }: DatosDelEventoAdministrativo,
+): void {
+  escribir({
+    fecha: new Date().toISOString(),
+    evento,
+    actorId,
+    usuarioId,
+    ...(rolAnterior ? { rolAnterior } : {}),
+    ...(rol ? { rol } : {}),
+    ...(sesionesRevocadas === undefined ? {} : { sesionesRevocadas }),
+  });
 }

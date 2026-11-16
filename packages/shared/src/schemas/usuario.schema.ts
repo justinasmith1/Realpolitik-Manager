@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-import { emailNormalizado, sinCaracteresDeControl } from './campos.js';
+import {
+  booleanoDeQuery,
+  emailNormalizado,
+  exigirAlgunCampo,
+  sinCaracteresDeControl,
+} from './campos.js';
 
 // ─── Usuarios y acceso (épica 4, ADR-0006) ────────────────────────────────────
 
@@ -162,3 +167,210 @@ export type UsuarioDeSesion = z.infer<typeof UsuarioDeSesionSchema>;
 export const SesionActualSchema = z.object({ usuario: UsuarioDeSesionSchema });
 
 export type SesionActual = z.infer<typeof SesionActualSchema>;
+
+// ─── Administración de usuarios (HU4.5, ADR-0006 §5) ─────────────────────────
+//
+// Las reglas de cada campo viven acá una sola vez: las usan la API (`/usuarios`), el dominio del
+// backend (`modules/usuarios/validacionDeUsuarios.ts`, que no confía en que la API haya validado)
+// y la pantalla de administración. Las reglas de negocio (email único, autoprotección, último
+// administrador) son del backend.
+//
+// A diferencia de otros cuerpos de la API, una clave que no corresponde NO se descarta: es un
+// error de validación en esa clave. Descartar en silencio una `password` o un `activo` le haría
+// creer a quien administra que eligió una contraseña o un estado.
+
+/** Largo máximo del nombre de una persona: el `VarChar(150)` de la columna. */
+export const NOMBRE_USUARIO_MAX = 150;
+
+/** Largo máximo de la búsqueda del listado de usuarios (el del nombre). */
+export const MAX_BUSQUEDA_USUARIOS = 150;
+
+export const MENSAJE_NOMBRE_USUARIO_VACIO = 'Ingresá el nombre.';
+export const MENSAJE_NOMBRE_USUARIO_LARGO = `El nombre puede tener como máximo ${NOMBRE_USUARIO_MAX} caracteres.`;
+export const MENSAJE_NOMBRE_USUARIO_CARACTERES =
+  'El nombre tiene caracteres que no se pueden usar.';
+export const MENSAJE_EMAIL_USUARIO_VACIO = 'Ingresá el email.';
+export const MENSAJE_ROL_INVALIDO = 'Elegí un rol válido.';
+export const MENSAJE_DATO_NO_PERMITIDO = 'Este dato no se puede enviar.';
+
+/**
+ * Nombre de una persona: obligatorio, sin espacios en los bordes, hasta `NOMBRE_USUARIO_MAX`
+ * caracteres (puntos de código, como cuenta PostgreSQL) y sin caracteres de control ni texto
+ * Unicode mal formado. Un solo mensaje, el del primer problema.
+ */
+export const NombreDeUsuarioSchema = z
+  .string({
+    required_error: MENSAJE_NOMBRE_USUARIO_VACIO,
+    invalid_type_error: MENSAJE_NOMBRE_USUARIO_VACIO,
+  })
+  .trim()
+  .superRefine((nombre, ctx) => {
+    const mensaje =
+      nombre === ''
+        ? MENSAJE_NOMBRE_USUARIO_VACIO
+        : !esUnicodeBienFormado(nombre) || !sinCaracteresDeControl(nombre)
+          ? MENSAJE_NOMBRE_USUARIO_CARACTERES
+          : [...nombre].length > NOMBRE_USUARIO_MAX
+            ? MENSAJE_NOMBRE_USUARIO_LARGO
+            : null;
+    if (mensaje !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: mensaje });
+  });
+
+/** Email de una cuenta: el mismo que acepta y normaliza el inicio de sesión. */
+export const EmailDeUsuarioSchema = z
+  .string({
+    required_error: MENSAJE_EMAIL_USUARIO_VACIO,
+    invalid_type_error: MENSAJE_EMAIL_USUARIO_VACIO,
+  })
+  .pipe(IniciarSesionSchema.shape.email);
+
+/** Uno de los tres roles; cualquier otro valor (también en minúsculas) es inválido. */
+export const RolDeUsuarioSchema = z.enum(RolUsuario.options, {
+  errorMap: () => ({ message: MENSAJE_ROL_INVALIDO }),
+});
+
+/** Búsqueda del listado: recortada, hasta `MAX_BUSQUEDA_USUARIOS`, sin caracteres de control. */
+export const BusquedaDeUsuariosSchema = z
+  .string({ invalid_type_error: 'La búsqueda debe ser un texto.' })
+  .trim()
+  .max(MAX_BUSQUEDA_USUARIOS, {
+    message: `La búsqueda puede tener como máximo ${MAX_BUSQUEDA_USUARIOS} caracteres.`,
+  })
+  .refine((texto) => esUnicodeBienFormado(texto) && sinCaracteresDeControl(texto), {
+    message: 'La búsqueda tiene caracteres que no se pueden usar.',
+  });
+
+/**
+ * Un objeto con exactamente las claves de `shape`: cada clave de más es un error en esa clave
+ * (`MENSAJE_DATO_NO_PERMITIDO`), informado junto con los errores de los demás campos.
+ */
+function soloEstosCampos<T extends z.ZodRawShape>(shape: T) {
+  const permitidos = new Set(Object.keys(shape));
+  return z.preprocess((datos, ctx) => {
+    if (typeof datos === 'object' && datos !== null && !Array.isArray(datos)) {
+      for (const clave of Object.keys(datos)) {
+        if (!permitidos.has(clave)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [clave],
+            message: MENSAJE_DATO_NO_PERMITIDO,
+          });
+        }
+      }
+    }
+    return datos;
+  }, z.object(shape));
+}
+
+/**
+ * Parámetros de `GET /usuarios` (query string).
+ * - `q`: busca en el nombre y el email, sin distinguir mayúsculas; vacío equivale a no enviarlo.
+ * - `rol`: uno de los tres roles.
+ * - `incluirDesactivados`: `'true'` o `'false'`; sin el parámetro, solo las cuentas activas.
+ */
+export const ListarUsuariosQuerySchema = z.object({
+  q: BusquedaDeUsuariosSchema.optional().transform((valor) => (valor === '' ? undefined : valor)),
+  rol: RolDeUsuarioSchema.optional(),
+  incluirDesactivados: booleanoDeQuery('incluirDesactivados')
+    .optional()
+    .transform((valor) => valor ?? false),
+});
+
+export type ListarUsuariosQuery = z.infer<typeof ListarUsuariosQuerySchema>;
+
+/**
+ * Cuerpo de `POST /usuarios`. La contraseña temporal la genera el servidor: una `password` (o
+ * `activo`, `debeCambiarPassword`, `id`…) es un error.
+ */
+export const CrearUsuarioSchema = soloEstosCampos({
+  nombre: NombreDeUsuarioSchema,
+  email: EmailDeUsuarioSchema,
+  rol: RolDeUsuarioSchema,
+});
+
+export type CrearUsuarioDto = z.infer<typeof CrearUsuarioSchema>;
+
+/**
+ * Cuerpo de `PATCH /usuarios/:id`: `nombre` y/o `rol`, al menos uno. El email no se modifica en
+ * HU4.5; el estado y la contraseña tienen su propia ruta.
+ */
+export const ActualizarUsuarioSchema = soloEstosCampos({
+  nombre: NombreDeUsuarioSchema.optional(),
+  rol: RolDeUsuarioSchema.optional(),
+}).superRefine(exigirAlgunCampo);
+
+export type ActualizarUsuarioDto = z.infer<typeof ActualizarUsuarioSchema>;
+
+/** Cuerpo de `PATCH /usuarios/:id/estado`: `activo` obligatorio y booleano (nunca un texto). */
+export const ActualizarEstadoUsuarioSchema = soloEstosCampos({
+  activo: z.boolean({
+    required_error: 'Indicá si la cuenta queda activa o desactivada.',
+    invalid_type_error: 'activo debe ser true o false.',
+  }),
+});
+
+export type ActualizarEstadoUsuarioDto = z.infer<typeof ActualizarEstadoUsuarioSchema>;
+
+/**
+ * Cuerpo de `POST /usuarios/:id/restablecer-password`: ninguno. Sin cuerpo o `{}`; cualquier clave
+ * (una contraseña elegida, un actor) es un error.
+ */
+export const RestablecerContrasenaSchema = soloEstosCampos({}).optional();
+
+/** Una cuenta tal como la ve la administración. Nunca hash, sesiones ni contadores. */
+export const UsuarioAdministradoSchema = z.object({
+  id: z.string().uuid(),
+  nombre: z.string(),
+  email: z.string(),
+  rol: RolUsuario,
+  activo: z.boolean(),
+  /** Contraseña temporal sin cambiar (cuenta nueva o restablecida). */
+  debeCambiarPassword: z.boolean(),
+  ultimoAccesoEn: z.coerce.date().nullable(),
+});
+
+export type UsuarioAdministrado = z.infer<typeof UsuarioAdministradoSchema>;
+
+/**
+ * Respuesta de `POST /usuarios` (201). `contrasenaTemporal` está solo acá, una vez, y solo si el
+ * alta quedó confirmada: ninguna otra respuesta la vuelve a dar.
+ */
+export const UsuarioCreadoSchema = z.object({
+  usuario: UsuarioAdministradoSchema,
+  contrasenaTemporal: z.string(),
+});
+
+export type UsuarioCreado = z.infer<typeof UsuarioCreadoSchema>;
+
+/**
+ * Respuesta de `PATCH /usuarios/:id`. `modificados` dice qué cambió de verdad (vacío: nada era
+ * distinto y no se escribió); solo un cambio de rol revoca sesiones.
+ */
+export const UsuarioModificadoSchema = z.object({
+  usuario: UsuarioAdministradoSchema,
+  modificados: z.array(z.enum(['nombre', 'rol'])),
+  sesionesRevocadas: z.number().int().nonnegative(),
+});
+
+export type UsuarioModificado = z.infer<typeof UsuarioModificadoSchema>;
+
+/**
+ * Respuesta de `PATCH /usuarios/:id/estado`. `cambio: false`: la cuenta ya estaba en ese estado y
+ * no se escribió nada.
+ */
+export const EstadoDeUsuarioCambiadoSchema = z.object({
+  usuario: UsuarioAdministradoSchema,
+  cambio: z.boolean(),
+  sesionesRevocadas: z.number().int().nonnegative(),
+});
+
+export type EstadoDeUsuarioCambiado = z.infer<typeof EstadoDeUsuarioCambiadoSchema>;
+
+/** Respuesta de `POST /usuarios/:id/restablecer-password`: la contraseña temporal nueva, una vez. */
+export const ContrasenaRestablecidaSchema = z.object({
+  usuario: UsuarioAdministradoSchema,
+  contrasenaTemporal: z.string(),
+  sesionesRevocadas: z.number().int().nonnegative(),
+});
+
+export type ContrasenaRestablecida = z.infer<typeof ContrasenaRestablecidaSchema>;

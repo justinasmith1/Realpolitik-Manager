@@ -3,6 +3,7 @@ import { createBrowserRouter, redirect, type RouteObject } from 'react-router';
 import { NotFoundPage } from '@/app/NotFoundPage';
 import type { AppRouteHandle } from '@/components/layout/AppHeader';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { RequierePermiso } from '@/modules/auth/components/RequierePermiso';
 import { RequiereSesion } from '@/modules/auth/components/RequiereSesion';
 import { CambiarContrasenaPage } from '@/modules/auth/pages/CambiarContrasenaPage';
 import { LoginPage } from '@/modules/auth/pages/LoginPage';
@@ -13,6 +14,7 @@ import { ArchivosPage } from '@/modules/documentos/pages/ArchivosPage';
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
 import { RendicionesPage } from '@/modules/rendiciones/pages/RendicionesPage';
 import { TiposDocumentoPage } from '@/modules/tipos-documento/pages/TiposDocumentoPage';
+import { UsuariosPage } from '@/modules/usuarios/pages/UsuariosPage';
 
 export const routes: RouteObject[] = [
   // Pantallas de acceso, fuera del shell y de la guarda (HU4.1).
@@ -80,6 +82,17 @@ export const routes: RouteObject[] = [
         path: 'clientes/:id/rendiciones/:rendicionId',
         element: <RendicionDetallePage />,
         handle: { title: 'Rendición' } satisfies AppRouteHandle,
+      },
+      // Administración de cuentas (HU4.5): se llega desde el menú de cuenta, no desde el sidebar.
+      // Sin `usuarios:administrar`, "No tenés acceso" y la página ni se monta.
+      {
+        path: 'usuarios',
+        element: (
+          <RequierePermiso permiso="usuarios:administrar">
+            <UsuariosPage />
+          </RequierePermiso>
+        ),
+        handle: { title: 'Usuarios' } satisfies AppRouteHandle,
       },
       { path: '*', element: <NotFoundPage /> },
     ],

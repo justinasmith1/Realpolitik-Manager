@@ -6,7 +6,7 @@ import {
   UsersIcon,
 } from 'lucide-react';
 import type { ComponentType, Ref } from 'react';
-import { Link, useMatch } from 'react-router';
+import { Link, useMatch, useNavigate } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -141,17 +141,28 @@ function NavItem({ to, seccion, label, icon: Icon }: NavDestination) {
   );
 }
 
-/** El pie: la cuenta. En mobile, abrir el cambio de contraseña cierra el cajón primero. */
+/**
+ * El pie: la cuenta. En mobile, abrir el cambio de contraseña o ir a Usuarios cierra el cajón
+ * primero.
+ */
 function PieDeCuenta({ onCambiarContrasena, cuentaRef }: AppSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar();
+  const navigate = useNavigate();
+  const cerrarCajon = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
   return (
     <CuentaMenu
       disparadorRef={cuentaRef}
       onCambiarContrasena={() => {
-        if (isMobile) {
-          setOpenMobile(false);
-        }
+        cerrarCajon();
         onCambiarContrasena();
+      }}
+      onUsuarios={() => {
+        cerrarCajon();
+        void navigate('/usuarios');
       }}
     />
   );
