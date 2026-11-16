@@ -344,20 +344,23 @@ describe('RendicionDetallePage: una Enviada (HU3.7)', () => {
     expect(historial.getAllByRole('listitem').at(-1)).toHaveTextContent('05/10/2026Pasó aEnviada');
   });
 
-  it('deshabilita cambiar el canal y el documento, y explica por qué', async () => {
+  it('no muestra el aviso de bloqueo ni ofrece cambiar el canal ni el documento', async () => {
+    // La rendición ya fue enviada: el checklist pasa a solo lectura. Los botones desaparecen del
+    // todo. El aviso que explicaba el bloqueo también desaparece: solo tenía sentido mientras se
+    // veían deshabilitados (etapa 4, banner solo en Rechazada).
     servir({ inicial: ENVIADA });
     renderDetalle();
     await esperarDetalle();
 
-    const motivo =
-      'La rendición ya fue enviada: no se pueden cambiar sus documentos ni sus canales.';
-    expect(screen.getByText(motivo)).toBeVisible();
-    const canal = screen.getByRole('button', { name: /Cambiar el canal de/ });
-    const reemplazar = screen.getByRole('button', { name: /Reemplazar documento de/ });
-    for (const boton of [canal, reemplazar]) {
-      expect(boton).toBeDisabled();
-      expect(boton).toHaveAccessibleDescription(motivo);
-    }
+    expect(
+      screen.queryByText(
+        'La rendición ya fue enviada: no se pueden cambiar sus documentos ni sus canales.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Cambiar el canal de/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Reemplazar documento de/ }),
+    ).not.toBeInTheDocument();
     // La OC sigue editable: es un dato administrativo.
     expect(screen.getByRole('button', { name: 'Editar OC' })).toBeEnabled();
   });

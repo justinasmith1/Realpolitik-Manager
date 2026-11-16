@@ -84,12 +84,11 @@ import {
   TEXTO_CORREGIR_RENDICION,
   TEXTO_MARCAR_ENVIADA,
   TEXTO_RENDICION_RECHAZADA,
-  TEXTO_RENDICION_YA_APROBADA,
-  TEXTO_RENDICION_YA_ENVIADA,
   TEXTO_RESPUESTA_APROBADA,
   TEXTO_RESPUESTA_RECHAZADA,
   TEXTO_VOLVER_A_EN_CURSO,
   textoDeFaltantes,
+  TITULO_DOCUMENTOS_ENVIADOS,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 import { rutaDeMatriz, type EstadoDeDetalle } from '@/modules/rendiciones/rendiciones.rutas';
 
@@ -233,7 +232,6 @@ function DetalleDeRendicion({
   const puedeEditarCliente = usePermiso('clientes:editar');
   const idSoloFaltantes = useId();
   const idFaltantes = useId();
-  const idRendicionBloqueada = useId();
   const enviarRef = useRef<HTMLButtonElement>(null);
   // El diálogo de la fecha de envío (HU3.7): desde "Marcar como enviada" o desde "Ya la envié".
   const [registrandoEnvio, setRegistrandoEnvio] = useState(false);
@@ -276,12 +274,6 @@ function DetalleDeRendicion({
   // estado real.
   const cerrada = !esRendicionModificable(rendicion.estado);
   const modificable = !anulada && !cerrada;
-  const textoDeCerrada =
-    rendicion.estado === 'APROBADA'
-      ? TEXTO_RENDICION_YA_APROBADA
-      : rendicion.estado === 'RECHAZADA'
-        ? TEXTO_RENDICION_RECHAZADA
-        : TEXTO_RENDICION_YA_ENVIADA;
   // Lo que falta para completarla, con la regla del envío (HU3.6): pendientes y reunidos sin
   // documento vigente. Sin ítems tampoco se puede completar.
   const faltantesParaCompletar = faltantesParaEnviar(rendicion.items).length;
@@ -296,12 +288,13 @@ function DetalleDeRendicion({
   // Los cambios de estado (HU3.6 a HU3.9): solo en una rendición activa que no esté Aprobada, y
   // para quien opera rendiciones.
   const conAccionesDeEstado = puedeOperar && !anulada && rendicion.estado !== 'APROBADA';
-  // Elegir ítems y prepararlos para enviar (`preparar-envio` es de operar): en una activa.
-  const conEnvio = puedeOperar && !anulada;
+  // Elegir ítems y prepararlos para enviar (`preparar-envio` es de operar): en una activa no cerrada.
+  const conEnvio = puedeOperar && !anulada && !cerrada;
   // "Checklist completo" con la misma regla que el botón (pendientes y reunidos sin documento
   // vigente): nunca dice "completo" con "Marcar como completa" deshabilitado.
   const completo = puedeCompletarse;
-  const visibles = soloFaltantes ? avance.faltantes : rendicion.items;
+  // En modo solo lectura no hay casilla para desmarcar el filtro: siempre mostrar todo.
+  const visibles = soloFaltantes && !cerrada ? avance.faltantes : rendicion.items;
   // Solo cuentan los que se pueden enviar con los datos de ahora: si un ítem marcado deja de
   // poder enviarse (se refrescó la rendición), sale solo de la selección.
   const elegidos = rendicion.items.filter(
@@ -344,7 +337,6 @@ function DetalleDeRendicion({
           onAsociar: abrir('asociar'),
           onReemplazar: abrir('reemplazar'),
         }),
-      soloLectura: !puedeOperarDocumentos,
       onVerHistorial: () => setHistorialDe(item.id),
       onDescargar: () => {
         if (vigente !== null) {
@@ -639,10 +631,8 @@ function DetalleDeRendicion({
       )}
       {/* Por qué ya no se cambian documentos y canales: es para quien podría cambiarlos. El estado
           (y el motivo de un rechazo) se ven igual para todos. */}
-      {cerrada && !anulada && puedeOperar && (
-        <Alert variant="warning">
-          <span id={idRendicionBloqueada}>{textoDeCerrada}</span>
-        </Alert>
+      {rendicion.estado === 'RECHAZADA' && !anulada && puedeOperar && (
+        <Alert variant="warning">{TEXTO_RENDICION_RECHAZADA}</Alert>
       )}
       {completo && !cerrada && (
         <Alert variant="success">Checklist completo: están todos los documentos.</Alert>
@@ -655,19 +645,21 @@ function DetalleDeRendicion({
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="titulo-checklist" className="text-base font-semibold text-foreground">
-              Checklist
+              {cerrada ? TITULO_DOCUMENTOS_ENVIADOS : 'Checklist'}
             </h2>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex min-h-9 items-center gap-2 text-sm">
-                <Checkbox
-                  id={idSoloFaltantes}
-                  checked={soloFaltantes}
-                  onCheckedChange={(marcado) => setSoloFaltantes(marcado)}
-                />
-                <label htmlFor={idSoloFaltantes} className="cursor-pointer">
-                  Ver solo faltantes ({avance.faltantes.length})
-                </label>
-              </div>
+              {!cerrada && (
+                <div className="inline-flex min-h-9 items-center gap-2 text-sm">
+                  <Checkbox
+                    id={idSoloFaltantes}
+                    checked={soloFaltantes}
+                    onCheckedChange={(marcado) => setSoloFaltantes(marcado)}
+                  />
+                  <label htmlFor={idSoloFaltantes} className="cursor-pointer">
+                    Ver solo faltantes ({avance.faltantes.length})
+                  </label>
+                </div>
+              )}
               {conEnvio && (
                 <LoadingButton
                   ref={enviarRef}
@@ -721,9 +713,6 @@ function DetalleDeRendicion({
                         setItemACorregir(item);
                       },
                     })}
-                  {...(cerrada &&
-                    !anulada &&
-                    puedeOperar && { bloqueadoPor: idRendicionBloqueada })}
                   {...(item.documento !== undefined &&
                     puedeVerDocumentos && {
                       documento: accionesDeDocumento(item),

@@ -20,11 +20,6 @@ export interface AccionesDeDocumento {
   onVerHistorial: () => void;
   onDescargar: () => void;
   descargando: boolean;
-  /**
-   * Quien mira no opera documentos (HU4.3, CONSULTA): solo descarga y ve el historial. Asociar y
-   * reemplazar no aparecen, tampoco deshabilitados cuando la rendición está bloqueada.
-   */
-  soloLectura?: boolean;
 }
 
 interface ItemChecklistFilaProps {
@@ -42,12 +37,6 @@ interface ItemChecklistFilaProps {
   onCambiarCanal?: () => void;
   /** Sin esto (la API no informa el documento del ítem), la fila no muestra documentos. */
   documento?: AccionesDeDocumento;
-  /**
-   * La rendición ya no se modifica (Enviada, HU3.7): el id del texto que explica por qué. Las
-   * acciones que cambian el canal o el documento se ven deshabilitadas y lo citan. Es para quien
-   * podría hacerlas: a quien no tiene permiso (CONSULTA) no se le pasa, y no ve esas acciones.
-   */
-  bloqueadoPor?: string;
 }
 
 /**
@@ -62,7 +51,6 @@ export function ItemChecklistFila({
   seleccion,
   onCambiarCanal,
   documento,
-  bloqueadoPor,
 }: ItemChecklistFilaProps) {
   const idCasilla = useId();
   const idMotivo = useId();
@@ -73,16 +61,11 @@ export function ItemChecklistFila({
   const claseDelNombre = cn('text-sm text-foreground', pendiente && 'font-semibold');
   const vigente = item.documento ?? null;
   const conDocumento = documento !== undefined && vigente !== null;
-  const bloqueada = bloqueadoPor !== undefined;
-  // Bloqueadas se muestran deshabilitadas solo a quien opera documentos (`soloLectura`, no).
-  const documentoBloqueado = bloqueada && documento !== undefined && !documento.soloLectura;
   // Pendiente y, según la API, sin documento vigente: se dice siempre (es información). La acción
-  // de asociar va al lado solo para quien la tiene (o la ve bloqueada, con su motivo).
+  // de asociar va al lado solo para quien la tiene.
   const sinDocumento = documento !== undefined && pendiente && vigente === null;
-  const paraAsociar = documento?.onAsociar !== undefined || documentoBloqueado;
-  const conReemplazo = documento?.onReemplazar !== undefined || documentoBloqueado;
-  /** Atributos de una acción que cambia el ítem: deshabilitada y explicada si está bloqueada. */
-  const accion = bloqueada ? { disabled: true, 'aria-describedby': bloqueadoPor } : {};
+  const paraAsociar = documento?.onAsociar !== undefined;
+  const conReemplazo = documento?.onReemplazar !== undefined;
   return (
     <li
       data-estado={pendiente ? 'pendiente' : 'reunido'}
@@ -126,13 +109,12 @@ export function ItemChecklistFila({
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-0.5">
           <Badge tone="neutral">{etiquetasCanalEntrega[item.canalEntrega]}</Badge>
-          {(onCambiarCanal !== undefined || bloqueada) && (
+          {onCambiarCanal !== undefined && (
             <Button
               type="button"
               variant="ghost"
               size="icon-xs"
               onClick={onCambiarCanal}
-              {...accion}
               aria-label={`Cambiar el canal de ${nombre}`}
               title="Cambiar el canal"
             >
@@ -173,7 +155,6 @@ export function ItemChecklistFila({
                 variant="ghost"
                 size="xs"
                 onClick={documento.onReemplazar}
-                {...accion}
                 aria-label={`Reemplazar documento de ${nombre}`}
               >
                 Reemplazar documento
@@ -205,7 +186,6 @@ export function ItemChecklistFila({
               variant="outline"
               size="xs"
               onClick={documento.onAsociar}
-              {...accion}
               aria-label={`Asociar documento existente a ${nombre}`}
             >
               Asociar documento existente

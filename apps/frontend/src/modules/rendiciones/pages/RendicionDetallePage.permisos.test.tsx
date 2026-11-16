@@ -22,7 +22,6 @@ import {
   TEXTO_QUITAR_COBRO,
   TEXTO_REGISTRAR_COBRO,
   TEXTO_RENDICION_RECHAZADA,
-  TEXTO_RENDICION_YA_ENVIADA,
   TEXTO_SIN_COBRO,
   TEXTO_VOLVER_A_EN_CURSO,
 } from '@/modules/rendiciones/rendiciones.etiquetas';
@@ -232,10 +231,13 @@ function sinAccionesDeEscritura() {
     expect(screen.queryAllByRole('button', { name: nombre }), String(nombre)).toEqual([]);
   }
   expect(screen.queryByRole('group', { name: 'Cambiar el estado' })).not.toBeInTheDocument();
-  // La única casilla es el filtro "Ver solo faltantes": no hay casillas de envío.
-  expect(screen.getAllByRole('checkbox')).toEqual([
-    screen.getByRole('checkbox', { name: /Ver solo faltantes/ }),
-  ]);
+  // En estados abiertos hay exactamente la casilla del filtro "Ver solo faltantes" (sin casillas de
+  // envío). En estados cerrados (Enviada/Aprobada/Rechazada) no hay ninguna casilla: el checklist
+  // es de solo lectura y la casilla del filtro se oculta también.
+  const casillas = screen.queryAllByRole('checkbox');
+  if (casillas.length > 0) {
+    expect(casillas).toEqual([screen.getByRole('checkbox', { name: /Ver solo faltantes/ })]);
+  }
 }
 
 const soloLecturas = () =>
@@ -298,7 +300,7 @@ describe('Detalle con CONSULTA: estados, cobro y avisos', () => {
     await cargado();
 
     expect(screen.getByText('Estado').nextElementSibling).toHaveTextContent('20/10/2026');
-    expect(screen.queryByText(TEXTO_RENDICION_YA_ENVIADA)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ya fue enviada/)).not.toBeInTheDocument();
   });
 
   it('una Anulada muestra cuándo se anuló', async () => {
@@ -420,7 +422,9 @@ describe.each(['ADMINISTRATIVO', 'ADMINISTRADOR'] as const)('Detalle con %s', (r
     expect(screen.getByRole('button', { name: 'Reemplazar documento de Factura' })).toBeEnabled();
   });
 
-  it('Enviada: responde y muestra deshabilitado lo bloqueado, con su motivo; el cobro todavía no', async () => {
+  it('Enviada: ofrece registrar respuesta; el canal y el documento no se editan', async () => {
+    // El checklist es de solo lectura: los botones de canal y documento desaparecen del todo.
+    // El aviso que los explicaba ya no se muestra (etapa 4: se restringe a Rechazada).
     servir(CASOS.Enviada);
     renderDetalle(rol);
     await cargado();
@@ -429,9 +433,13 @@ describe.each(['ADMINISTRATIVO', 'ADMINISTRADOR'] as const)('Detalle con %s', (r
     expect(screen.getByRole('button', { name: ARIA_RESPUESTA_RECHAZADA })).toBeInTheDocument();
     // Solo una Aprobada se cobra (16/11/2026).
     expect(screen.queryByRole('button', { name: TEXTO_REGISTRAR_COBRO })).not.toBeInTheDocument();
-    expect(screen.getByText(TEXTO_RENDICION_YA_ENVIADA)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cambiar el canal de Print' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Reemplazar documento de Factura' })).toBeDisabled();
+    expect(screen.queryByText(/ya fue enviada/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Cambiar el canal de Print' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Reemplazar documento de Factura' }),
+    ).not.toBeInTheDocument();
   });
 
   it('Aprobada: registra el cobro', async () => {

@@ -116,16 +116,6 @@ export const TEXTO_YA_LA_ENVIE = 'Ya la envié';
 export const TITULO_MARCAR_ENVIADA = 'Registrar el envío';
 export const ETIQUETA_FECHA_ENVIO = 'Fecha de envío';
 export const TEXTO_CONFIRMAR_ENVIO = 'Confirmar';
-/** Por qué las acciones sobre documentos y canales están deshabilitadas en una Enviada. */
-export const TEXTO_RENDICION_YA_ENVIADA =
-  'La rendición ya fue enviada: no se pueden cambiar sus documentos ni sus canales.';
-
-/**
- * Por qué las acciones sobre documentos y canales están deshabilitadas en una Aprobada (HU3.8):
- * como una Enviada, ya no se modifica.
- */
-export const TEXTO_RENDICION_YA_APROBADA =
-  'La rendición ya fue aprobada: no se pueden cambiar sus documentos ni sus canales.';
 
 /** El aviso al registrar el envío: "La rendición quedó enviada (08/11/2026)." */
 export const avisoRendicionEnviada = (fechaEnvio: string): string =>
@@ -170,6 +160,13 @@ export const textoDeRechazo = (fecha: Date, motivo: string | null | undefined): 
   const texto = motivo?.trim() ?? '';
   return `Rechazada el ${fechaCorta(fecha)}${texto === '' ? '.' : `: ${texto}`}`;
 };
+
+// ─── Checklist en solo lectura (HU3.7 a HU3.9) ───────────────────────────────
+// Una rendición ya enviada (Enviada, Aprobada o Rechazada) no se arma: el checklist muestra lo
+// que se mandó, sin casillas de selección ni controles de edición.
+
+/** Título de la sección del checklist cuando la rendición ya fue enviada. */
+export const TITULO_DOCUMENTOS_ENVIADOS = 'Documentos enviados';
 
 // ─── Orden de compra (HU2.11) ─────────────────────────────────────────────────
 
