@@ -466,8 +466,6 @@ export type FalloCambioDeEstado =
   | { tipo: 'motivo-invalido'; mensaje: string | null }
   | { tipo: 'rendicion-anulada' }
   | { tipo: 'transicion-invalida' }
-  /** Rechazar una rendición con un cobro registrado (HU3.10): hay que quitar antes la marca. */
-  | { tipo: 'cobro-registrado' }
   | { tipo: 'no-existe' }
   | { tipo: 'inesperado' };
 
@@ -503,8 +501,6 @@ export function interpretarFalloCambioDeEstado(error: unknown): FalloCambioDeEst
         return { tipo: 'rendicion-anulada' };
       case 'TRANSICION_INVALIDA':
         return { tipo: 'transicion-invalida' };
-      case 'COBRO_REGISTRADO':
-        return { tipo: 'cobro-registrado' };
     }
   }
   return { tipo: 'inesperado' };

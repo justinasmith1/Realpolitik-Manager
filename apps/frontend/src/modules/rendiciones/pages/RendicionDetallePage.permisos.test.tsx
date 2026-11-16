@@ -420,21 +420,30 @@ describe.each(['ADMINISTRATIVO', 'ADMINISTRADOR'] as const)('Detalle con %s', (r
     expect(screen.getByRole('button', { name: 'Reemplazar documento de Factura' })).toBeEnabled();
   });
 
-  it('Enviada: responde, registra el cobro y muestra deshabilitado lo bloqueado, con su motivo', async () => {
+  it('Enviada: responde y muestra deshabilitado lo bloqueado, con su motivo; el cobro todavía no', async () => {
     servir(CASOS.Enviada);
     renderDetalle(rol);
     await cargado();
 
     expect(screen.getByRole('button', { name: ARIA_RESPUESTA_APROBADA })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: ARIA_RESPUESTA_RECHAZADA })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: TEXTO_REGISTRAR_COBRO })).toBeInTheDocument();
+    // Solo una Aprobada se cobra (16/11/2026).
+    expect(screen.queryByRole('button', { name: TEXTO_REGISTRAR_COBRO })).not.toBeInTheDocument();
     expect(screen.getByText(TEXTO_RENDICION_YA_ENVIADA)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cambiar el canal de Print' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Reemplazar documento de Factura' })).toBeDisabled();
   });
 
-  it('con cobro en una Enviada: lo edita y lo quita', async () => {
-    servir({ ...CASOS.Enviada, cobro: COBRO });
+  it('Aprobada: registra el cobro', async () => {
+    servir(CASOS.Aprobada);
+    renderDetalle(rol);
+    await cargado();
+
+    expect(screen.getByRole('button', { name: TEXTO_REGISTRAR_COBRO })).toBeInTheDocument();
+  });
+
+  it('con cobro en una Aprobada: lo edita y lo quita', async () => {
+    servir({ ...CASOS.Aprobada, cobro: COBRO });
     renderDetalle(rol);
     await cargado();
 

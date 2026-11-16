@@ -280,23 +280,21 @@ describe('registrarCambioDeEstado (sin endpoint)', () => {
     });
     expect(transaccion.rendicion.findFirst).toHaveBeenCalledWith({
       where: { id: RENDICION, cliente: { isDeleted: false } },
-      select: { estado: true, cobroFecha: true },
+      select: { estado: true },
     });
   });
 
-  it('rechazar una rendición con cobro registrado es COBRO_REGISTRADO, también por el punto único (HU3.10)', async () => {
-    transaccion.rendicion.findFirst.mockResolvedValue({
-      estado: 'ENVIADA',
-      cobroFecha: new Date('2026-11-10T00:00:00.000Z'),
-    });
+  it('rechazar una rendición con cobro registrado se puede, y no escribe el cobro (HU3.10)', async () => {
+    transaccion.rendicion.findFirst.mockResolvedValue({ estado: 'ENVIADA' });
 
-    await expect(
-      registrarCambioDeEstado(RENDICION, 'RECHAZADA', 'Falta la firma'),
-    ).rejects.toMatchObject({
-      status: 409,
-      details: { motivo: 'COBRO_REGISTRADO' },
-    });
-    expect(transaccion.rendicion.update).not.toHaveBeenCalled();
+    await registrarCambioDeEstado(RENDICION, 'RECHAZADA', 'Falta la firma');
+
+    expect(transaccion.rendicion.update).toHaveBeenCalledTimes(1);
+    const [{ data }] = transaccion.rendicion.update.mock.calls[0] as [
+      { data: Record<string, unknown> },
+    ];
+    expect(data).not.toHaveProperty('cobroFecha');
+    expect(data).not.toHaveProperty('cobroNota');
   });
 
   it('guarda el motivo cuando viene (lo va a usar el rechazo, HU3.8)', async () => {

@@ -539,16 +539,14 @@ async function registrarCambioDeEstadoEnTx(
 ): Promise<RendicionDetalle> {
   const rendicion = await tx.rendicion.findFirst({
     where: { id: rendicionId, cliente: { isDeleted: false } },
-    select: { estado: true, cobroFecha: true },
+    select: { estado: true },
   });
   if (rendicion === null) {
     throw notFound('Rendición no encontrada');
   }
-  // Una rechazada no está cobrada (HU3.10): quien la rechaza quita antes la marca. Se lee dentro de
-  // la misma transacción que cambia el estado, así un cobro registrado en el medio no se pierde.
-  if (estadoNuevo === 'RECHAZADA' && rendicion.cobroFecha instanceof Date) {
-    throw conflict('COBRO_REGISTRADO', {}, 'La rendición tiene un cobro registrado');
-  }
+  // Un cambio de estado, también el rechazo, no lee ni escribe el cobro (HU3.10): lo conserva tal
+  // cual. Solo una Aprobada se cobra, pero un cobro viejo en otro estado no bloquea nada y se puede
+  // quitar (ADR-0005, punto 13).
 
   const actualizada = await tx.rendicion.update({
     where: { id: rendicionId },
@@ -734,11 +732,11 @@ export async function actualizarRendicion(
 /**
  * Registra o corrige el cobro que el cliente informó (HU3.10): `PUT /rendiciones/:id/cobro`.
  * Reemplaza el cobro entero: sin nota, la nota queda en `null`. Solo en una rendición activa
- * (anulada: `409 RENDICION_ANULADA`) y Enviada o Aprobada (`409 COBRO_ESTADO_INVALIDO` con el
- * `estadoActual`). Es una marca, no un estado: no toca el historial. La fecha no puede ser
- * posterior a hoy (Buenos Aires): se vuelve a comprobar acá con `ahora`, como la fecha de envío.
- * No usa `motivoParaNoModificar`: una Aprobada no se modifica, pero sí se cobra. Una sola
- * escritura, en transacción serializable junto con los chequeos.
+ * (anulada: `409 RENDICION_ANULADA`) y Aprobada (`ESTADOS_COBRABLES`; si no,
+ * `409 COBRO_ESTADO_INVALIDO` con el `estadoActual`). Es una marca, no un estado: no toca el
+ * historial. La fecha no puede ser posterior a hoy (Buenos Aires): se vuelve a comprobar acá con
+ * `ahora`, como la fecha de envío. No usa `motivoParaNoModificar`: una Aprobada no se modifica,
+ * pero sí se cobra. Una sola escritura, en transacción serializable junto con los chequeos.
  */
 export async function registrarCobro(
   id: string,
@@ -760,7 +758,7 @@ export async function registrarCobro(
       throw conflict(
         'COBRO_ESTADO_INVALIDO',
         { estadoActual: rendicion.estado },
-        'Solo se registra el cobro de una rendición enviada o aprobada',
+        'Solo se puede registrar el cobro de una rendición aprobada.',
       );
     }
     const problema = problemaDeFechaCobro(datos.fecha, ahora);

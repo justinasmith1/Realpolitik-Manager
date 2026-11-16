@@ -6,14 +6,14 @@ import { esDiaValido, hoyEnBuenosAires } from './dia.js';
 // un estado: no hay conciliación bancaria, la operadora solo anota lo que el cliente le avisó.
 
 /**
- * Los estados en los que se puede registrar o editar el cobro: una rendición que ya se presentó y
- * no fue rechazada. No tiene relación con `ESTADOS_NO_MODIFICABLES`: una Aprobada no se modifica
- * (documentos, canales), pero su cobro sí se registra.
+ * Los estados en los que se puede registrar o editar el cobro: solo una rendición Aprobada. Los
+ * clientes pagan las rendiciones que se enviaron y aprobaron; si la rechazan, no pagan (aclaración
+ * de la operadora del 16/11/2026, ADR-0005 punto 13). No tiene relación con
+ * `ESTADOS_NO_MODIFICABLES`: una Aprobada no se modifica (documentos, canales), pero se cobra.
+ * Quitar un cobro no depende del estado: un cobro cargado antes de esta regla en otro estado se
+ * puede quitar, pero no editar.
  */
-export const ESTADOS_COBRABLES = [
-  'ENVIADA',
-  'APROBADA',
-] as const satisfies readonly EstadoRendicion[];
+export const ESTADOS_COBRABLES = ['APROBADA'] as const satisfies readonly EstadoRendicion[];
 
 /** `true` si a una rendición en este estado se le puede registrar el cobro. */
 export const esEstadoCobrable = (estado: EstadoRendicion): boolean =>

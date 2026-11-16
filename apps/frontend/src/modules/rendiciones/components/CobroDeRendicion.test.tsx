@@ -7,8 +7,9 @@ import { buttonVariants } from '@/components/ui/button';
 import { CobroDeRendicion } from '@/modules/rendiciones/components/CobroDeRendicion';
 
 // La franja del cobro en el detalle (HU3.10), a ancho completo bajo la línea Estado · Vigencia ·
-// Avance: "Registrar cobro" si se puede y no hay, el cobro con "Editar" y "Quitar" si lo hay, y solo
-// lectura si la rendición está anulada.
+// Avance: "Registrar cobro" si se puede (solo una Aprobada) y no hay, el cobro con "Editar" y
+// "Quitar" si lo hay, solo "Quitar" para un cobro viejo en otro estado, y solo lectura si la
+// rendición está anulada.
 
 const COBRO = { fecha: '2026-11-10', nota: 'Avisó por mail Juan, de Tesorería' };
 
@@ -18,7 +19,7 @@ interface Props {
   cobro?: { fecha: string; nota: string | null } | null;
 }
 
-function renderFranja({ estado = 'ENVIADA', anulada = false, cobro = null }: Props = {}) {
+function renderFranja({ estado = 'APROBADA', anulada = false, cobro = null }: Props = {}) {
   const acciones = { onRegistrar: vi.fn(), onEditar: vi.fn(), onQuitar: vi.fn() };
   const { container } = render(
     <CobroDeRendicion estado={estado} anulada={anulada} cobro={cobro} {...acciones} />,
@@ -33,20 +34,17 @@ const esDe = (variant: 'outline' | 'ghost', size: 'sm') =>
 const boton = (nombre: string) => screen.queryByRole('button', { name: nombre });
 
 describe('CobroDeRendicion: sin cobro', () => {
-  it.each<EstadoRendicionType>(['ENVIADA', 'APROBADA'])(
-    'una %s activa ofrece registrarlo, con la franja en el estilo de la cabecera',
-    (estado) => {
-      renderFranja({ estado });
+  it('una Aprobada activa ofrece registrarlo, con la franja en el estilo de la cabecera', () => {
+    renderFranja({ estado: 'APROBADA' });
 
-      expect(within(franja()).getByText('Cobro')).toBeVisible();
-      expect(within(franja()).getByText('Sin cobro registrado')).toBeVisible();
-      expect(franja()).toHaveClass('rounded-panel', 'border', 'bg-panel', 'px-4', 'py-3');
-      expect(franja()).not.toHaveClass('bg-success-soft');
-      expect(boton('Registrar cobro')).toBeVisible();
-      expect(boton('Editar cobro')).not.toBeInTheDocument();
-      expect(boton('Quitar cobro')).not.toBeInTheDocument();
-    },
-  );
+    expect(within(franja()).getByText('Cobro')).toBeVisible();
+    expect(within(franja()).getByText('Sin cobro registrado')).toBeVisible();
+    expect(franja()).toHaveClass('rounded-panel', 'border', 'bg-panel', 'px-4', 'py-3');
+    expect(franja()).not.toHaveClass('bg-success-soft');
+    expect(boton('Registrar cobro')).toBeVisible();
+    expect(boton('Editar cobro')).not.toBeInTheDocument();
+    expect(boton('Quitar cobro')).not.toBeInTheDocument();
+  });
 
   it('"Registrar cobro" es un botón outline sm, y al tocarlo avisa', async () => {
     const { user, onRegistrar } = renderFranja();
@@ -63,8 +61,8 @@ describe('CobroDeRendicion: sin cobro', () => {
     expect(franja().querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it.each<EstadoRendicionType>(['EN_CURSO', 'COMPLETA', 'RECHAZADA'])(
-    'una %s no se cobra: no se dibuja nada',
+  it.each<EstadoRendicionType>(['EN_CURSO', 'COMPLETA', 'ENVIADA', 'RECHAZADA'])(
+    'una %s no se cobra: no se dibuja nada (solo una Aprobada se cobra)',
     (estado) => {
       const { container } = renderFranja({ estado });
 
@@ -110,7 +108,7 @@ describe('CobroDeRendicion: con cobro', () => {
     expect(within(franja()).getByText('Cobrada el 01/01/2026')).toBeVisible();
   });
 
-  it('en una activa Enviada o Aprobada ofrece "Editar cobro" (outline sm) y "Quitar cobro" (ghost sm)', async () => {
+  it('en una Aprobada activa ofrece "Editar cobro" (outline sm) y "Quitar cobro" (ghost sm)', async () => {
     const { user, onEditar, onQuitar } = renderFranja({ estado: 'APROBADA', cobro: COBRO });
 
     expect(boton('Registrar cobro')).not.toBeInTheDocument();
@@ -126,12 +124,36 @@ describe('CobroDeRendicion: con cobro', () => {
     expect(onQuitar).toHaveBeenCalledTimes(1);
   });
 
-  it('si la rendición ya no es cobrable pero tiene cobro (p. ej. rechazada con el cobro viejo), no se edita pero se puede quitar', () => {
-    renderFranja({ estado: 'RECHAZADA', cobro: COBRO });
+  it.each<EstadoRendicionType>(['ENVIADA', 'RECHAZADA', 'EN_CURSO'])(
+    'un cobro viejo en una %s se ve con "Quitar cobro" y sin "Editar", y explica por qué',
+    (estado) => {
+      renderFranja({ estado, cobro: COBRO });
+
+      expect(within(franja()).getByText('Cobrada el 10/11/2026')).toBeVisible();
+      expect(boton('Editar cobro')).not.toBeInTheDocument();
+      const explicacion = within(franja()).getByText(
+        'Solo se puede editar el cobro de una rendición aprobada.',
+      );
+      expect(explicacion).toHaveClass('text-xs');
+      const quitar = screen.getByRole('button', { name: 'Quitar cobro' });
+      expect(quitar).toHaveAccessibleDescription(
+        'Solo se puede editar el cobro de una rendición aprobada.',
+      );
+    },
+  );
+
+  it('en una Aprobada con cobro no aparece la explicación', () => {
+    renderFranja({ estado: 'APROBADA', cobro: COBRO });
+
+    expect(screen.queryByText(/Solo se puede editar el cobro/)).not.toBeInTheDocument();
+  });
+
+  it('sin acciones (solo lectura), un cobro viejo se ve sin la explicación ni botones', () => {
+    render(<CobroDeRendicion estado="RECHAZADA" anulada={false} cobro={COBRO} />);
 
     expect(within(franja()).getByText('Cobrada el 10/11/2026')).toBeVisible();
-    expect(boton('Editar cobro')).not.toBeInTheDocument();
-    expect(boton('Quitar cobro')).toBeVisible();
+    expect(screen.queryByText(/Solo se puede editar el cobro/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('una anulada con cobro muestra la misma franja, sin botones', () => {

@@ -5,6 +5,7 @@ import { useId } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
+  TEXTO_COBRO_NO_EDITABLE,
   TEXTO_EDITAR_COBRO,
   TEXTO_QUITAR_COBRO,
   TEXTO_REGISTRAR_COBRO,
@@ -33,10 +34,12 @@ interface CobroDeRendicionProps {
  * Estado · Vigencia · Avance y con el estilo de la tarjeta de cabecera. Es una marca de la
  * rendición, no un estado.
  *
- * - Sin cobro, en una activa Enviada o Aprobada: "Sin cobro registrado" y "Registrar cobro".
+ * - Sin cobro, en una activa Aprobada (la única cobrable): "Sin cobro registrado" y "Registrar
+ *   cobro".
  * - Con cobro: fondo y borde `success-*`, "Cobrada el dd/mm/aaaa" en negrita, la nota debajo (dos
- *   líneas como máximo, con el texto completo en el `title`) y, en una activa, "Editar cobro" (si
- *   sigue siendo cobrable) y "Quitar cobro".
+ *   líneas como máximo, con el texto completo en el `title`) y, en una activa, "Editar cobro" (solo
+ *   en una Aprobada) y "Quitar cobro". Un cobro viejo en otro estado (cargado antes de la regla)
+ *   solo se quita, con un texto chico que explica por qué no se edita.
  * - Anulada con cobro: lo muestra, sin botones. Anulada sin cobro o no cobrable sin cobro: nada.
  *
  * Es una región con el nombre "Cobro". Con el ancho chico, el texto y los botones se apilan.
@@ -60,6 +63,9 @@ export function CobroDeRendicion({
   const editar = cobro !== null && !anulada && puedeCobrar ? onEditar : undefined;
   const quitar = cobro !== null && !anulada ? onQuitar : undefined;
   const conAcciones = registrar !== undefined || editar !== undefined || quitar !== undefined;
+  // Un cobro viejo fuera de una Aprobada: se ofrece quitarlo, y se explica por qué no se edita.
+  const noEditable = cobro !== null && !anulada && !puedeCobrar && quitar !== undefined;
+  const idNoEditable = `${idTitulo}-no-editable`;
 
   return (
     <section
@@ -100,6 +106,11 @@ export function CobroDeRendicion({
                   {cobro.nota}
                 </span>
               )}
+              {noEditable && (
+                <span id={idNoEditable} className="text-xs text-content-secondary">
+                  {TEXTO_COBRO_NO_EDITABLE}
+                </span>
+              )}
             </div>
           </>
         )}
@@ -118,7 +129,13 @@ export function CobroDeRendicion({
             </Button>
           )}
           {quitar !== undefined && (
-            <Button type="button" variant="ghost" size="sm" onClick={quitar}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={quitar}
+              aria-describedby={noEditable ? idNoEditable : undefined}
+            >
               {TEXTO_QUITAR_COBRO}
             </Button>
           )}

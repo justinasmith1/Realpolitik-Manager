@@ -1,14 +1,8 @@
 import { ApiClientError } from '@/lib/http';
-import {
-  interpretarFalloCambioDeEstado,
-  interpretarFalloCobro,
-} from '@/modules/rendiciones/api/rendiciones.api';
-import {
-  mensajeFalloCambioDeEstado,
-  mensajeFalloCobro,
-} from '@/modules/rendiciones/components/erroresDeRendicion';
+import { interpretarFalloCobro } from '@/modules/rendiciones/api/rendiciones.api';
+import { mensajeFalloCobro } from '@/modules/rendiciones/components/erroresDeRendicion';
 
-// Los fallos de registrar o quitar el cobro (HU3.10) y el 409 COBRO_REGISTRADO al rechazar.
+// Los fallos de registrar o quitar el cobro (HU3.10).
 
 const falloHttp = (status: number, code: string, details?: unknown) =>
   new ApiClientError({
@@ -59,7 +53,7 @@ describe('interpretarFalloCobro', () => {
 describe('mensajeFalloCobro', () => {
   it('estado inválido: el texto acordado', () => {
     expect(mensajeFalloCobro({ tipo: 'estado-invalido' })).toEqual({
-      general: 'Solo se puede registrar el cobro de una rendición enviada o aprobada.',
+      general: 'Solo se puede registrar el cobro de una rendición aprobada.',
     });
   });
 
@@ -91,20 +85,6 @@ describe('mensajeFalloCobro', () => {
   it('inesperado', () => {
     expect(mensajeFalloCobro({ tipo: 'inesperado' }).general).toBe(
       'No pudimos guardar el cobro. Probá de nuevo en unos segundos.',
-    );
-  });
-});
-
-describe('rechazar una rendición con cobro (409 COBRO_REGISTRADO)', () => {
-  it('se interpreta como cobro-registrado', () => {
-    expect(interpretarFalloCambioDeEstado(conflicto('COBRO_REGISTRADO'))).toEqual({
-      tipo: 'cobro-registrado',
-    });
-  });
-
-  it('el mensaje pide quitar la marca antes de rechazar', () => {
-    expect(mensajeFalloCambioDeEstado({ tipo: 'cobro-registrado' }, 'RECHAZADA')).toBe(
-      'Tiene un cobro registrado: quitalo antes de rechazarla.',
     );
   });
 });

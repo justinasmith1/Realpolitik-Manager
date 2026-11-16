@@ -1,8 +1,11 @@
 // Integración del cobro informado por el cliente (HU3.10) contra PostgreSQL REAL:
 // - `PUT` y `DELETE /rendiciones/:id/cobro`: alta, edición y quita de la marca
 // - la columna `DATE` hace el viaje de ida y vuelta sin correr el día (Buenos Aires es UTC-3)
-// - solo una Enviada o Aprobada se marca; una anulada no se toca; el cobro no toca el historial
-// - rechazar una rendición con cobro es 409 COBRO_REGISTRADO, y sin cobro se puede
+// - solo una Aprobada se marca y se edita (aclaración de la operadora del 16/11/2026); una anulada no
+//   se toca; el cobro no toca el historial
+// - el ciclo completo: enviada (no se cobra) → aprobada → registrar → editar → quitar
+// - un cobro viejo (cargado antes de la regla) en una Enviada o una Rechazada no se edita, pero se
+//   quita; rechazar o aprobar con un cobro viejo se puede, y el cobro se conserva
 // - los CHECK `ck_rendicion_cobro_nota_con_fecha` y `ck_rendicion_cobro_nota_no_vacia` fallan con
 //   su SQLSTATE (23514) y su nombre
 //
@@ -99,7 +102,7 @@ async function crearCliente() {
 }
 
 /** Abre una rendición del cliente y la deja en `estado`. */
-async function rendicionEn(estado: 'EN_CURSO' | 'ENVIADA' | 'APROBADA' | 'RECHAZADA') {
+async function rendicionEn(estado: 'EN_CURSO' | 'COMPLETA' | 'ENVIADA' | 'APROBADA' | 'RECHAZADA') {
   const cliente = await crearCliente();
   const alta = await sesiones
     .cliente(app)
@@ -115,6 +118,13 @@ const registrar = (id: string, cuerpo: object) =>
   sesiones.cliente(app).put(`/rendiciones/${id}/cobro`).send(cuerpo);
 const quitar = (id: string) => sesiones.cliente(app).delete(`/rendiciones/${id}/cobro`);
 const detalle = (id: string) => sesiones.cliente(app).get(`/rendiciones/${id}`);
+
+/** Un cobro cargado antes de la regla (solo Aprobada), escrito directo en la base como quedó. */
+const cobroViejo = (id: string, nota: string | null = 'Cargado antes de la regla') =>
+  prisma.rendicion.update({
+    where: { id },
+    data: { cobroFecha: new Date('2026-11-10T00:00:00.000Z'), cobroNota: nota },
+  });
 
 /** Una violación de CHECK escrita en SQL: SQLSTATE 23514 y el nombre de la constraint. */
 async function violacionDeCheck(consulta: Promise<unknown>) {
@@ -139,7 +149,7 @@ describe.skipIf(url === undefined)(
     it.each(['2025-12-31', '2026-01-01'])(
       'la fecha %s hace el viaje de ida y vuelta sin correr el día',
       async (fecha) => {
-        const id = await rendicionEn('ENVIADA');
+        const id = await rendicionEn('APROBADA');
 
         const guardado = await registrar(id, { fecha });
         expect(guardado.status, JSON.stringify(guardado.body)).toBe(200);
@@ -183,7 +193,42 @@ describe.skipIf(url === undefined)(
       expect(despues.historial).toEqual(antes.historial);
     });
 
-    it.each(['EN_CURSO', 'RECHAZADA'] as const)(
+    it('ciclo: una Enviada no se cobra; al aprobarla se registra, se edita y se quita', async () => {
+      const id = await rendicionEn('ENVIADA');
+
+      const enEnviada = await registrar(id, { fecha: '2026-11-10' });
+      expect(enEnviada.status).toBe(409);
+      expect(enEnviada.body).toMatchObject({
+        error: {
+          message: 'Solo se puede registrar el cobro de una rendición aprobada.',
+          details: { motivo: 'COBRO_ESTADO_INVALIDO', estadoActual: 'ENVIADA' },
+        },
+      });
+
+      const aprobacion = await sesiones
+        .cliente(app)
+        .patch(`/rendiciones/${id}/estado`)
+        .send({ estado: 'APROBADA' });
+      expect(aprobacion.status, JSON.stringify(aprobacion.body)).toBe(200);
+      expect(aprobacion.body).toMatchObject({ estado: 'APROBADA', cobro: null });
+
+      const alta = await registrar(id, { fecha: '2026-11-12', nota: 'Avisó Tesorería' });
+      expect(alta.status, JSON.stringify(alta.body)).toBe(200);
+      expect(alta.body).toMatchObject({ cobro: { fecha: '2026-11-12', nota: 'Avisó Tesorería' } });
+
+      const edicion = await registrar(id, { fecha: '2026-11-13' });
+      expect(edicion.status, JSON.stringify(edicion.body)).toBe(200);
+      expect(edicion.body).toMatchObject({
+        estado: 'APROBADA',
+        cobro: { fecha: '2026-11-13', nota: null },
+      });
+
+      const quita = await quitar(id);
+      expect(quita.status).toBe(200);
+      expect(quita.body).toMatchObject({ estado: 'APROBADA', cobro: null });
+    });
+
+    it.each(['EN_CURSO', 'COMPLETA', 'ENVIADA', 'RECHAZADA'] as const)(
       'una %s no se puede marcar: 409 COBRO_ESTADO_INVALIDO',
       async (estado) => {
         const id = await rendicionEn(estado);
@@ -200,7 +245,7 @@ describe.skipIf(url === undefined)(
     );
 
     it('una anulada no se marca ni se desmarca, pero conserva el cobro que tenía', async () => {
-      const id = await rendicionEn('ENVIADA');
+      const id = await rendicionEn('APROBADA');
       await registrar(id, { fecha: '2026-11-10', nota: 'Pagó' });
       const anulacion = await sesiones
         .cliente(app)
@@ -220,32 +265,45 @@ describe.skipIf(url === undefined)(
       });
     });
 
-    it('rechazar una Enviada con cobro es 409 COBRO_REGISTRADO; quitando la marca, se puede', async () => {
+    it.each(['ENVIADA', 'RECHAZADA'] as const)(
+      'un cobro viejo en una %s no se edita (409), pero se quita (200)',
+      async (estado) => {
+        const id = await rendicionEn(estado);
+        await cobroViejo(id);
+
+        const edicion = await registrar(id, { fecha: '2026-11-11' });
+        expect(edicion.status).toBe(409);
+        expect(edicion.body).toMatchObject({
+          error: { details: { motivo: 'COBRO_ESTADO_INVALIDO', estadoActual: estado } },
+        });
+        const sinTocar = await prisma.rendicion.findUniqueOrThrow({ where: { id } });
+        expect(sinTocar.cobroFecha?.toISOString()).toBe('2026-11-10T00:00:00.000Z');
+
+        const quita = await quitar(id);
+        expect(quita.status, JSON.stringify(quita.body)).toBe(200);
+        expect(quita.body).toMatchObject({ estado, cobro: null });
+      },
+    );
+
+    it('rechazar una Enviada con un cobro viejo se puede y conserva el cobro', async () => {
       const id = await rendicionEn('ENVIADA');
-      await registrar(id, { fecha: '2026-11-10' });
+      await cobroViejo(id, 'Pagó junto con octubre');
 
-      const bloqueado = await sesiones
+      const res = await sesiones
         .cliente(app)
         .patch(`/rendiciones/${id}/estado`)
         .send({ estado: 'RECHAZADA', motivo: 'Faltó la firma' });
-      expect(bloqueado.status).toBe(409);
-      expect(bloqueado.body).toMatchObject({
-        error: { details: { motivo: 'COBRO_REGISTRADO' } },
+
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body).toMatchObject({
+        estado: 'RECHAZADA',
+        cobro: { fecha: '2026-11-10', nota: 'Pagó junto con octubre' },
       });
-      expect((await prisma.rendicion.findUniqueOrThrow({ where: { id } })).estado).toBe('ENVIADA');
-
-      await quitar(id);
-      const permitido = await sesiones
-        .cliente(app)
-        .patch(`/rendiciones/${id}/estado`)
-        .send({ estado: 'RECHAZADA', motivo: 'Faltó la firma' });
-      expect(permitido.status, JSON.stringify(permitido.body)).toBe(200);
-      expect(permitido.body).toMatchObject({ estado: 'RECHAZADA', cobro: null });
     });
 
-    it('aprobar una Enviada con cobro conserva el cobro', async () => {
+    it('aprobar una Enviada con un cobro viejo conserva el cobro, que desde ahí se edita', async () => {
       const id = await rendicionEn('ENVIADA');
-      await registrar(id, { fecha: '2026-11-10', nota: 'Avisó' });
+      await cobroViejo(id, 'Avisó');
 
       const res = await sesiones
         .cliente(app)
@@ -257,6 +315,7 @@ describe.skipIf(url === undefined)(
         estado: 'APROBADA',
         cobro: { fecha: '2026-11-10', nota: 'Avisó' },
       });
+      expect((await registrar(id, { fecha: '2026-11-12' })).status).toBe(200);
     });
 
     describe('CHECK de la base, escritos en SQL por fuera de la app', () => {
