@@ -204,18 +204,19 @@ describe('RendicionDetallePage: "Corregir" una Rechazada (HU3.9)', () => {
 });
 
 describe('RendicionDetallePage: una Rechazada no se edita hasta reabrirla (HU3.9)', () => {
-  it('canal y documento deshabilitados, con el texto de Rechazada; la OC sí se edita', async () => {
+  it('muestra el aviso de Rechazada y no ofrece cambiar el canal ni el documento; la OC sí se edita', async () => {
+    // El checklist está en solo lectura: los botones desaparecen del todo.
+    // El aviso queda porque Rechazada es el único estado que lo conserva (etapa 4 lo restringe).
     servir(RECHAZADA);
     renderDetalle();
     await esperarDetalle();
 
     const texto = 'La rendición fue rechazada: tocá Corregir para editarla.';
     expect(screen.getByText(texto)).toBeVisible();
-    for (const nombre of [/Cambiar el canal de/, /Reemplazar documento de/]) {
-      const boton = screen.getByRole('button', { name: nombre });
-      expect(boton).toBeDisabled();
-      expect(boton).toHaveAccessibleDescription(texto);
-    }
+    expect(screen.queryByRole('button', { name: /^Cambiar el canal de/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Reemplazar documento de/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Editar OC' })).toBeEnabled();
     expect(screen.queryByText(/Checklist completo/)).not.toBeInTheDocument();
   });

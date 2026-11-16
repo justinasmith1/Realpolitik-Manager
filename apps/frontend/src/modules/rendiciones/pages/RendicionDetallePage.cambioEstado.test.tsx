@@ -548,22 +548,18 @@ describe('RendicionDetallePage: aprobar o rechazar (HU3.8)', () => {
 });
 
 describe('RendicionDetallePage: una Aprobada no se modifica (HU3.8)', () => {
-  it('explica con un motivo verdadero por qué las acciones están deshabilitadas', async () => {
+  it('no muestra el aviso de bloqueo (ya no hay nada que explicar) ni ofrece cambiar el canal o el documento', async () => {
+    // El checklist es de solo lectura: los botones desaparecen del todo. El aviso que los
+    // explicaba también desaparece: solo tenía sentido mientras se veían deshabilitados.
     servir({ inicial: { estado: 'APROBADA' } });
     renderDetalle();
     await esperarDetalle();
 
-    const motivo =
-      'La rendición ya fue aprobada: no se pueden cambiar sus documentos ni sus canales.';
-    expect(screen.getByText(motivo)).toBeVisible();
-    expect(screen.queryByText(/ya fue enviada/)).not.toBeInTheDocument();
-    for (const boton of [
-      screen.getByRole('button', { name: /Cambiar el canal de/ }),
-      screen.getByRole('button', { name: /Reemplazar documento de/ }),
-    ]) {
-      expect(boton).toBeDisabled();
-      expect(boton).toHaveAccessibleDescription(motivo);
-    }
+    expect(screen.queryByText(/ya fue (aprobada|enviada)/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Cambiar el canal de/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Reemplazar documento de/ }),
+    ).not.toBeInTheDocument();
     // La OC sigue editable: es un dato administrativo.
     expect(screen.getByRole('button', { name: 'Editar OC' })).toBeEnabled();
   });
@@ -576,29 +572,27 @@ describe('RendicionDetallePage: una Aprobada no se modifica (HU3.8)', () => {
     expect(screen.queryByText(/Checklist completo/)).not.toBeInTheDocument();
   });
 
-  it('una Enviada sigue diciendo que ya fue enviada', async () => {
+  it('una Enviada ya no muestra el aviso de bloqueo', async () => {
     servir({ inicial: { estado: 'ENVIADA' } });
     renderDetalle();
     await esperarDetalle();
 
-    expect(
-      screen.getByText(
-        'La rendición ya fue enviada: no se pueden cambiar sus documentos ni sus canales.',
-      ),
-    ).toBeVisible();
-    expect(screen.queryByText(/ya fue aprobada/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ya fue (aprobada|enviada)/)).not.toBeInTheDocument();
   });
 
-  it('una Rechazada queda bloqueada hasta tocar "Corregir" (HU3.9), con su propio texto', async () => {
+  it('una Rechazada muestra su propio aviso y no ofrece cambiar el canal ni el documento', async () => {
+    // El checklist es de solo lectura: los botones desaparecen del todo.
     servir({ inicial: { estado: 'RECHAZADA' } });
     renderDetalle();
     await esperarDetalle();
 
     expect(screen.queryByText(/ya fue (aprobada|enviada)/)).not.toBeInTheDocument();
-    const canal = screen.getByRole('button', { name: /Cambiar el canal de/ });
-    expect(canal).toBeDisabled();
-    expect(canal).toHaveAccessibleDescription(
-      'La rendición fue rechazada: tocá Corregir para editarla.',
-    );
+    expect(
+      screen.getByText('La rendición fue rechazada: tocá Corregir para editarla.'),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Cambiar el canal de/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Reemplazar documento de/ }),
+    ).not.toBeInTheDocument();
   });
 });

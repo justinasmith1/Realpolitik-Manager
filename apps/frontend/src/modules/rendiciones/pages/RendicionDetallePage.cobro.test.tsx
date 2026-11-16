@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { sembrarSesion } from '@/modules/auth/test/sesionDePrueba';
 import { RendicionDetallePage } from '@/modules/rendiciones/pages/RendicionDetallePage';
-import { TEXTO_RENDICION_YA_APROBADA } from '@/modules/rendiciones/rendiciones.etiquetas';
 import {
   CLIENTE_ID,
   errorJson,
@@ -197,7 +196,7 @@ describe('RendicionDetallePage: cuándo se ofrece registrar el cobro (HU3.10)', 
     renderDetalle();
     await titulo();
 
-    expect(screen.getByText(TEXTO_RENDICION_YA_APROBADA)).toBeInTheDocument();
+    expect(screen.queryByText(/ya fue aprobada/)).not.toBeInTheDocument();
     expect(botonRegistrar()).toBeEnabled();
   });
 });
