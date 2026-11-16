@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 import {
   COBRO_NOTA_MAX,
-  MENSAJE_FECHA_COBRO_FUTURA,
   MENSAJE_FECHA_COBRO_INVALIDA,
   MENSAJE_NOTA_COBRO,
+  problemaDeFechaCobro,
 } from '../utils/cobro.js';
 import { esDiaValido, hoyEnBuenosAires } from '../utils/dia.js';
 import {
@@ -311,18 +311,12 @@ export const RegistrarCobroSchema = z
       .optional(),
   })
   .superRefine(({ fecha }, ctx) => {
-    if (!esDiaValido(fecha)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['fecha'],
-        message: MENSAJE_FECHA_COBRO_INVALIDA,
-      });
-    } else if (fecha > hoyEnBuenosAires()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['fecha'],
-        message: MENSAJE_FECHA_COBRO_FUTURA,
-      });
+    // La regla vive en un solo lugar (`problemaDeFechaCobro`, utils/cobro.ts): la misma que aplican
+    // el formulario y el backend, que la vuelve a comprobar con su propio reloj. El reloj se lee al
+    // validar, no al importar el módulo.
+    const problema = problemaDeFechaCobro(fecha);
+    if (problema !== null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['fecha'], message: problema });
     }
   });
 
