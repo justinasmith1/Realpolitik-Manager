@@ -1,6 +1,6 @@
 # Borrador de trabajo — Experiencia de usuarios y acceso (épica 4)
 
-> **Estado (HU4.5, 2026-11-16): se conserva como referencia de trabajo.** HU4.1, HU4.2 y HU4.3 ya están implementadas (HU4.3 integrada en `main`, PR #56, y verificada en el CI con Node 24; pendiente de QA manual y despliegue). HU4.5 está integrada en `main` (PR #58) y verificada en el CI con Node 24; pendiente de la QA manual y el despliegue (nota "Estado (HU4.5)" en 3.9). Lo implementado y lo que cambió respecto de este texto está en las notas "Estado (etapa 4 de HU4.1)", "Estado (HU4.2)", "Estado (HU4.3)" y "Estado (HU4.5)" más abajo, y el comportamiento real está en el código, en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) y en el [contrato de la API](../development/api-contract.md#8-autenticación-auth-hu41). El cambio voluntario de contraseña (2.8, 3.4), el menú de cuenta (3.3) y los avisos de sesión (2.10, 3.6) están **implementados**. La pantalla de sesiones activas no está en ninguna historia.
+> **Estado (HU4.5, 2026-11-16): se conserva como referencia de trabajo.** HU4.1, HU4.2 y HU4.3 ya están implementadas (HU4.3 integrada en `main`, PR #56, y verificada en el CI con Node 24; pendiente de QA manual y despliegue). HU4.5 está integrada en `main` (PR #58) y verificada en el CI con Node 24; pendiente de la QA manual y el despliegue (nota "Estado (HU4.5)" en 3.9). HU4.6 está implementada en su rama: el historial muestra quién registró cada paso (nota "Estado (HU4.6)" en 6); pendiente de la QA visual manual, la integración en `main` y el despliegue. Lo implementado y lo que cambió respecto de este texto está en las notas "Estado (etapa 4 de HU4.1)", "Estado (HU4.2)", "Estado (HU4.3)" y "Estado (HU4.5)" más abajo, y el comportamiento real está en el código, en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) y en el [contrato de la API](../development/api-contract.md#8-autenticación-auth-hu41). El cambio voluntario de contraseña (2.8, 3.4), el menú de cuenta (3.3) y los avisos de sesión (2.10, 3.6) están **implementados**. La pantalla de sesiones activas no está en ninguna historia.
 >
 > **Borrador, no es backlog ni documentación estable.** Especificación funcional y de experiencia del bloque 1A, actualizada en la consolidación previa a HU4.1 (tres roles aprobados y división en HU4.1–HU4.6). Se apoya en [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) y en la [matriz de permisos](../security/matriz-permisos.md), ambos `Proposed`. Se descarta o se consolida cuando esté el handoff visual de Design. No está en el índice de `docs/` porque no es documentación estable.
 >
@@ -432,6 +432,15 @@ Las historias están aprobadas (HU4.1–HU4.6). Sin estimación. Detalle técnic
 - **Valor:** saber quién registró cada paso de una rendición.
 - **Interfaces:** historial de estados en el detalle de rendición (nombre junto a la fecha; "sin registro" en los anteriores).
 - **Dependencias:** HU4.1 y los endpoints de cambio de estado de la épica 3.
+
+> **Estado (HU4.6, 2026-11-16): implementada en su rama.** En el mismo toggle "Historial (N)" del detalle, sin pantalla nueva:
+>
+> - Cada paso conserva su línea: la fecha del paso (en un envío, el día elegido), el verbo, el estado y el motivo si lo tiene.
+> - Debajo, una línea secundaria más chica: "María González · 16/11/2026 14:32". Es el nombre actual de quien lo registró y el instante del registro, en horario de Buenos Aires y formato de 24 h. El nombre es texto, sin enlace, email ni rol, y se parte si es largo (`wrap-anywhere`).
+> - Si lo hizo el sistema (la vuelta a En curso al sumar un requisito), suma " · Automático". El responsable sigue siendo la persona; nunca dice "Sistema". Un paso manual no lleva marca.
+> - Las entradas anteriores a HU4.6 dicen "Sin responsable registrado", en el mismo tono neutro, y conservan su fecha y hora.
+> - Los lectores de pantalla oyen "Registrado por …"; los separadores "·" están ocultos para ellos. La hora va en su propio `<time>`, separado del de la fecha del paso.
+> - Los tres roles ven lo mismo. Sobre el historial solo hay una acción, abrirlo y cerrarlo: no se edita.
 
 ## 7. Decisiones
 

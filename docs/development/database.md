@@ -185,24 +185,31 @@ En qué paso está cada rendición, con su historial de cambios. La decisión de
 
 - **Enum `EstadoRendicion`:** `EN_CURSO`, `COMPLETA`, `ENVIADA`, `APROBADA` y `RECHAZADA`. Isomorfo con `EstadoRendicion` de `@realpolitik/shared`. "Atrasada" no es un valor: la calcula el sistema (HU3.4).
 - **`Rendicion.estado`:** obligatorio, con default `EN_CURSO`. Es independiente de la baja lógica (`isDeleted`): una rendición anulada conserva el último estado que tenía.
+- **Enum `OrigenCambioEstado` (HU4.6):** `MANUAL` y `AUTOMATICO`. Isomorfo con `OrigenCambioEstado` de `@realpolitik/shared`.
 - **Tabla `HistorialEstadoRendicion`:** una fila por cambio de estado. Es historial: no se edita ni se borra (cae en cascada solo si se borra físicamente la rendición).
 
-| Columna          | Tipo                        | Notas                                                                                                                                                                  |
-| ---------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`             | UUID                        |                                                                                                                                                                        |
-| `rendicionId`    | UUID, FK a `Rendicion`      | `onDelete: Cascade`                                                                                                                                                    |
-| `estadoAnterior` | `EstadoRendicion`, opcional | `NULL` solo en la primera entrada, la del alta                                                                                                                         |
-| `estadoNuevo`    | `EstadoRendicion`           |                                                                                                                                                                        |
-| `fecha`          | fecha y hora                | Cuándo se registró el cambio. Default: el momento del insert. Ordena el historial                                                                                      |
-| `fechaEfectiva`  | fecha (`DATE`), opcional    | (HU3.7) El día en que ocurrió, si la operadora lo indicó: hoy, solo la fecha de envío de la entrada `ENVIADA`, que puede ser anterior al registro. `NULL` en las demás |
-| `motivo`         | texto, opcional             | Lo usan la vuelta automática a En curso (HU3.6) y el rechazo (HU3.8: qué pidió corregir el cliente)                                                                    |
-| `createdAt`      | fecha y hora                | Auditoría                                                                                                                                                              |
+| Columna           | Tipo                           | Notas                                                                                                                                                                                          |
+| ----------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | UUID                           |                                                                                                                                                                                                |
+| `rendicionId`     | UUID, FK a `Rendicion`         | `onDelete: Cascade`                                                                                                                                                                            |
+| `estadoAnterior`  | `EstadoRendicion`, opcional    | `NULL` solo en la primera entrada, la del alta                                                                                                                                                 |
+| `estadoNuevo`     | `EstadoRendicion`              |                                                                                                                                                                                                |
+| `fecha`           | fecha y hora                   | Cuándo se registró el cambio. Default: el momento del insert. Ordena el historial                                                                                                              |
+| `fechaEfectiva`   | fecha (`DATE`), opcional       | (HU3.7) El día en que ocurrió, si la operadora lo indicó: hoy, solo la fecha de envío de la entrada `ENVIADA`, que puede ser anterior al registro. `NULL` en las demás                         |
+| `motivo`          | texto, opcional                | Lo usan la vuelta automática a En curso (HU3.6) y el rechazo (HU3.8: qué pidió corregir el cliente)                                                                                            |
+| `registradoPorId` | UUID, FK a `Usuario`, opcional | (HU4.6) Quién registró el cambio: el usuario de la sesión. `onDelete: Restrict`: una cuenta con cambios registrados no se borra (se desactiva). `NULL` solo en las entradas anteriores a HU4.6 |
+| `origen`          | `OrigenCambioEstado`, opcional | (HU4.6) `MANUAL` (lo pidió la persona) o `AUTOMATICO` (la vuelta a En curso al sumar un requisito). `NULL` en las mismas entradas que `registradoPorId`                                        |
+| `createdAt`       | fecha y hora                   | Auditoría                                                                                                                                                                                      |
 
-Índice `HistorialEstadoRendicion_rendicionId_fecha_idx` sobre `(rendicionId, fecha)`: el historial de una rendición se lee en orden.
+Índice `HistorialEstadoRendicion_rendicionId_fecha_idx` sobre `(rendicionId, fecha)`: el historial de una rendición se lee en orden. No hay índice sobre `registradoPorId`: solo lo usaría el chequeo de la FK al borrar una cuenta, que no ocurre.
+
+CHECK `ck_historial_responsable_con_origen` (HU4.6): `registradoPorId` y `origen` van los dos cargados o los dos en `NULL`. No obliga a que una entrada nueva los tenga: lo garantiza el backend, que exige el responsable en los tres caminos que escriben historial (ADR-0005, punto 14).
 
 La migración `20261103120000_hu3_1_estado_rendicion` crea el enum, la columna y la tabla, y le da a **cada rendición existente** (también a las anuladas) el estado `EN_CURSO` y una entrada inicial (`NULL` → `EN_CURSO`) con su `createdAt` como fecha. Las altas nuevas crean esa entrada en la misma transacción que la rendición. Los cambios posteriores pasan por un solo punto del backend (`registrarCambioDeEstado`), que actualiza el estado y agrega la entrada juntos.
 
 La migración `20261112120000_hu3_7_fecha_efectiva_historial` (HU3.7) agrega `fechaEfectiva` (`DATE`, opcional). Es aditiva: las entradas existentes quedan en `NULL` y se siguen mostrando con su `fecha`. Es un `DATE` y no una fecha y hora porque la operadora elige un día; Prisma lo lee como la medianoche UTC de ese día, y la API lo devuelve como `AAAA-MM-DD` (contrato 4.5).
+
+La migración `20261116120000_hu4_6_responsable_historial` (HU4.6) crea el enum `OrigenCambioEstado`, agrega `registradoPorId` y `origen` (los dos opcionales y sin default), la FK a `Usuario` (`ON DELETE RESTRICT ON UPDATE CASCADE`) y el CHECK de arriba. Es aditiva y **sin backfill**: las entradas existentes quedan con los dos campos en `NULL` y se muestran como "Sin responsable registrado", porque no se sabe quién hizo esos cambios. El DDL es el que genera Prisma (comprobado con `prisma migrate diff`); el CHECK se agrega a mano, como los demás.
 
 ## Tests de integración
 
@@ -289,6 +296,33 @@ Motivo: durante el desarrollo de HU4.5, una suite con un `lib/prisma` inicializa
 **Suites de Requisitos.** `requisitos.integration` y `requisitos.masivo` exigen una base llamada exactamente `realpolitik_test` y rechazan `realpolitik_hu45_test`. Decisión del proyecto: **no se corren contra la instancia de `realpolitik_test` usada para QA manual**. Si hay que correrlas, se usa una instancia de PostgreSQL descartable (otro contenedor u otro puerto) con una base de ese nombre. Sus guardas no se debilitan.
 
 **Vitest en Windows.** Con el directorio de trabajo escrito con la unidad en minúscula (`d:\…`), algunos `vi.mock(ruta, async (original) => …)` parciales no interceptan el módulo y el test termina en el cliente HTTP real (en el frontend, `Pedido no simulado`). Con la unidad en mayúscula (`D:\…`) pasan. Se reprodujo igual con el código de `main`: no es un defecto de la aplicación. El CI corre en Linux y no le afecta. En Windows, abrí la terminal (o el editor) en la ruta con la unidad en mayúscula antes de correr los tests.
+
+## Pruebas de HU4.6 (responsable de los cambios de estado)
+
+Las seis suites del historial corren contra una base descartable, de a una (`--no-file-parallelism`). En la HU se usó `realpolitik_hu46_test`, creada y migrada como `realpolitik_test` (sección "Tests de integración"):
+
+- `rendiciones.responsable.integration`: alta, cambio manual con un responsable forjado en el cuerpo, vuelta automática, idempotencia, transición inválida, `CONSULTA` y acceso sin sesión, entrada anterior a HU4.6 y CHECK, cuenta renombrada o desactivada con la FK `RESTRICT`, y rollback ante un responsable inexistente. Antes de crear nada, verifica la conexión real con `exigirBaseDePrueba` (la guarda de las suites de Usuarios).
+- `rendiciones.estado`, `.enviada`, `.cobro`, `.delMes` y `.atrasadas`: las suites anteriores, ahora con el responsable obligatorio (`sesionesDePrueba().idDe(identidad)` da el id de una cuenta real para la FK).
+
+Resultado: 60 de 60. Las suites que crean rendiciones las borran antes que las cuentas (`limpiar()`), porque la FK del responsable es `RESTRICT`.
+
+**Fallos preexistentes de concurrencia (no son de HU4.6).** En la corrida completa de integración, en Windows con Docker Desktop, fallan siempre cuatro pruebas de módulos que HU4.6 no toca:
+
+| Suite                               | Prueba                                                             | Síntoma                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `sesiones.service.integration`      | Veinte inicios de sesión simultáneos                               | Algunos rechazados con `P2028` ("Unable to start a transaction in the given time") |
+| `contactos.integration`             | Dos guardados simultáneos; escritura concurrente sobre un contacto | `P2028` en lugar del `409 CONFLICT` esperado                                       |
+| `cambioDeContrasena.integration`    | PostgreSQL corta la transacción después de guardar el hash         | Timeout del test (5 s)                                                             |
+| `usuarios.concurrencia.integration` | Toda la suite (22 omitidos)                                        | Timeout del `beforeAll` (10 s)                                                     |
+
+Evidencia:
+
+- Se reproducen corridas solas y repetidas.
+- Siguen fallando con `connection_limit=40` y con `UV_THREADPOOL_SIZE=16`.
+- La latencia de commit del contenedor es de 1 a 2 ms.
+- **Fallan igual en una base migrada sin la migración de HU4.6.**
+
+La causa queda para la historia de deuda técnica: son tiempos de las pruebas de carreras en este entorno, no un defecto de la aplicación demostrado.
 
 ## Siguiente lectura
 
