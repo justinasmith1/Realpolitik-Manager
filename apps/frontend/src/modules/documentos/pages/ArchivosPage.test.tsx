@@ -326,7 +326,9 @@ describe('ArchivosPage: repositorio', () => {
     await user.click(screen.getByRole('button', { name: 'Descargar print-1.pdf' }));
 
     expect(
-      await screen.findByText('No se pudo descargar print-1.pdf. Probá de nuevo.'),
+      await screen.findByText(
+        'El servicio de documentos no está disponible en este momento: no se descargó print-1.pdf. Probá de nuevo en unos minutos.',
+      ),
     ).toBeInTheDocument();
   });
 });
@@ -680,7 +682,9 @@ describe('ArchivosPage con CONSULTA: repositorio en solo lectura', () => {
     await user.click(screen.getByRole('button', { name: 'Descargar print-1.pdf' }));
 
     expect(
-      await screen.findByText('No se pudo descargar print-1.pdf. Probá de nuevo.'),
+      await screen.findByText(
+        'El servicio de documentos no está disponible en este momento: no se descargó print-1.pdf. Probá de nuevo en unos minutos.',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -852,7 +856,7 @@ describe('ArchivosPage: vista previa', () => {
     );
     expect(
       await visor.findByText(
-        'No pudimos mostrar print-1.pdf. Podés descargarlo para verlo en tu equipo.',
+        'El servicio de documentos no está disponible en este momento: no pudimos mostrar print-1.pdf. Probá de nuevo en unos minutos.',
       ),
     ).toBeVisible();
     await user.click(visor.getByRole('button', { name: 'Descargar' }));
@@ -896,5 +900,138 @@ describe('ArchivosPage: vista previa', () => {
 
     const visor = await screen.findByRole('dialog', { name: 'Vista previa de print-1.pdf' });
     expect(await within(visor).findByTitle('Contenido de print-1.pdf')).toBeInTheDocument();
+  });
+});
+
+// ─── Acceso y disponibilidad (HU4.4, CA12) ────────────────────────────────────
+
+describe('ArchivosPage: acceso y disponibilidad', () => {
+  /** El listado responde `respuesta`; el resto, lo de siempre. */
+  function listadoResponde(respuesta: () => Response) {
+    fetchMock.mockImplementation((entrada, init) => {
+      const url = new URL(urlDe(entrada));
+      const llamada: Llamada = {
+        metodo: init?.method ?? 'GET',
+        ruta: url.pathname,
+        query: url.searchParams,
+        cuerpo: init?.body,
+      };
+      llamadas.push(llamada);
+      return Promise.resolve(
+        llamada.ruta === '/documentos' && llamada.metodo === 'GET'
+          ? respuesta()
+          : responder(llamada),
+      );
+    });
+  }
+
+  it.each(['ADMINISTRATIVO', 'CONSULTA'] as const)(
+    'con los documentos deshabilitados (404 del listado), %s ve un estado neutro y ninguna acción',
+    async (rol) => {
+      listadoResponde(() => error(404, 'NOT_FOUND'));
+      renderPage('/documentos/archivos?anio=2026&mes=10', rol);
+
+      expect(
+        await screen.findByRole('heading', {
+          name: 'El repositorio de documentos no está disponible en este entorno',
+        }),
+      ).toBeVisible();
+      // No es un fallo: ni el estado de error, ni "Reintentar", ni nada que cargar.
+      expect(screen.queryByText('No pudimos cargar los archivos')).not.toBeInTheDocument();
+      expect(screen.queryByText('Error inesperado')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cargar documento' })).not.toBeInTheDocument();
+    },
+  );
+
+  it('otro error del listado sigue siendo un error, con "Reintentar"', async () => {
+    listadoResponde(() => error(503, 'SERVICE_UNAVAILABLE'));
+    renderPage();
+
+    expect(
+      await screen.findByRole('heading', { name: 'No pudimos cargar los archivos' }),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    expect(
+      screen.queryByText('El repositorio de documentos no está disponible en este entorno'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('el 404 de un archivo no es el repositorio deshabilitado: dice que ese archivo ya no está', async () => {
+    servidor.archivo = () => error(404, 'NOT_FOUND');
+    const { user } = renderPage();
+    await screen.findByRole('button', { name: 'print-1.pdf' });
+
+    await user.click(screen.getByRole('button', { name: 'Descargar print-1.pdf' }));
+
+    expect(
+      await screen.findByText(
+        'print-1.pdf ya no está disponible. Actualizá la información y probá de nuevo.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'print-1.pdf' })).toBeInTheDocument();
+    expect(
+      screen.queryByText('El repositorio de documentos no está disponible en este entorno'),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      '403',
+      () => error(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' }),
+      'No tenés permiso para descargar print-1.pdf.',
+    ],
+    [
+      'sin red',
+      () => {
+        throw new TypeError('Failed to fetch');
+      },
+      'No pudimos conectarnos con el servidor: no se descargó print-1.pdf. Revisá tu conexión y probá de nuevo.',
+    ],
+  ])('una descarga con %s avisa el motivo y libera el botón', async (_caso, falla, texto) => {
+    servidor.archivo = falla;
+    const { user } = renderPage();
+    await screen.findByRole('button', { name: 'print-1.pdf' });
+
+    await user.click(screen.getByRole('button', { name: 'Descargar print-1.pdf' }));
+
+    expect(await screen.findByText(texto)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Descargar print-1.pdf' })).toBeEnabled();
+  });
+
+  it('una carga rechazada por permiso (403) lo dice y no sigue al paso siguiente', async () => {
+    servidor.carga = () => error(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' });
+    const { user } = renderPage();
+    const asistente = await abrirAsistente(user);
+
+    await subirPdf(user, asistente);
+
+    expect(
+      await within(asistente).findByText(
+        'No tenés permiso para cargar documentos. No se guardó nada.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(asistente).getByRole('button', { name: 'Subir y continuar' })).toBeEnabled();
+  });
+
+  it('una aplicación rechazada por permiso (403) lo dice, sin volver a subir ni a elegir', async () => {
+    servidor.aplicacion = () => error(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' });
+    const { user } = renderPage();
+    const asistente = await abrirAsistente(user);
+    await subirPdf(user, asistente);
+    const clienteA = await within(asistente).findByRole('region', { name: 'Municipio Alfa' });
+    await user.click(within(clienteA).getByRole('checkbox', { name: 'Print 1 de 2' }));
+    await user.click(within(asistente).getByRole('button', { name: /Revisar/ }));
+
+    await user.click(within(asistente).getByRole('button', { name: 'Confirmar y aplicar' }));
+
+    expect(
+      await within(asistente).findByText(
+        'No tenés permiso para aplicar documentos. No se aplicó a ninguno.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(asistente).getByRole('button', { name: 'Confirmar y aplicar' })).toBeEnabled();
+    expect(llamadasA('POST', '/documentos')).toHaveLength(1);
+    expect(llamadasA('POST', `/documentos/${NUEVO.id}/aplicaciones`)).toHaveLength(1);
   });
 });

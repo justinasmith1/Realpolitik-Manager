@@ -531,7 +531,9 @@ describe('RendicionDetallePage: documentos del checklist', () => {
     await user.click(screen.getByRole('button', { name: 'Descargar print-octubre.pdf' }));
 
     expect(
-      await screen.findByText('No se pudo descargar print-octubre.pdf. Probá de nuevo.'),
+      await screen.findByText(
+        'El servicio de documentos no está disponible en este momento: no se descargó print-octubre.pdf. Probá de nuevo en unos minutos.',
+      ),
     ).toBeVisible();
   });
 
@@ -604,6 +606,51 @@ describe('RendicionDetallePage: documentos del checklist', () => {
     expect(sheet.queryByRole('radio', { name: /print-octubre-v2\.pdf/ })).not.toBeInTheDocument();
     expect(sheet.getByRole('button', { name: 'Reemplazar documento' })).toBeDisabled();
     expect(within(fila('Print 1 de 2')).getByText('print-octubre-v2.pdf')).toBeInTheDocument();
+  });
+
+  it('una asociación rechazada por permiso (403) lo dice y el ítem sigue pendiente', async () => {
+    servir({
+      fallos: {
+        aplicar: () => errorJson(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' }),
+      },
+    });
+    const { user } = renderDetalle();
+    await cargado();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Asociar documento existente a Print 2 de 2' }),
+    );
+    const sheet = within(await panel('Asociar documento existente'));
+    await user.click(await sheet.findByRole('radio', { name: /print-octubre-v2\.pdf/ }));
+    await user.click(sheet.getByRole('button', { name: 'Asociar documento' }));
+
+    expect(
+      await sheet.findByText('No tenés permiso para asociar documentos. No se asoció.'),
+    ).toBeVisible();
+    expect(
+      within(fila('Print 2 de 2')).queryByText('print-octubre-v2.pdf'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('un reemplazo rechazado por permiso (403) lo dice y el vigente no cambia', async () => {
+    servir({
+      fallos: {
+        reemplazo: () => errorJson(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' }),
+      },
+    });
+    const { user } = renderDetalle();
+    await cargado();
+
+    await user.click(screen.getByRole('button', { name: 'Reemplazar documento de Print 1 de 2' }));
+    const sheet = within(await panel('Reemplazar documento'));
+    await user.click(await sheet.findByRole('radio', { name: /print-octubre-v2\.pdf/ }));
+    await user.click(sheet.getByRole('button', { name: 'Reemplazar documento' }));
+    await user.click(sheet.getByRole('button', { name: 'Sí, reemplazar' }));
+
+    expect(
+      await sheet.findByText('No tenés permiso para reemplazar documentos. No se reemplazó.'),
+    ).toBeVisible();
+    expect(within(fila('Print 1 de 2')).getByText('print-octubre.pdf')).toBeInTheDocument();
   });
 
   it('muestra el historial del ítem con el vigente, las fechas y la descarga de los anteriores', async () => {
@@ -785,7 +832,7 @@ describe('RendicionDetallePage: vista previa del documento de un ítem', () => {
     const visor = within(await panel('Vista previa de print-octubre.pdf'));
     expect(
       await visor.findByText(
-        'No pudimos mostrar print-octubre.pdf. Podés descargarlo para verlo en tu equipo.',
+        'El servicio de documentos no está disponible en este momento: no pudimos mostrar print-octubre.pdf. Probá de nuevo en unos minutos.',
       ),
     ).toBeVisible();
     await user.click(visor.getByRole('button', { name: 'Descargar' }));

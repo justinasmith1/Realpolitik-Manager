@@ -1,6 +1,15 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
+import { useRef, useState } from 'react';
 
+import { clasificarErrorDeAuth } from '@/modules/auth/erroresDeAuth';
+import { manejarErrorGlobal } from '@/modules/auth/manejoGlobal';
+import { CLAVE_SESION, confirmarSesion } from '@/modules/auth/sesion';
 import {
   aplicarDocumento,
   candidatosQueryKey,
@@ -8,12 +17,14 @@ import {
   detalleDocumentoQueryKey,
   documentosQueryKey,
   historialDeItemQueryKey,
+  interpretarFalloDescarga,
   listaDocumentosQueryKey,
   listarCandidatos,
   listarDocumentos,
   obtenerDocumento,
   obtenerHistorialDeItem,
   reemplazarDocumentoDeItem,
+  type FalloDeDescarga,
   type FiltrosDocumentos,
   type ItemDeRendicion,
 } from '@/modules/documentos/api/documentos.api';
@@ -122,20 +133,63 @@ export function useReemplazarDocumentoDeItem() {
   });
 }
 
+/** Lo que hace falta para descargar un documento: el id y el nombre con que se guarda. */
+export interface DocumentoADescargar {
+  id: string;
+  nombreOriginal: string;
+}
+
+/**
+ * Pasa el error de una descarga al manejo global, como cualquier pedido de la app (HU4.4, CA12):
+ * un 401 confirma la sesión, un 403 de permiso la revalida, y un 503 o la falta de red no la
+ * tocan. Sin contexto: la descarga no es un envío (no quedó nada "sin guardar") ni una consulta
+ * que se pueda volver a pedir sola.
+ *
+ * Dice si hay que avisar el fallo en la pantalla. Un 401 solo se avisa si la sesión sigue (era
+ * atrasado, o no se pudo confirmar): si terminó, la guarda lleva a `/login` con su motivo, y un
+ * aviso acá lo contradiría.
+ */
+async function avisarFalloDeDescarga(
+  queryClient: QueryClient,
+  error: unknown,
+  fallo: FalloDeDescarga,
+): Promise<boolean> {
+  manejarErrorGlobal(queryClient, error);
+  if (fallo.tipo !== 'sin-sesion') return true;
+  // Ya sin sesión (otro pedido la terminó antes): de eso se ocupa la guarda.
+  if (queryClient.getQueryData(CLAVE_SESION) === null) return false;
+  // Se suma a la confirmación que acaba de empezar el manejo global: no hace otro pedido.
+  const auth = clasificarErrorDeAuth(error);
+  const vencida = auth.clase === 'sin-sesion' && auth.vencida;
+  return confirmarSesion(queryClient, {
+    motivo: vencida ? 'vencida' : 'terminada',
+    sinGuardar: false,
+  });
+}
+
 /**
  * Descargas a través del backend, con los documentos que están descargándose (sus botones
- * muestran la espera) y sin repetir una que ya está en curso. `onFallo` decide cómo avisarlo.
+ * muestran la espera) y sin repetir una que ya está en curso. `onFallo` decide cómo avisarlo, con
+ * el motivo (`mensajeFalloDescarga`); si la sesión terminó, no se lo llama.
  */
-export function useDescargas(onFallo: (documento: { id: string; nombreOriginal: string }) => void) {
+export function useDescargas(
+  onFallo: (documento: DocumentoADescargar, fallo: FalloDeDescarga) => void,
+) {
+  const queryClient = useQueryClient();
   const [idsDescargando, setIdsDescargando] = useState<readonly string[]>([]);
-  const descargar = async (documento: { id: string; nombreOriginal: string }) => {
-    if (idsDescargando.includes(documento.id)) return;
+  // Las que están en curso, también entre dos clics que llegan antes de volver a renderizar.
+  const enCurso = useRef(new Set<string>());
+  const descargar = async (documento: DocumentoADescargar) => {
+    if (enCurso.current.has(documento.id)) return;
+    enCurso.current.add(documento.id);
     setIdsDescargando((previos) => [...previos, documento.id]);
     try {
       await descargarDocumento(documento);
-    } catch {
-      onFallo(documento);
+    } catch (error) {
+      const fallo = interpretarFalloDescarga(error);
+      if (await avisarFalloDeDescarga(queryClient, error, fallo)) onFallo(documento, fallo);
     } finally {
+      enCurso.current.delete(documento.id);
       setIdsDescargando((previos) => previos.filter((id) => id !== documento.id));
     }
   };

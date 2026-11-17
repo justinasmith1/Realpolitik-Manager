@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useSyncExternalStore } from 'react';
 
-import { descargarArchivo } from '@/modules/documentos/api/documentos.api';
+import {
+  descargarArchivo,
+  interpretarFalloDescarga,
+} from '@/modules/documentos/api/documentos.api';
 import { admiteVistaPrevia } from '@/modules/documentos/vistaPrevia';
 
 /** Lo que hace falta para mostrar un documento: el id, cómo se llama y su formato. */
@@ -54,6 +57,10 @@ const sinUrlEnElServidor = () => null;
  * libera cuando cambia el documento, se cierra o se desmonta. No se guarda en la caché ni se
  * reintenta solo: el visor ofrece reintentar. Sin documento, o con uno que no se puede ver, no
  * pide nada.
+ *
+ * Es una query: si falla, pasa por el manejo global como cualquier otra (un 401 confirma la
+ * sesión y, si era atrasado, la vuelve a pedir; un 403 revalida). `fallo` dice por qué, solo para
+ * el texto del aviso (HU4.4, CA12).
  */
 export function useVistaPrevia(documento: DocumentoAVer | null) {
   const visible = documento !== null && admiteVistaPrevia(documento.tipoContenido);
@@ -73,6 +80,7 @@ export function useVistaPrevia(documento: DocumentoAVer | null) {
     url,
     cargando: visible && !consulta.isError && url === null,
     error: visible && consulta.isError,
+    fallo: visible && consulta.isError ? interpretarFalloDescarga(consulta.error) : null,
     reintentar: () => void consulta.refetch(),
   };
 }

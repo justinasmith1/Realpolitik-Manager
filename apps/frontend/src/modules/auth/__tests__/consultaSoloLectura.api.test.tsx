@@ -215,7 +215,8 @@ describe.skipIf(API === undefined)('CONSULTA contra la API real (HU4.3)', () => 
     expect(ultimaOc.status).toBe(403);
     expect(motivoDe(ultimaOc.cuerpo)).toBe('PERMISO_INSUFICIENTE');
 
-    // Con los documentos sin montar (como en producción hasta HU4.4) es 404; montados, 403. Nunca 200.
+    // Con los documentos sin montar (como en producción mientras no se habiliten) es 404; montados,
+    // 403. Nunca 200.
     const candidatos = await pedir(consulta, `/documentos/${UUID_AJENO}/candidatos`);
     expect([403, 404]).toContain(candidatos.status);
     if (candidatos.status === 403) expect(motivoDe(candidatos.cuerpo)).toBe('PERMISO_INSUFICIENTE');

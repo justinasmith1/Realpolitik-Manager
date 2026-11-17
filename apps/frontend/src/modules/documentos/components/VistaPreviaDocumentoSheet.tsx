@@ -44,7 +44,7 @@ export function VistaPreviaDocumentoSheet({
   // Se conserva lo último mostrado para que el contenido no desaparezca durante el cierre.
   const [mostrado, setMostrado] = useState(documento);
   if (documento !== null && documento.id !== mostrado?.id) setMostrado(documento);
-  const { url, cargando, error, reintentar } = useVistaPrevia(mostrado);
+  const { url, cargando, error, fallo, reintentar } = useVistaPrevia(mostrado);
   // La imagen que el navegador no pudo dibujar (un archivo dañado): se guarda su URL, así un
   // reintento, que crea otra, vuelve a probar.
   const [urlRota, setUrlRota] = useState<string | null>(null);
@@ -81,7 +81,7 @@ export function VistaPreviaDocumentoSheet({
           {mostrado !== null && sinMostrar && (
             <Alert>
               <div className="flex flex-col gap-2">
-                <span>{mensajeFalloVistaPrevia(nombre)}</span>
+                <span>{mensajeFalloVistaPrevia(nombre, fallo)}</span>
                 <span className="flex flex-wrap gap-2">
                   <LoadingButton
                     type="button"

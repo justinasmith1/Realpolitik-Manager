@@ -98,8 +98,8 @@ export function HistorialDeItemSheet({ itemId, rendicion, onCerrar }: HistorialD
       ? null
       : { clienteId: rendicion.clienteId, rendicionId: rendicion.id, itemId: mostrado },
   );
-  const { idsDescargando, descargar } = useDescargas((documento) =>
-    setErrorDeDescarga(mensajeFalloDescarga(documento.nombreOriginal)),
+  const { idsDescargando, descargar } = useDescargas((documento, fallo) =>
+    setErrorDeDescarga(mensajeFalloDescarga(documento.nombreOriginal, fallo)),
   );
   const aplicaciones = consulta.data?.aplicaciones;
 
