@@ -32,8 +32,14 @@ import {
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 
 interface MarcarEnviadaDialogProps {
-  /** La rendición (Completa) a marcar como enviada. `null` mantiene el diálogo cerrado. */
-  rendicion: RendicionDetalle | null;
+  /** La rendición (Completa) a marcar como enviada. */
+  rendicion: RendicionDetalle;
+  /**
+   * Si se ve. Quien lo abre le pone una `key` que cambia en cada apertura (`useAperturaDeDialogo`):
+   * así arranca limpio, sin la fecha ni los errores de un intento anterior. Al cerrar, la rendición sigue ahí
+   * y el contenido no desaparece durante la animación.
+   */
+  abierto: boolean;
   onCerrar: () => void;
   /** Se registró el envío: avisa en la página con el texto del resultado. */
   onEnviada: (texto: string) => void;
@@ -50,6 +56,7 @@ interface MarcarEnviadaDialogProps {
  */
 export function MarcarEnviadaDialog({
   rendicion,
+  abierto,
   onCerrar,
   onEnviada,
   focoAlCerrar,
@@ -58,33 +65,22 @@ export function MarcarEnviadaDialog({
   const idCampo = `${id}-fecha`;
   const idError = `${id}-error`;
   const cambio = useMarcarEstadoDeRendicion();
-  // Se conserva lo último mostrado para que el contenido no desaparezca durante el cierre.
-  const [mostrada, setMostrada] = useState(rendicion);
   const [fecha, setFecha] = useState(() => hoyEnBuenosAires());
   const [errorDeCampo, setErrorDeCampo] = useState<string | null>(null);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   // El día del último rechazo (HU3.9): el reenvío no puede ser anterior.
-  const rechazo = mostrada === null ? null : diaDelUltimoRechazo(mostrada.historial);
-  if (rendicion !== null && rendicion !== mostrada) {
-    // Se abre (o cambia la rendición): vuelve a hoy, sin errores de un intento anterior.
-    if (mostrada === null || mostrada.id !== rendicion.id) {
-      setFecha(hoyEnBuenosAires());
-      setErrorDeCampo(null);
-      setErrorGeneral(null);
-    }
-    setMostrada(rendicion);
-  }
+  const rechazo = diaDelUltimoRechazo(rendicion.historial);
 
   async function confirmar() {
-    if (mostrada === null || cambio.isPending) return;
+    if (cambio.isPending) return;
     setErrorGeneral(null);
-    const problema = problemaDeFechaEnvio(fecha, mostrada, new Date(), rechazo);
+    const problema = problemaDeFechaEnvio(fecha, rendicion, new Date(), rechazo);
     setErrorDeCampo(problema);
     if (problema !== null) return;
     try {
       await cambio.mutateAsync({
-        clienteId: mostrada.clienteId,
-        rendicionId: mostrada.id,
+        clienteId: rendicion.clienteId,
+        rendicionId: rendicion.id,
         datos: { estado: 'ENVIADA', fechaEnvio: fecha },
       });
     } catch (fallo) {
@@ -99,12 +95,9 @@ export function MarcarEnviadaDialog({
 
   return (
     <AlertDialog
-      open={rendicion !== null}
+      open={abierto}
       onOpenChange={(abrir) => {
         if (!abrir && !cambio.isPending) onCerrar();
-      }}
-      onOpenChangeComplete={(abierto) => {
-        if (!abierto) setMostrada(null);
       }}
     >
       <AlertDialogContent
@@ -114,7 +107,7 @@ export function MarcarEnviadaDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{TITULO_MARCAR_ENVIADA}</AlertDialogTitle>
           <AlertDialogDescription>
-            {mostrada === null ? '' : `Rendición ${etiquetaDePeriodo(mostrada)}. `}
+            {`Rendición ${etiquetaDePeriodo(rendicion)}. `}
             El sistema no envía nada: registrá el día en que la mandaste.
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -134,7 +127,7 @@ export function MarcarEnviadaDialog({
             type="date"
             value={fecha}
             max={hoyEnBuenosAires()}
-            {...(mostrada !== null && { min: primerDiaDeEnvio(mostrada, rechazo) })}
+            min={primerDiaDeEnvio(rendicion, rechazo)}
             onChange={(evento) => {
               setFecha(evento.target.value);
               setErrorDeCampo(null);
