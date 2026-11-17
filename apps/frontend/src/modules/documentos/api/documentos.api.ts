@@ -166,10 +166,14 @@ export async function obtenerHistorialDeItem(
   return HistorialDeItemSchema.parse(await response.json());
 }
 
-/** `GET /documentos/:id/archivo`: el contenido, siempre a través del backend. */
-export async function descargarArchivo(id: string): Promise<Blob> {
+/**
+ * `GET /documentos/:id/archivo`: el contenido, siempre a través del backend. Lo usan la descarga
+ * y la vista previa (HU3.11).
+ */
+export async function descargarArchivo(id: string, signal?: AbortSignal): Promise<Blob> {
   const response = await http(`/documentos/${encodeURIComponent(id)}/archivo`, {
     headers: { Accept: '*/*' },
+    ...conSenal(signal),
   });
   return response.blob();
 }
