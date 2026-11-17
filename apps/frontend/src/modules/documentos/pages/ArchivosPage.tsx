@@ -24,6 +24,10 @@ import { ArchivosErrorState } from '@/modules/documentos/components/ArchivosErro
 import { ArchivosListado } from '@/modules/documentos/components/ArchivosListado';
 import { DocumentoDetalleSheet } from '@/modules/documentos/components/DocumentoDetalleSheet';
 import { mensajeFalloDescarga } from '@/modules/documentos/components/erroresDeDocumentos';
+import {
+  VistaPreviaDocumentoSheet,
+  type DocumentoAVer,
+} from '@/modules/documentos/components/VistaPreviaDocumentoSheet';
 import { resumenDeSeleccion } from '@/modules/documentos/documentos.etiquetas';
 import { useDescargas, useDocumentos } from '@/modules/documentos/hooks/useDocumentos';
 import { useFiltrosArchivos } from '@/modules/documentos/hooks/useFiltrosArchivos';
@@ -51,7 +55,8 @@ interface SesionDelAsistente {
 /**
  * Repositorio de archivos (`/documentos/archivos`, HU2.8): los documentos cargados en un período,
  * con su tipo, fecha y en cuántos ítems están vigentes. Desde acá se cargan y aplican (asistente),
- * se consulta dónde se usó cada uno (detalle) y se descargan, siempre a través del backend.
+ * se consulta dónde se usó cada uno (detalle), se ven sin descargarlos (un PDF o una imagen, HU3.11)
+ * y se descargan, siempre a través del backend.
  *
  * Cargar y aplicar piden `documentos:operar` (HU4.3). Sin ese permiso (CONSULTA) el repositorio
  * es de lectura: listado, búsqueda, filtros, detalle y descargas quedan; no hay "Cargar
@@ -86,6 +91,7 @@ export function ArchivosPage() {
   const anios = useMemo(() => opcionesDeAnio(), []);
 
   const [detalleId, setDetalleId] = useState<string | null>(null);
+  const [aVer, setAVer] = useState<DocumentoAVer | null>(null);
   const [asistente, setAsistente] = useState<SesionDelAsistente>({
     sesion: 0,
     abierto: false,
@@ -196,6 +202,10 @@ export function ArchivosPage() {
           onVerDetalle={(documento) => {
             limpiar();
             setDetalleId(documento.id);
+          }}
+          onVer={(documento) => {
+            limpiar();
+            setAVer(documento);
           }}
           onDescargar={(documento) => void descargar(documento)}
           onAplicar={puedeOperar ? abrirAsistente : undefined}
@@ -315,6 +325,12 @@ export function ArchivosPage() {
         onDescargar={(documento) => void descargar(documento)}
         descargando={detalleId !== null && idsDescargando.includes(detalleId)}
         onAplicar={puedeOperar ? abrirAsistente : undefined}
+      />
+      <VistaPreviaDocumentoSheet
+        documento={aVer}
+        onCerrar={() => setAVer(null)}
+        onDescargar={(documento) => void descargar(documento)}
+        descargando={aVer !== null && idsDescargando.includes(aVer.id)}
       />
       {puedeOperar && asistente.sesion > 0 && (
         <AplicarDocumentoAsistente

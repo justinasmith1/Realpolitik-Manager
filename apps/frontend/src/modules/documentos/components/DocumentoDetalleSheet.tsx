@@ -1,5 +1,6 @@
 import type { AplicacionUbicada, DocumentoConAplicaciones } from '@realpolitik/shared';
-import { DownloadIcon, FileCheckIcon } from 'lucide-react';
+import { DownloadIcon, EyeIcon, FileCheckIcon } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 
 import { Alert } from '@/components/ui/alert';
@@ -16,12 +17,14 @@ import {
 } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { etiquetasEstado } from '@/modules/clientes/clientes.etiquetas';
+import { VistaPreviaDocumentoSheet } from '@/modules/documentos/components/VistaPreviaDocumentoSheet';
 import {
   fechaLegible,
   formatoLegible,
   tamanioLegible,
 } from '@/modules/documentos/documentos.etiquetas';
 import { useDocumento } from '@/modules/documentos/hooks/useDocumentos';
+import { admiteVistaPrevia } from '@/modules/documentos/vistaPrevia';
 import { etiquetaDePeriodo, nombreDeItem } from '@/modules/rendiciones/rendiciones.etiquetas';
 import { rutaDeRendicion } from '@/modules/rendiciones/rendiciones.rutas';
 
@@ -107,7 +110,7 @@ function ListaDeAplicaciones({
 /**
  * Detalle de un documento del repositorio: sus datos y dónde se usó. Las aplicaciones vigentes
  * van primero y las reemplazadas, aparte, como historial. Una rendición anulada o un cliente no
- * activo se marcan con texto.
+ * activo se marcan con texto. Un PDF o una imagen se puede ver sin descargarlo (HU3.11).
  */
 export function DocumentoDetalleSheet({
   documentoId,
@@ -120,6 +123,14 @@ export function DocumentoDetalleSheet({
   const documento = consulta.data;
   const vigentes = documento?.aplicaciones.filter((a) => a.estado === 'VIGENTE') ?? [];
   const reemplazadas = documento?.aplicaciones.filter((a) => a.estado === 'REEMPLAZADA') ?? [];
+  // La vista previa (HU3.11) se abre dentro del detalle, como un panel anidado: al cerrarla se
+  // vuelve al detalle. Se recuerda de qué documento es, así no queda abierta al cambiar de documento.
+  const [vistaDe, setVistaDe] = useState<string | null>(null);
+  if (documentoId === null && vistaDe !== null) setVistaDe(null);
+  const aVer =
+    documento !== undefined && documentoId === documento.id && vistaDe === documento.id
+      ? documento
+      : null;
 
   return (
     <Sheet
@@ -201,6 +212,12 @@ export function DocumentoDetalleSheet({
           </Button>
           {documento !== undefined && (
             <>
+              {admiteVistaPrevia(documento.tipoContenido) && (
+                <Button type="button" variant="outline" onClick={() => setVistaDe(documento.id)}>
+                  <EyeIcon aria-hidden="true" />
+                  Ver
+                </Button>
+              )}
               <LoadingButton
                 type="button"
                 variant="outline"
@@ -219,6 +236,14 @@ export function DocumentoDetalleSheet({
             </>
           )}
         </SheetFooter>
+        <VistaPreviaDocumentoSheet
+          documento={aVer}
+          onCerrar={() => setVistaDe(null)}
+          onDescargar={() => {
+            if (aVer !== null) onDescargar(aVer);
+          }}
+          descargando={descargando}
+        />
       </SheetContent>
     </Sheet>
   );
