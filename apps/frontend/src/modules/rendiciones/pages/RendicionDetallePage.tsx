@@ -34,6 +34,10 @@ import {
 } from '@/modules/documentos/components/ElegirDocumentoDeItemSheet';
 import { mensajeFalloDescarga } from '@/modules/documentos/components/erroresDeDocumentos';
 import { HistorialDeItemSheet } from '@/modules/documentos/components/HistorialDeItemSheet';
+import {
+  VistaPreviaDocumentoSheet,
+  type DocumentoAVer,
+} from '@/modules/documentos/components/VistaPreviaDocumentoSheet';
 import { useDescargas } from '@/modules/documentos/hooks/useDocumentos';
 import {
   esRendicionInexistente,
@@ -107,8 +111,9 @@ const formatoDeFecha = new Intl.DateTimeFormat('es-AR', {
  * rendición). Solo se marcan los completados con un documento vigente (HU2.8); el servidor lo
  * vuelve a comprobar al preparar el envío. Una anulada no se envía: no tiene casillas ni botón.
  *
- * Cada ítem muestra su documento vigente (HU2.8): se descarga y se consulta su historial; en una
- * activa, a un pendiente se le asocia uno ya cargado y el vigente se puede reemplazar.
+ * Cada ítem muestra su documento vigente (HU2.8): se ve sin descargarlo si es un PDF o una
+ * imagen (HU3.11), se descarga y se consulta su historial; en una activa, a un pendiente se le
+ * asocia uno ya cargado y el vigente se puede reemplazar.
  *
  * Lo que se ofrece depende también de los permisos de la sesión (HU4.3). Sin `rendiciones:operar`
  * (CONSULTA) no hay cambios de estado, "Editar OC", acciones de cobro, casillas ni "Enviar", ni se
@@ -254,6 +259,7 @@ function DetalleDeRendicion({
   const cambioDeEstado = useMarcarEstadoDeRendicion();
   const [pedidoDeDocumento, setPedidoDeDocumento] = useState<PedidoDeDocumento | null>(null);
   const [historialDe, setHistorialDe] = useState<string | null>(null);
+  const [aVer, setAVer] = useState<DocumentoAVer | null>(null);
   const { idsDescargando, descargar } = useDescargas((documento) =>
     setAvisoDelChecklist({
       variant: 'destructive',
@@ -322,8 +328,9 @@ function DetalleDeRendicion({
   }
 
   /**
-   * El documento de un ítem: se descarga y se consulta su historial siempre (también en una
-   * anulada, como historial); se asocia o reemplaza solo en una rendición activa y no enviada.
+   * El documento de un ítem: se ve (HU3.11), se descarga y se consulta su historial siempre
+   * (también en una anulada, como historial); se asocia o reemplaza solo en una rendición activa y
+   * no enviada.
    */
   function accionesDeDocumento(item: ItemChecklist): AccionesDeDocumento {
     const vigente = item.documento ?? null;
@@ -338,6 +345,16 @@ function DetalleDeRendicion({
           onReemplazar: abrir('reemplazar'),
         }),
       onVerHistorial: () => setHistorialDe(item.id),
+      // El vigente de ahora: después de un reemplazo, el detalle se vuelve a pedir y trae el nuevo.
+      onVer: () => {
+        if (vigente !== null) {
+          setAVer({
+            id: vigente.documentoId,
+            nombreOriginal: vigente.nombreOriginal,
+            tipoContenido: vigente.tipoContenido,
+          });
+        }
+      },
       onDescargar: () => {
         if (vigente !== null) {
           void descargar({ id: vigente.documentoId, nombreOriginal: vigente.nombreOriginal });
@@ -752,11 +769,19 @@ function DetalleDeRendicion({
         />
       )}
       {puedeVerDocumentos && (
-        <HistorialDeItemSheet
-          itemId={historialDe}
-          rendicion={rendicion}
-          onCerrar={() => setHistorialDe(null)}
-        />
+        <>
+          <HistorialDeItemSheet
+            itemId={historialDe}
+            rendicion={rendicion}
+            onCerrar={() => setHistorialDe(null)}
+          />
+          <VistaPreviaDocumentoSheet
+            documento={aVer}
+            onCerrar={() => setAVer(null)}
+            onDescargar={(documento) => void descargar(documento)}
+            descargando={aVer !== null && idsDescargando.includes(aVer.id)}
+          />
+        </>
       )}
       {puedeOperar && (
         <>

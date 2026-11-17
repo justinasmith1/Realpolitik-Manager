@@ -110,11 +110,14 @@ interface Aplicacion {
 function servir({
   estado = 'ACTIVA',
   sinDocumentos = false,
+  formatos = {},
   fallos = {},
 }: {
   estado?: 'ACTIVA' | 'ANULADA';
   /** La API no informa el documento de los ítems (contrato anterior a HU2.8). */
   sinDocumentos?: boolean;
+  /** El `tipoContenido` de algún documento, si no es un PDF. */
+  formatos?: Record<string, string>;
   fallos?: {
     [endpoint in 'listado' | 'aplicar' | 'reemplazo' | 'historial' | 'archivo']?:
       (() => Response) | undefined;
@@ -196,7 +199,7 @@ function servir({
                   aplicacionId: vigente.id,
                   documentoId: vigente.documentoId,
                   nombreOriginal: documento.nombreOriginal,
-                  tipoContenido: 'application/pdf',
+                  tipoContenido: formatos[vigente.documentoId] ?? 'application/pdf',
                   tamanioBytes: 2048,
                   aplicadaEn: vigente.aplicadaEn,
                 },
@@ -661,6 +664,7 @@ describe('RendicionDetallePage: documentos del checklist', () => {
     expect(print1.getByText('print-octubre.pdf')).toBeInTheDocument();
     expect(print1.getByRole('button', { name: 'Descargar print-octubre.pdf' })).toBeVisible();
     expect(screen.queryByRole('button', { name: /^Reemplazar documento/ })).not.toBeInTheDocument();
+    expect(print1.getByRole('button', { name: 'Ver print-octubre.pdf' })).toBeVisible();
     expect(
       screen.queryByRole('button', { name: /^Asociar documento existente/ }),
     ).not.toBeInTheDocument();
@@ -680,6 +684,111 @@ describe('RendicionDetallePage: documentos del checklist', () => {
     expect(screen.queryByText('Sin documento')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Asociar documento/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Ver historial/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Ver print/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cambiar el canal de Factura' })).toBeVisible();
+  });
+});
+
+// ─── Vista previa (HU3.11) ────────────────────────────────────────────────────
+
+describe('RendicionDetallePage: vista previa del documento de un ítem', () => {
+  /** URL local de mentira (jsdom no las crea) y los clics de descarga, que no navegan. */
+  function simularNavegador() {
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:vista'), revokeObjectURL: vi.fn() }),
+    );
+    const descargas: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      descargas.push(this.download);
+    });
+    return { descargas };
+  }
+
+  it('abre el documento vigente del ítem sin descargarlo', async () => {
+    const { descargas } = simularNavegador();
+    servir();
+    const { user } = renderDetalle();
+    await cargado();
+
+    await user.click(
+      within(fila('Print 1 de 2')).getByRole('button', { name: 'Ver print-octubre.pdf' }),
+    );
+
+    const visor = within(await panel('Vista previa de print-octubre.pdf'));
+    expect(await visor.findByTitle('Contenido de print-octubre.pdf')).toHaveAttribute(
+      'src',
+      'blob:vista',
+    );
+    expect(llamadas('GET', `/documentos/${DOC_A}/archivo`)).toHaveLength(1);
+    expect(descargas).toEqual([]);
+  });
+
+  it('después de un reemplazo abre el documento que quedó vigente', async () => {
+    simularNavegador();
+    servir();
+    const { user } = renderDetalle();
+    await cargado();
+
+    await user.click(screen.getByRole('button', { name: 'Reemplazar documento de Print 1 de 2' }));
+    const sheet = within(await panel('Reemplazar documento'));
+    await user.click(await sheet.findByRole('radio', { name: /print-octubre-v2\.pdf/ }));
+    await user.click(sheet.getByRole('button', { name: 'Reemplazar documento' }));
+    await user.click(sheet.getByRole('button', { name: 'Sí, reemplazar' }));
+    const nuevo = await within(fila('Print 1 de 2')).findByRole('button', {
+      name: 'Ver print-octubre-v2.pdf',
+    });
+    expect(
+      within(fila('Print 1 de 2')).queryByRole('button', { name: 'Ver print-octubre.pdf' }),
+    ).not.toBeInTheDocument();
+
+    await user.click(nuevo);
+
+    const visor = within(await panel('Vista previa de print-octubre-v2.pdf'));
+    expect(await visor.findByTitle('Contenido de print-octubre-v2.pdf')).toBeInTheDocument();
+    expect(llamadas('GET', `/documentos/${DOC_B}/archivo`)).toHaveLength(1);
+    expect(llamadas('GET', `/documentos/${DOC_A}/archivo`)).toHaveLength(0);
+  });
+
+  it('si el documento del ítem es un DOCX, solo se ofrece descargarlo', async () => {
+    servir({
+      formatos: {
+        [DOC_A]: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      },
+    });
+    renderDetalle();
+    await cargado();
+
+    const print1 = within(fila('Print 1 de 2'));
+    expect(print1.getByRole('button', { name: 'Descargar print-octubre.pdf' })).toBeVisible();
+    expect(print1.queryByRole('button', { name: /^Ver print/ })).not.toBeInTheDocument();
+  });
+
+  it('si el archivo no se puede cargar, lo dice y ofrece descargarlo', async () => {
+    const { descargas } = simularNavegador();
+    let pedidos = 0;
+    servir({
+      fallos: {
+        archivo: () =>
+          pedidos++ === 0
+            ? errorJson(503, 'SERVICE_UNAVAILABLE')
+            : new Response('%PDF-1.4', { headers: { 'Content-Type': 'application/pdf' } }),
+      },
+    });
+    const { user } = renderDetalle();
+    await cargado();
+
+    await user.click(screen.getByRole('button', { name: 'Ver print-octubre.pdf' }));
+
+    const visor = within(await panel('Vista previa de print-octubre.pdf'));
+    expect(
+      await visor.findByText(
+        'No pudimos mostrar print-octubre.pdf. Podés descargarlo para verlo en tu equipo.',
+      ),
+    ).toBeVisible();
+    await user.click(visor.getByRole('button', { name: 'Descargar' }));
+    await waitFor(() => expect(descargas).toEqual(['print-octubre.pdf']));
   });
 });
