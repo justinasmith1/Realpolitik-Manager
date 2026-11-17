@@ -82,21 +82,24 @@ export function VistaPreviaDocumentoSheet({
             <Alert>
               <div className="flex flex-col gap-2">
                 <span>{mensajeFalloVistaPrevia(nombre, fallo)}</span>
-                <span className="flex flex-wrap gap-2">
-                  <LoadingButton
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    loading={descargando}
-                    onClick={() => onDescargar(mostrado)}
-                  >
-                    <DownloadIcon aria-hidden="true" />
-                    Descargar
-                  </LoadingButton>
-                  <Button type="button" variant="ghost" size="sm" onClick={reintentarTodo}>
-                    Reintentar
-                  </Button>
-                </span>
+                {/* Sin permiso, descargar y reintentar darían el mismo 403: solo el mensaje. */}
+                {fallo?.tipo !== 'sin-permiso' && (
+                  <span className="flex flex-wrap gap-2">
+                    <LoadingButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      loading={descargando}
+                      onClick={() => onDescargar(mostrado)}
+                    >
+                      <DownloadIcon aria-hidden="true" />
+                      Descargar
+                    </LoadingButton>
+                    <Button type="button" variant="ghost" size="sm" onClick={reintentarTodo}>
+                      Reintentar
+                    </Button>
+                  </span>
+                )}
               </div>
             </Alert>
           )}
