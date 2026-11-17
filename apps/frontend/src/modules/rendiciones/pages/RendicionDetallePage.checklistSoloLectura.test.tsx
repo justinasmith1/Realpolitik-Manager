@@ -218,6 +218,7 @@ describe('RendicionDetallePage: el checklist de una rendición ya enviada es de 
       const documentos = within(seccion('Documentos enviados'));
       expect(documentos.getByText('factura.pdf')).toBeInTheDocument();
       expect(documentos.getByRole('button', { name: 'Descargar factura.pdf' })).toBeEnabled();
+      expect(documentos.getByRole('button', { name: 'Ver factura.pdf' })).toBeEnabled();
       expect(documentos.getByRole('button', { name: 'Ver historial de Factura' })).toBeEnabled();
       expect(documentos.getByText('Reunido')).toBeInTheDocument();
       expect(documentos.getByText('Correo')).toBeInTheDocument();
@@ -294,6 +295,7 @@ describe('RendicionDetallePage: el checklist de una rendición ya enviada es de 
     expect(filtroDeFaltantes()).not.toBeInTheDocument();
     expect(botonEnviar()).not.toBeInTheDocument();
     expect(casillasDeItem()).toEqual([]);
+    expect(documentos.getByRole('button', { name: 'Ver factura.pdf' })).toBeEnabled();
     expect(documentos.getByRole('button', { name: 'Descargar factura.pdf' })).toBeEnabled();
     expect(documentos.getByRole('button', { name: 'Ver historial de Factura' })).toBeEnabled();
   });

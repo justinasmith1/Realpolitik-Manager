@@ -1,6 +1,6 @@
 import type { ItemChecklist } from '@realpolitik/shared';
 import { cn } from 'cn';
-import { DownloadIcon, FileTextIcon, PencilIcon } from 'lucide-react';
+import { DownloadIcon, EyeIcon, FileTextIcon, PencilIcon } from 'lucide-react';
 import { useId } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { etiquetasCanalEntrega } from '@/modules/clientes/clientes.etiquetas';
+import { admiteVistaPrevia } from '@/modules/documentos/vistaPrevia';
 import { ItemReunidoBadge } from '@/modules/rendiciones/components/ItemReunidoBadge';
 import { nombreDeItem } from '@/modules/rendiciones/rendiciones.etiquetas';
 
@@ -18,6 +19,8 @@ export interface AccionesDeDocumento {
   /** Ítem con documento: cambiarlo por otro. Sin esto (anulada), no se ofrece. */
   onReemplazar?: () => void;
   onVerHistorial: () => void;
+  /** Abre la vista previa del vigente (HU3.11). Se ofrece solo si es un PDF o una imagen. */
+  onVer: () => void;
   onDescargar: () => void;
   descargando: boolean;
 }
@@ -44,7 +47,8 @@ interface ItemChecklistFilaProps {
  * aplicarles un documento (HU2.8); la casilla solo lo elige para enviarlo, y solo se habilita si
  * está completado y con un documento vigente (`motivoNoEnviable`). Los pendientes se
  * distinguen con el token de alerta y más peso; el estado también va como texto, así el color
- * nunca es el único canal. Debajo va el archivo vigente, con sus acciones, o la de asociar uno.
+ * nunca es el único canal. Debajo va el archivo vigente, con sus acciones (verlo, si es un PDF o una imagen, y
+ * descargarlo), o la de asociar uno.
  */
 export function ItemChecklistFila({
   item,
@@ -137,6 +141,18 @@ export function ItemChecklistFila({
             <span className="sr-only">Documento: </span>
             <span className="break-all">{vigente.nombreOriginal}</span>
           </span>
+          {admiteVistaPrevia(vigente.tipoContenido) && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={documento.onVer}
+              aria-label={`Ver ${vigente.nombreOriginal}`}
+              title="Ver"
+            >
+              <EyeIcon aria-hidden="true" />
+            </Button>
+          )}
           <LoadingButton
             type="button"
             variant="ghost"

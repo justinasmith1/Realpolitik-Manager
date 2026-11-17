@@ -64,6 +64,10 @@ export function mensajeFalloAplicacion(
 export const mensajeFalloDescarga = (nombreOriginal: string): string =>
   `No se pudo descargar ${nombreOriginal}. Probá de nuevo.`;
 
+/** La vista previa no se pudo mostrar (HU3.11): se ofrece descargarlo. */
+export const mensajeFalloVistaPrevia = (nombreOriginal: string): string =>
+  `No pudimos mostrar ${nombreOriginal}. Podés descargarlo para verlo en tu equipo.`;
+
 // Desde el detalle de una rendición se trabaja con un solo ítem: los textos hablan de "este ítem".
 const rechazoDeUnItem: Record<MotivoDeRechazoDeAplicacion, string> = {
   ITEM_NO_PENDIENTE:

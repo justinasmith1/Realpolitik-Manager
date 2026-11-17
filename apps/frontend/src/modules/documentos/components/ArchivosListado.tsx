@@ -1,5 +1,5 @@
 import type { DocumentoResumen } from '@realpolitik/shared';
-import { DownloadIcon, FileCheckIcon } from 'lucide-react';
+import { DownloadIcon, EyeIcon, FileCheckIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -11,6 +11,7 @@ import {
   formatoLegible,
   tamanioLegible,
 } from '@/modules/documentos/documentos.etiquetas';
+import { admiteVistaPrevia } from '@/modules/documentos/vistaPrevia';
 
 /** Debajo de este ancho el repositorio se muestra como tarjetas (como el catálogo de tipos). */
 export const ARCHIVOS_COMPACTO_QUERY = '(max-width: 767px)';
@@ -19,6 +20,8 @@ const claseEncabezado = 'px-4 py-3 font-medium whitespace-nowrap';
 
 export interface AccionesDeArchivo {
   onVerDetalle: (documento: DocumentoResumen) => void;
+  /** Abre la vista previa (HU3.11). Se ofrece solo en un PDF o una imagen: un DOCX se descarga. */
+  onVer: (documento: DocumentoResumen) => void;
   onDescargar: (documento: DocumentoResumen) => void;
   /**
    * Abre el asistente para aplicarlo. Sin esto (quien no opera documentos, como CONSULTA) no hay
@@ -70,14 +73,27 @@ function NombreDeArchivo({
 function Acciones({
   documento,
   descargando,
+  onVer,
   onDescargar,
   onAplicar,
 }: {
   documento: DocumentoResumen;
   descargando: boolean;
-} & Pick<AccionesDeArchivo, 'onDescargar' | 'onAplicar'>) {
+} & Pick<AccionesDeArchivo, 'onVer' | 'onDescargar' | 'onAplicar'>) {
   return (
     <div className="flex items-center justify-end gap-1.5">
+      {admiteVistaPrevia(documento.tipoContenido) && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => onVer(documento)}
+          aria-label={`Ver ${documento.nombreOriginal}`}
+          title="Ver"
+        >
+          <EyeIcon aria-hidden="true" />
+        </Button>
+      )}
       <LoadingButton
         type="button"
         variant="ghost"
@@ -113,6 +129,7 @@ export function ArchivosListado({
   documentos,
   idsDescargando,
   onVerDetalle,
+  onVer,
   onDescargar,
   onAplicar,
 }: ArchivosListadoProps) {
@@ -141,6 +158,7 @@ export function ArchivosListado({
             <Acciones
               documento={documento}
               descargando={descargando(documento)}
+              onVer={onVer}
               onDescargar={onDescargar}
               onAplicar={onAplicar}
             />
@@ -190,6 +208,7 @@ export function ArchivosListado({
                 <Acciones
                   documento={documento}
                   descargando={descargando(documento)}
+                  onVer={onVer}
                   onDescargar={onDescargar}
                   onAplicar={onAplicar}
                 />

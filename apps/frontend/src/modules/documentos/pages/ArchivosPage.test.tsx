@@ -777,3 +777,124 @@ describe('ArchivosPage con CONSULTA: aplicaciones e historial', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+// ─── Vista previa (HU3.11) ────────────────────────────────────────────────────
+
+const DOCX = documento(4, {
+  nombreOriginal: 'nota.docx',
+  tipoContenido: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  aplicacionesVigentes: 1,
+});
+const IMAGEN = documento(5, {
+  nombreOriginal: 'constancia.png',
+  tipoContenido: 'image/png',
+  aplicacionesVigentes: 1,
+});
+
+describe('ArchivosPage: vista previa', () => {
+  /** URL local de mentira (jsdom no las crea) y los clics de descarga, que no navegan. */
+  function simularNavegador() {
+    const crear = vi.fn((_contenido: Blob) => 'blob:vista');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: crear, revokeObjectURL: vi.fn() }));
+    const descargas: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      descargas.push(this.download);
+    });
+    return { crear, descargas };
+  }
+
+  it('ofrece "Ver" en un PDF y en una imagen; un DOCX solo se descarga', async () => {
+    servidor.documentos = [EXISTENTE, IMAGEN, DOCX];
+    renderPage();
+    await screen.findByRole('button', { name: 'print-1.pdf' });
+
+    expect(screen.getByRole('button', { name: 'Ver print-1.pdf' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver constancia.png' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ver nota.docx' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Descargar nota.docx' })).toBeInTheDocument();
+  });
+
+  it('abre el contenido dentro del sistema, sin descargarlo', async () => {
+    const { crear, descargas } = simularNavegador();
+    const { user } = renderPage();
+    await screen.findByRole('button', { name: 'print-1.pdf' });
+
+    await user.click(screen.getByRole('button', { name: 'Ver print-1.pdf' }));
+
+    const visor = within(
+      await screen.findByRole('dialog', { name: 'Vista previa de print-1.pdf' }),
+    );
+    expect(await visor.findByTitle('Contenido de print-1.pdf')).toHaveAttribute(
+      'src',
+      'blob:vista',
+    );
+    expect(llamadasA('GET', `/documentos/${EXISTENTE.id}/archivo`)).toHaveLength(1);
+    expect(await crear.mock.calls[0]?.[0].text()).toBe('%PDF-1.7');
+    expect(descargas).toEqual([]);
+  });
+
+  it('si no se puede cargar, lo dice y ofrece descargarlo', async () => {
+    const { descargas } = simularNavegador();
+    let pedidos = 0;
+    servidor.archivo = () =>
+      pedidos++ === 0
+        ? error(503, 'SERVICE_UNAVAILABLE')
+        : new Response('%PDF-1.7', { headers: { 'Content-Type': 'application/pdf' } });
+    const { user } = renderPage();
+    await screen.findByRole('button', { name: 'print-1.pdf' });
+
+    await user.click(screen.getByRole('button', { name: 'Ver print-1.pdf' }));
+
+    const visor = within(
+      await screen.findByRole('dialog', { name: 'Vista previa de print-1.pdf' }),
+    );
+    expect(
+      await visor.findByText(
+        'No pudimos mostrar print-1.pdf. Podés descargarlo para verlo en tu equipo.',
+      ),
+    ).toBeVisible();
+    await user.click(visor.getByRole('button', { name: 'Descargar' }));
+    await waitFor(() => expect(descargas).toEqual(['print-1.pdf']));
+  });
+
+  it('desde el detalle de un PDF se puede ver; el de un DOCX solo ofrece descargar', async () => {
+    simularNavegador();
+    servidor.documentos = [EXISTENTE, DOCX];
+    servidor.detalle = (documentoId) =>
+      json({ ...(documentoId === DOCX.id ? DOCX : EXISTENTE), aplicaciones: [] });
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'print-1.pdf' }));
+    const detalle = within(await screen.findByRole('dialog', { name: 'print-1.pdf' }));
+    await user.click(await detalle.findByRole('button', { name: 'Ver' }));
+    const visor = await screen.findByRole('dialog', { name: 'Vista previa de print-1.pdf' });
+    expect(await within(visor).findByTitle('Contenido de print-1.pdf')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Vista previa de print-1.pdf' }),
+      ).not.toBeInTheDocument(),
+    );
+    // Cerrar el visor deja el detalle abierto.
+    expect(screen.getByRole('dialog', { name: 'print-1.pdf' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    await user.click(await screen.findByRole('button', { name: 'nota.docx' }));
+    const detalleDocx = within(await screen.findByRole('dialog', { name: 'nota.docx' }));
+    expect(await detalleDocx.findByRole('button', { name: 'Descargar' })).toBeInTheDocument();
+    expect(detalleDocx.queryByRole('button', { name: 'Ver' })).not.toBeInTheDocument();
+  });
+
+  it('CONSULTA también puede verlo', async () => {
+    simularNavegador();
+    const { user } = renderPage('/documentos/archivos?anio=2026&mes=10', 'CONSULTA');
+    await screen.findByRole('button', { name: 'print-1.pdf' });
+
+    await user.click(screen.getByRole('button', { name: 'Ver print-1.pdf' }));
+
+    const visor = await screen.findByRole('dialog', { name: 'Vista previa de print-1.pdf' });
+    expect(await within(visor).findByTitle('Contenido de print-1.pdf')).toBeInTheDocument();
+  });
+});
