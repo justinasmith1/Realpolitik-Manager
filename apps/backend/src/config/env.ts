@@ -92,9 +92,10 @@ type Resolucion =
   | { almacenamiento?: never; invalidas: string[] };
 
 /**
- * Si los endpoints de documentos (`/documentos`) se montan. Hoy no hay autenticación: en
- * producción quedan DESHABILITADOS salvo `DOCUMENTOS_HABILITADOS=true`, que solo se define cuando
- * hay una protección efectiva del lado del servidor o de la infraestructura (ADR-0004, Seguridad).
+ * Si los endpoints de documentos (`/documentos`) se montan. Montados, exigen sesión y permiso como
+ * toda la API (HU4.4). En producción quedan DESHABILITADOS salvo `DOCUMENTOS_HABILITADOS=true`, que
+ * se define solo con el procedimiento de habilitación (docs/deployment.md, ADR-0006): login y proxy
+ * desplegados, bucket privado verificado y cargas y descargas probadas en esa infraestructura.
  * Habilitados por defecto solo con `NODE_ENV` definido en `development` o `test`: sin `NODE_ENV`
  * (un deploy que lo olvidó) también quedan deshabilitados.
  */

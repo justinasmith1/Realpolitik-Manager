@@ -170,7 +170,7 @@ No se crean endpoints de prueba en el backend productivo para adelantarlas:
 - protección CSRF (validación de `Origin` en el backend);
 - que una respuesta autenticada nunca salga de la caché del CDN;
 - acceso directo a Railway sin sesión → 401;
-- documentos de 10 MiB por el rewrite real (los endpoints de documentos están deshabilitados en producción hasta HU4.4).
+- documentos de 10 MiB por el rewrite real (los endpoints de documentos siguen deshabilitados en el despliegue: ver [Habilitación de Documentos](#habilitación-de-documentos-en-el-despliegue-de-demostración-hu44)).
 
 ## Backend (Railway)
 
@@ -199,7 +199,7 @@ El backend se construye y arranca desde la raíz del repositorio (Root Directory
 | `CORS_ORIGINS`           | Origen de producción del frontend | Manual                                         | No      |
 | `RAILPACK_NODE_VERSION`  | `24`                              | Manual                                         | No      |
 | `TRUST_PROXY_SALTOS`     | `0` (ver límite por origen)       | Manual (opcional; 0 por defecto)               | No      |
-| `DOCUMENTOS_HABILITADOS` | Sin definir (deshabilitados)      | Manual, solo con protección efectiva           | No      |
+| `DOCUMENTOS_HABILITADOS` | Sin definir (deshabilitados)      | Manual, solo con el procedimiento de abajo     | No      |
 | `ALMACENAMIENTO`         | `s3`                              | Manual                                         | No      |
 | `S3_ENDPOINT`            | Endpoint S3 del proveedor (HTTPS) | Manual                                         | No      |
 | `S3_REGION`              | Región del proveedor              | Manual                                         | No      |
@@ -211,7 +211,7 @@ El backend se construye y arranca desde la raíz del repositorio (Root Directory
 - `CORS_ORIGINS` es el origen exacto, `https://<host>` **sin barra final**. Se admiten varios, separados por comas. Si falta o es inválido, el servidor no arranca y el deploy falla el healthcheck. No se usa `*`.
 - Los previews de Vercel tienen un hostname distinto en cada deploy y **no** se agregan a `CORS_ORIGINS`.
 - Con el proxy de mismo origen, el navegador no hace pedidos entre orígenes y CORS deja de intervenir en producción. `CORS_ORIGINS` sigue siendo obligatoria y conserva el origen de producción.
-- Documentos (HU2.8, [ADR-0004](adr/0004-reutilizacion-y-almacenamiento-documentos.md)): en producción los endpoints `/documentos` están **deshabilitados** (no se montan: responden 404) mientras `DOCUMENTOS_HABILITADOS` no valga `true`. La API ya exige sesión y permisos en el código (etapa 3 de HU4.1, todavía sin desplegar ni validar en Railway), pero los documentos solo se habilitan con la política de HU4.4 (ADR-0006); CORS no es una protección. Deshabilitados, no hace falta ninguna variable de almacenamiento. Habilitados, el servidor **no arranca** sin `ALMACENAMIENTO=s3` y las cinco variables `S3_*` (endpoint HTTPS). Memoria y disco no se admiten en producción: se pierden con el contenedor. `S3_FORCE_PATH_STYLE` es opcional (`true` por defecto, lo que exige Supabase). Las claves `S3_*` no se comparten entre entornos y nunca van al frontend.
+- Documentos (HU2.8, [ADR-0004](adr/0004-reutilizacion-y-almacenamiento-documentos.md)): en producción los endpoints `/documentos` están **deshabilitados** (no se montan: responden 404) mientras `DOCUMENTOS_HABILITADOS` no valga `true`. En el código, toda la API, también los documentos, exige sesión y permiso (HU4.1, HU4.3), y HU4.4 lo verificó localmente para los tres roles; en Vercel y Railway, el login todavía no está configurado ni verificado (proxy sin activar, Anexo A de ADR-0006). Los documentos se habilitan solo con el [procedimiento de abajo](#habilitación-de-documentos-en-el-despliegue-de-demostración-hu44) (política de ADR-0006); CORS no es una protección. Deshabilitados, no hace falta ninguna variable de almacenamiento. Habilitados, el servidor **no arranca** sin `ALMACENAMIENTO=s3` y las cinco variables `S3_*` (endpoint HTTPS). Memoria y disco no se admiten en producción: se pierden con el contenedor. `S3_FORCE_PATH_STYLE` es opcional (`true` por defecto, lo que exige Supabase). Las claves `S3_*` no se comparten entre entornos y nunca van al frontend.
 - Usar la URL **privada** de la base (mismo proyecto de Railway). La URL pública (proxy TCP) factura tráfico de salida y expone la base fuera de la red privada: no se usa.
 
 ### Variable de Vercel
@@ -272,6 +272,68 @@ Con `TRUST_PROXY_SALTOS=0` detrás de Railway (y de Vercel), `req.ip` es la IP d
 - La demora por cuenta (desde el 5.º fallo: 30 s … 15 min) y el tope de concurrencia por cuenta y de argon2 siguen activos siempre.
 - El arranque informa `límite de login por origen: activo|inactivo`.
 - **Valor recomendado al activar: `TRUST_PROXY_SALTOS=0`** (límite por origen inactivo) hasta medir los saltos reales (T8/T9). No hay un número fijo correcto para los dos caminos (por Vercel: dos saltos; directo a Railway: uno) y un valor mayor que los saltos reales permite falsificar la IP con `X-Forwarded-For`. Activarlo con un valor medido, o con un secreto compartido desde Vercel, es una mejora posterior (P15).
+
+## Habilitación de Documentos en el despliegue de demostración (HU4.4)
+
+> **Pendiente: nada de esta sección está configurado ni verificado.** El despliegue de Vercel y Railway es un entorno de demostración para la facultad, sin información real de clientes. HU4.4 dejó los controles de acceso implementados y probados localmente ([matriz de permisos](security/matriz-permisos.md#repositorio-de-documentos-hu44)); esta configuración queda para la etapa de preparación de la demo. No incluye dominios, buckets ni credenciales: viven en los proveedores. Cada comprobación se da por hecha solo cuando se hace en ese entorno y se registra.
+
+Es la [política de habilitación documental de ADR-0006](adr/0006-autenticacion-y-control-de-acceso.md#política-de-habilitación-documental-en-producción-hu44) llevada a pasos. Mientras no se complete, `DOCUMENTOS_HABILITADOS` queda sin definir.
+
+### 1. Requisitos previos, con los documentos deshabilitados
+
+1. **Backend desplegado** desde `main`, con las migraciones aplicadas por el pre-deploy y `NODE_ENV=production`. El arranque dice `documentos: deshabilitados`. T0 del Anexo A (`argon2` y Node 24 en el arranque).
+2. **Proxy de mismo origen activo** ([Activación](#activación-hu41-con-revisión-del-equipo)): el rewrite con los valores reales en `vercel.json` y `VITE_API_URL=/api` en Production, con T4 (lectura), T12 y T13. Sin el proxy no se puede iniciar sesión desde el frontend desplegado: la cookie `__Host-rp_sesion` es `SameSite=Strict` y no viaja a otro origen.
+3. **Cuentas de la demo:** el [primer administrador](#primer-administrador-hu41) y, desde la pantalla Usuarios, una cuenta `ADMINISTRATIVO` y una `CONSULTA`, con nombres y emails ficticios.
+4. **Sesión verificada en el entorno real:** T5 (la cookie por el rewrite), T6 y T7 (`Origin`) y T14 (un `curl` directo a Railway, sin cookie, a una ruta de negocio responde 401).
+
+### 2. Almacenamiento S3-compatible
+
+1. Crear un bucket **privado** (sin acceso público), solo para la demo. No se reutiliza el de otro entorno.
+2. Generar las claves S3 del proveedor. **Son secretas** y dan acceso al almacenamiento: van solo en las variables del servicio del backend en Railway. Nunca en Vercel, en una variable `VITE_*`, en el repositorio, en capturas ni en mensajes.
+3. Anotar el endpoint S3 (HTTPS) y la región del proveedor.
+
+### 3. Variables del backend
+
+| Variable                                    | Valor                                                                  |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| `ALMACENAMIENTO`                            | `s3`                                                                   |
+| `S3_ENDPOINT`                               | Endpoint S3 del proveedor, con `https://` (en producción, obligatorio) |
+| `S3_REGION`                                 | Región del proveedor                                                   |
+| `S3_BUCKET`                                 | El bucket privado del paso anterior                                    |
+| `S3_ACCESS_KEY_ID` y `S3_SECRET_ACCESS_KEY` | Las claves S3 (**secretas**)                                           |
+| `S3_FORCE_PATH_STYLE`                       | Sin definir (`true` por defecto, lo que exige Supabase)                |
+| `DOCUMENTOS_HABILITADOS`                    | `true` recién en el paso 4                                             |
+
+- Las variables de almacenamiento se pueden cargar antes, con `DOCUMENTOS_HABILITADOS` sin definir: el servidor solo valida su forma y no se conecta al proveedor.
+- Con `DOCUMENTOS_HABILITADOS=true`, el servidor **no arranca** si `ALMACENAMIENTO` no es `s3`, si falta alguna `S3_*` o si el endpoint no es HTTPS, y el deploy falla el healthcheck. El mensaje nombra las variables, nunca sus valores.
+
+### 4. Activación controlada, con archivos ficticios
+
+1. Definir `DOCUMENTOS_HABILITADOS=true` y volver a desplegar el backend. El arranque tiene que decir `documentos: s3`.
+2. Hacer las comprobaciones en el navegador, desde el frontend desplegado, solo con archivos **ficticios**: un PDF y una imagen sin datos reales, y un PDF de cerca de 10 MiB para T1 y T3. Los pedidos directos a la API se hacen desde las herramientas del navegador, en la pestaña con la sesión, sin copiar cookies ni cabeceras.
+
+| #   | Comprobación                                                                                                                                                                                                | Esperado                                                                          |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| D1  | Sin sesión (ventana privada, y un `curl` directo a Railway): `GET /api/documentos?anio=…&mes=…` y `GET /api/documentos/<id>/archivo`                                                                        | 401, sin metadatos ni contenido                                                   |
+| D2  | `ADMINISTRATIVO`: cargar un PDF, aplicarlo a un ítem, descargarlo y abrir la vista previa                                                                                                                   | Todo funciona; el archivo descargado es el cargado                                |
+| D3  | `ADMINISTRADOR`: cargar, aplicar, reemplazar el documento de un ítem y ver su historial                                                                                                                     | El historial muestra el vigente y el reemplazado                                  |
+| D4  | `CONSULTA`: repositorio, detalle, historial de un ítem, descarga y vista previa                                                                                                                             | Todo se ve y se descarga; no aparecen "Cargar documento", "Aplicar" ni reemplazar |
+| D5  | `CONSULTA`, pedido directo: `POST /api/documentos` y `GET /api/documentos/<id>/candidatos`                                                                                                                  | 403 `PERMISO_INSUFICIENTE`; el repositorio no cambia                              |
+| D6  | Bucket privado: un `GET` anónimo a la URL pública de un objeto de la prueba (en Supabase, `…/storage/v1/object/public/<bucket>/<clave>`; la clave se ve en el panel del proveedor, la API nunca la muestra) | No entrega el archivo                                                             |
+| D7  | T1, T2 y T3 del Anexo A: subida de cerca de 10 MiB, subida lenta y descarga de cerca de 10 MiB por el rewrite, con sesión                                                                                   | Completas; el resultado de la subida lenta queda registrado                       |
+| D8  | T4 sobre una descarga autenticada: dos pedidos seguidos                                                                                                                                                     | `x-vercel-cache` nunca `HIT`; `Cache-Control: private, no-store`                  |
+| D9  | Cerrar la sesión en otra pestaña y descargar                                                                                                                                                                | Lleva a `/login` con el aviso de sesión terminada                                 |
+
+3. Registrar el resultado de cada comprobación (en el PR o la tarjeta de la habilitación), sin capturas con datos de sesión. Los documentos quedan habilitados solo si pasan todas; si alguna falla, se revierte.
+
+### 5. Reversión
+
+- **Inmediata:** quitar `DOCUMENTOS_HABILITADOS` (o ponerla en `false`) y volver a desplegar el backend. Las rutas vuelven a responder 404 y el repositorio muestra "El repositorio de documentos no está disponible en este entorno". Las filas de la base y los objetos del bucket no se tocan y siguen privados.
+- **Una clave S3 expuesta:** revocarla en el proveedor, generar otra y actualizarla en Railway.
+- **Falla el login o el proxy:** primero se deshabilitan los documentos y después se sigue la [reversión del proxy](#reversión).
+- No hay una operación para borrar documentos (ADR-0004 §12). Si hubiera que quitar los archivos de la prueba, es un procedimiento manual aparte, con su autorización; nunca con el seed.
+
+No se agregan endpoints de prueba ni modos sin autenticación para adelantar estas comprobaciones. Los documentos reales de clientes quedan fuera de la demo: requieren la aprobación del negocio (política de ADR-0006, punto 4).
 
 ## Prueba de humo posterior al despliegue
 

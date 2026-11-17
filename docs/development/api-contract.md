@@ -1074,7 +1074,9 @@ Además de los schemas, `@realpolitik/shared` exporta `generarChecklist(matriz, 
 
 Un archivo se carga **una vez**, con su tipo de documento y su período, y después se aplica a ítems de rendiciones de varios clientes (ADR-0004). Esta sección cubre la carga, las consultas, los candidatos, la aplicación a varios ítems, el reemplazo y el historial. Los schemas están en `@realpolitik/shared` (`documento.schema.ts` y `aplicacionDocumento.schema.ts`).
 
-> **Deshabilitado en producción.** No hay autenticación: con `NODE_ENV=production`, `/documentos` (y el reemplazo y el historial, que cuelgan de `/rendiciones`) no se monta (cualquier ruta responde `404 NOT_FOUND`) salvo `DOCUMENTOS_HABILITADOS=true`. Esa variable solo se define cuando hay una protección efectiva del lado del servidor o de la infraestructura. CORS no lo es. En desarrollo y en tests está habilitado. Ver [Despliegue](../deployment.md#variables-del-backend).
+> **Deshabilitado en el despliegue.** Con `NODE_ENV=production`, `/documentos` (y el reemplazo y el historial, que cuelgan de `/rendiciones`) no se monta (cualquier ruta responde `404 NOT_FOUND`) salvo `DOCUMENTOS_HABILITADOS=true`, que se define solo con el [procedimiento de habilitación](../deployment.md#habilitación-de-documentos-en-el-despliegue-de-demostración-hu44). En desarrollo y en tests está habilitado. CORS no es una protección.
+
+**Acceso (HU4.4).** Montadas, las ocho rutas siguen las reglas globales de la API de negocio (§8) **antes de leer el cuerpo o el archivo**: sin sesión, `401`; contraseña temporal pendiente, `403 CAMBIO_DE_PASSWORD_REQUERIDO`; sin el permiso de la ruta, `403 PERMISO_INSUFICIENTE`. Leer y descargar es `documentos:ver` (los tres roles, también `CONSULTA`); `candidatos`, cargar, aplicar y reemplazar es `documentos:operar` (solo `ADMINISTRADOR` y `ADMINISTRATIVO`). Ver la [matriz de permisos](../security/matriz-permisos.md#repositorio-de-documentos-hu44). Ninguna respuesta de error repite datos del documento, del archivo ni del almacenamiento.
 
 | Método y ruta                                     | Qué hace                                               | Respuesta OK                               |
 | ------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------ |
@@ -1095,7 +1097,7 @@ Ninguna respuesta incluye el hash, la clave del almacenamiento ni URLs del prove
 - **Archivo:** PDF, JPG/JPEG, PNG o DOCX, de 1 byte a 10 MB. El formato se decide por el **contenido**: la firma de los primeros bytes y, en un DOCX, su estructura interna (`word/document.xml` y el tipo de contenido principal de Word en `[Content_Types].xml`). Un ZIP cualquiera, un `.xlsx` o un `.docm` no pasan. La extensión del nombre tiene que corresponder a ese formato. El MIME que declara el navegador también, aunque se acepta vacío o `application/octet-stream`. Se guarda el nombre sin carpetas.
 - **Tipo de documento:** tiene que existir (si no, `404`). Uno desactivado solo se acepta si todavía hay ítems pendientes de ese tipo en rendiciones activas del período; si no, `409` con `motivo: "TIPO_DOCUMENTO_INACTIVO"`.
 - **Contenido repetido:** no se rechaza. Los documentos ya cargados con el mismo contenido, tipo y período vuelven en `posiblesDuplicados`, del más viejo al más nuevo, para ofrecer reutilizarlos.
-- **Orden y consistencia:** se valida todo, se guarda el objeto en el almacenamiento y después se registra en la base. Si la base falla, el objeto se borra.
+- **Orden y consistencia:** primero la sesión y el permiso (sin `documentos:operar`, `403` sin leer el archivo); después `multer` lo recibe, se valida todo, se guarda el objeto en el almacenamiento y recién entonces se registra en la base. Si la base falla, el objeto se borra.
 
 | Error                     | Cuándo                                                                                                                                                                                                               |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1122,7 +1124,7 @@ El contenido, enviado como stream por el backend, con el `Content-Type` guardado
 - `Content-Security-Policy: default-src 'none'; sandbox`;
 - `Cache-Control: private, no-store`.
 
-Errores: `404` si el documento no existe y `503 SERVICE_UNAVAILABLE` si el almacenamiento no responde, ambos en JSON. Si el objeto falta en el almacenamiento es una inconsistencia: `500`.
+Errores, todos en JSON y sin cabeceras de descarga: `401` sin sesión y `403 PERMISO_INSUFICIENTE` sin permiso (los dos antes de leer el almacenamiento: conocer la dirección no alcanza), `404` si el documento no existe y `503 SERVICE_UNAVAILABLE` si el almacenamiento no responde. Si el objeto falta en el almacenamiento es una inconsistencia: `500`. La vista previa del frontend (HU3.11) usa esta misma ruta.
 
 #### `GET /documentos/:id/candidatos`
 

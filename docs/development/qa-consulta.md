@@ -9,7 +9,7 @@ Este documento no contiene contraseñas, cookies, tokens ni credenciales. La con
 1. **Backend de prueba con el código actual.** El que use la interfaz (por ejemplo, un contenedor que monte el repositorio y corra `node --import tsx src/server.ts` contra `realpolitik_test`) tiene que haberse **reiniciado después del último cambio**: sin modo _watch_, sigue corriendo el código con el que arrancó. Reiniciar el contenedor sirve si monta el árbol de trabajo (bind mount); no sirve si usa una imagen construida antes.
 2. **Cliente Prisma al día.** Si el backend usa `node_modules` propios (un volumen de Docker), el cliente Prisma generado ahí tiene que corresponder al `schema.prisma` actual. Un síntoma de que está desactualizado es un `500` con `PrismaClientValidationError` en `GET /rendiciones?anio=&mes=` (no conoce `cobroFecha`, HU3.10). Se corrige regenerándolo dentro del contenedor (`pnpm --filter @realpolitik/backend db:generate`) y reiniciándolo: no toca la base.
 3. **Qué base usa de verdad.** Confirmar sin mostrar credenciales que el proceso del backend tiene `DATABASE_URL` hacia `realpolitik_test` (por ejemplo, el nombre de la base en `/proc/1/environ` del contenedor).
-4. **Documentos.** En `development` y `test` los endpoints de documentos se montan por defecto (almacenamiento en memoria o disco, según la configuración); en producción siguen deshabilitados hasta HU4.4. No se habilitan en producción para la QA.
+4. **Documentos.** En `development` y `test` los endpoints de documentos se montan por defecto (almacenamiento en memoria o disco, según la configuración). En el despliegue siguen deshabilitados hasta su [procedimiento de habilitación](../deployment.md#habilitación-de-documentos-en-el-despliegue-de-demostración-hu44) (HU4.4 dejó los permisos verificados, no la infraestructura). No se habilitan en el despliegue para esta QA. Usá solo archivos ficticios.
 
 ## 2. Crear la cuenta CONSULTA de QA
 
@@ -107,6 +107,8 @@ Marcá cada fila con **Aprobado**, **Falló**, **No aplica** o **Pendiente**. Cu
 | 5.5 | Historial (reemplazados)                            |           |
 | 5.6 | Descargar (listado, detalle e historial de un ítem) |           |
 | 5.7 | Sin "Cargar documento", "Aplicar" ni reemplazar     |           |
+| 5.8 | Vista previa de un PDF y de una imagen (HU3.11)     |           |
+| 5.9 | Un DOCX solo ofrece descargar                       |           |
 
 Si el backend local no monta los documentos, registrá esta sección como **No aplica (documentos deshabilitados)**, aparte del resto.
 
@@ -160,6 +162,8 @@ Con una sesión CONSULTA iniciada **en el navegador**, desde las herramientas de
 | 9.3 | `GET /api/clientes/<id>/ultima-oc`                         | 403 `PERMISO_INSUFICIENTE`         |           |
 | 9.4 | `GET /api/clientes` sin sesión (ventana privada)           | 401                                |           |
 | 9.5 | `GET /api/clientes` con la contraseña temporal sin cambiar | 403 `CAMBIO_DE_PASSWORD_REQUERIDO` |           |
+| 9.6 | `POST /api/documentos` (HU4.4, con documentos montados)    | 403 `PERMISO_INSUFICIENTE`         |           |
+| 9.7 | `GET /api/documentos/<id>/archivo` sin sesión              | 401, sin el archivo                |           |
 
 No compartas cookies ni capturas con cabeceras. Las automatizadas equivalentes están en `consultaSoloLectura.api.test.tsx`.
 

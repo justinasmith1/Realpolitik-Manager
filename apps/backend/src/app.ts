@@ -41,9 +41,10 @@ export const LIMITE_CUERPO_JSON = '100kb';
 export interface AppConfig {
   corsOrigins: string[];
   /**
-   * Los endpoints de documentos (HU2.8) y el almacenamiento que usan. Sin esto, `/documentos` no
-   * se monta y responde 404 como cualquier ruta inexistente: es como quedan en producción mientras
-   * no haya una protección efectiva (ver `DOCUMENTOS_HABILITADOS` en src/config/env.ts).
+   * Los endpoints de documentos (HU2.8) y el almacenamiento que usan. Montados, exigen sesión y
+   * permiso como toda ruta de negocio (HU4.4). Sin esto, `/documentos` no se monta y responde 404
+   * como cualquier ruta inexistente: es como quedan en el despliegue mientras no se habiliten con
+   * su procedimiento (ver `DOCUMENTOS_HABILITADOS` en src/config/env.ts y docs/deployment.md).
    */
   documentos?: { almacenamiento: AlmacenamientoDocumentos } | null;
   /**
