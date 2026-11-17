@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
@@ -247,5 +247,13 @@ describe('Ruta /documentos en el shell', () => {
       await screen.findByRole('heading', { level: 1, name: 'Rendiciones' }),
     ).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/rendiciones');
+    // La redirección monta la pantalla fuera de `act`: el título aparece al hacer el commit, pero
+    // los pedidos del mes y de las atrasadas salen en un efecto que React puede correr después
+    // (con la CPU cargada, como en el CI). Si el test terminara antes, el `afterEach` restauraría
+    // el bloqueo de `fetch` y esos pedidos saldrían sin simular. Se espera a que salgan.
+    await waitFor(() => {
+      const rutas = fetchMock.mock.calls.map(([entrada]) => new URL(entrada as string).pathname);
+      expect(rutas).toEqual(expect.arrayContaining(['/rendiciones', '/rendiciones/atrasadas']));
+    });
   });
 });
