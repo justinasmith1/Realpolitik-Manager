@@ -138,13 +138,14 @@ Concurrencia (bloque siguiente):
 
 ### 11. Seguridad
 
-- **Hoy no hay autenticación ni autorización.** El repositorio es público y la API no identifica a nadie.
-- **CORS no es autenticación**: solo limita qué páginas del navegador pueden leer respuestas. Un pedido directo (curl, un script) no pasa por CORS.
-- Los UUID no son secretos: aparecen en URLs, en el historial y en capturas.
-- **Mientras no haya autorización efectiva, no se cargan archivos reales de clientes en ningún entorno accesible públicamente.** Las pruebas y la demo usan **archivos ficticios**.
-- Cuando exista autenticación, el backend **autoriza** cada pedido antes de entregar un documento o una URL temporal. **Una URL firmada no reemplaza esa autorización**: solo limita por cuánto tiempo sirve un enlace que ya se entregó.
-- No se agrega una "clave de API" en el frontend: quedaría en el bundle y sería una protección aparente.
-- La autenticación y la autorización completas son una **dependencia** de HU2.8 para usar datos reales. No son parte de esta historia.
+> **Actualizado en HU4.4 (2026-11-16).** Cuando se escribió este ADR (HU2.8) la API no identificaba a nadie y el repositorio era público. Desde la épica 4 ([ADR-0006](0006-autenticacion-y-control-de-acceso.md)) **toda la API de negocio exige sesión y permiso**, también los documentos, y HU4.4 lo verificó con PostgreSQL real para los tres roles ([matriz de permisos](../security/matriz-permisos.md#repositorio-de-documentos-hu44)). Lo que sigue pendiente es de infraestructura: el login, el proxy y el almacenamiento no están desplegados, así que los documentos siguen **deshabilitados** en el despliegue ([procedimiento de habilitación](../deployment.md#habilitación-de-documentos-en-el-despliegue-de-demostración-hu44)).
+
+- **Acceso (desde la épica 4):** sin una sesión válida, ninguna ruta de documentos devuelve metadatos ni contenido (401). Leer y descargar es `documentos:ver` (los tres roles); cargar, pedir candidatos, aplicar y reemplazar es `documentos:operar` (solo `ADMINISTRADOR` y `ADMINISTRATIVO`). Una carga sin permiso se rechaza antes de que `multer` lea el archivo.
+- **CORS no es autenticación**: solo limita qué páginas del navegador pueden leer respuestas. Un pedido directo (curl, un script) no pasa por CORS: por eso la autorización está en el backend.
+- Los UUID no son secretos: aparecen en URLs, en el historial y en capturas. Conocer el id de un documento no alcanza para descargarlo: la descarga exige sesión y permiso.
+- **El contenido sale solo por el backend**, que autoriza antes de leer el almacenamiento. No hay URLs públicas ni firmadas del proveedor, y la clave del objeto no sale en ninguna respuesta. **Una URL firmada no reemplazaría esa autorización**: solo limitaría por cuánto tiempo sirve un enlace ya entregado.
+- No se agrega una "clave de API" en el frontend: quedaría en el bundle y sería una protección aparente. Las credenciales del almacenamiento viven solo en las variables del backend.
+- **No se cargan archivos reales de clientes en ningún entorno accesible públicamente** hasta que los controles estén verificados en esa infraestructura y el negocio lo apruebe (política de ADR-0006). Las pruebas y la demo usan **archivos ficticios**.
 
 ### 12. Eliminación
 
@@ -204,7 +205,7 @@ El modelo lo admite: se puede agregar `isDeleted`/`deletedAt` a `Documento` (com
 | ¿Se aplica a rendiciones de clientes INACTIVOS?                                            | Sí, marcado (como corregir el canal)                                             | Negocio      |
 | ¿Se limita el período del documento como el de la rendición (hasta el mes siguiente)?      | Sí, por coherencia; hoy no se limita                                             | Negocio      |
 | Formatos y tamaño definitivos                                                              | PDF, JPG, PNG, DOCX; 10 MB                                                       | Negocio      |
-| Uso de documentos reales sin autenticación                                                 | No                                                                               | Negocio / PO |
+| Uso de documentos reales (los controles ya existen en el código, HU4.4)                    | Solo con la infraestructura verificada y la aprobación del negocio (ADR-0006)    | Negocio / PO |
 | Proveedor de almacenamiento definitivo                                                     | Supabase Free + adaptador local                                                  | Equipo       |
 | Retención y eliminación                                                                    | Otra historia                                                                    | Negocio      |
 

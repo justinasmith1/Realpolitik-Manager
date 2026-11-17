@@ -324,6 +324,32 @@ Evidencia:
 
 La causa queda para la historia de deuda técnica: son tiempos de las pruebas de carreras en este entorno, no un defecto de la aplicación demostrado.
 
+## Pruebas de HU4.4 (permisos de documentos)
+
+`documentos.permisos.integration` prueba los permisos de documentos con PostgreSQL real, sesiones reales (`sesionesDePrueba()`, una cuenta por rol y una con la contraseña temporal) y el almacenamiento en memoria. En la HU se usó `realpolitik_hu44_test`, creada y migrada como `realpolitik_test` (sección "Tests de integración"), sin seed.
+
+**Guardas, antes de escribir nada:** el nombre de la base de `TEST_DATABASE_URL` tiene que terminar en `_test` (más estricto que la guarda común, que también admite `_audit`); `lib/prisma` y la app se importan dinámicamente después de fijar `DATABASE_URL`; `exigirBaseDePrueba` confirma con `current_database()` que esa conexión es la de la URL, en el mismo servidor. Recién después se crean las cuentas y los datos. Todo lleva una marca de la corrida y la limpieza borra solo eso: aplicaciones, documentos, rendiciones (con sus ítems y su historial, en cascada), requisitos, clientes y tipos, y al final las cuentas (la FK del responsable de HU4.6 es `RESTRICT`).
+
+| Escenario             | Qué verifica                                                                                                                                                                                              |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A. Sin sesión         | Listado, detalle, descarga e historial: 401 en JSON, sin metadatos ni bytes, y sin leer el almacenamiento (sin cookie y con un token inexistente)                                                         |
+| B. `CONSULTA` lee     | Repositorio, detalle, historial y descarga: los bytes son idénticos a los cargados, a los del almacenamiento y al SHA-256 de la base; cabeceras de descarga; ninguna respuesta expone la clave ni el hash |
+| C. `CONSULTA` escribe | Cargar (multipart válido y uno roto, que daría 400 si `multer` lo leyera), candidatos, aplicar y reemplazar: 403 `PERMISO_INSUFICIENTE`                                                                   |
+| D. Integridad         | Una foto antes y después de C (filas del escenario, detalle de la rendición, repositorio y el hash de cada objeto almacenado) es igual                                                                    |
+| E. `ADMINISTRATIVO`   | Candidatos, reemplazo, historial y descarga (lo demás, en `documentos.integration` y `aplicaciones.integration`)                                                                                          |
+| F. `ADMINISTRADOR`    | Cargar, candidatos, aplicar, ver, descargar, reemplazar e historial                                                                                                                                       |
+| G. Sin regresiones    | Con la contraseña temporal, 403 sin tocar el almacenamiento; al final, cada ítem completo tiene una sola aplicación vigente y cada objeto coincide con su hash                                            |
+
+Resultado con Node 22 local (Windows, PostgreSQL 16 de Docker Compose): 16 de 16, y 62 de 62 junto con `documentos.integration`, `aplicaciones.integration` y `autorizacion.integration`, de a una. El CI con Node 24, pendiente.
+
+```bash
+# `exec vitest` no corre `build:deps`: shared compilado y el cliente de Prisma al día antes
+# (`pnpm --filter @realpolitik/backend build:deps`)
+TEST_DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik_hu44_test?schema=public" \
+DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik_hu44_test?schema=public" \
+  pnpm --filter @realpolitik/backend exec vitest run --no-file-parallelism documentos.permisos.integration
+```
+
 ## Siguiente lectura
 
 - [ADR 0002 — Modelado de datos](../adr/0002-modelado-datos.md)

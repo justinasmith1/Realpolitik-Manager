@@ -263,7 +263,7 @@ describe.skipIf(url === undefined)('permisos por rol', () => {
     expect(await prisma.tipoDocumento.count({ where: { nombre: `${MARCA} tipo` } })).toBe(0);
   });
 
-  it('documentos sin habilitar (como en producción hasta HU4.4): 404 también para CONSULTA', async () => {
+  it('documentos sin habilitar (como en producción mientras no se habiliten): 404 también para CONSULTA', async () => {
     const consulta = sesiones.cliente(app, 'CONSULTA');
     for (const ruta of ['/documentos?anio=2026&mes=1', `/documentos/${randomUUID()}/archivo`]) {
       expect((await consulta.get(ruta)).status).toBe(404);

@@ -16,6 +16,7 @@ import { useAvisoDePagina } from '@/hooks/use-aviso-de-pagina';
 import { causaDeError, diagnosticoDeError } from '@/lib/errores-api';
 import { cn } from '@/lib/utils';
 import { usePermiso } from '@/modules/auth/hooks/useSesion';
+import { sinDocumentosHabilitados } from '@/modules/documentos/api/documentos.api';
 import {
   AplicarDocumentoAsistente,
   type ResultadoDelAsistente,
@@ -97,8 +98,8 @@ export function ArchivosPage() {
     abierto: false,
     documento: null,
   });
-  const { idsDescargando, descargar } = useDescargas((documento) =>
-    avisar('destructive', mensajeFalloDescarga(documento.nombreOriginal)),
+  const { idsDescargando, descargar } = useDescargas((documento, fallo) =>
+    avisar('destructive', mensajeFalloDescarga(documento.nombreOriginal, fallo)),
   );
 
   const abrirAsistente = (documento: Documento | null) => {
@@ -138,6 +139,10 @@ export function ArchivosPage() {
     elegirTipo(undefined);
   };
 
+  // El listado no tiene un 404 propio: es que el backend no monta los documentos (HU4.4). No es un
+  // fallo ni del pedido ni de la cuenta, y no hay nada que cargar ni reintentar.
+  const deshabilitados = consulta.isError && sinDocumentosHabilitados(consulta.error);
+
   let contenido: ReactNode;
   if (consulta.isPending || (documentos?.length === 0 && actualizando)) {
     contenido = (
@@ -148,6 +153,21 @@ export function ArchivosPage() {
         {[0, 1, 2].map((fila) => (
           <Skeleton key={fila} className="h-16 w-full" />
         ))}
+      </div>
+    );
+  } else if (deshabilitados) {
+    contenido = (
+      <div
+        role="status"
+        className="flex min-h-60 flex-col items-center justify-center gap-3 rounded-card border bg-card p-8 text-center"
+      >
+        <h2 className="text-[17px] font-semibold">
+          El repositorio de documentos no está disponible en este entorno
+        </h2>
+        <p className="max-w-115 text-sm text-content-secondary">
+          Los documentos todavía no están habilitados en este servidor, así que no hay archivos para
+          consultar ni cargar.
+        </p>
       </div>
     );
   } else if (consulta.isError) {
@@ -225,7 +245,7 @@ export function ArchivosPage() {
             Repositorio de {periodo}. Un mismo archivo puede aplicarse a varias rendiciones.
           </p>
         </div>
-        {puedeOperar && (
+        {puedeOperar && !deshabilitados && (
           <Button variant="brand" onClick={() => abrirAsistente(null)} className="max-sm:w-full">
             <UploadIcon aria-hidden="true" />
             Cargar documento

@@ -1,6 +1,7 @@
 import type {
   FalloDeAplicacion,
   FalloDeCarga,
+  FalloDeDescarga,
   FalloDeReemplazo,
   MotivoDeRechazoDeAplicacion,
 } from '@/modules/documentos/api/documentos.api';
@@ -22,6 +23,8 @@ export function mensajeFalloCarga(fallo: FalloDeCarga): string {
       return 'Ese tipo de documento está desactivado y no tiene ítems pendientes en el período.';
     case 'almacenamiento':
       return 'El almacenamiento de documentos no respondió. No se guardó nada: probá de nuevo en unos minutos.';
+    case 'sin-permiso':
+      return 'No tenés permiso para cargar documentos. No se guardó nada.';
     case 'conexion':
       return 'No pudimos conectarnos con el servidor. No se guardó nada: revisá tu conexión y probá de nuevo.';
     case 'inesperado':
@@ -54,6 +57,8 @@ export function mensajeFalloAplicacion(
     }
     case 'no-existe':
       return 'El documento o algún ítem elegido ya no existe. No se aplicó a ninguno.';
+    case 'sin-permiso':
+      return 'No tenés permiso para aplicar documentos. No se aplicó a ninguno.';
     case 'conexion':
       return 'No pudimos conectarnos con el servidor. No se aplicó a ninguno: probá de nuevo.';
     case 'inesperado':
@@ -61,12 +66,49 @@ export function mensajeFalloAplicacion(
   }
 }
 
-export const mensajeFalloDescarga = (nombreOriginal: string): string =>
-  `No se pudo descargar ${nombreOriginal}. Probá de nuevo.`;
+/**
+ * El fallo de una descarga (HU4.4, CA12). Un 401 solo llega acá si la sesión sigue (era un 401
+ * atrasado o no se pudo confirmar): si terminó, el manejo global lleva a `/login` y no se avisa.
+ */
+export function mensajeFalloDescarga(nombreOriginal: string, fallo: FalloDeDescarga): string {
+  switch (fallo.tipo) {
+    case 'sin-permiso':
+      return `No tenés permiso para descargar ${nombreOriginal}.`;
+    case 'no-existe':
+      return `${nombreOriginal} ya no está disponible. Actualizá la información y probá de nuevo.`;
+    case 'no-disponible':
+      return `El servicio de documentos no está disponible en este momento: no se descargó ${nombreOriginal}. Probá de nuevo en unos minutos.`;
+    case 'conexion':
+      return `No pudimos conectarnos con el servidor: no se descargó ${nombreOriginal}. Revisá tu conexión y probá de nuevo.`;
+    case 'configuracion':
+      return `No se pudo descargar ${nombreOriginal}: la aplicación no tiene bien configurada la dirección del servidor.`;
+    case 'sin-sesion':
+    case 'inesperado':
+      return `No se pudo descargar ${nombreOriginal}. Probá de nuevo.`;
+  }
+}
 
-/** La vista previa no se pudo mostrar (HU3.11): se ofrece descargarlo. */
-export const mensajeFalloVistaPrevia = (nombreOriginal: string): string =>
-  `No pudimos mostrar ${nombreOriginal}. Podés descargarlo para verlo en tu equipo.`;
+/**
+ * La vista previa no se pudo mostrar (HU3.11). Con `fallo`, por qué no se pudo traer el archivo;
+ * sin él (`null`), el navegador no pudo dibujarlo (una imagen dañada): se ofrece descargarlo.
+ */
+export function mensajeFalloVistaPrevia(
+  nombreOriginal: string,
+  fallo: FalloDeDescarga | null,
+): string {
+  switch (fallo?.tipo) {
+    case 'sin-permiso':
+      return `No tenés permiso para ver ${nombreOriginal}.`;
+    case 'no-existe':
+      return `${nombreOriginal} ya no está disponible. Actualizá la información y probá de nuevo.`;
+    case 'no-disponible':
+      return `El servicio de documentos no está disponible en este momento: no pudimos mostrar ${nombreOriginal}. Probá de nuevo en unos minutos.`;
+    case 'conexion':
+      return `No pudimos conectarnos con el servidor para mostrar ${nombreOriginal}. Revisá tu conexión y probá de nuevo.`;
+    default:
+      return `No pudimos mostrar ${nombreOriginal}. Podés descargarlo para verlo en tu equipo.`;
+  }
+}
 
 // Desde el detalle de una rendición se trabaja con un solo ítem: los textos hablan de "este ítem".
 const rechazoDeUnItem: Record<MotivoDeRechazoDeAplicacion, string> = {
@@ -85,6 +127,8 @@ export function mensajeFalloAsociacion(fallo: FalloDeAplicacion): string {
       return rechazoDeUnItem[fallo.motivo];
     case 'no-existe':
       return 'El documento o el ítem ya no existe. Actualizamos la información.';
+    case 'sin-permiso':
+      return 'No tenés permiso para asociar documentos. No se asoció.';
     case 'conexion':
       return 'No pudimos conectarnos con el servidor. No se asoció: probá de nuevo.';
     case 'inesperado':
@@ -103,6 +147,8 @@ export function mensajeFalloReemplazo(fallo: FalloDeReemplazo): string {
       return rechazoDeUnItem[fallo.motivo];
     case 'no-existe':
       return 'El documento o el ítem ya no existe. Actualizamos la información.';
+    case 'sin-permiso':
+      return 'No tenés permiso para reemplazar documentos. No se reemplazó.';
     case 'conexion':
       return 'No pudimos conectarnos con el servidor. No se reemplazó: probá de nuevo.';
     case 'inesperado':

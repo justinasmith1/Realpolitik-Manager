@@ -92,7 +92,7 @@ function cargar(archivo: Archivo | null = PDF_VALIDO, campos: Record<string, str
 const error = (res: request.Response) =>
   (res.body as { error: { code: string; message: string; details?: unknown } }).error;
 
-describe('documentos deshabilitados (producción sin protección)', () => {
+describe('documentos deshabilitados (como en producción sin DOCUMENTOS_HABILITADOS)', () => {
   it('sin almacenamiento configurado, /documentos no existe: 404 en todas las rutas', async () => {
     const sinDocumentos = createApp({ corsOrigins: ['http://localhost:5173'] });
     const respuestas = await Promise.all([
@@ -485,7 +485,7 @@ describe('aplicaciones, reemplazo e historial (validación, sin base)', () => {
   const RENDICION = 'c1b2c3d4-e5f6-4789-8abc-000000000004';
   const id = (n: number) => `d1b2c3d4-e5f6-4789-8abc-${String(n).padStart(12, '0')}`;
 
-  it('deshabilitados (producción sin protección): las rutas nuevas tampoco existen', async () => {
+  it('deshabilitados (como en producción sin DOCUMENTOS_HABILITADOS): las rutas nuevas tampoco existen', async () => {
     const sinDocumentos = createApp({ corsOrigins: ['http://localhost:5173'] });
     const respuestas = await Promise.all([
       clienteDePrueba(sinDocumentos)

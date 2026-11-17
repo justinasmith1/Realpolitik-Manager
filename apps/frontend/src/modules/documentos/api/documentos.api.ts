@@ -26,6 +26,7 @@ import {
   mensajeDelServidor,
 } from '@/lib/errores-api';
 import { ApiClientError, http } from '@/lib/http';
+import { clasificarErrorDeAuth } from '@/modules/auth/erroresDeAuth';
 import { rendicionesKeys } from '@/modules/rendiciones/api/rendiciones.keys';
 
 /** Prefijo de todas las queries de documentos: el repositorio, los detalles y los candidatos. */
@@ -185,6 +186,14 @@ const esFalloHttp = (error: unknown, status: number): error is ApiClientError =>
 
 const motivoDe = (details: unknown): unknown => (esObjeto(details) ? details.motivo : undefined);
 
+/**
+ * 403 de permiso (HU4.4): hay sesión, pero no puede hacer esa operación (por ejemplo, le cambiaron
+ * el rol con la app abierta). Lo decide la misma clasificación que usa el manejo global, que ya
+ * revalida la sesión: un 403 de origen o de contraseña temporal no es esto.
+ */
+const sinPermiso = (error: unknown): boolean =>
+  clasificarErrorDeAuth(error).clase === 'permiso-insuficiente';
+
 /** Por qué falló una carga. El texto lo arma la interfaz. */
 export type FalloDeCarga =
   /** El archivo no pasó la validación del servidor (formato, extensión, tamaño, nombre). */
@@ -195,11 +204,14 @@ export type FalloDeCarga =
   | { tipo: 'tipo-inactivo' }
   /** El almacenamiento no respondió: no se registró nada y se puede reintentar. */
   | { tipo: 'almacenamiento' }
+  /** La cuenta no puede cargar documentos: no se recibió el archivo. */
+  | { tipo: 'sin-permiso' }
   | { tipo: 'conexion' }
   | { tipo: 'inesperado' };
 
 export function interpretarFalloCarga(error: unknown): FalloDeCarga {
   if (error instanceof ApiClientError && error.kind === 'network') return { tipo: 'conexion' };
+  if (sinPermiso(error)) return { tipo: 'sin-permiso' };
   if (esFalloHttp(error, 413)) return { tipo: 'demasiado-grande' };
   if (esFalloHttp(error, 503)) return { tipo: 'almacenamiento' };
   if (esFalloHttp(error, 404)) return { tipo: 'tipo-inexistente' };
@@ -240,11 +252,14 @@ export type FalloDeAplicacion =
   | { tipo: 'rechazado'; motivo: MotivoDeRechazoDeAplicacion; itemId: string | null }
   /** El documento o algún ítem ya no existe. */
   | { tipo: 'no-existe' }
+  /** La cuenta no puede aplicar documentos: no se aplicó a ninguno. */
+  | { tipo: 'sin-permiso' }
   | { tipo: 'conexion' }
   | { tipo: 'inesperado' };
 
 export function interpretarFalloAplicacion(error: unknown): FalloDeAplicacion {
   if (error instanceof ApiClientError && error.kind === 'network') return { tipo: 'conexion' };
+  if (sinPermiso(error)) return { tipo: 'sin-permiso' };
   if (esFalloHttp(error, 404)) return { tipo: 'no-existe' };
   if (esFalloHttp(error, 409)) {
     const details = leerCuerpoDeError(error.payload)?.details;
@@ -264,6 +279,53 @@ export function interpretarFalloAplicacion(error: unknown): FalloDeAplicacion {
  */
 export const sinDocumentosHabilitados = (error: unknown): boolean => esFalloHttp(error, 404);
 
+/**
+ * Por qué no se pudo traer el contenido de un documento (`GET /documentos/:id/archivo`), para la
+ * descarga y para la vista previa (HU4.4, CA12). El texto lo arma la interfaz.
+ */
+export type FalloDeDescarga =
+  /**
+   * 401: la sesión no vale. Lo resuelve el manejo global: confirma con el servidor y, si terminó,
+   * lleva a `/login`; si era un 401 atrasado (rotación de la cookie), la sesión sigue.
+   */
+  | { tipo: 'sin-sesion' }
+  /** 403: hay sesión, pero no puede ver documentos. La sesión sigue (se revalida). */
+  | { tipo: 'sin-permiso' }
+  /** 404: el archivo ya no está disponible (el documento no existe). */
+  | { tipo: 'no-existe' }
+  /** 503 (o 502/504 del proxy): el servicio o el almacenamiento no respondió. La sesión sigue. */
+  | { tipo: 'no-disponible' }
+  /** Sin respuesta del servidor. La sesión sigue. */
+  | { tipo: 'conexion' }
+  /** La dirección de la API está mal configurada en esta app. */
+  | { tipo: 'configuracion' }
+  | { tipo: 'inesperado' };
+
+const NO_DISPONIBLE: readonly number[] = [502, 503, 504];
+
+export function interpretarFalloDescarga(error: unknown): FalloDeDescarga {
+  if (error instanceof ApiClientError && error.kind === 'configuration') {
+    return { tipo: 'configuracion' };
+  }
+  switch (clasificarErrorDeAuth(error).clase) {
+    case 'red':
+      return { tipo: 'conexion' };
+    case 'sin-sesion':
+      return { tipo: 'sin-sesion' };
+    case 'permiso-insuficiente':
+      return { tipo: 'sin-permiso' };
+    default:
+      break;
+  }
+  if (esFalloHttp(error, 404)) return { tipo: 'no-existe' };
+  if (error instanceof ApiClientError && NO_DISPONIBLE.includes(error.status ?? 0)) {
+    return { tipo: 'no-disponible' };
+  }
+  // Un 500 (un objeto registrado que falta en el almacenamiento es una inconsistencia), un 403 de
+  // origen o de contraseña temporal (este último lo resuelve el manejo global), o cualquier otro.
+  return { tipo: 'inesperado' };
+}
+
 /** Por qué falló un reemplazo. */
 export type FalloDeReemplazo =
   /** Otro cambió el documento del ítem en el medio: hay que volver a mirarlo. */
@@ -273,11 +335,14 @@ export type FalloDeReemplazo =
   | { tipo: 'rechazado'; motivo: Exclude<MotivoDeRechazoDeAplicacion, 'ITEM_NO_PENDIENTE'> }
   /** El documento, la rendición o el ítem ya no existe. */
   | { tipo: 'no-existe' }
+  /** La cuenta no puede reemplazar documentos: el vigente no cambió. */
+  | { tipo: 'sin-permiso' }
   | { tipo: 'conexion' }
   | { tipo: 'inesperado' };
 
 export function interpretarFalloReemplazo(error: unknown): FalloDeReemplazo {
   if (error instanceof ApiClientError && error.kind === 'network') return { tipo: 'conexion' };
+  if (sinPermiso(error)) return { tipo: 'sin-permiso' };
   if (esFalloHttp(error, 404)) return { tipo: 'no-existe' };
   if (esFalloHttp(error, 409)) {
     const motivo = motivoDe(leerCuerpoDeError(error.payload)?.details);

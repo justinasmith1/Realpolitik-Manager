@@ -260,10 +260,10 @@ function DetalleDeRendicion({
   const [pedidoDeDocumento, setPedidoDeDocumento] = useState<PedidoDeDocumento | null>(null);
   const [historialDe, setHistorialDe] = useState<string | null>(null);
   const [aVer, setAVer] = useState<DocumentoAVer | null>(null);
-  const { idsDescargando, descargar } = useDescargas((documento) =>
+  const { idsDescargando, descargar } = useDescargas((documento, fallo) =>
     setAvisoDelChecklist({
       variant: 'destructive',
-      texto: mensajeFalloDescarga(documento.nombreOriginal),
+      texto: mensajeFalloDescarga(documento.nombreOriginal, fallo),
     }),
   );
   const [editandoCliente, setEditandoCliente] = useState(false);

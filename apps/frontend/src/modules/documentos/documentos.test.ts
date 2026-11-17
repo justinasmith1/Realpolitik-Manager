@@ -9,6 +9,7 @@ import { ApiClientError } from '@/lib/http';
 import {
   interpretarFalloAplicacion,
   interpretarFalloCarga,
+  interpretarFalloDescarga,
   interpretarFalloReemplazo,
   sinDocumentosHabilitados,
 } from '@/modules/documentos/api/documentos.api';
@@ -168,6 +169,64 @@ describe('interpretarFalloReemplazo', () => {
       interpretarFalloReemplazo(new ApiClientError({ kind: 'network', message: 'sin red' })),
     ).toEqual({ tipo: 'conexion' });
     expect(interpretarFalloReemplazo(http(500))).toEqual({ tipo: 'inesperado' });
+  });
+});
+
+// ─── Acceso (HU4.4, CA12) ─────────────────────────────────────────────────────
+
+const SIN_RED = new ApiClientError({ kind: 'network', message: 'sin red' });
+const SIN_CONFIGURAR = new ApiClientError({ kind: 'configuration', message: 'sin VITE_API_URL' });
+const sinPermiso = () => http(403, { motivo: 'PERMISO_INSUFICIENTE' }, 'FORBIDDEN');
+
+describe('interpretarFalloDescarga', () => {
+  it('distingue sesión, permiso, archivo inexistente, servicio, red y configuración', () => {
+    expect(
+      interpretarFalloDescarga(http(401, { motivo: 'SESION_VENCIDA' }, 'UNAUTHENTICATED')),
+    ).toEqual({ tipo: 'sin-sesion' });
+    expect(
+      interpretarFalloDescarga(http(401, { motivo: 'SESION_REQUERIDA' }, 'UNAUTHENTICATED')),
+    ).toEqual({ tipo: 'sin-sesion' });
+    expect(interpretarFalloDescarga(sinPermiso())).toEqual({ tipo: 'sin-permiso' });
+    expect(interpretarFalloDescarga(http(404, undefined, 'NOT_FOUND'))).toEqual({
+      tipo: 'no-existe',
+    });
+    expect(interpretarFalloDescarga(http(503, undefined, 'SERVICE_UNAVAILABLE'))).toEqual({
+      tipo: 'no-disponible',
+    });
+    // Un 502 o un 504 del proxy: el backend no respondió.
+    expect(interpretarFalloDescarga(http(502))).toEqual({ tipo: 'no-disponible' });
+    expect(interpretarFalloDescarga(http(504))).toEqual({ tipo: 'no-disponible' });
+    expect(interpretarFalloDescarga(SIN_RED)).toEqual({ tipo: 'conexion' });
+    expect(interpretarFalloDescarga(SIN_CONFIGURAR)).toEqual({ tipo: 'configuracion' });
+  });
+
+  it('un 500, un 403 que no es de permiso u otro error son inesperados', () => {
+    // El objeto registrado que falta en el almacenamiento es una inconsistencia, no un 404.
+    expect(interpretarFalloDescarga(http(500, undefined, 'INTERNAL_ERROR'))).toEqual({
+      tipo: 'inesperado',
+    });
+    expect(
+      interpretarFalloDescarga(http(403, { motivo: 'ORIGEN_NO_PERMITIDO' }, 'FORBIDDEN')),
+    ).toEqual({ tipo: 'inesperado' });
+    expect(
+      interpretarFalloDescarga(http(403, { motivo: 'CAMBIO_DE_PASSWORD_REQUERIDO' }, 'FORBIDDEN')),
+    ).toEqual({ tipo: 'inesperado' });
+    expect(interpretarFalloDescarga(new Error('otro'))).toEqual({ tipo: 'inesperado' });
+  });
+});
+
+describe('403 de permiso en las operaciones', () => {
+  it('cargar, aplicar y reemplazar lo distinguen de un fallo inesperado', () => {
+    expect(interpretarFalloCarga(sinPermiso())).toEqual({ tipo: 'sin-permiso' });
+    expect(interpretarFalloAplicacion(sinPermiso())).toEqual({ tipo: 'sin-permiso' });
+    expect(interpretarFalloReemplazo(sinPermiso())).toEqual({ tipo: 'sin-permiso' });
+  });
+
+  it('un 403 de origen no es falta de permiso', () => {
+    const origen = http(403, { motivo: 'ORIGEN_NO_PERMITIDO' }, 'FORBIDDEN');
+    expect(interpretarFalloCarga(origen)).toEqual({ tipo: 'inesperado' });
+    expect(interpretarFalloAplicacion(origen)).toEqual({ tipo: 'inesperado' });
+    expect(interpretarFalloReemplazo(origen)).toEqual({ tipo: 'inesperado' });
   });
 });
 

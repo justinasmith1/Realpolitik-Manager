@@ -671,6 +671,45 @@ describe('G. recuperación y pérdida de la sesión', () => {
     sinShell();
   });
 
+  it('un 401 al descargar un documento termina la sesión igual: a /login con el aviso, sin "no se guardó"', async () => {
+    // La descarga no es una query ni una mutation (HU4.4): su 401 pasa por el mismo manejo global.
+    servidor.sesion = sesionDePrueba();
+    const documento = {
+      id: '00000000-0000-4000-8000-000000000401',
+      tipoDocumento: { id: '00000000-0000-4000-8000-000000000402', nombre: 'Print' },
+      anio: 2026,
+      mes: 10,
+      nombreOriginal: 'print-octubre.pdf',
+      tipoContenido: 'application/pdf',
+      tamanioBytes: 1024,
+      creadoEn: '2026-10-20T12:00:00.000Z',
+      actualizadoEn: '2026-10-20T12:00:00.000Z',
+      aplicacionesVigentes: 0,
+    };
+    servidor.forzadas.set('GET /api/documentos?anio=2026&mes=10', () => json(200, [documento]));
+    servidor.forzadas.set(`GET /api/documentos/${documento.id}/archivo`, () => {
+      servidor.sesion = null; // venció en el servidor
+      return error(401, 'UNAUTHENTICATED', { motivo: 'SESION_VENCIDA' });
+    });
+    const { donde } = abrir('/documentos/archivos?anio=2026&mes=10');
+    const usuario = userEvent.setup();
+
+    await usuario.click(await screen.findByRole('button', { name: 'Descargar print-octubre.pdf' }));
+
+    expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Tu sesión venció. Ingresá de nuevo para continuar.',
+    );
+    expect(screen.getByRole('status')).not.toHaveTextContent(/no se guardó/);
+    expect(donde()).toBe(
+      '/login?motivo=vencida&volverA=%2Fdocumentos%2Farchivos%3Fanio%3D2026%26mes%3D10',
+    );
+    sinShell();
+    // La sesión al entrar y una sola confirmación del 401; la descarga no se repitió.
+    expect(pedidos().filter((p) => p === 'GET /api/auth/sesion')).toHaveLength(2);
+    expect(pedidos().filter((p) => p.endsWith('/archivo'))).toHaveLength(1);
+  });
+
   it('403 PERMISO_INSUFICIENTE y 503 no cierran la sesión ni mandan a /login', async () => {
     servidor.sesion = sesionDePrueba();
     servidor.negocio = () => error(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' });

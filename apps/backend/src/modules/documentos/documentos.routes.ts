@@ -23,9 +23,10 @@ import {
 import { recibirArchivo } from './recibirArchivo';
 
 /**
- * Documentos (HU2.8, contrato 4.10). Se monta en `/documentos` solo si `createApp` recibe un
- * almacenamiento: en producción está deshabilitado mientras no haya una protección efectiva
- * (ver `DOCUMENTOS_HABILITADOS` en src/config/env.ts).
+ * Documentos (HU2.8, contrato 4.10; permisos en HU4.4). Se monta en `/documentos` solo si
+ * `createApp` recibe un almacenamiento: en producción, mientras no se habilite con su procedimiento
+ * (ver `DOCUMENTOS_HABILITADOS` en src/config/env.ts). Leer y descargar es `documentos:ver` (los
+ * tres roles); cargar, pedir candidatos y aplicar, `documentos:operar` (solo los operativos).
  */
 export function crearDocumentosRouter(almacenamiento: AlmacenamientoDocumentos): RouterProtegido {
   const router = crearRouter();
