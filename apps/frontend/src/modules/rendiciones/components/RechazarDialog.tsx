@@ -28,8 +28,14 @@ import {
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 
 interface RechazarDialogProps {
-  /** La rendición (Enviada) a rechazar. `null` mantiene el diálogo cerrado. */
-  rendicion: RendicionDetalle | null;
+  /** La rendición (Enviada) a rechazar. */
+  rendicion: RendicionDetalle;
+  /**
+   * Si se ve. Quien lo abre le pone una `key` que cambia en cada apertura (`useAperturaDeDialogo`):
+   * así arranca limpio, sin el motivo ni los errores de un intento anterior. Al cerrar, la rendición sigue ahí
+   * y el contenido no desaparece durante la animación.
+   */
+  abierto: boolean;
   onCerrar: () => void;
   /** Se registró el rechazo: avisa en la página con el texto del resultado. */
   onRechazada: (texto: string) => void;
@@ -44,6 +50,7 @@ interface RechazarDialogProps {
  */
 export function RechazarDialog({
   rendicion,
+  abierto,
   onCerrar,
   onRechazada,
   focoAlCerrar,
@@ -52,30 +59,19 @@ export function RechazarDialog({
   const idCampo = `${id}-motivo`;
   const idError = `${id}-error`;
   const cambio = useMarcarEstadoDeRendicion();
-  // Se conserva lo último mostrado para que el contenido no desaparezca durante el cierre.
-  const [mostrada, setMostrada] = useState(rendicion);
   const [motivo, setMotivo] = useState('');
   const [errorDeCampo, setErrorDeCampo] = useState<string | null>(null);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
-  if (rendicion !== null && rendicion !== mostrada) {
-    // Se abre (o cambia la rendición): campo vacío y sin errores de un intento anterior.
-    if (mostrada === null || mostrada.id !== rendicion.id) {
-      setMotivo('');
-      setErrorDeCampo(null);
-      setErrorGeneral(null);
-    }
-    setMostrada(rendicion);
-  }
   const motivoListo = motivo.trim() !== '';
 
   async function confirmar() {
-    if (mostrada === null || cambio.isPending || !motivoListo) return;
+    if (cambio.isPending || !motivoListo) return;
     setErrorDeCampo(null);
     setErrorGeneral(null);
     try {
       await cambio.mutateAsync({
-        clienteId: mostrada.clienteId,
-        rendicionId: mostrada.id,
+        clienteId: rendicion.clienteId,
+        rendicionId: rendicion.id,
         datos: { estado: 'RECHAZADA', motivo: motivo.trim() },
       });
     } catch (fallo) {
@@ -90,17 +86,9 @@ export function RechazarDialog({
 
   return (
     <AlertDialog
-      open={rendicion !== null}
+      open={abierto}
       onOpenChange={(abrir) => {
         if (!abrir && !cambio.isPending) onCerrar();
-      }}
-      onOpenChangeComplete={(abierto) => {
-        if (!abierto) {
-          setMostrada(null);
-          setMotivo('');
-          setErrorDeCampo(null);
-          setErrorGeneral(null);
-        }
       }}
     >
       <AlertDialogContent
@@ -110,7 +98,7 @@ export function RechazarDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{TITULO_RECHAZADA_DIALOG}</AlertDialogTitle>
           <AlertDialogDescription>
-            {mostrada === null ? '' : `Rendición ${etiquetaDePeriodo(mostrada)}. `}
+            {`Rendición ${etiquetaDePeriodo(rendicion)}. `}
             {DESCRIPCION_RECHAZADA_DIALOG}
           </AlertDialogDescription>
         </AlertDialogHeader>

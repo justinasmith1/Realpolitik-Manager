@@ -720,8 +720,9 @@ export async function cambiarEstadoDeRendicion(
 /**
  * Por qué no se puede modificar una rendición (documentos, canales o requisitos), o `null` si se
  * puede: anulada (`RENDICION_ANULADA`, es historial) o enviada, aprobada o rechazada
- * (`RENDICION_ENVIADA`, HU3.7 a HU3.9: lo que se mandó no cambia, y una rechazada se edita recién
- * después de reabrirla con "Corregir"). El código no cambió, el texto sí. `datos` va en los
+ * (`RENDICION_NO_MODIFICABLE`, HU3.7 a HU3.9: lo que se mandó no cambia, y una rechazada se edita
+ * recién después de reabrirla con "Corregir"). El mismo código y el mismo texto para los tres
+ * estados: el código nombra la regla, no un estado (ADR-0005, punto 12). `datos` va en los
  * `details` del 409 (p. ej. el `itemId` o el `rendicionId` del conflicto).
  */
 export function motivoParaNoModificar(
@@ -732,7 +733,7 @@ export function motivoParaNoModificar(
     return conflict('RENDICION_ANULADA', datos, 'La rendición está anulada');
   }
   if (!esRendicionModificable(rendicion.estado)) {
-    return conflict('RENDICION_ENVIADA', datos, 'La rendición ya no se puede modificar.');
+    return conflict('RENDICION_NO_MODIFICABLE', datos, 'La rendición ya no se puede modificar.');
   }
   return null;
 }
@@ -1008,7 +1009,7 @@ async function insertarItemsDeRequisito(
 /**
  * Suma a una rendición activa los ítems de un requisito nuevo de la matriz del cliente
  * (contrato 4.5). Es una acción explícita de la operadora, nunca automática. No en una anulada
- * (`409 RENDICION_ANULADA`) ni en una Enviada (`409 RENDICION_ENVIADA`, HU3.7).
+ * (`409 RENDICION_ANULADA`) ni en una Enviada (`409 RENDICION_NO_MODIFICABLE`, HU3.7).
  *
  * En una transacción serializable: dos pedidos simultáneos del mismo requisito no pueden sumar
  * dos veces. Si chocan, el reintento ve los ítems confirmados y responde 409; si la base rechaza
@@ -1037,8 +1038,8 @@ export async function agregarRequisitoARendicion(
 /**
  * Corrige el canal de un ítem del checklist (contrato 4.5). Es la única parte del snapshot que se
  * puede corregir: si el requisito tenía un canal equivocado al abrir la rendición, el ítem quedó
- * con ese canal. Solo en una rendición activa (anulada: `409 RENDICION_ANULADA`) y no enviada
- * (`409 RENDICION_ENVIADA`, HU3.7); no toca el requisito del cliente ni otras rendiciones. Con el mismo canal responde sin escribir.
+ * con ese canal. Solo en una rendición activa (anulada: `409 RENDICION_ANULADA`) y modificable
+ * (`409 RENDICION_NO_MODIFICABLE`, HU3.7 a HU3.9); no toca el requisito del cliente ni otras rendiciones. Con el mismo canal responde sin escribir.
  */
 export async function corregirCanalDeItem(
   rendicionId: string,
@@ -1086,7 +1087,7 @@ export async function corregirCanalDeItem(
  * después de editar el canal del requisito, nunca automática.
  *
  * Todo o nada, en una transacción serializable: cada rendición tiene que ser del cliente (si no,
- * 404), estar activa (409 `RENDICION_ANULADA`), no estar enviada (409 `RENDICION_ENVIADA`, HU3.7)
+ * 404), estar activa (409 `RENDICION_ANULADA`), no estar enviada (409 `RENDICION_NO_MODIFICABLE`, HU3.7)
  * y tener ítems del requisito (409
  * `REQUISITO_NO_EN_RENDICION`); si una no cumple, no se cambia ninguna. Los conflictos llevan el
  * `rendicionId` de la primera que no cumple, en el orden pedido. Solo cambia el canal de esos

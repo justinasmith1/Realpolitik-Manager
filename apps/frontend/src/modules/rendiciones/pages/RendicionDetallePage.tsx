@@ -64,6 +64,7 @@ import { MarcarEnviadaDialog } from '@/modules/rendiciones/components/MarcarEnvi
 import { QuitarCobroDialog } from '@/modules/rendiciones/components/QuitarCobroDialog';
 import { RechazarDialog } from '@/modules/rendiciones/components/RechazarDialog';
 import { RegistrarCobroSheet } from '@/modules/rendiciones/components/RegistrarCobroSheet';
+import { useAperturaDeDialogo } from '@/modules/rendiciones/hooks/useAperturaDeDialogo';
 import {
   useMarcarEstadoDeRendicion,
   usePrepararEnvio,
@@ -239,10 +240,10 @@ function DetalleDeRendicion({
   const idFaltantes = useId();
   const enviarRef = useRef<HTMLButtonElement>(null);
   // El diálogo de la fecha de envío (HU3.7): desde "Marcar como enviada" o desde "Ya la envié".
-  const [registrandoEnvio, setRegistrandoEnvio] = useState(false);
+  const dialogoDeEnvio = useAperturaDeDialogo();
   // La respuesta del cliente (HU3.8): los diálogos de aprobar y de rechazar una Enviada.
-  const [aprobando, setAprobando] = useState(false);
-  const [rechazando, setRechazando] = useState(false);
+  const dialogoDeAprobacion = useAperturaDeDialogo();
+  const dialogoDeRechazo = useAperturaDeDialogo();
   const [soloFaltantes, setSoloFaltantes] = useState(false);
   const [seleccion, setSeleccion] = useState<ReadonlySet<string>>(new Set());
   // El aviso de canales mezclados se pidió al tocar "Enviar"; los canales se calculan con los
@@ -491,7 +492,7 @@ function DetalleDeRendicion({
                     className="w-full sm:w-auto"
                     onClick={() => {
                       setAvisoDelChecklist(null);
-                      setRegistrandoEnvio(true);
+                      dialogoDeEnvio.abrir();
                     }}
                     disabled={cambioDeEstado.isPending}
                   >
@@ -521,7 +522,7 @@ function DetalleDeRendicion({
                     className="w-full sm:w-auto"
                     onClick={() => {
                       setAvisoDelChecklist(null);
-                      setRechazando(true);
+                      dialogoDeRechazo.abrir();
                     }}
                     disabled={cambioDeEstado.isPending}
                   >
@@ -534,7 +535,7 @@ function DetalleDeRendicion({
                     className="w-full sm:w-auto"
                     onClick={() => {
                       setAvisoDelChecklist(null);
-                      setAprobando(true);
+                      dialogoDeAprobacion.abrir();
                     }}
                     disabled={cambioDeEstado.isPending}
                   >
@@ -798,16 +799,18 @@ function DetalleDeRendicion({
               rendicion.estado === 'COMPLETA' && {
                 onYaLaEnvie: () => {
                   setEnvio(null);
-                  setRegistrandoEnvio(true);
+                  dialogoDeEnvio.abrir();
                 },
               })}
             focoAlCerrar={enviarRef}
           />
           <MarcarEnviadaDialog
-            rendicion={registrandoEnvio ? rendicion : null}
-            onCerrar={() => setRegistrandoEnvio(false)}
+            key={dialogoDeEnvio.clave}
+            rendicion={rendicion}
+            abierto={dialogoDeEnvio.abierto}
+            onCerrar={dialogoDeEnvio.cerrar}
             onEnviada={(texto) => {
-              setRegistrandoEnvio(false);
+              dialogoDeEnvio.cerrar();
               setSeleccion(new Set());
               setAvisoDelChecklist({ variant: 'success', texto });
             }}
@@ -816,19 +819,23 @@ function DetalleDeRendicion({
           />
           {/* Los botones "Aprobada" y "Rechazada" desaparecen al registrar la respuesta: el foco vuelve al título. */}
           <AprobarRendicionDialog
-            rendicion={aprobando ? rendicion : null}
-            onCerrar={() => setAprobando(false)}
+            key={dialogoDeAprobacion.clave}
+            rendicion={rendicion}
+            abierto={dialogoDeAprobacion.abierto}
+            onCerrar={dialogoDeAprobacion.cerrar}
             onAprobada={(texto) => {
-              setAprobando(false);
+              dialogoDeAprobacion.cerrar();
               setAvisoDelChecklist({ variant: 'success', texto });
             }}
             focoAlCerrar={tituloRef}
           />
           <RechazarDialog
-            rendicion={rechazando ? rendicion : null}
-            onCerrar={() => setRechazando(false)}
+            key={dialogoDeRechazo.clave}
+            rendicion={rendicion}
+            abierto={dialogoDeRechazo.abierto}
+            onCerrar={dialogoDeRechazo.cerrar}
             onRechazada={(texto) => {
-              setRechazando(false);
+              dialogoDeRechazo.cerrar();
               setAvisoDelChecklist({ variant: 'success', texto });
             }}
             focoAlCerrar={tituloRef}

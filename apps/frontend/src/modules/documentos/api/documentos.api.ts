@@ -234,14 +234,14 @@ export function interpretarFalloCarga(error: unknown): FalloDeCarga {
 export type MotivoDeRechazoDeAplicacion =
   | 'ITEM_NO_PENDIENTE'
   | 'RENDICION_ANULADA'
-  | 'RENDICION_ENVIADA'
+  | 'RENDICION_NO_MODIFICABLE'
   | 'TIPO_DOCUMENTO_DISTINTO'
   | 'PERIODO_DISTINTO';
 
 const MOTIVOS: readonly MotivoDeRechazoDeAplicacion[] = [
   'ITEM_NO_PENDIENTE',
   'RENDICION_ANULADA',
-  'RENDICION_ENVIADA',
+  'RENDICION_NO_MODIFICABLE',
   'TIPO_DOCUMENTO_DISTINTO',
   'PERIODO_DISTINTO',
 ];
@@ -352,7 +352,7 @@ export function interpretarFalloReemplazo(error: unknown): FalloDeReemplazo {
       case 'DOCUMENTO_YA_VIGENTE':
         return { tipo: 'ya-vigente' };
       case 'RENDICION_ANULADA':
-      case 'RENDICION_ENVIADA':
+      case 'RENDICION_NO_MODIFICABLE':
       case 'TIPO_DOCUMENTO_DISTINTO':
       case 'PERIODO_DISTINTO':
         return { tipo: 'rechazado', motivo };

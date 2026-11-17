@@ -109,7 +109,7 @@ export function motivoFalloAgregado(fallo: FalloAgregado): string {
       return 'ya tenía ese documento';
     case 'rendicion-anulada':
       return 'la rendición está anulada';
-    case 'rendicion-enviada':
+    case 'rendicion-no-modificable':
       return 'la rendición ya no se puede modificar';
     case 'cliente-no-activo':
       return fallo.estado === null
@@ -127,8 +127,8 @@ export function mensajeFalloCorreccionDeCanal(fallo: FalloCorreccionDeCanal): st
   switch (fallo.tipo) {
     case 'rendicion-anulada':
       return 'La rendición está anulada: ya no se puede modificar.';
-    case 'rendicion-enviada':
-      return MENSAJE_RENDICION_ENVIADA;
+    case 'rendicion-no-modificable':
+      return MENSAJE_RENDICION_NO_MODIFICABLE;
     case 'no-existe':
       return 'Este documento ya no está en la rendición. Volvé a cargar la página.';
     case 'inesperado':
@@ -151,7 +151,7 @@ export function mensajeFalloPropagacion(
     switch (fallo.tipo) {
       case 'rendicion-anulada':
         return `${quien(fallo.rendicionId)} está anulada. Destildala y probá de nuevo.`;
-      case 'rendicion-enviada':
+      case 'rendicion-no-modificable':
         return `${quien(fallo.rendicionId)} ya no se puede modificar. Destildala y probá de nuevo.`;
       case 'requisito-no-en-rendicion':
         return `${quien(fallo.rendicionId)} ya no tiene documentos de este requisito. Destildala y probá de nuevo.`;
@@ -194,10 +194,11 @@ export function mensajeFalloPreparacionEnvio(
 // ─── Estado de la rendición (HU3.6) ───────────────────────────────────────────────────────
 
 /**
- * Una rendición Enviada o Aprobada no se modifica (HU3.7 y HU3.8): documentos, canales y requisitos.
- * El servidor responde `RENDICION_ENVIADA` en los dos casos, así que el texto no dice "enviada".
+ * Una rendición Enviada, Aprobada o Rechazada no se modifica (HU3.7 a HU3.9): documentos, canales y
+ * requisitos. El servidor responde `RENDICION_NO_MODIFICABLE` en los tres casos, así que el texto no
+ * nombra un estado.
  */
-export const MENSAJE_RENDICION_ENVIADA = 'La rendición ya no se puede modificar.';
+export const MENSAJE_RENDICION_NO_MODIFICABLE = 'La rendición ya no se puede modificar.';
 
 /** Aprobar o rechazar una rendición que ya no está Enviada (otra persona respondió antes). */
 export const MENSAJE_RENDICION_CAMBIO_DE_ESTADO =

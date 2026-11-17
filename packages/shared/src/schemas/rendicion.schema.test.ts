@@ -377,6 +377,61 @@ describe('ActualizarEstadoRendicionSchema', () => {
         ActualizarEstadoRendicionSchema.parse({ estado: 'RECHAZADA', motivo: '  texto  ' }),
       ).toEqual({ estado: 'RECHAZADA', motivo: 'texto' });
     });
+
+    // Un solo error por motivo (deuda post HU3.8): antes, el largo del campo y la regla del estado
+    // se sumaban, y { APROBADA, motivo: '' } daba dos errores en `motivo`.
+    describe('un solo error en motivo', () => {
+      it.each(['', '   '])('APROBADA con motivo %j: solo "sin rechazo"', (motivo) => {
+        const e = errores(
+          ActualizarEstadoRendicionSchema.safeParse({ estado: 'APROBADA', motivo }),
+        );
+        expect(e).toEqual([{ path: ['motivo'], message: SIN_RECHAZO }]);
+      });
+
+      it('APROBADA con un motivo de 501 caracteres: solo "sin rechazo"', () => {
+        const e = errores(
+          ActualizarEstadoRendicionSchema.safeParse({
+            estado: 'APROBADA',
+            motivo: 'x'.repeat(501),
+          }),
+        );
+        expect(e).toEqual([{ path: ['motivo'], message: SIN_RECHAZO }]);
+      });
+
+      it.each(['', '   '])('RECHAZADA con motivo %j: solo "obligatorio"', (motivo) => {
+        const e = errores(
+          ActualizarEstadoRendicionSchema.safeParse({ estado: 'RECHAZADA', motivo }),
+        );
+        expect(e).toEqual([{ path: ['motivo'], message: OBLIGATORIO }]);
+      });
+
+      it('RECHAZADA con 501 caracteres: solo el del largo', () => {
+        const e = errores(
+          ActualizarEstadoRendicionSchema.safeParse({
+            estado: 'RECHAZADA',
+            motivo: 'x'.repeat(501),
+          }),
+        );
+        expect(e).toEqual([
+          { path: ['motivo'], message: 'El motivo no puede superar los 500 caracteres.' },
+        ]);
+      });
+
+      it.each(['EN_CURSO', 'COMPLETA', 'ENVIADA'])(
+        '%s con motivo vacío: solo "sin rechazo"',
+        (estado) => {
+          const e = errores(ActualizarEstadoRendicionSchema.safeParse({ estado, motivo: '' }));
+          expect(e).toEqual([{ path: ['motivo'], message: SIN_RECHAZO }]);
+        },
+      );
+
+      it.each(['EN_CURSO', 'COMPLETA', 'APROBADA'])(
+        '%s sin motivo sigue siendo válido',
+        (estado) => {
+          expect(ActualizarEstadoRendicionSchema.safeParse({ estado }).success).toBe(true);
+        },
+      );
+    });
   });
 
   describe('fechaEnvio (HU3.7)', () => {

@@ -841,12 +841,12 @@ describe('PATCH /rendiciones/:id/estado — corregir una rechazada (HU3.9)', () 
 
 describe('motivoParaNoModificar (HU3.8 y HU3.9)', () => {
   it.each(['ENVIADA', 'APROBADA', 'RECHAZADA'] as const)(
-    '%s: 409 RENDICION_ENVIADA con el texto "La rendición ya no se puede modificar."',
+    '%s: 409 RENDICION_NO_MODIFICABLE con el texto "La rendición ya no se puede modificar."',
     (estado) => {
       expect(motivoParaNoModificar({ isDeleted: false, estado })).toMatchObject({
         status: 409,
         message: 'La rendición ya no se puede modificar.',
-        details: { motivo: 'RENDICION_ENVIADA' },
+        details: { motivo: 'RENDICION_NO_MODIFICABLE' },
       });
     },
   );

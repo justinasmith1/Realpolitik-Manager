@@ -24,8 +24,14 @@ import {
 } from '@/modules/rendiciones/rendiciones.etiquetas';
 
 interface AprobarRendicionDialogProps {
-  /** La rendición (Enviada) a aprobar. `null` mantiene el diálogo cerrado. */
-  rendicion: RendicionDetalle | null;
+  /** La rendición (Enviada) a aprobar. */
+  rendicion: RendicionDetalle;
+  /**
+   * Si se ve. Quien lo abre le pone una `key` que cambia en cada apertura (`useAperturaDeDialogo`):
+   * así arranca limpio, sin el error de un intento anterior. Al cerrar, la rendición sigue ahí
+   * y el contenido no desaparece durante la animación.
+   */
+  abierto: boolean;
   onCerrar: () => void;
   /** Se registró la aprobación: avisa en la página con el texto del resultado. */
   onAprobada: (texto: string) => void;
@@ -40,27 +46,21 @@ interface AprobarRendicionDialogProps {
  */
 export function AprobarRendicionDialog({
   rendicion,
+  abierto,
   onCerrar,
   onAprobada,
   focoAlCerrar,
 }: AprobarRendicionDialogProps) {
   const cambio = useMarcarEstadoDeRendicion();
-  // Se conserva lo último mostrado para que el contenido no desaparezca durante el cierre.
-  const [mostrada, setMostrada] = useState(rendicion);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
-  if (rendicion !== null && rendicion !== mostrada) {
-    // Se abre (o cambia la rendición): sin errores de un intento anterior.
-    if (mostrada === null || mostrada.id !== rendicion.id) setErrorGeneral(null);
-    setMostrada(rendicion);
-  }
 
   async function confirmar() {
-    if (mostrada === null || cambio.isPending) return;
+    if (cambio.isPending) return;
     setErrorGeneral(null);
     try {
       await cambio.mutateAsync({
-        clienteId: mostrada.clienteId,
-        rendicionId: mostrada.id,
+        clienteId: rendicion.clienteId,
+        rendicionId: rendicion.id,
         datos: { estado: 'APROBADA' },
       });
     } catch (fallo) {
@@ -74,15 +74,9 @@ export function AprobarRendicionDialog({
 
   return (
     <AlertDialog
-      open={rendicion !== null}
+      open={abierto}
       onOpenChange={(abrir) => {
         if (!abrir && !cambio.isPending) onCerrar();
-      }}
-      onOpenChangeComplete={(abierto) => {
-        if (!abierto) {
-          setMostrada(null);
-          setErrorGeneral(null);
-        }
       }}
     >
       <AlertDialogContent

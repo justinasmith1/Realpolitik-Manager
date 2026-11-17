@@ -340,7 +340,7 @@ La causa queda para la historia de deuda técnica: son tiempos de las pruebas de
 | F. `ADMINISTRADOR`    | Cargar, candidatos, aplicar, ver, descargar, reemplazar e historial                                                                                                                                       |
 | G. Sin regresiones    | Con la contraseña temporal, 403 sin tocar el almacenamiento; al final, cada ítem completo tiene una sola aplicación vigente y cada objeto coincide con su hash                                            |
 
-Resultado con Node 22 local (Windows, PostgreSQL 16 de Docker Compose): 16 de 16, y 62 de 62 junto con `documentos.integration`, `aplicaciones.integration` y `autorizacion.integration`, de a una. El CI con Node 24, pendiente.
+Resultado con Node 22 local (Windows, PostgreSQL 16 de Docker Compose): 16 de 16, y 62 de 62 junto con `documentos.integration`, `aplicaciones.integration` y `autorizacion.integration`, de a una. En el CI con Node 24, en verde al integrarse en `main` (PR #63).
 
 ```bash
 # `exec vitest` no corre `build:deps`: shared compilado y el cliente de Prisma al día antes

@@ -5,7 +5,7 @@
 // - fecha futura o anterior al período: 400, sin escribir
 // - desde EN_CURSO, RECHAZADA o una anulada: 409
 // - una Enviada no se modifica: aplicar o reemplazar un documento, corregir o propagar el canal y
-//   sumar un requisito responden 409 RENDICION_ENVIADA; la OC sí se edita
+//   sumar un requisito responden 409 RENDICION_NO_MODIFICABLE; la OC sí se edita
 // - una Enviada deja de estar atrasada
 // - auto-revert (HU3.6): sumar un requisito a una Completa la vuelve a En curso con su motivo; si
 //   la inserción falla, sigue Completa y sin historial nuevo
@@ -312,7 +312,7 @@ describe.skipIf(url === undefined)('Marcar como Enviada (HU3.7) contra PostgreSQ
     expect(conflicto(deAnulada)).toEqual({ motivo: 'RENDICION_ANULADA' });
   });
 
-  it('una Enviada no se modifica: documentos, canales y requisitos dan 409 RENDICION_ENVIADA', async () => {
+  it('una Enviada no se modifica: documentos, canales y requisitos dan 409 RENDICION_NO_MODIFICABLE', async () => {
     const { cliente, factura, requisito, rendicion, itemId } = await completa();
     const otroDocumento = await cargar(factura.id);
     const print = await crearTipo('Print');
@@ -343,10 +343,10 @@ describe.skipIf(url === undefined)('Marcar como Enviada (HU3.7) contra PostgreSQ
 
     for (const [nombre, res] of Object.entries(intentos)) {
       expect(res.status, `${nombre}: ${JSON.stringify(res.body)}`).toBe(409);
-      expect(conflicto(res).motivo, nombre).toBe('RENDICION_ENVIADA');
+      expect(conflicto(res).motivo, nombre).toBe('RENDICION_NO_MODIFICABLE');
     }
     expect(conflicto(intentos.propagar)).toEqual({
-      motivo: 'RENDICION_ENVIADA',
+      motivo: 'RENDICION_NO_MODIFICABLE',
       rendicionId: rendicion.id,
     });
     const despues = await detalle(rendicion.id);
@@ -360,7 +360,7 @@ describe.skipIf(url === undefined)('Marcar como Enviada (HU3.7) contra PostgreSQ
   });
 
   // integración: corre Agus
-  it('una Aprobada tampoco se modifica (HU3.8): aplicar un documento da 409 RENDICION_ENVIADA', async () => {
+  it('una Aprobada tampoco se modifica (HU3.8): aplicar un documento da 409 RENDICION_NO_MODIFICABLE', async () => {
     const { factura, rendicion, itemId } = await completa();
     const otroDocumento = await cargar(factura.id);
     expect((await cambiarEstado(rendicion.id, { estado: 'ENVIADA' })).status).toBe(200);
@@ -372,7 +372,7 @@ describe.skipIf(url === undefined)('Marcar como Enviada (HU3.7) contra PostgreSQ
       .send({ itemIds: [itemId] });
 
     expect(res.status, JSON.stringify(res.body)).toBe(409);
-    expect(conflicto(res).motivo).toBe('RENDICION_ENVIADA');
+    expect(conflicto(res).motivo).toBe('RENDICION_NO_MODIFICABLE');
     expect((await detalle(rendicion.id)).estado).toBe('APROBADA');
   });
 
@@ -453,7 +453,7 @@ describe.skipIf(url === undefined)('Corregir una rechazada (HU3.9) contra Postgr
 
     for (const [nombre, res] of Object.entries(intentos)) {
       expect(res.status, `${nombre}: ${JSON.stringify(res.body)}`).toBe(409);
-      expect(conflicto(res).motivo, nombre).toBe('RENDICION_ENVIADA');
+      expect(conflicto(res).motivo, nombre).toBe('RENDICION_NO_MODIFICABLE');
     }
     const despues = await detalle(rendicion.id);
     expect(despues.estado).toBe('RECHAZADA');

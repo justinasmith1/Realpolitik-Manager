@@ -209,12 +209,22 @@ const errorJson = (status: number, code: string, details?: unknown) =>
   });
 
 describe('VistaPreviaDocumentoSheet: motivo del fallo', () => {
+  it('403: solo dice que no tiene permiso, sin "Descargar" ni "Reintentar" (darían el mismo 403)', async () => {
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(errorJson(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' })),
+    );
+    renderVisor();
+    const visor = within(await screen.findByRole('dialog', { name: /print-octubre\.pdf/ }));
+
+    expect(await visor.findByText('No tenés permiso para ver print-octubre.pdf.')).toBeVisible();
+    expect(visor.queryByText(/mensaje interno/)).not.toBeInTheDocument();
+    expect(visor.queryByRole('button', { name: 'Descargar' })).not.toBeInTheDocument();
+    expect(visor.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+    // Tampoco el "Descargar" del pie, que solo está cuando el archivo se ve, y no se reintenta solo.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
-    [
-      '403',
-      () => Promise.resolve(errorJson(403, 'FORBIDDEN', { motivo: 'PERMISO_INSUFICIENTE' })),
-      'No tenés permiso para ver print-octubre.pdf.',
-    ],
     [
       '404',
       () => Promise.resolve(errorJson(404, 'NOT_FOUND')),
@@ -235,6 +245,7 @@ describe('VistaPreviaDocumentoSheet: motivo del fallo', () => {
       expect(await visor.findByText(texto)).toBeVisible();
       expect(visor.queryByText(/mensaje interno/)).not.toBeInTheDocument();
       expect(visor.getByRole('button', { name: 'Descargar' })).toBeInTheDocument();
+      expect(visor.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
 
       await user.click(visor.getByRole('button', { name: 'Reintentar' }));
       expect(await visor.findByTitle('Contenido de print-octubre.pdf')).toBeInTheDocument();
@@ -282,6 +293,8 @@ describe('VistaPreviaDocumentoSheet: sesión, con el manejo global de la app', (
     renderVisor(PDF, client);
 
     expect(await screen.findByText('No tenés permiso para ver print-octubre.pdf.')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Descargar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
     expect(client.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba());
     expect(client.getQueryState(CLAVE_SESION)?.isInvalidated).toBe(true);
     expect(pedidosA(ARCHIVO)).toBe(1);

@@ -65,15 +65,15 @@ describe('mensajeFalloCambioDeEstado al marcar como enviada (HU3.7)', () => {
 
 describe('una Enviada o Aprobada no se modifica (HU3.7 y HU3.8)', () => {
   it('sumar un requisito, corregir y propagar el canal lo explican', () => {
-    expect(motivoFalloAgregado({ tipo: 'rendicion-enviada' })).toBe(
+    expect(motivoFalloAgregado({ tipo: 'rendicion-no-modificable' })).toBe(
       'la rendición ya no se puede modificar',
     );
-    expect(mensajeFalloCorreccionDeCanal({ tipo: 'rendicion-enviada' })).toBe(
+    expect(mensajeFalloCorreccionDeCanal({ tipo: 'rendicion-no-modificable' })).toBe(
       'La rendición ya no se puede modificar.',
     );
     expect(
       mensajeFalloPropagacion(
-        { tipo: 'rendicion-enviada', rendicionId: 'r1' },
+        { tipo: 'rendicion-no-modificable', rendicionId: 'r1' },
         () => 'Octubre 2026',
       ),
     ).toBe(
