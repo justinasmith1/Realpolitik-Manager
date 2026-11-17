@@ -202,7 +202,7 @@ export async function aplicarDocumento(
  * APLICACION_DESACTUALIZADA` con la vigente actual, sin escribir nada. La anterior recibe
  * `reemplazadaEn` y la nueva la apunta con `reemplazaAId`. El ítem sigue completado (con su fecha
  * original). Las aplicaciones del documento anterior en otros ítems no se tocan. Solo en una
- * rendición activa y no enviada (`409 RENDICION_ENVIADA`, HU3.7). Responde con la rendición, como la corrección del canal.
+ * rendición activa y modificable (`409 RENDICION_NO_MODIFICABLE`, HU3.7 a HU3.9). Responde con la rendición, como la corrección del canal.
  */
 export async function reemplazarDocumentoDeItem(
   rendicionId: string,

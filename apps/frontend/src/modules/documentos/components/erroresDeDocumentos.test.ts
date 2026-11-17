@@ -75,13 +75,13 @@ describe('403 de permiso en las operaciones', () => {
   });
 });
 
-// Una rendición Enviada o Aprobada no se modifica: el servidor responde RENDICION_ENVIADA en los
-// dos casos (HU3.7 y HU3.8), así que el texto no dice "enviada".
+// Una rendición Enviada, Aprobada o Rechazada no se modifica: el servidor responde
+// RENDICION_NO_MODIFICABLE en los tres casos (HU3.7 a HU3.9), así que el texto no nombra un estado.
 
-describe('RENDICION_ENVIADA (una Enviada o una Aprobada)', () => {
+describe('RENDICION_NO_MODIFICABLE (una Enviada o una Aprobada)', () => {
   it('aplicar a varios ítems nombra la rendición y dice que ya no se puede modificar', () => {
     const texto = mensajeFalloAplicacion(
-      { tipo: 'rechazado', motivo: 'RENDICION_ENVIADA', itemId: 'i1' },
+      { tipo: 'rechazado', motivo: 'RENDICION_NO_MODIFICABLE', itemId: 'i1' },
       () => 'Muni Ejemplo, A 00001-00000001',
     );
 
@@ -92,12 +92,16 @@ describe('RENDICION_ENVIADA (una Enviada o una Aprobada)', () => {
 
   it('asociar un documento a un ítem', () => {
     expect(
-      mensajeFalloAsociacion({ tipo: 'rechazado', motivo: 'RENDICION_ENVIADA', itemId: null }),
+      mensajeFalloAsociacion({
+        tipo: 'rechazado',
+        motivo: 'RENDICION_NO_MODIFICABLE',
+        itemId: null,
+      }),
     ).toBe('La rendición ya no se puede modificar.');
   });
 
   it('reemplazar el documento de un ítem', () => {
-    expect(mensajeFalloReemplazo({ tipo: 'rechazado', motivo: 'RENDICION_ENVIADA' })).toBe(
+    expect(mensajeFalloReemplazo({ tipo: 'rechazado', motivo: 'RENDICION_NO_MODIFICABLE' })).toBe(
       'La rendición ya no se puede modificar.',
     );
   });

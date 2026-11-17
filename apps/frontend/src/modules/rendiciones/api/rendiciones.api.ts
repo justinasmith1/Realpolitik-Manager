@@ -266,7 +266,7 @@ export async function agregarRequisitoARendicion(
 export type FalloAgregado =
   | { tipo: 'ya-esta' }
   | { tipo: 'rendicion-anulada' }
-  | { tipo: 'rendicion-enviada' }
+  | { tipo: 'rendicion-no-modificable' }
   | { tipo: 'cliente-no-activo'; estado: ClienteEstadoType | null }
   | { tipo: 'no-existe' }
   | { tipo: 'inesperado' };
@@ -287,8 +287,8 @@ export function interpretarFalloAgregado(error: unknown): FalloAgregado {
         return { tipo: 'ya-esta' };
       case 'RENDICION_ANULADA':
         return { tipo: 'rendicion-anulada' };
-      case 'RENDICION_ENVIADA':
-        return { tipo: 'rendicion-enviada' };
+      case 'RENDICION_NO_MODIFICABLE':
+        return { tipo: 'rendicion-no-modificable' };
       case 'CLIENTE_NO_ACTIVO':
         return { tipo: 'cliente-no-activo', estado: leerEstadoCliente(details.estado) };
     }
@@ -314,7 +314,7 @@ export async function corregirCanalDeItem(
 /** Por qué no se pudo corregir el canal de un ítem, en términos del dominio. */
 export type FalloCorreccionDeCanal =
   | { tipo: 'rendicion-anulada' }
-  | { tipo: 'rendicion-enviada' }
+  | { tipo: 'rendicion-no-modificable' }
   | { tipo: 'no-existe' }
   | { tipo: 'inesperado' };
 
@@ -327,7 +327,7 @@ export function interpretarFalloCorreccionDeCanal(error: unknown): FalloCorrecci
   const details = respuesta?.cuerpo?.details;
   if (respuesta?.status === 409 && respuesta.cuerpo?.code === 'CONFLICT' && esObjeto(details)) {
     if (details.motivo === 'RENDICION_ANULADA') return { tipo: 'rendicion-anulada' };
-    if (details.motivo === 'RENDICION_ENVIADA') return { tipo: 'rendicion-enviada' };
+    if (details.motivo === 'RENDICION_NO_MODIFICABLE') return { tipo: 'rendicion-no-modificable' };
   }
   return { tipo: 'inesperado' };
 }
@@ -356,7 +356,7 @@ export async function propagarCanalDeRequisito(
  */
 export type FalloPropagacion =
   | { tipo: 'rendicion-anulada'; rendicionId: string | null }
-  | { tipo: 'rendicion-enviada'; rendicionId: string | null }
+  | { tipo: 'rendicion-no-modificable'; rendicionId: string | null }
   | { tipo: 'requisito-no-en-rendicion'; rendicionId: string | null }
   | { tipo: 'no-existe' }
   | { tipo: 'inesperado' };
@@ -379,8 +379,8 @@ export function interpretarFalloPropagacion(error: unknown): FalloPropagacion {
     switch (details.motivo) {
       case 'RENDICION_ANULADA':
         return { tipo: 'rendicion-anulada', rendicionId };
-      case 'RENDICION_ENVIADA':
-        return { tipo: 'rendicion-enviada', rendicionId };
+      case 'RENDICION_NO_MODIFICABLE':
+        return { tipo: 'rendicion-no-modificable', rendicionId };
       case 'REQUISITO_NO_EN_RENDICION':
         return { tipo: 'requisito-no-en-rendicion', rendicionId };
     }
