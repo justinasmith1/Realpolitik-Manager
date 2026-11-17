@@ -223,14 +223,9 @@ export const ActualizarEstadoRendicionSchema = z
       .string({ invalid_type_error: MENSAJE_FECHA_ENVIO_INVALIDA })
       .refine(esDiaValido, MENSAJE_FECHA_ENVIO_INVALIDA)
       .optional(),
-    motivo: z
-      .string({ invalid_type_error: MENSAJE_MOTIVO_OBLIGATORIO })
-      .trim()
-      .min(1, { message: MENSAJE_MOTIVO_OBLIGATORIO })
-      .max(MOTIVO_RECHAZO_MAX, {
-        message: `El motivo no puede superar los ${MOTIVO_RECHAZO_MAX} caracteres.`,
-      })
-      .optional(),
+    // Solo el tipo y el recorte: si es obligatorio, su largo o si sobra depende del estado, y lo
+    // decide el `superRefine` con un único error en `motivo`.
+    motivo: z.string({ invalid_type_error: MENSAJE_MOTIVO_OBLIGATORIO }).trim().optional(),
   })
   .superRefine(({ estado, fechaEnvio, motivo }, ctx) => {
     if (fechaEnvio !== undefined) {
@@ -248,20 +243,25 @@ export const ActualizarEstadoRendicionSchema = z
         });
       }
     }
-    if (estado === 'RECHAZADA' && motivo === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['motivo'],
-        message: MENSAJE_MOTIVO_OBLIGATORIO,
-      });
-    } else if (estado !== 'RECHAZADA' && motivo !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['motivo'],
-        message: MENSAJE_MOTIVO_SIN_RECHAZO,
-      });
+    const problemaDelMotivo = problemaDeMotivo(estado, motivo);
+    if (problemaDelMotivo !== null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['motivo'], message: problemaDelMotivo });
     }
   });
+
+/**
+ * Por qué no vale el `motivo` (ya recortado) para ese estado, o `null` si vale. Un solo motivo de
+ * error: con `RECHAZADA` es obligatorio, no vacío y de hasta `MOTIVO_RECHAZO_MAX` caracteres; con
+ * cualquier otro estado sobra, venga como venga (vacío o largo incluidos).
+ */
+function problemaDeMotivo(estado: EstadoRendicion, motivo: string | undefined): string | null {
+  if (estado !== 'RECHAZADA') return motivo === undefined ? null : MENSAJE_MOTIVO_SIN_RECHAZO;
+  if (motivo === undefined || motivo === '') return MENSAJE_MOTIVO_OBLIGATORIO;
+  if (motivo.length > MOTIVO_RECHAZO_MAX) {
+    return `El motivo no puede superar los ${MOTIVO_RECHAZO_MAX} caracteres.`;
+  }
+  return null;
+}
 
 export type ActualizarEstadoRendicionDto = z.infer<typeof ActualizarEstadoRendicionSchema>;
 
