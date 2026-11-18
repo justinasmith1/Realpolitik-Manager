@@ -182,9 +182,44 @@ describe('vercel.json', () => {
     }
   });
 
-  describe('rewrite hacia el backend (se agrega al activar el proxy)', () => {
+  describe('rewrite hacia el backend (proxy de mismo origen, ADR-0006)', () => {
+    const HOST_DE_PRODUCCION = 'realpolitik-manager.vercel.app';
+    const BACKEND = 'https://realpolitik-manager-production.up.railway.app';
+    const externos = () =>
+      (config.rewrites ?? []).filter((rewrite) => /^[a-z]+:\/\//i.test(rewrite.destination));
+
     it('si existe, tiene la forma segura', () => {
       expect(problemasDelProxy(config)).toEqual([]);
+    });
+
+    it('es el único rewrite externo, el primero, y lleva /api al backend de producción por HTTPS', () => {
+      expect(externos()).toEqual([
+        {
+          source: FUENTE_API,
+          has: [{ type: 'host', value: HOST_DE_PRODUCCION }],
+          destination: `${BACKEND}/:path*`,
+        },
+      ]);
+      expect(config.rewrites?.[0]).toBe(externos()[0]);
+    });
+
+    it('quita el prefijo /api: /api/health llega al backend como /health', () => {
+      const [proxy] = externos();
+      const ruta = '/api/health';
+
+      expect(compilar(proxy?.source ?? '').test(ruta)).toBe(true);
+      expect(proxy?.destination.replace(':path*', ruta.replace(/^\/api\//, ''))).toBe(
+        `${BACKEND}/health`,
+      );
+    });
+
+    it('solo aplica en el host de producción: ningún Preview llega al backend productivo', () => {
+      const [proxy] = externos();
+
+      expect(proxy?.has).toEqual([{ type: 'host', value: HOST_DE_PRODUCCION }]);
+      expect(proxy?.missing).toBeUndefined();
+      // Y el fallback de la SPA tampoco toma /api: en un Preview, /api responde 404 de Vercel.
+      expect(compilar(fallback().source).test('/api/health')).toBe(false);
     });
 
     it('la guarda detecta un rewrite sin condición de host, sin https o después del fallback', () => {

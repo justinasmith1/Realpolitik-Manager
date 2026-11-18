@@ -2,7 +2,7 @@
 
 Cómo está preparado el repositorio para integración continua y despliegue, y qué configuración queda fuera de Git.
 
-> **Estado:** el repositorio trae el CI y la configuración de Vercel versionada, y los proyectos de Vercel y Railway ya existen. Este documento no incluye URLs ni valores reales: viven en los proveedores. El proxy de mismo origen (`/api`, ADR-0006) está **preparado en el código pero no activado** (ver [Proxy de mismo origen](#proxy-de-mismo-origen-preparado-sin-activar)).
+> **Estado:** el repositorio trae el CI y la configuración de Vercel versionada, y los proyectos de Vercel y Railway ya existen. Este documento no incluye secretos: viven en los proveedores. Las únicas URLs reales son el host de producción del frontend y el dominio público del backend, que el rewrite necesita escritos en `vercel.json`. El proxy de mismo origen (`/api`, ADR-0006) está **preparado en el repositorio pero no activado** (ver [Proxy de mismo origen](#proxy-de-mismo-origen-preparado-sin-activar)).
 
 ## Arquitectura
 
@@ -98,9 +98,9 @@ React Router resuelve `/clientes` en el navegador. Sin un rewrite, abrir `/clien
 
 ### Variable del frontend
 
-| Variable       | Dónde                               | Descripción                                                                                                                                                           |
-| -------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_API_URL` | Vercel, solo entorno **Production** | Base de la API. Hoy, la URL pública del backend, con esquema y **sin barra final**. Con el proxy activado, `/api`. Es pública: queda dentro del bundle del navegador. |
+| Variable       | Dónde                               | Descripción                                                                                                                                                                       |
+| -------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_URL` | Vercel, solo entorno **Production** | Base de la API: `/api`, el proxy de mismo origen (ver [Activación](#activación)). Se cambia recién después de probar el proxy. Es pública: queda dentro del bundle del navegador. |
 
 - Admite una URL absoluta `http(s)` o un path de mismo origen (`/api`, nunca `/`): ver [lib/env.ts](../apps/frontend/src/lib/env.ts).
 - Se incorpora al bundle en el momento del build: si cambia, hay que volver a desplegar.
@@ -108,60 +108,57 @@ React Router resuelve `/clientes` en el navegador. Sin un rewrite, abrir `/clien
 
 ## Proxy de mismo origen (preparado, sin activar)
 
-Diseño en [ADR-0006](adr/0006-autenticacion-y-control-de-acceso.md): el navegador pide `/api/...` a su propio origen y Vercel lo reenvía al backend de Railway con un rewrite externo, sin el prefijo. Así la cookie de sesión de HU4.1 es de primera parte. **No es una protección**: Railway sigue accesible directamente y, hasta que HU4.1 exija sesión en el backend, la API sigue abierta.
+Diseño en [ADR-0006](adr/0006-autenticacion-y-control-de-acceso.md): el navegador pide `/api/...` a su propio origen y Vercel lo reenvía al backend de Railway con un rewrite externo, sin el prefijo. Así la cookie de sesión (`__Host-rp_sesion`, `SameSite=Strict`) es de primera parte. **No es una protección:** Railway sigue accesible directamente, y la API exige sesión en los dos caminos.
 
-| Parte                                                           | Estado                                                                                                                                                                                     |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Frontend: `VITE_API_URL=/api` y URLs relativas en `http()`      | Implementado y con tests                                                                                                                                                                   |
-| Desarrollo: proxy `/api` de Vite (`API_PROXY_TARGET`)           | Implementado; verificado en local con un backend de reemplazo                                                                                                                              |
-| `vercel.json`: fallback sin `/api`, caché desactivada en `/api` | Implementado; test de patrones. Sin verificar en Vercel                                                                                                                                    |
-| `vercel.json`: rewrite `/api/:path*` → Railway                  | **Pendiente**: faltan el dominio público del backend y los hosts de producción del frontend. Vercel no interpola variables de entorno en `rewrites`: los valores se escriben en el archivo |
-| Backend                                                         | Sin cambios. CORS sigue igual (el proxy es mismo origen; CORS solo cuenta en desarrollo sin proxy)                                                                                         |
+| Parte                                                           | Estado                                                                                                 |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Frontend: `VITE_API_URL=/api` y URLs relativas en `http()`      | Implementado y con tests                                                                               |
+| Desarrollo: proxy `/api` de Vite (`API_PROXY_TARGET`)           | Implementado; verificado en local con un backend de reemplazo                                          |
+| `vercel.json`: fallback sin `/api`, caché desactivada en `/api` | Implementado; test de patrones. Sin verificar en Vercel                                                |
+| `vercel.json`: rewrite `/api/:path*` → Railway                  | **En el repositorio, sin activar.** Se activa al integrarse en `main`; ver [Activación](#activación)   |
+| `VITE_API_URL=/api` en Vercel Production                        | **Pendiente.** Se cambia recién después de comprobar el proxy                                          |
+| Backend                                                         | Sin cambios. CORS sigue igual: el proxy es de mismo origen, y CORS solo cuenta en desarrollo sin proxy |
 
-### Rewrite que se agrega al activar
+### Rewrite
 
-Primero en la lista de `rewrites`, antes del fallback de la SPA, con una entrada por cada host de producción del frontend (el dominio `*.vercel.app` de producción y, si lo hay, el propio):
+Es el primero de `rewrites`, antes del fallback de la SPA. Vercel no interpola variables de entorno en `rewrites`, así que los valores van escritos en el archivo:
 
 ```json
 {
   "source": "/api/:path*",
-  "has": [{ "type": "host", "value": "<host-de-produccion-del-frontend>" }],
-  "destination": "https://<dominio-publico-del-backend>/:path*"
+  "has": [{ "type": "host", "value": "realpolitik-manager.vercel.app" }],
+  "destination": "https://realpolitik-manager-production.up.railway.app/:path*"
 }
 ```
 
-- **`has: host`**: solo los hosts de producción usan el proxy. En un Preview no coincide, el fallback tampoco toma `/api`, y la respuesta es 404 de Vercel: ningún Preview puede mandar pedidos, tampoco escrituras, al backend de producción. Los Previews tampoco tienen `VITE_API_URL`, así que fallan antes, en el cliente.
-- **Caché:** desde el 6 de abril de 2026, Vercel respeta las cabeceras de caché del origen en los rewrites externos de los proyectos nuevos. `x-vercel-enable-rewrite-caching: 0` lo desactiva para `/api`, y `Cache-Control: no-store` queda como segunda barrera. Ya están en `vercel.json`.
+- **`has: host`:** solo el host de producción usa el proxy. En un Preview no coincide, el fallback tampoco toma `/api`, y la respuesta es 404 de Vercel: ningún Preview puede mandar pedidos, tampoco escrituras, al backend de producción. Si el proyecto tiene otro dominio de producción (uno propio), hay que confirmarlo en Vercel y agregarle su entrada antes de usarlo.
+- **Prefijo:** `/api/health` llega al backend como `/health`.
+- **Caché:** desde el 6 de abril de 2026, Vercel respeta las cabeceras de caché del origen en los rewrites externos de los proyectos nuevos. `x-vercel-enable-rewrite-caching: 0` lo desactiva para `/api`, y `Cache-Control: no-store` queda como segunda barrera.
 - **Tiempo:** Vercel espera hasta 120 s a que el backend **empiece** a responder.
-- **Tamaño:** Vercel no documenta un límite de cuerpo para rewrites externos (el de 4,5 MB es de las Functions, que no se usan). No hay que agregar Functions ni middleware en `/api`.
-- El test del frontend exige esa forma: `https`, `/:path*` sin prefijo, antes del fallback y con `has: host`.
+- **Tamaño:** Vercel no documenta un límite de cuerpo para los rewrites externos (el de 4,5 MB es de las Functions, que no se usan). No hay que agregar Functions ni middleware en `/api`.
+- **Tests:** el de `vercel.json` exige esta forma exacta: HTTPS, `/:path*` sin prefijo, el primero de la lista, con `has: host` de producción, y ningún otro rewrite externo.
 
-### Qué pasa al integrar en `main` (sin activar)
+### Activación
 
-- El fallback deja de tomar `/api`: esas rutas pasan a responder 404 de Vercel. El frontend no las usa: sigue con la `VITE_API_URL` absoluta de Production.
-- Las cabeceras de `/api` no tienen efecto mientras no haya rewrite.
-- El frontend sigue llamando al backend como hoy. No hay cambios en Railway.
+Integrar el rewrite y cambiar la variable son **dos operaciones distintas**, en este orden:
 
-### Activación (HU4.1, con revisión del equipo)
-
-Es el paso 1 de la secuencia de despliegue de HU4.1 (ADR-0006). Se puede activar antes que la autenticación, porque no cambia la seguridad: la API sigue abierta, por Railway y por el proxy. Requiere la revisión del equipo:
-
-1. Conseguir los dos valores pendientes: el dominio público del backend (panel de Railway, red del servicio) y los hosts de producción del frontend (panel de Vercel, dominios del proyecto).
-2. PR con el rewrite. El test de `vercel.json` tiene que pasar.
-3. Desplegar y comprobar, con pedidos de **lectura** (`GET`):
-   - `/api/health` por el dominio de producción → 200 del backend;
-   - `x-vercel-cache` ausente, `MISS` o `BYPASS`, nunca `HIT`, en dos pedidos seguidos;
-   - `/api/inexistente` → 404 JSON del backend;
-   - `/clientes` → la SPA; `/assets/inexistente.js` → 404;
+1. **Merge del rewrite:** al desplegarse `main`, el proxy queda disponible en el host de producción. El frontend todavía no lo usa: sigue con el `VITE_API_URL` de Production que tenga en ese momento.
+2. **Prueba del proxy**, con pedidos de **lectura** (`GET`), antes de tocar la variable:
+   - `https://realpolitik-manager.vercel.app/api/health` → 200 `{ "status": "ok" }` del backend;
+   - `/api/clientes` sin sesión → 401 JSON del backend;
+   - `/api/inexistente` sin sesión → también **401**, no 404: el backend exige sesión antes de resolver la ruta;
+   - dos pedidos seguidos a `/api/health`: `x-vercel-cache` ausente, `MISS` o `BYPASS`, nunca `HIT`, y `Cache-Control: no-store`;
+   - `/` y `/clientes` → la SPA; un asset del build → 200; `/assets/inexistente.js` → 404;
    - el mismo `/api/health` desde un Preview → 404 de Vercel.
-4. Cambiar `VITE_API_URL` de Production a `/api` y volver a desplegar el frontend.
-5. Prueba de humo de la app: listados y una pantalla de detalle, mirando en DevTools que los pedidos vayan a `/api/...` del mismo origen.
+3. **Variable:** recién entonces, `VITE_API_URL=/api` en Vercel **Production**, y un nuevo despliegue (la variable entra al bundle en el build). En **Preview** no se define.
+4. **Comprobación en el navegador real:** en DevTools, los pedidos van a `/api/...` del mismo origen, y no a una URL absoluta. La autenticación se verifica con las cookies reales (ver [Verificaciones que solo se pueden completar con autenticación](#verificaciones-que-solo-se-pueden-completar-con-autenticación)).
 
 ### Reversión
 
-- **Rápida:** volver `VITE_API_URL` de Production a la URL absoluta del backend y volver a desplegar. El rewrite puede quedar: no molesta.
-- **Completa:** revertir el PR del rewrite.
-- Mientras la autenticación no dependa de la cookie, las dos son inmediatas. Cuando HU4.1 la use, volver a la URL absoluta rompe el inicio de sesión (la cookie sería de terceros): la reversión pasa a ser la de toda la activación.
+Antes de la activación, anotar los valores vigentes: `VITE_API_URL` de Production y el despliegue de producción del frontend. Volver a un despliegue anterior **no** es una recuperación funcional si ese bundle llama a una URL absoluta incorrecta, o si el login depende de la cookie de primera parte.
+
+- **Si falla la prueba del proxy (paso 2):** no se cambia la variable. Se revierte el PR del rewrite, o se corrige el destino en un PR nuevo. El frontend queda como estaba.
+- **Si falla después de cambiar la variable (pasos 3 y 4):** con `/api` y el proxy corregido se avanza; no se vuelve a la URL absoluta. Si el problema es del backend, se resuelve en Railway, con su propio procedimiento de reversión.
 
 ### Verificaciones que solo se pueden completar con autenticación
 
@@ -283,7 +280,7 @@ Es la [política de habilitación documental de ADR-0006](adr/0006-autenticacion
 ### 1. Requisitos previos, con los documentos deshabilitados
 
 1. **Backend desplegado** desde `main`, con las migraciones aplicadas por el pre-deploy y `NODE_ENV=production`. El arranque dice `documentos: deshabilitados`. T0 del Anexo A (`argon2` y Node 24 en el arranque).
-2. **Proxy de mismo origen activo** ([Activación](#activación-hu41-con-revisión-del-equipo)): el rewrite con los valores reales en `vercel.json` y `VITE_API_URL=/api` en Production, con T4 (lectura), T12 y T13. Sin el proxy no se puede iniciar sesión desde el frontend desplegado: la cookie `__Host-rp_sesion` es `SameSite=Strict` y no viaja a otro origen.
+2. **Proxy de mismo origen activo** ([Activación](#activación)): el rewrite con los valores reales en `vercel.json` y `VITE_API_URL=/api` en Production, con T4 (lectura), T12 y T13. Sin el proxy no se puede iniciar sesión desde el frontend desplegado: la cookie `__Host-rp_sesion` es `SameSite=Strict` y no viaja a otro origen.
 3. **Cuentas de la demo:** el [primer administrador](#primer-administrador-hu41) y, desde la pantalla Usuarios, una cuenta `ADMINISTRATIVO` y una `CONSULTA`, con nombres y emails ficticios.
 4. **Sesión verificada en el entorno real:** T5 (la cookie por el rewrite), T6 y T7 (`Origin`) y T14 (un `curl` directo a Railway, sin cookie, a una ruta de negocio responde 401).
 

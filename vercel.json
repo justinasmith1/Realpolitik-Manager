@@ -6,6 +6,16 @@
   "outputDirectory": "apps/frontend/dist",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "realpolitik-manager.vercel.app"
+        }
+      ],
+      "destination": "https://realpolitik-manager-production.up.railway.app/:path*"
+    },
+    {
       "source": "/((?!api/|api$|assets/).*)",
       "destination": "/index.html"
     }
