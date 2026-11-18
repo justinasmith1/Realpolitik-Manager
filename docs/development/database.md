@@ -213,28 +213,47 @@ La migración `20261116120000_hu4_6_responsable_historial` (HU4.6) crea el enum 
 
 ## Tests de integración
 
-Las suites `*.integration.test.ts` del backend (y los `*.api.test.tsx` del frontend) corren contra PostgreSQL real. Sin `TEST_DATABASE_URL` se saltan, y **se niegan a correr** si esa base no se llama `*_audit` o `*_test`: nunca apuntan a la de desarrollo. Cada suite borra lo que crea. Las de requisitos (`requisitos.integration` y `requisitos.masivo`) exigen además que se llame exactamente `realpolitik_test`; el host y el puerto son los de `TEST_DATABASE_URL`, como en las demás.
+Las suites `*.integration.test.ts` del backend (y los `*.api.test.tsx` del frontend) corren contra PostgreSQL real. Sin `TEST_DATABASE_URL` se saltan. Con ella, cada suite comprueba el destino antes de escribir (ver [Qué se verifica antes de escribir](#qué-se-verifica-antes-de-escribir)) y borra solo lo que crea.
 
-> **Las suites que escriben datos van contra una instancia descartable.** Si tu `realpolitik_test` local tiene las cuentas de la QA manual (el administrador de QA, la cuenta `CONSULTA` de [qa-consulta.md](qa-consulta.md)), no la uses para `test:integration` ni para `test:api`: usá otra base descartable (por ejemplo, `realpolitik_hu45_test`, ver [Pruebas de HU4.5](#pruebas-de-hu45-administración-de-usuarios)) o, para las de requisitos, otra instancia de PostgreSQL con una base `realpolitik_test` vacía. Los ejemplos de abajo usan ese nombre porque es el del CI, que crea una base efímera. **`docker-compose.yml` también define `TEST_DATABASE_URL` hacia `realpolitik_test`** en el servicio `backend`: antes de correr pruebas, dentro o fuera del contenedor, verificá a qué base apunta de verdad.
+**La batería completa (`test:integration`) necesita una instancia PostgreSQL descartable con una base llamada exactamente `realpolitik_test`.** Ese nombre lo exigen las suites de requisitos (`requisitos.integration` y `requisitos.masivo`). Con otro nombre (por ejemplo, `realpolitik_hu45_test`), esas dos fallan en el `beforeAll` sin escribir nada y la corrida no queda en verde. Es el nombre que usa el CI, que crea una base efímera en cada job. Otras suites aceptan cualquier base `*_audit` o `*_test` cuando se corren sueltas (ver [Suites sueltas](#suites-sueltas)).
 
-En los ejemplos, `<usuario>`, `<clave>` y `<puerto>` son los de tu `.env` de la raíz (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`).
+> **La `realpolitik_test` de la batería no es la de QA manual.** Las dos se llaman igual, pero las guardas solo pueden comprobar el nombre y que la conexión real llegue a la base de la URL, en el servidor de la URL. No distinguen una instancia descartable de la de QA manual, que tiene su administrador y la cuenta `CONSULTA` de [qa-consulta.md](qa-consulta.md). Las suites crean y borran cuentas, sesiones y datos, y algunas (`usuarios.concurrencia`, `primerAdministrador`) exigen que no haya ningún `ADMINISTRADOR` activo ajeno. Por eso la batería va contra **otra instancia** de PostgreSQL (otro contenedor, en otro puerto), nueva y vacía, que se elimina al terminar. Nunca uses la base de desarrollo, la de QA manual, la de producción ni una compartida. **`docker-compose.yml` también define `TEST_DATABASE_URL` hacia `realpolitik_test`** en el servicio `backend`: antes de correr pruebas, dentro o fuera del contenedor, verificá a qué base apunta de verdad.
+
+### Toda la integración
 
 ```bash
-# una vez: crear la base descartable, dentro del contenedor del servicio `db` de Compose
-docker compose exec -T db createdb -U <usuario> realpolitik_test
+# 1. Una instancia descartable NUEVA (no el servicio `db` de Compose), escuchando solo en
+#    127.0.0.1 y en un puerto libre. Las credenciales son de este contenedor efímero, como en el CI.
+docker run -d --rm --name rp-integracion -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=realpolitik_test \
+  postgres:16-alpine
 
-# migrarla: Prisma usa DATABASE_URL (TEST_DATABASE_URL no cambia su destino), así que se la
-# pasa explícita para este comando, sin tocar apps/backend/.env. Antes de aplicar nada, Prisma
-# imprime el destino ("Datasource … realpolitik_test … at 127.0.0.1:<puerto>"): revisalo.
-DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik_test?schema=public" \
+# 2. Migrarla. Prisma usa DATABASE_URL (TEST_DATABASE_URL no cambia su destino), así que se la
+#    pasa explícita para este comando, sin tocar apps/backend/.env. Antes de aplicar nada, Prisma
+#    imprime el destino ("Datasource … realpolitik_test … at 127.0.0.1:55432"): revisalo.
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:55432/realpolitik_test?schema=public" \
   pnpm --filter @realpolitik/backend db:migrate:deploy
 
-# backend
-TEST_DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik_test?schema=public" \
+# 3. La batería, de a una suite
+TEST_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:55432/realpolitik_test?schema=public" \
   pnpm --filter @realpolitik/backend test:integration
+
+# 4. Eliminar la instancia (con --rm, detenerla la borra junto con sus datos)
+docker stop rp-integracion
 ```
 
-`test:integration` corre las suites **de a una** (`--no-file-parallelism`), también en el CI. Todas comparten la misma base y varias operaciones usan transacciones `SERIALIZABLE` (abrir una rendición, aplicar o reemplazar un documento…). Con las suites en paralelo, PostgreSQL detecta conflictos de serialización entre transacciones que tocan datos distintos (en tablas chicas los predicate locks cubren páginas o tablas enteras), se agotan los reintentos y un alta responde 500: los tests fallaban de forma intermitente. Medido en local con 259 tests: en paralelo, 3 de 3 corridas fallaron (11–16 s); de a una, 3 de 3 pasaron (23–25 s). Para correr solo algunas, usá `vitest` directo con el mismo flag: `pnpm --filter @realpolitik/backend exec vitest run --no-file-parallelism rendiciones.envio.integration`.
+`test:integration` corre las suites **de a una** (`--no-file-parallelism`), también en el CI. Todas comparten la misma base y varias operaciones usan transacciones `SERIALIZABLE` (abrir una rendición, aplicar o reemplazar un documento…). Con las suites en paralelo, PostgreSQL detecta conflictos de serialización entre transacciones que tocan datos distintos (en tablas chicas los predicate locks cubren páginas o tablas enteras), se agotan los reintentos y un alta responde 500: los tests fallaban de forma intermitente. Medido en local con 259 tests: en paralelo, 3 de 3 corridas fallaron (11–16 s); de a una, 3 de 3 pasaron (23–25 s).
+
+### Suites sueltas
+
+Para correr solo algunas, usá `vitest` directo con el mismo flag: `pnpm --filter @realpolitik/backend exec vitest run --no-file-parallelism rendiciones.envio.integration` (`exec vitest` no corre `build:deps`: compilá shared y generá el cliente de Prisma antes). Cada suite acepta estos nombres de base, siempre en una instancia descartable:
+
+| Suites                                                                | Base de `TEST_DATABASE_URL`                            |
+| --------------------------------------------------------------------- | ------------------------------------------------------ |
+| `requisitos.integration`, `requisitos.masivo`                         | Solo `realpolitik_test`                                |
+| `documentos.permisos.integration`                                     | `*_test`                                               |
+| `cambioDeContrasena.integration`, `usuarios.concurrencia.integration` | `*_audit` o `*_test`, y además en un host local        |
+| Las demás                                                             | `*_audit` o `*_test` (p. ej., `realpolitik_hu45_test`) |
 
 **Suites de autenticación (HU4.1 y HU4.2):**
 
@@ -245,6 +264,30 @@ TEST_DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik
   - Los borra al terminar el test y otra vez en `afterAll`.
   - Como las suites corren de a una, no afectan a las demás.
 - `primerAdministrador.integration` necesita que la base no tenga ningún `ADMINISTRADOR` activo. Si hay uno (por ejemplo, una cuenta creada a mano para probar la app), la suite falla con un mensaje y no la toca.
+
+### Qué se verifica antes de escribir
+
+Todas estas comprobaciones corren antes de la primera escritura, incluidas las cuentas y sesiones de prueba. Ninguna se puede saltear con una variable.
+
+1. **Nombre (todas las suites).** `urlDeBaseDescartable` rechaza, al cargar el archivo, una base que no termine en `_audit` o `_test`. Las suites de la tabla de arriba agregan su restricción propia.
+2. **`lib/prisma` se importa después de fijar `DATABASE_URL`** con la URL de prueba, siempre con un import dinámico.
+3. **Conexión efectiva (Usuarios, `documentos.permisos`, `rendiciones.responsable` y Requisitos).** `exigirBaseDePrueba` abre una conexión de referencia con la URL y exige que `current_database()` sea la base de su nombre. Después exige que la conexión real de la suite (la de `lib/prisma`) esté en esa misma base y en el mismo servidor (inicio del postmaster y puerto). Atrapa un `lib/prisma` creado antes con otra URL, que escribiría en la base del `.env`.
+4. **Requisitos, además** (`verificarConexionDeRequisitos`): el nombre exacto `realpolitik_test`, `current_database()` igual a `realpolitik_test` sobre la conexión de la suite y, en `requisitos.integration`, PostgreSQL 16. Si algo falla, la suite desconecta `lib/prisma` y no escribe nada, tampoco en el `afterAll`.
+
+Las demás suites solo cumplen 1 y 2: no consultan la conexión efectiva. Por eso que el nombre pase no alcanza: la instancia tiene que ser descartable.
+
+### Si una guarda rechaza la corrida
+
+El mensaje dice qué base recibió. **No cambies la guarda, el nombre esperado ni la URL para que pase contra una base existente.**
+
+- **Nombre no permitido** (`solo se permiten bases descartables`, `solo puede utilizar realpolitik_test`, `no termina en _test`): levantá una instancia descartable con el nombre que pide esa suite (para la batería, `realpolitik_test`), o corré solo las suites que aceptan tu base.
+- **La conexión apunta a otra base** (`Una conexión de la suite apunta a…`, `La URL de prueba lleva a…`, `La conexión no es realpolitik_test`): `lib/prisma` se creó con otra URL (un import estático, o un `DATABASE_URL` distinto ya cargado) o la URL no lleva a la base de su nombre. Si el mensaje nombra la misma base dos veces (`apunta a "realpolitik_test" y no a "realpolitik_test" de ese servidor`), la conexión está en una base con ese nombre pero en otro servidor, por ejemplo la instancia de QA manual. La suite no escribió nada. Revisá los imports y las variables antes de volver a correrla.
+- **Versión** (`no es PostgreSQL 16`): usá la imagen `postgres:16`, como el CI.
+- **Datos ajenos** (por ejemplo, `primerAdministrador` encuentra un `ADMINISTRADOR` activo): la base no está vacía. Creá una instancia nueva; no borres esos datos.
+
+### Frontend contra la API real
+
+En los ejemplos que siguen, `<usuario>`, `<clave>` y `<puerto>` son los de tu `.env` de la raíz (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`).
 
 El frontend contra la API real (`test:api`) necesita además un backend levantado contra esa misma base, en otro puerto (el CI usa el 3999), y `TEST_API_URL`:
 
@@ -274,11 +317,11 @@ En el CI todo esto lo hace el workflow con una base efímera. Esos archivos (`Ed
 
 Las suites de Usuarios desactivan cuentas, cambian roles, restablecen contraseñas y revocan sesiones, así que cada base tiene un uso:
 
-| Base                    | Uso                                                         | Suites que escriben                    |
-| ----------------------- | ----------------------------------------------------------- | -------------------------------------- |
-| `realpolitik_db`        | Desarrollo (`apps/backend/.env`)                            | Nunca: la rechazan todas las guardas   |
-| `realpolitik_test`      | QA manual, con su administrador y sus cuentas de prueba     | No (ver "Suites de Requisitos" abajo)  |
-| `realpolitik_hu45_test` | Integración automatizada de HU4.5 (y del resto del backend) | Sí, de a una (`--no-file-parallelism`) |
+| Base                    | Uso                                                                           | Suites que escriben                    |
+| ----------------------- | ----------------------------------------------------------------------------- | -------------------------------------- |
+| `realpolitik_db`        | Desarrollo (`apps/backend/.env`)                                              | Nunca: la rechazan todas las guardas   |
+| `realpolitik_test`      | QA manual, con su administrador y sus cuentas de prueba                       | No (ver "Suites de Requisitos" abajo)  |
+| `realpolitik_hu45_test` | Integración automatizada de HU4.5 (y del resto del backend, salvo Requisitos) | Sí, de a una (`--no-file-parallelism`) |
 
 `realpolitik_hu45_test` se crea y se migra como `realpolitik_test` (sección anterior), cambiando el nombre. `usuarios.concurrencia.integration` y `primerAdministrador.integration` necesitan además que no haya **ningún** `ADMINISTRADOR` activo ajeno: si lo hay, fallan con un mensaje sin tocarlo. Por eso no pueden correr en la base de QA manual.
 
@@ -293,7 +336,7 @@ Las suites de Usuarios desactivan cuentas, cambian roles, restablecen contraseñ
 
 Motivo: durante el desarrollo de HU4.5, una suite con un `lib/prisma` inicializado antes de tiempo se conectó a la base de desarrollo aunque `TEST_DATABASE_URL` apuntaba a una de prueba. La tercera guarda existe para que eso no pueda volver a escribir en una base equivocada.
 
-**Suites de Requisitos.** `requisitos.integration` y `requisitos.masivo` exigen una base llamada exactamente `realpolitik_test` y rechazan `realpolitik_hu45_test`. Decisión del proyecto: **no se corren contra la instancia de `realpolitik_test` usada para QA manual**. Si hay que correrlas, se usa una instancia de PostgreSQL descartable (otro contenedor u otro puerto) con una base de ese nombre. Sus guardas no se debilitan.
+**Suites de Requisitos.** `requisitos.integration` y `requisitos.masivo` exigen una base llamada exactamente `realpolitik_test` y rechazan `realpolitik_hu45_test`. Por eso la batería completa no corre contra `realpolitik_hu45_test`. Decisión del proyecto: **no se corren contra la instancia de `realpolitik_test` usada para QA manual**. Si hay que correrlas, se usa una instancia de PostgreSQL descartable (otro contenedor u otro puerto) con una base de ese nombre ([Toda la integración](#toda-la-integración)). Antes de crear nada verifican la conexión real ([Qué se verifica antes de escribir](#qué-se-verifica-antes-de-escribir)). Sus guardas no se debilitan.
 
 **Vitest en Windows.** Con el directorio de trabajo escrito con la unidad en minúscula (`d:\…`), algunos `vi.mock(ruta, async (original) => …)` parciales no interceptan el módulo y el test termina en el cliente HTTP real (en el frontend, `Pedido no simulado`). Con la unidad en mayúscula (`D:\…`) pasan. Se reprodujo igual con el código de `main`: no es un defecto de la aplicación. El CI corre en Linux y no le afecta. En Windows, abrí la terminal (o el editor) en la ruta con la unidad en mayúscula antes de correr los tests.
 

@@ -4,11 +4,14 @@
 // referencias históricas y que `matrizConfigurada` quede igual al conteo de requisitos activos
 // cuando dos escrituras del mismo cliente se confirman a la vez.
 //
-// Sin `TEST_DATABASE_URL` se saltan. Esta suite, además, se niega a escribir si esa URL no es
-// `127.0.0.1:5433/realpolitik_test` en local o `localhost:5432/realpolitik_test` en GitHub Actions.
-// No alcanza con que el nombre termine en `_test`.
+// Sin `TEST_DATABASE_URL` se saltan. Esta suite, además, se niega a escribir si la base de esa URL
+// no se llama exactamente `realpolitik_test` (no alcanza con que termine en `_test`). El host y el
+// puerto son los de la URL. Antes de crear nada (tampoco las cuentas y sesiones),
+// `verificarConexionDeRequisitos` confirma que la conexión real de `lib/prisma` está en esa base,
+// en ese servidor y con PostgreSQL 16. Tiene que ser una instancia DESCARTABLE, nunca la de QA
+// manual (docs/development/database.md, "Tests de integración").
 //
-//   TEST_DATABASE_URL="postgresql://usuario:clave@127.0.0.1:5433/realpolitik_test?schema=public" \
+//   TEST_DATABASE_URL="postgresql://usuario:clave@127.0.0.1:<puerto>/realpolitik_test?schema=public" \
 //     pnpm --filter @realpolitik/backend exec vitest run requisitos.integration
 //
 // No usa el seed. Cada test crea sus datos con una marca única y la limpieza final borra solo eso.
@@ -23,6 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 
 import { urlDeBaseDescartable } from './baseDescartable';
+import { verificarConexionDeRequisitos } from './conexionDeRequisitos';
 import { exigirBaseDeEstaSuite } from './requisitosIntegrationEntorno';
 
 const url = urlDeBaseDescartable();
@@ -46,25 +50,19 @@ const sesiones = sesionesDePrueba();
 
 beforeAll(async () => {
   if (url === undefined) return;
+  // El nombre exacto, antes de fijar o importar nada.
   exigirBaseDeEstaSuite(url);
   // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes, y pisa la de desarrollo.
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
-  const [info] = await prisma.$queryRaw<{ db: string; version: string }[]>`
-    SELECT current_database() AS db, version() AS version`;
-  if (
-    info === undefined ||
-    info.db !== 'realpolitik_test' ||
-    !info.version.startsWith('PostgreSQL 16')
-  ) {
-    throw new Error(
-      `La conexión no es PostgreSQL 16 sobre realpolitik_test (base=${info?.db ?? 'sin fila'}).`,
-    );
-  }
+  // Primero se verifica la conexión real de `lib/prisma` (la que usan las cuentas, los servicios
+  // y la app); recién después se escribe. Si falla, la desconecta y lanza: no se crea nada y el
+  // `afterAll` tampoco escribe (`prismaInicializado` sigue en false).
+  await verificarConexionDeRequisitos(url, prisma, { versionMayor: 16 });
+  prismaInicializado = true;
+  await sesiones.preparar();
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
-  prismaInicializado = true;
 });
 
 afterAll(async () => {
