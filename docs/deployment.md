@@ -82,6 +82,7 @@ La configuración versionada está en [`vercel.json`](../vercel.json), en la ra�
 | `outputDirectory` | `apps/frontend/dist`                                                               | Es la salida de Vite.                                                                                                        |
 | `rewrites`        | `/((?!api/\|api$\|assets/).*)` → `/index.html`                                     | Routing de la SPA (ver abajo).                                                                                               |
 | `headers`         | En `/api/:path*`: `x-vercel-enable-rewrite-caching: 0` y `Cache-Control: no-store` | Que el CDN nunca guarde una respuesta de la API (ver [Proxy de mismo origen](#proxy-de-mismo-origen-preparado-sin-activar)). |
+| `headers`         | Fuera de `/api`: `X-Content-Type-Options`, `Referrer-Policy` y `X-Frame-Options`   | Cabeceras de seguridad del frontend (ver [Cabeceras de seguridad](#cabeceras-de-seguridad)).                                 |
 
 ### Routing de la SPA
 
@@ -334,6 +335,49 @@ Es la [política de habilitación documental de ADR-0006](adr/0006-autenticacion
 - No hay una operación para borrar documentos (ADR-0004 §12). Si hubiera que quitar los archivos de la prueba, es un procedimiento manual aparte, con su autorización; nunca con el seed.
 
 No se agregan endpoints de prueba ni modos sin autenticación para adelantar estas comprobaciones. Los documentos reales de clientes quedan fuera de la demo: requieren la aprobación del negocio (política de ADR-0006, punto 4).
+
+## Cabeceras de seguridad
+
+| Cabecera                    | Frontend (`vercel.json`, fuera de `/api`) | Backend (`cabecerasDeSeguridad`, todas las respuestas) |
+| --------------------------- | ----------------------------------------- | ------------------------------------------------------ |
+| `X-Content-Type-Options`    | `nosniff`                                 | `nosniff`                                              |
+| `Referrer-Policy`           | `same-origin`                             | `no-referrer`                                          |
+| `X-Frame-Options`           | `SAMEORIGIN`                              | `DENY`                                                 |
+| `Content-Security-Policy`   | Pendiente (ver abajo)                     | `default-src 'none'; frame-ancestors 'none'`           |
+| `Strict-Transport-Security` | La agrega Vercel (`max-age=63072000`)     | `max-age=31536000`                                     |
+
+- **Frontend, `same-origin`:** no manda la URL de la app a otros sitios (más estricta que la del navegador por defecto, `strict-origin-when-cross-origin`) y la conserva en los pedidos del mismo origen.
+  - **`Origin` no depende de esta política en la API.** El frontend escribe con `fetch()` en modo `cors`, el predeterminado. Según el [estándar Fetch](https://fetch.spec.whatwg.org/#origin-header), esos pedidos llevan su `Origin` real con cualquier `Referrer-Policy`, también del mismo origen con el proxy activo. Lo mismo dice [MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin).
+  - **Dónde sí importa:** la política solo cambia `Origin` en escrituras que no van en modo `cors`, como un formulario HTML clásico. Ahí `no-referrer` lo vuelve `null` siempre, y `same-origin` solo en pedidos a otros sitios. Hoy la app no tiene esos formularios, así que `same-origin` no es una condición para que `verificarOrigen` funcione. Es la política elegida por privacidad, y deja ese margen.
+- **Frontend, `SAMEORIGIN` y no `DENY`:** la vista previa de documentos muestra un `iframe` propio con una URL `blob:`. Ningún otro sitio puede enmarcar la app.
+- **Backend:** la API solo devuelve JSON y descargas, así que una CSP que no permite nada es segura. La descarga de documentos usa su propia CSP, `default-src 'none'; sandbox`.
+- **HSTS:**
+  - Vercel la envía por defecto en sus dominios. No se repite en `vercel.json`.
+  - No hay evidencia de que Railway la agregue, así que la envía el backend. Los navegadores la ignoran en HTTP.
+  - Al desplegar, verificar con `curl -I https://<dominio-del-backend>/health` que llegue: hay reportes de que el borde de Railway quita cabeceras de la aplicación.
+
+**CSP del frontend: propuesta, sin implementar.** Requiere decisiones y verificarla en el navegador desplegado:
+
+- **`connect-src`:** el frontend llama a la API absoluta de `VITE_API_URL`, que cambia según el entorno y vive en Vercel. `vercel.json` no puede leerla. Con el proxy activo alcanzaría `'self'`; sin él, hay que fijar el dominio del backend en el archivo.
+- **`img-src` y `frame-src`:** la vista previa usa `blob:`.
+- **`style-src`:** hay que comprobar si los componentes de la interfaz insertan estilos en línea.
+
+Propuesta inicial, para empezar como `Content-Security-Policy-Report-Only`:
+
+```
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; frame-src blob:; connect-src 'self' https://<dominio-del-backend>; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+```
+
+Recién después de una revisión sin violaciones en todas las pantallas se pasaría a `Content-Security-Policy`.
+
+### Verificaciones pendientes (activación de producción y QA integral)
+
+Los tests comprueban la configuración (`cabecerasDeSeguridad.test.ts` y `despliegue-vercel.test.ts`), no lo que entregan los proveedores. Al activar producción, sin cambiar variables ni dominios para hacerlo:
+
+1. **Backend en Railway:** `curl -I https://<dominio-del-backend>/health` tiene que traer `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Content-Security-Policy` y `Cache-Control: no-store`. Hay reportes de que el borde de Railway quita cabeceras de la aplicación. Si falta alguna, se informa al equipo antes de seguir.
+2. **Frontend en Vercel:** `curl -I https://<dominio-del-frontend>/` y `curl -I https://<dominio-del-frontend>/clientes` tienen que traer las tres cabeceras de `vercel.json` y la `Strict-Transport-Security` que agrega Vercel.
+3. **En un navegador real, con las cabeceras activas:** el login, el cambio de contraseña, al menos una operación que escriba por rol habilitado y la vista previa de un PDF y de una imagen ficticios. Todo debe funcionar sin errores de consola ni de red (`403 ORIGEN_NO_PERMITIDO`, marcos bloqueados).
+4. **CSP del frontend:** evaluarla primero como `Content-Security-Policy-Report-Only`, con la propuesta de arriba. Recién se hace obligatoria después de recorrer todas las pantallas sin violaciones.
 
 ## Prueba de humo posterior al despliegue
 

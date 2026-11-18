@@ -141,6 +141,41 @@ describe('vercel.json', () => {
     });
   });
 
+  describe('cabeceras de seguridad del frontend', () => {
+    const regla = () => {
+      const encontrada = config.headers?.find((candidata) =>
+        candidata.headers.some(({ key }) => key.toLowerCase() === 'x-content-type-options'),
+      );
+      if (!encontrada) throw new Error('vercel.json no tiene las cabeceras de seguridad');
+      return encontrada;
+    };
+    const cabeceras = () =>
+      Object.fromEntries(regla().headers.map(({ key, value }) => [key.toLowerCase(), value]));
+
+    it('nosniff, Referrer-Policy y protección contra framing', () => {
+      expect(cabeceras()).toEqual({
+        'x-content-type-options': 'nosniff',
+        // No manda la URL a otros sitios. No condiciona `verificarOrigen`: las escrituras de la API
+        // usan `fetch()` en modo `cors` y llevan su `Origin` real con cualquier política
+        // (docs/deployment.md, "Cabeceras de seguridad").
+        'referrer-policy': 'same-origin',
+        // No `DENY`: la vista previa de documentos muestra un iframe propio (URL `blob:`).
+        'x-frame-options': 'SAMEORIGIN',
+      });
+    });
+
+    it('cubren todas las rutas de la SPA y los assets, pero no /api (lleva las del backend)', () => {
+      const patron = compilar(regla().source);
+
+      for (const path of [...pathsDeLaSpa(routes), '/assets/index-abc.js', '/index.html']) {
+        expect({ path, cubierto: patron.test(path) }).toEqual({ path, cubierto: true });
+      }
+      for (const path of ['/api', '/api/', '/api/clientes']) {
+        expect({ path, cubierto: patron.test(path) }).toEqual({ path, cubierto: false });
+      }
+    });
+  });
+
   it('no usa Functions, middleware ni routes (el proxy es solo un rewrite)', () => {
     for (const clave of ['functions', 'routes', 'builds', 'middleware', 'crons']) {
       expect(config).not.toHaveProperty(clave);

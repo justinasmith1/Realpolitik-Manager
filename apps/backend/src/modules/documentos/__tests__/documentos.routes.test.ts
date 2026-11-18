@@ -426,6 +426,9 @@ describe('GET /documentos/:id/archivo', () => {
       'x-content-type-options': 'nosniff',
       'content-security-policy': "default-src 'none'; sandbox",
       'cache-control': 'private, no-store',
+      // Las cabeceras comunes de la API (`cabecerasDeSeguridad`) siguen presentes.
+      'x-frame-options': 'DENY',
+      'referrer-policy': 'no-referrer',
     });
   });
 

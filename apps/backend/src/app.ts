@@ -2,6 +2,7 @@ import cors from 'cors';
 import express, { json, type Express } from 'express';
 
 import type { AlmacenamientoDocumentos } from './lib/almacenamiento/almacenamiento';
+import { cabecerasDeSeguridad } from './middleware/cabecerasDeSeguridad';
 import { errorHandler } from './middleware/error-handler';
 import { notFoundHandler } from './middleware/not-found';
 import { sinCache } from './middleware/sinCache';
@@ -69,7 +70,8 @@ const unirRuta = (prefijo: string, ruta: string) => (ruta === '/' ? prefijo : `$
 /**
  * Arma la aplicación Express. No abre ningún puerto: de eso se ocupa server.ts.
  *
- * Orden (ADR-0006 §5): sin caché → CORS (preflight) → `Origin` en toda escritura → rutas públicas
+ * Orden (ADR-0006 §5): cabeceras de seguridad y sin caché → CORS (preflight) → `Origin` en toda
+ * escritura → rutas públicas
  * (`/health`, `/auth`) → sesión obligatoria (401 / 503) → contraseña definitiva (403) → CONSULTA
  * solo lee (403) → cuerpo JSON → routers de negocio, cada ruta con `autorizar(PERMISO)` primero (y
  * recién después multer o la validación) → 404 → errores. Ningún cuerpo se lee, ningún archivo se
@@ -85,6 +87,7 @@ export function createApp({
   app.disable('x-powered-by');
   if (saltosDeProxyConfiables > 0) app.set('trust proxy', saltosDeProxyConfiables);
 
+  app.use(cabecerasDeSeguridad);
   app.use(sinCache);
   // El preflight (`OPTIONS`) termina acá con 204, sin datos: no llega a la sesión ni a las rutas.
   app.use(cors({ origin: corsOrigins }));

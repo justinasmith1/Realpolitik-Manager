@@ -439,6 +439,14 @@ En la API (middleware propio de pocas líneas; Helmet es la alternativa, P12):
 - **Implementado (Backend 2C), solo en `/auth`:** `Cache-Control: no-store` en todas sus respuestas, incluidos los errores (400, 401, 403, 429, 503) y el 404 de rutas inexistentes bajo `/auth`. El resto de la API, con el middleware de cabeceras (P12).
 - `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin`, `Strict-Transport-Security` en producción. `x-powered-by` sigue deshabilitado.
 
+**Implementado (cierre de la Épica 4, P-05).** Detalle en [deployment.md](../deployment.md#cabeceras-de-seguridad):
+
+- **En la API** (`cabecerasDeSeguridad`): `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` y HSTS. Hay dos diferencias con lo planificado:
+  - HSTS se envía siempre, porque el navegador la ignora en HTTP.
+  - `Cross-Origin-Resource-Policy` queda pendiente de decisión.
+- **En el frontend** (`vercel.json`): `nosniff`, `Referrer-Policy: same-origin` y `X-Frame-Options: SAMEORIGIN`. HSTS la pone Vercel.
+- **CSP del frontend:** sigue pendiente. La propuesta usa `frame-ancestors 'self'` y no `'none'`, porque la vista previa de documentos muestra un `iframe` propio con una URL `blob:`.
+
 En el frontend (`headers` de `vercel.json`, al poner en producción): CSP con `default-src 'self'`, `script-src 'self'`, `connect-src 'self'`, `img-src 'self' data: blob:`, `font-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`; estilos en línea solo si la interfaz los necesita. La CSP exacta se valida en un Preview.
 
 #### Proxies confiables y `X-Forwarded-*`
