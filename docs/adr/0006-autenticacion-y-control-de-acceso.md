@@ -253,6 +253,7 @@ Una base caída, la capacidad de argon2 agotada o una sesión que dejó de valer
   - **Desde HU4.2, también `PrismaClientUnknownRequestError`** cuando el SQLSTATE de conexión perdida aparece en el mensaje del conector (`PostgresError { code: "57P01", … }`).
   - Es lo que recibe una consulta del cliente (`deleteMany`, `create`…) dentro de una transacción interactiva cuando se termina la conexión, sin código de Prisma. Comprobado con `pg_terminate_backend` durante la limpieza que abre la sesión rotada.
   - Daba 500 en el login y en el cambio. Cualquier otro error sigue siendo 500.
+  - **Desde el cierre de la épica 4 (S-01), también dos variantes de `P2028`**, reconocidas por `meta.error`: "Unable to start a transaction in the given time" (no hubo conexión libre en `maxWait`, 2 s por defecto; no se ejecutó nada) y "… cannot be executed on an expired transaction" (la transacción superó su `timeout`, 5 s por defecto, por ejemplo esperando un bloqueo de fila, y el motor la revirtió). Reproducido con PostgreSQL 16 en el login y en el cambio de rol de una cuenta con la fila bloqueada: daban 500; ahora el login responde 503 con `Retry-After` y las escrituras de usuarios, 503 `RESULTADO_NO_CONFIRMADO`. Los demás `P2028` (transacción ya confirmada o revertida, inexistente, nivel de aislamiento inválido) y un `P2028` sin `meta.error` siguen siendo 500. No se cambiaron `maxWait`, `timeout` ni el pool, y nada se reintenta solo.
 - El login con la base caída también responde 503, sin calcular hashes.
 - **Implementado (Backend 2B):** `lib/baseDeDatosNoDisponible.ts` traduce esos errores a `BaseDeDatosNoDisponibleError`, sin causa ni detalles (el mensaje de Prisma incluye el host). Todas las operaciones del servicio de sesiones la lanzan. Con la base caída, Prisma lanza `PrismaClientInitializationError` (comprobado con una conexión real a un puerto cerrado), y una validación nunca concede acceso. La traducción a 503 es de la capa HTTP (Backend 2C).
 
@@ -437,6 +438,14 @@ En la API (middleware propio de pocas líneas; Helmet es la alternativa, P12):
 - `Cache-Control: no-store` en **todas** las respuestas de la API (las descargas ya usan `private, no-store`). Crítico con el proxy: el CDN de Vercel no debe guardar una respuesta autenticada (Anexo A). Además, `vercel.json` ya lleva `x-vercel-enable-rewrite-caching: 0` y `Cache-Control: no-store` en `/api/:path*`.
 - **Implementado (Backend 2C), solo en `/auth`:** `Cache-Control: no-store` en todas sus respuestas, incluidos los errores (400, 401, 403, 429, 503) y el 404 de rutas inexistentes bajo `/auth`. El resto de la API, con el middleware de cabeceras (P12).
 - `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin`, `Strict-Transport-Security` en producción. `x-powered-by` sigue deshabilitado.
+
+**Implementado (cierre de la Épica 4, P-05).** Detalle en [deployment.md](../deployment.md#cabeceras-de-seguridad):
+
+- **En la API** (`cabecerasDeSeguridad`): `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` y HSTS. Hay dos diferencias con lo planificado:
+  - HSTS se envía siempre, porque el navegador la ignora en HTTP.
+  - `Cross-Origin-Resource-Policy` queda pendiente de decisión.
+- **En el frontend** (`vercel.json`): `nosniff`, `Referrer-Policy: same-origin` y `X-Frame-Options: SAMEORIGIN`. HSTS la pone Vercel.
+- **CSP del frontend:** sigue pendiente. La propuesta usa `frame-ancestors 'self'` y no `'none'`, porque la vista previa de documentos muestra un `iframe` propio con una URL `blob:`.
 
 En el frontend (`headers` de `vercel.json`, al poner en producción): CSP con `default-src 'self'`, `script-src 'self'`, `connect-src 'self'`, `img-src 'self' data: blob:`, `font-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`; estilos en línea solo si la interfaz los necesita. La CSP exacta se valida en un Preview.
 
@@ -893,7 +902,7 @@ Ninguna cambia el comportamiento implementado; quedan para la decisión del clie
   - unitarios y de rutas de shared, backend y frontend;
   - integración con PostgreSQL en una base descartable: las seis suites del historial, 60 de 60;
   - un recorrido de 38 comprobaciones por la API real (proxy de Vite → Express → `realpolitik_db`), con sesiones reales de los tres roles, suplantación, cuenta renombrada o desactivada y una entrada histórica.
-- **Fuera de HU4.6:** en la corrida completa de integración fallan cuatro pruebas de concurrencia de auth, contactos y usuarios en este entorno (Windows con Docker Desktop). Fallan igual sin la migración de HU4.6 ([database.md](../development/database.md#pruebas-de-hu46-responsable-de-los-cambios-de-estado)).
+- **Fuera de HU4.6:** en la corrida completa de integración fallaban cuatro pruebas de concurrencia de auth, contactos y usuarios en este entorno (Windows con Docker Desktop). Fallaban igual sin la migración de HU4.6. En el cierre de la Épica 4 no se reprodujeron en un entorno sano (20 de 20 en verde): eran fallas de un entorno degradado. Desde entonces, si vuelven a aparecer, fallan con un mensaje que lo explica ([database.md](../development/database.md#pruebas-de-hu46-responsable-de-los-cambios-de-estado)).
 - **Pendiente:** QA visual manual (escritorio, 375 px, claro y oscuro, zoom) y despliegue. Integrada en `main` (PR #61), con el CI en verde (Node 24).
 
 **HU4.5 — administración de usuarios (2026-11-16, integrada en `main`, PR #58):**

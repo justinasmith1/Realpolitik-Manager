@@ -213,28 +213,47 @@ La migración `20261116120000_hu4_6_responsable_historial` (HU4.6) crea el enum 
 
 ## Tests de integración
 
-Las suites `*.integration.test.ts` del backend (y los `*.api.test.tsx` del frontend) corren contra PostgreSQL real. Sin `TEST_DATABASE_URL` se saltan, y **se niegan a correr** si esa base no se llama `*_audit` o `*_test`: nunca apuntan a la de desarrollo. Cada suite borra lo que crea. Las de requisitos (`requisitos.integration` y `requisitos.masivo`) exigen además que se llame exactamente `realpolitik_test`; el host y el puerto son los de `TEST_DATABASE_URL`, como en las demás.
+Las suites `*.integration.test.ts` del backend (y los `*.api.test.tsx` del frontend) corren contra PostgreSQL real. Sin `TEST_DATABASE_URL` se saltan. Con ella, cada suite comprueba el destino antes de escribir (ver [Qué se verifica antes de escribir](#qué-se-verifica-antes-de-escribir)) y borra solo lo que crea.
 
-> **Las suites que escriben datos van contra una instancia descartable.** Si tu `realpolitik_test` local tiene las cuentas de la QA manual (el administrador de QA, la cuenta `CONSULTA` de [qa-consulta.md](qa-consulta.md)), no la uses para `test:integration` ni para `test:api`: usá otra base descartable (por ejemplo, `realpolitik_hu45_test`, ver [Pruebas de HU4.5](#pruebas-de-hu45-administración-de-usuarios)) o, para las de requisitos, otra instancia de PostgreSQL con una base `realpolitik_test` vacía. Los ejemplos de abajo usan ese nombre porque es el del CI, que crea una base efímera. **`docker-compose.yml` también define `TEST_DATABASE_URL` hacia `realpolitik_test`** en el servicio `backend`: antes de correr pruebas, dentro o fuera del contenedor, verificá a qué base apunta de verdad.
+**La batería completa (`test:integration`) necesita una instancia PostgreSQL descartable con una base llamada exactamente `realpolitik_test`.** Ese nombre lo exigen las suites de requisitos (`requisitos.integration` y `requisitos.masivo`). Con otro nombre (por ejemplo, `realpolitik_hu45_test`), esas dos fallan en el `beforeAll` sin escribir nada y la corrida no queda en verde. Es el nombre que usa el CI, que crea una base efímera en cada job. Otras suites aceptan cualquier base `*_audit` o `*_test` cuando se corren sueltas (ver [Suites sueltas](#suites-sueltas)).
 
-En los ejemplos, `<usuario>`, `<clave>` y `<puerto>` son los de tu `.env` de la raíz (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`).
+> **La `realpolitik_test` de la batería no es la de QA manual.** Las dos se llaman igual, pero las guardas solo pueden comprobar el nombre y que la conexión real llegue a la base de la URL, en el servidor de la URL. No distinguen una instancia descartable de la de QA manual, que tiene su administrador y la cuenta `CONSULTA` de [qa-consulta.md](qa-consulta.md). Las suites crean y borran cuentas, sesiones y datos, y algunas (`usuarios.concurrencia`, `primerAdministrador`) exigen que no haya ningún `ADMINISTRADOR` activo ajeno. Por eso la batería va contra **otra instancia** de PostgreSQL (otro contenedor, en otro puerto), nueva y vacía, que se elimina al terminar. Nunca uses la base de desarrollo, la de QA manual, la de producción ni una compartida. **`docker-compose.yml` también define `TEST_DATABASE_URL` hacia `realpolitik_test`** en el servicio `backend`: antes de correr pruebas, dentro o fuera del contenedor, verificá a qué base apunta de verdad.
+
+### Toda la integración
 
 ```bash
-# una vez: crear la base descartable, dentro del contenedor del servicio `db` de Compose
-docker compose exec -T db createdb -U <usuario> realpolitik_test
+# 1. Una instancia descartable NUEVA (no el servicio `db` de Compose), escuchando solo en
+#    127.0.0.1 y en un puerto libre. Las credenciales son de este contenedor efímero, como en el CI.
+docker run -d --rm --name rp-integracion -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=realpolitik_test \
+  postgres:16-alpine
 
-# migrarla: Prisma usa DATABASE_URL (TEST_DATABASE_URL no cambia su destino), así que se la
-# pasa explícita para este comando, sin tocar apps/backend/.env. Antes de aplicar nada, Prisma
-# imprime el destino ("Datasource … realpolitik_test … at 127.0.0.1:<puerto>"): revisalo.
-DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik_test?schema=public" \
+# 2. Migrarla. Prisma usa DATABASE_URL (TEST_DATABASE_URL no cambia su destino), así que se la
+#    pasa explícita para este comando, sin tocar apps/backend/.env. Antes de aplicar nada, Prisma
+#    imprime el destino ("Datasource … realpolitik_test … at 127.0.0.1:55432"): revisalo.
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:55432/realpolitik_test?schema=public" \
   pnpm --filter @realpolitik/backend db:migrate:deploy
 
-# backend
-TEST_DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik_test?schema=public" \
+# 3. La batería, de a una suite
+TEST_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:55432/realpolitik_test?schema=public" \
   pnpm --filter @realpolitik/backend test:integration
+
+# 4. Eliminar la instancia (con --rm, detenerla la borra junto con sus datos)
+docker stop rp-integracion
 ```
 
-`test:integration` corre las suites **de a una** (`--no-file-parallelism`), también en el CI. Todas comparten la misma base y varias operaciones usan transacciones `SERIALIZABLE` (abrir una rendición, aplicar o reemplazar un documento…). Con las suites en paralelo, PostgreSQL detecta conflictos de serialización entre transacciones que tocan datos distintos (en tablas chicas los predicate locks cubren páginas o tablas enteras), se agotan los reintentos y un alta responde 500: los tests fallaban de forma intermitente. Medido en local con 259 tests: en paralelo, 3 de 3 corridas fallaron (11–16 s); de a una, 3 de 3 pasaron (23–25 s). Para correr solo algunas, usá `vitest` directo con el mismo flag: `pnpm --filter @realpolitik/backend exec vitest run --no-file-parallelism rendiciones.envio.integration`.
+`test:integration` corre las suites **de a una** (`--no-file-parallelism`), también en el CI. Todas comparten la misma base y varias operaciones usan transacciones `SERIALIZABLE` (abrir una rendición, aplicar o reemplazar un documento…). Con las suites en paralelo, PostgreSQL detecta conflictos de serialización entre transacciones que tocan datos distintos (en tablas chicas los predicate locks cubren páginas o tablas enteras), se agotan los reintentos y un alta responde 500: los tests fallaban de forma intermitente. Medido en local con 259 tests: en paralelo, 3 de 3 corridas fallaron (11–16 s); de a una, 3 de 3 pasaron (23–25 s).
+
+### Suites sueltas
+
+Para correr solo algunas, usá `vitest` directo con el mismo flag: `pnpm --filter @realpolitik/backend exec vitest run --no-file-parallelism rendiciones.envio.integration` (`exec vitest` no corre `build:deps`: compilá shared y generá el cliente de Prisma antes). Cada suite acepta estos nombres de base, siempre en una instancia descartable:
+
+| Suites                                                                | Base de `TEST_DATABASE_URL`                            |
+| --------------------------------------------------------------------- | ------------------------------------------------------ |
+| `requisitos.integration`, `requisitos.masivo`                         | Solo `realpolitik_test`                                |
+| `documentos.permisos.integration`                                     | `*_test`                                               |
+| `cambioDeContrasena.integration`, `usuarios.concurrencia.integration` | `*_audit` o `*_test`, y además en un host local        |
+| Las demás                                                             | `*_audit` o `*_test` (p. ej., `realpolitik_hu45_test`) |
 
 **Suites de autenticación (HU4.1 y HU4.2):**
 
@@ -245,6 +264,86 @@ TEST_DATABASE_URL="postgresql://<usuario>:<clave>@127.0.0.1:<puerto>/realpolitik
   - Los borra al terminar el test y otra vez en `afterAll`.
   - Como las suites corren de a una, no afectan a las demás.
 - `primerAdministrador.integration` necesita que la base no tenga ningún `ADMINISTRADOR` activo. Si hay uno (por ejemplo, una cuenta creada a mano para probar la app), la suite falla con un mensaje y no la toca.
+
+### Qué se verifica antes de escribir
+
+Son tres protecciones distintas que se suman. Ninguna se puede saltear con una variable, y las dos primeras corren antes de la primera escritura, incluidas las cuentas y sesiones de prueba.
+
+**1. Restricción de nombres.** `urlDeBaseDescartable` rechaza, al cargar el archivo, una base cuyo nombre no termine en `_audit` o `_test`. Algunas suites agregan su propia restricción ([Suites sueltas](#suites-sueltas)):
+
+- Requisitos exige exactamente `realpolitik_test` y PostgreSQL 16 en `requisitos.integration`.
+- `documentos.permisos` exige el sufijo `_test`.
+- `cambioDeContrasena` y `usuarios.concurrencia` exigen un host local.
+
+El nombre solo dice a qué base apunta la URL, no a cuál se conecta de verdad la suite.
+
+**2. Verificación de la conexión efectiva (todas las suites).** En el `beforeAll`, `conectarBaseDePrueba` (`clientes/__tests__/baseVerificada.ts`) hace, en este orden:
+
+1. Aplica la restricción propia de la suite, si la tiene.
+2. Fija `DATABASE_URL` e importa `lib/prisma` dinámicamente.
+3. Abre una conexión de referencia con la URL y exige que `current_database()` sea la base de su nombre.
+4. Exige que `lib/prisma` y cualquier otra conexión de la suite (por ejemplo, la `otraConexion` de `cambioDeContrasena`) estén en esa misma base y en el mismo servidor. Para eso compara una huella: el inicio del postmaster y el puerto.
+
+Así atrapa un `lib/prisma` creado antes con otra URL: el singleton de `globalThis` o un import estático que tomó el `.env`. Solo lee. Si algo no coincide, desconecta lo que se abrió y lanza; no escribe, no limpia ni migra la base equivocada.
+
+La suite se marca como verificada recién después de esa comprobación, y solo entonces crea las cuentas (`sesiones.preparar()`) y los datos. El `afterAll` solo limpia si la suite quedó verificada. Si la preparación falla después de verificar, el `afterAll` igual borra lo de la corrida (`finally`), siempre por la marca propia de cada suite.
+
+Las suites de Usuarios (`cuentasDePrueba`) y de Requisitos (`verificarConexionDeRequisitos`) usan la misma verificación con sus restricciones.
+
+**3. Instancia descartable.** Verificar bien la conexión no distingue la instancia de QA manual de una descartable si las dos tienen una base con el mismo nombre. Las dos primeras protecciones solo confirman que la suite escribe en la base de la URL. Que esa URL lleve a una instancia nueva, vacía y descartable depende de quien corre las pruebas ([Toda la integración](#toda-la-integración)).
+
+### Si una guarda rechaza la corrida
+
+El mensaje dice qué base recibió. **No cambies la guarda, el nombre esperado ni la URL para que pase contra una base existente.**
+
+- **Nombre no permitido** (`solo se permiten bases descartables`, `solo puede utilizar realpolitik_test`, `no termina en _test`): levantá una instancia descartable con el nombre que pide esa suite (para la batería, `realpolitik_test`), o corré solo las suites que aceptan tu base.
+- **La conexión apunta a otra base** (`Una conexión de la suite apunta a…`, `La URL de prueba lleva a…`, `La conexión no es realpolitik_test`): `lib/prisma` se creó con otra URL (un import estático, o un `DATABASE_URL` distinto ya cargado) o la URL no lleva a la base de su nombre. Si el mensaje nombra la misma base dos veces (`apunta a "realpolitik_test" y no a "realpolitik_test" de ese servidor`), la conexión está en una base con ese nombre pero en otro servidor, por ejemplo la instancia de QA manual. La suite no escribió nada. Revisá los imports y las variables antes de volver a correrla.
+- **Versión** (`no es PostgreSQL 16`): usá la imagen `postgres:16`, como el CI.
+- **Datos ajenos** (por ejemplo, `primerAdministrador` encuentra un `ADMINISTRADOR` activo): la base no está vacía. Creá una instancia nueva; no borres esos datos.
+
+### Si falla una prueba de concurrencia
+
+Las pruebas de carreras ordenan las operaciones con bloqueos reales de PostgreSQL. Una conexión retiene una fila y el test espera, en `pg_stat_activity`, a que la operación quede bloqueada esperándola (`esperarEnEspera`, en `usuarios/__tests__/entornoDeUsuarios.ts`). Cada espera tiene un plazo menor que el timeout de su test. Si no se cumple, el test falla con un mensaje propio y no con un timeout de Vitest:
+
+| Dónde                                                                 | Plazo                                  | Timeout del test                               |
+| --------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------- |
+| `usuarios.concurrencia`, `usuarios.http`                              | 10 s por espera (el valor por defecto) | 30 s                                           |
+| `cambioDeContrasena`                                                  | 2 s por espera (hay tests con dos)     | 5 s                                            |
+| `contactos`, escritura concurrente sobre un contacto                  | 2 s                                    | 5 s (y 5 s la transacción que retiene la fila) |
+| `sesiones.service`, creaciones simultáneas (sin bloqueos que esperar) | 4 s desde que empieza el test          | 5 s                                            |
+
+En un entorno sano, estas esperas tardan milisegundos. No subas plazos ni timeouts para que una corrida pase: primero mirá qué dice el mensaje.
+
+**Cómo leer el mensaje:**
+
+- **`una operación terminó antes de quedar esperando (… ms): …`**: la operación no llegó al bloqueo; terminó con el resultado que se muestra:
+  - Un error de Prisma, por ejemplo `P2028` con "Unable to start a transaction in the given time", significa que no pudo abrir la transacción a tiempo: el pool o la base estaban saturados.
+  - `respondió 200`, o cualquier éxito, significa que la retención no bloqueó lo que el test suponía (por ejemplo, retuvo otra fila).
+- **`a los … ms (… consultas, plazo … ms) había 0 de 1 …`**: se agotó el plazo. Debajo va la lista de conexiones de la base que no están inactivas en ese momento. Las marcadas con `*` contienen el fragmento que el test busca.
+  - Si la consulta de la operación no aparece, no llegó a la base: el entorno está lento (argon2, pool, Docker).
+  - Si aparece con `*` pero sin `Lock/…`, avanzó por otro camino.
+  - Si hay una consulta bloqueada (`Lock/…`) sin `*`, la operación espera en otro lugar o el texto de la consulta cambió y el fragmento del test ya no coincide. Los fragmentos identifican consultas por comentarios como `usuarios:bloquear-usuario` o `auth:crear-sesion`.
+- **`De N creaciones simultáneas terminaron M antes del plazo del test`** (`sesiones.service`): no es un fallo del límite de sesiones. La base tarda demasiado en cada transacción.
+- **`Test timed out in 5000ms` o `Hook timed out in 10000ms`**: puede seguir apareciendo si lo lento es la preparación (crear cuentas, calcular hashes) y no la carrera. Es la misma señal de entorno degradado.
+
+Una retención que el test no llegó a soltar se suelta en el `afterEach`. Así una falla no deja filas bloqueadas que hagan vencer la limpieza o los tests siguientes.
+
+**Diagnóstico del entorno**, siempre contra la instancia descartable, nunca contra una base compartida:
+
+1. **Docker Desktop:** `docker desktop status` tiene que decir `running`. Si `docker ps` responde `Docker Desktop is unable to start`, el motor está detenido y ningún contenedor corre. Antes de reiniciarlo con `docker desktop restart`, recordá que el reinicio detiene todos los contenedores. `docker stats --no-stream <contenedor>` muestra si el contenedor está sin CPU o sin memoria.
+2. **PostgreSQL:** `docker exec <contenedor> psql -U postgres -d realpolitik_test -c '\timing on' -c 'SELECT 1'` tiene que responder en pocos milisegundos. Si una corrida quedó colgada, `SELECT pid, state, wait_event_type, left(query, 80) FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle';` muestra quién espera a quién.
+3. **Prisma:** los códigos dicen qué se agotó:
+   - `P2028` con "Unable to start a transaction in the given time": no consiguió conexión para abrir la transacción (2 s).
+   - `P2028` con "Transaction already closed" o "expired transaction": la transacción superó sus 5 s.
+   - `P2024`: se agotó la espera de una conexión del pool.
+
+   El pool por defecto abre `núcleos × 2 + 1` conexiones. Limitarlo no reproduce las fallas en un entorno sano: con 5 y con 2 conexiones, las pruebas pasan.
+
+4. **Repetí la suite sola**, con la ruta exacta, porque el filtro de Vitest también toma archivos cuyo nombre la contiene: `pnpm --filter @realpolitik/backend exec vitest run --no-file-parallelism src/modules/<módulo>/__tests__/<suite>.integration.test.ts`. Si pasa sola y repetida, fue un error transitorio del entorno. Si falla siempre con el mismo mensaje en un entorno sano, es un defecto y hay que investigarlo.
+
+### Frontend contra la API real
+
+En los ejemplos que siguen, `<usuario>`, `<clave>` y `<puerto>` son los de tu `.env` de la raíz (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`).
 
 El frontend contra la API real (`test:api`) necesita además un backend levantado contra esa misma base, en otro puerto (el CI usa el 3999), y `TEST_API_URL`:
 
@@ -274,11 +373,11 @@ En el CI todo esto lo hace el workflow con una base efímera. Esos archivos (`Ed
 
 Las suites de Usuarios desactivan cuentas, cambian roles, restablecen contraseñas y revocan sesiones, así que cada base tiene un uso:
 
-| Base                    | Uso                                                         | Suites que escriben                    |
-| ----------------------- | ----------------------------------------------------------- | -------------------------------------- |
-| `realpolitik_db`        | Desarrollo (`apps/backend/.env`)                            | Nunca: la rechazan todas las guardas   |
-| `realpolitik_test`      | QA manual, con su administrador y sus cuentas de prueba     | No (ver "Suites de Requisitos" abajo)  |
-| `realpolitik_hu45_test` | Integración automatizada de HU4.5 (y del resto del backend) | Sí, de a una (`--no-file-parallelism`) |
+| Base                    | Uso                                                                           | Suites que escriben                    |
+| ----------------------- | ----------------------------------------------------------------------------- | -------------------------------------- |
+| `realpolitik_db`        | Desarrollo (`apps/backend/.env`)                                              | Nunca: la rechazan todas las guardas   |
+| `realpolitik_test`      | QA manual, con su administrador y sus cuentas de prueba                       | No (ver "Suites de Requisitos" abajo)  |
+| `realpolitik_hu45_test` | Integración automatizada de HU4.5 (y del resto del backend, salvo Requisitos) | Sí, de a una (`--no-file-parallelism`) |
 
 `realpolitik_hu45_test` se crea y se migra como `realpolitik_test` (sección anterior), cambiando el nombre. `usuarios.concurrencia.integration` y `primerAdministrador.integration` necesitan además que no haya **ningún** `ADMINISTRADOR` activo ajeno: si lo hay, fallan con un mensaje sin tocarlo. Por eso no pueden correr en la base de QA manual.
 
@@ -293,7 +392,7 @@ Las suites de Usuarios desactivan cuentas, cambian roles, restablecen contraseñ
 
 Motivo: durante el desarrollo de HU4.5, una suite con un `lib/prisma` inicializado antes de tiempo se conectó a la base de desarrollo aunque `TEST_DATABASE_URL` apuntaba a una de prueba. La tercera guarda existe para que eso no pueda volver a escribir en una base equivocada.
 
-**Suites de Requisitos.** `requisitos.integration` y `requisitos.masivo` exigen una base llamada exactamente `realpolitik_test` y rechazan `realpolitik_hu45_test`. Decisión del proyecto: **no se corren contra la instancia de `realpolitik_test` usada para QA manual**. Si hay que correrlas, se usa una instancia de PostgreSQL descartable (otro contenedor u otro puerto) con una base de ese nombre. Sus guardas no se debilitan.
+**Suites de Requisitos.** `requisitos.integration` y `requisitos.masivo` exigen una base llamada exactamente `realpolitik_test` y rechazan `realpolitik_hu45_test`. Por eso la batería completa no corre contra `realpolitik_hu45_test`. Decisión del proyecto: **no se corren contra la instancia de `realpolitik_test` usada para QA manual**. Si hay que correrlas, se usa una instancia de PostgreSQL descartable (otro contenedor u otro puerto) con una base de ese nombre ([Toda la integración](#toda-la-integración)). Antes de crear nada verifican la conexión real ([Qué se verifica antes de escribir](#qué-se-verifica-antes-de-escribir)). Sus guardas no se debilitan.
 
 **Vitest en Windows.** Con el directorio de trabajo escrito con la unidad en minúscula (`d:\…`), algunos `vi.mock(ruta, async (original) => …)` parciales no interceptan el módulo y el test termina en el cliente HTTP real (en el frontend, `Pedido no simulado`). Con la unidad en mayúscula (`D:\…`) pasan. Se reprodujo igual con el código de `main`: no es un defecto de la aplicación. El CI corre en Linux y no le afecta. En Windows, abrí la terminal (o el editor) en la ruta con la unidad en mayúscula antes de correr los tests.
 
@@ -306,7 +405,7 @@ Las seis suites del historial corren contra una base descartable, de a una (`--n
 
 Resultado: 60 de 60. Las suites que crean rendiciones las borran antes que las cuentas (`limpiar()`), porque la FK del responsable es `RESTRICT`.
 
-**Fallos preexistentes de concurrencia (no son de HU4.6).** En la corrida completa de integración, en Windows con Docker Desktop, fallan siempre cuatro pruebas de módulos que HU4.6 no toca:
+**Fallos de concurrencia observados durante HU4.6 (entorno degradado, no son de HU4.6).** Durante HU4.6, en la corrida completa de integración en Windows con Docker Desktop, fallaban de manera repetida cuatro pruebas de módulos que HU4.6 no toca. Es un registro histórico: una revisión posterior no los reprodujo en un entorno sano (ver más abajo).
 
 | Suite                               | Prueba                                                             | Síntoma                                                                            |
 | ----------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
@@ -315,14 +414,21 @@ Resultado: 60 de 60. Las suites que crean rendiciones las borran antes que las c
 | `cambioDeContrasena.integration`    | PostgreSQL corta la transacción después de guardar el hash         | Timeout del test (5 s)                                                             |
 | `usuarios.concurrencia.integration` | Toda la suite (22 omitidos)                                        | Timeout del `beforeAll` (10 s)                                                     |
 
-Evidencia:
+Lo que se registró entonces:
 
-- Se reproducen corridas solas y repetidas.
-- Siguen fallando con `connection_limit=40` y con `UV_THREADPOOL_SIZE=16`.
-- La latencia de commit del contenedor es de 1 a 2 ms.
-- **Fallan igual en una base migrada sin la migración de HU4.6.**
+- Se reproducían en corridas solas y repetidas.
+- Seguían fallando con `connection_limit=40` y con `UV_THREADPOOL_SIZE=16`.
+- La latencia de commit del contenedor era de 1 a 2 ms.
+- **Fallaban igual en una base migrada sin la migración de HU4.6.**
 
-La causa queda para la historia de deuda técnica: son tiempos de las pruebas de carreras en este entorno, no un defecto de la aplicación demostrado.
+**Revisión en el cierre de la Épica 4 (noviembre de 2026).** Contra una instancia descartable nueva y sana, en la misma máquina:
+
+- **20 de 20 corridas en verde:** cada una de las cuatro suites corrió 5 veces. Después de los cambios descritos en [Si falla una prueba de concurrencia](#si-falla-una-prueba-de-concurrencia) se repitió: otras 25 corridas (las cuatro suites y `usuarios.http`), todas en verde.
+- **Margen amplio:** las cuatro pruebas de la tabla tardan entre 27 y 429 ms frente a timeouts de 5 s. Los tests que esperan bloqueos tardan como mucho 340 ms. La suite `usuarios.concurrencia` completa tarda 4 a 6 s, y su `beforeAll` entra holgado en sus 10 s.
+- **El pool no es la causa:** con el pool limitado a 5 y a 2 conexiones, los 20 inicios de sesión simultáneos pasan.
+- **Con la CPU de PostgreSQL limitada:** con 0,1 núcleos pasan las cuatro suites. Con 0,02 núcleos, de esas cuatro suites solo fallan las dos pruebas de creaciones simultáneas de `sesiones.service`, ahora con el mensaje de [Si falla una prueba de concurrencia](#si-falla-una-prueba-de-concurrencia).
+
+Conclusión: **no hay un defecto sistemático de la aplicación ni de las pruebas.** Las fallas aparecen solo con un entorno degradado, cuando cada transacción tarda del orden de 100 ms o más. Eso es compatible con el `ERROR_NO_SYSTEM_RESOURCES` que registró el [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) en esta máquina y con los estados en que Docker Desktop quedaba sin arrancar. Si vuelven a fallar, se pueden repetir como errores transitorios. Lo que faltaba era que fallaran con un mensaje que lo explicara, en vez de un timeout opaco. Eso se agregó sin subir ningún timeout ([Si falla una prueba de concurrencia](#si-falla-una-prueba-de-concurrencia)).
 
 ## Pruebas de HU4.4 (permisos de documentos)
 

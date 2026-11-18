@@ -23,10 +23,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // La misma guarda de base descartable que usan todas las suites de integración (no se copia).
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 
 const url = urlDeBaseDescartable();
 
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 let app: Express;
 const clientesCreados: string[] = [];
 
@@ -42,26 +45,32 @@ const sesiones = sesionesDePrueba();
 
 beforeAll(async () => {
   if (url === undefined) return;
-  // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
-  process.env.DATABASE_URL = url;
+  // Antes de cualquier escritura, también de las cuentas: fija DATABASE_URL, importa `lib/prisma`
+  // y verifica que su conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   await sesiones.preparar();
-  ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  // En el orden que piden las FK: rendiciones (sus ítems caen en cascada), requisitos, clientes
-  // y, al final, los tipos de prueba.
-  await prisma.rendicion.deleteMany({ where: { clienteId: { in: clientesCreados } } });
-  await prisma.requisitoCliente.deleteMany({ where: { clienteId: { in: clientesCreados } } });
-  await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
-  await prisma.tipoDocumento.deleteMany({
-    where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
-  });
-  await sesiones.limpiar();
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  // Si la preparación falló después, igual se borran las cuentas de la corrida (`finally`).
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    // En el orden que piden las FK: rendiciones (sus ítems caen en cascada), requisitos, clientes
+    // y, al final, los tipos de prueba.
+    await prisma.rendicion.deleteMany({ where: { clienteId: { in: clientesCreados } } });
+    await prisma.requisitoCliente.deleteMany({ where: { clienteId: { in: clientesCreados } } });
+    await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+    await prisma.tipoDocumento.deleteMany({
+      where: { nombreNormalizado: { startsWith: MARCA_NORMALIZADA } },
+    });
+  } finally {
+    await sesiones.limpiar();
+    await prisma.$disconnect();
+  }
 });
 
 interface TipoJson {

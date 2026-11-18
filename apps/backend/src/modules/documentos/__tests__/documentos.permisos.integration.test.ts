@@ -49,7 +49,7 @@ import {
 } from '../../auth/__tests__/sesionSimulada';
 import { NOMBRE_COOKIE_DE_SESION } from '../../auth/cookieDeSesion';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
-import { exigirBaseDePrueba } from '../../usuarios/__tests__/entornoDeUsuarios';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 
 import { PDF, PNG } from './archivosDePrueba';
 
@@ -80,12 +80,10 @@ beforeAll(async () => {
   if (!BASE_DE_LA_URL.endsWith('_test')) {
     throw new Error(`"${BASE_DE_LA_URL}" no termina en _test: esta suite no se ejecuta.`);
   }
-  // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes, y pisa la de desarrollo.
-  process.env.DATABASE_URL = url;
-  ({ prisma } = await import('../../../lib/prisma'));
-  // Primero la guarda, sobre la misma conexión que usan las cuentas, los servicios y la app. Si
-  // falla, lanza: no se crea nada y el `afterAll` tampoco escribe (`prismaInicializado` sigue false).
-  await exigirBaseDePrueba(url, [prisma]);
+  // Fija DATABASE_URL, importa `lib/prisma` y verifica su conexión real (`exigirBaseDePrueba`), la
+  // misma que usan las cuentas, los servicios y la app. Si falla, la desconecta y lanza: no se crea
+  // nada y el `afterAll` tampoco escribe (`prismaInicializado` sigue false).
+  prisma = await conectarBaseDePrueba(url);
   const [fila] = await prisma.$queryRaw<{ base: string }[]>`SELECT current_database() AS "base"`;
   baseEnUso = fila?.base;
   prismaInicializado = true;

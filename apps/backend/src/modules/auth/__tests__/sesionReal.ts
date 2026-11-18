@@ -36,6 +36,13 @@ export function sesionesDePrueba() {
   const prefijo = `sesiones-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const tokens = new Map<IdentidadDePrueba, string>();
   const ids = new Map<IdentidadDePrueba, string>();
+  /**
+   * `preparar()` llegó a intentar una escritura. Se marca ANTES de la primera: si falla a mitad de
+   * camino (la cuenta se creó y su sesión no, o el `create` se confirmó y la respuesta se perdió),
+   * `limpiar()` igual borra lo de este archivo. Si `preparar()` no llegó a escribir (por ejemplo,
+   * una guarda lo impidió), `limpiar()` no toca la base.
+   */
+  let intentoEscribir = false;
 
   return {
     prefijo,
@@ -44,6 +51,7 @@ export function sesionesDePrueba() {
     async preparar(): Promise<void> {
       const { prisma } = await import('../../../lib/prisma');
       const { crearSesion } = await import('../sesiones.service');
+      intentoEscribir = true;
       for (const identidad of IDENTIDADES) {
         const usuario = await prisma.usuario.create({
           data: {
@@ -80,11 +88,15 @@ export function sesionesDePrueba() {
       return id;
     },
 
-    /** Borra las cuentas de este archivo y, en cascada, sus sesiones. */
+    /**
+     * Borra las cuentas de este archivo y, en cascada, sus sesiones, también si `preparar()` falló
+     * a mitad de camino. Se puede llamar más de una vez.
+     */
     async limpiar(): Promise<void> {
-      if (tokens.size === 0) return;
+      if (!intentoEscribir) return;
       const { prisma } = await import('../../../lib/prisma');
-      await prisma.usuario.deleteMany({ where: { email: { startsWith: prefijo } } });
+      // Con el guion: la marca de otra corrida que empiece igual no queda incluida.
+      await prisma.usuario.deleteMany({ where: { email: { startsWith: `${prefijo}-` } } });
     },
   };
 }

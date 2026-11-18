@@ -5,7 +5,7 @@
 //
 // Sin `TEST_DATABASE_URL` se saltan. Misma política de entorno que requisitos.integration.test.ts.
 //
-//   TEST_DATABASE_URL="postgresql://usuario:clave@127.0.0.1:5433/realpolitik_test?schema=public" \
+//   TEST_DATABASE_URL="postgresql://usuario:clave@127.0.0.1:<puerto>/realpolitik_test?schema=public" \
 //     pnpm --filter @realpolitik/backend exec vitest run requisitos.masivo.integration
 
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 
 import { urlDeBaseDescartable } from './baseDescartable';
+import { verificarConexionDeRequisitos } from './conexionDeRequisitos';
 import { exigirBaseDeEstaSuite } from './requisitosIntegrationEntorno';
 
 const url = urlDeBaseDescartable();
@@ -37,17 +38,18 @@ const sesiones = sesionesDePrueba();
 
 beforeAll(async () => {
   if (url === undefined) return;
+  // El nombre exacto, antes de fijar o importar nada.
   exigirBaseDeEstaSuite(url);
+  // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes, y pisa la de desarrollo.
   process.env.DATABASE_URL = url;
-  await sesiones.preparar();
   ({ prisma } = await import('../../../lib/prisma'));
-  const [info] = await prisma.$queryRaw<{ db: string }[]>`SELECT current_database() AS db`;
-  if (info?.db !== 'realpolitik_test') {
-    throw new Error(`La conexión no es realpolitik_test (base=${info?.db ?? 'sin fila'}).`);
-  }
+  // Primero se verifica la conexión real de `lib/prisma`; recién después se escribe. Si falla, la
+  // desconecta y lanza: no se crea nada y el `afterAll` tampoco escribe.
+  await verificarConexionDeRequisitos(url, prisma);
+  prismaInicializado = true;
+  await sesiones.preparar();
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
-  prismaInicializado = true;
 });
 
 afterAll(async () => {

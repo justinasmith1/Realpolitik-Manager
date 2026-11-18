@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 
 const url = urlDeBaseDescartable();
 
@@ -34,12 +35,13 @@ const sesiones = sesionesDePrueba();
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
+  // Antes de cualquier escritura, también de las cuentas: fija DATABASE_URL, importa `lib/prisma`
+  // y verifica que su conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   await sesiones.preparar();
-  ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
-  prismaInicializado = true;
 });
 
 afterAll(async () => {

@@ -20,10 +20,12 @@ import {
   type SesionActual,
 } from '@realpolitik/shared';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import type { createApp as CrearApp } from '../../../app';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
+import { esperarEnEspera } from '../../usuarios/__tests__/entornoDeUsuarios';
 import { hashearContrasena, verificarContrasena } from '../contrasenas';
 import { ProteccionDeLogin } from '../proteccionDeLogin';
 import { generarTokenDeSesion } from '../tokenDeSesion';
@@ -50,6 +52,8 @@ const MARCA = `testc${Date.now().toString(36)}`;
 let prisma: PrismaClient;
 /** Segunda conexión, para retener bloqueos y terminar conexiones como lo haría otro proceso. */
 let otraConexion: PrismaClient;
+/** `lib/prisma` y `otraConexion` pasaron la verificación: recién entonces se escribe o se limpia. */
+let verificadas = false;
 let createApp: typeof CrearApp;
 let LIMITE_DE_SESIONES_VIGENTES: number;
 let hashTemporal: string;
@@ -57,20 +61,28 @@ let secuencia = 0;
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
-  ({ prisma } = await import('../../../lib/prisma'));
+  // La otra conexión (retener filas, terminar backends, triggers) se verifica junto con
+  // `lib/prisma`, antes de cualquier escritura: las dos tienen que estar en la base y el servidor
+  // de la URL. Si no, se desconectan las dos y la suite no escribe nada.
+  otraConexion = new PrismaClient({ datasources: { db: { url } } });
+  prisma = await conectarBaseDePrueba(url, { otras: [otraConexion] });
+  verificadas = true;
   ({ createApp } = await import('../../../app'));
   ({ LIMITE_DE_SESIONES_VIGENTES } = await import('../sesiones.service'));
-  otraConexion = new PrismaClient({ datasources: { db: { url } } });
   hashTemporal = await hashearContrasena(TEMPORAL);
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  await quitarFallaAlConfirmar(); // por si un test se cortó antes de quitarla
-  await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
-  await prisma.$disconnect();
-  await otraConexion.$disconnect();
+  // Solo si las dos conexiones pasaron la verificación: nunca se limpia una base que no es la de la
+  // URL.
+  if (url === undefined || !verificadas) return;
+  try {
+    await quitarFallaAlConfirmar(); // por si un test se cortó antes de quitarla
+    await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
+  } finally {
+    await prisma.$disconnect();
+    await otraConexion.$disconnect();
+  }
 });
 
 const sha256 = (texto: string) => createHash('sha256').update(texto).digest('hex');
@@ -146,6 +158,28 @@ const credencialDe = (id: string) =>
     select: { passwordHash: true, debeCambiarPassword: true, passwordActualizadaEn: true },
   });
 
+/**
+ * Retenciones que un test todavía no soltó (por ejemplo, porque falló antes). `afterEach` las
+ * suelta: si no, la fila sigue bloqueada hasta 60 s y la limpieza del `afterAll` vence esperándola,
+ * con un error que tapa el del test.
+ */
+const retenidas = new Set<() => Promise<void>>();
+
+afterEach(async () => {
+  await Promise.all([...retenidas].map((liberar) => liberar()));
+});
+
+/** Registra una retención para `afterEach`; `soltar` la saca del registro. */
+function registrar(soltar: () => void, transaccion: Promise<unknown>) {
+  const liberar = async () => {
+    retenidas.delete(liberar);
+    soltar();
+    await transaccion.catch(() => undefined);
+  };
+  retenidas.add(liberar);
+  return () => retenidas.delete(liberar);
+}
+
 /** Retiene `FOR UPDATE` sobre una sesión desde la otra conexión hasta que el test la suelte. */
 async function retenerSesion(sesionId: string) {
   let soltar!: () => void;
@@ -161,8 +195,10 @@ async function retenerSesion(sesionId: string) {
     { timeout: 60_000 },
   );
   await lista;
+  const desregistrar = registrar(soltar, transaccion);
   return {
     async soltar() {
+      desregistrar();
       soltar();
       await transaccion;
     },
@@ -191,8 +227,10 @@ async function retenerUsuario(usuarioId: string) {
     { timeout: 60_000 },
   );
   await lista;
+  const desregistrar = registrar(() => soltar(), transaccion);
   return {
     async soltar(primero?: OperacionConcurrente) {
+      desregistrar();
       soltar(primero);
       await transaccion;
     },
@@ -241,22 +279,26 @@ async function quitarFallaAlConfirmar() {
   await otraConexion.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${FALLA_AL_CONFIRMAR}"()`);
 }
 
-/** PIDs de conexiones que esperan un bloqueo con una consulta que contiene `fragmento`. */
-async function bloqueadas(fragmento: string): Promise<number[]> {
-  const filas = await otraConexion.$queryRaw<{ pid: number }[]>`
-    SELECT pid FROM pg_stat_activity
-    WHERE datname = current_database() AND wait_event_type = 'Lock'
-      AND pid <> pg_backend_pid() AND query LIKE ${`%${fragmento}%`}`;
-  return filas.map((fila) => fila.pid);
-}
+/**
+ * Plazo de cada espera de un bloqueo. Va por debajo del timeout de cada test (5 s, el de Vitest),
+ * con lugar para dos esperas seguidas: si no se cumple, el test falla con el diagnóstico de
+ * `esperarEnEspera` y no con un timeout sin explicación. En un entorno sano tarda milisegundos.
+ */
+const PLAZO_DE_BLOQUEO_MS = 2_000;
 
-async function esperarBloqueada(fragmento: string): Promise<number> {
-  for (let i = 0; i < 500; i += 1) {
-    const [pid] = await bloqueadas(fragmento);
-    if (pid !== undefined) return pid;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error(`ninguna conexión quedó esperando en: ${fragmento}`);
+/**
+ * Espera a que una conexión quede esperando un bloqueo en una consulta con `fragmento` y devuelve
+ * su PID. Si `mientras` termina antes (la operación no llegó a bloquearse), falla en el acto.
+ */
+async function esperarBloqueada(
+  fragmento: string,
+  mientras: Promise<unknown> | Promise<unknown>[],
+): Promise<number> {
+  const pids = await esperarEnEspera(otraConexion, fragmento, 1, {
+    plazoMs: PLAZO_DE_BLOQUEO_MS,
+    mientras,
+  });
+  return pids[0] as number;
 }
 
 const REVOCACION = 'UPDATE "Sesion"';
@@ -497,7 +539,7 @@ describe.skipIf(url === undefined)('PUT /auth/password: atomicidad y concurrenci
     const retenida = await retenerSesion((await sesionDe(otra)).id);
 
     const pendiente = cambiar(app, token, { actual: TEMPORAL, nueva: NUEVA }).then((res) => res);
-    const pid = await esperarBloqueada(REVOCACION);
+    const pid = await esperarBloqueada(REVOCACION, pendiente);
     await otraConexion.$queryRaw`SELECT pg_terminate_backend(${pid}::int)`;
     const res = await pendiente;
     await retenida.soltar();
@@ -524,10 +566,10 @@ describe.skipIf(url === undefined)('PUT /auth/password: atomicidad y concurrenci
 
     // 1. El cambio toma el bloqueo del usuario y espera en la revocación.
     const cambio = cambiar(appDelCambio, token, { actual: TEMPORAL, nueva: NUEVA }).then((r) => r);
-    await esperarBloqueada(REVOCACION);
+    await esperarBloqueada(REVOCACION, cambio);
     // 2. El login lee el hash viejo, lo verifica y espera el bloqueo del usuario en `crearSesion`.
     const entrada = login(appDelLogin, usuario.email, TEMPORAL).then((r) => r);
-    await esperarBloqueada(BLOQUEO_DE_USUARIO);
+    await esperarBloqueada(BLOQUEO_DE_USUARIO, [cambio, entrada]);
     // 3. El cambio confirma; el login encuentra otro hash.
     await retenida.soltar();
 
@@ -753,7 +795,7 @@ describe.skipIf(url === undefined)('PUT /auth/password voluntario: concurrencia 
    */
   async function cambiarHastaElBloqueo(app: ReturnType<typeof CrearApp>, token: string) {
     const respuesta = cambiar(app, token, { actual: TEMPORAL, nueva: NUEVA }).then((r) => r);
-    await esperarBloqueada(BLOQUEO_DE_USUARIO);
+    await esperarBloqueada(BLOQUEO_DE_USUARIO, respuesta);
     return { respuesta };
   }
 
@@ -876,10 +918,10 @@ describe.skipIf(url === undefined)('PUT /auth/password voluntario: concurrencia 
 
     // 1. El cambio toma el bloqueo del usuario y espera en la revocación.
     const cambio = cambiar(appDelCambio, token, { actual: TEMPORAL, nueva: NUEVA }).then((r) => r);
-    await esperarBloqueada(REVOCACION);
+    await esperarBloqueada(REVOCACION, cambio);
     // 2. El login lee el hash viejo, lo verifica y espera el bloqueo del usuario en `crearSesion`.
     const entrada = login(appDelLogin, usuario.email, TEMPORAL).then((r) => r);
-    await esperarBloqueada(BLOQUEO_DE_USUARIO);
+    await esperarBloqueada(BLOQUEO_DE_USUARIO, [cambio, entrada]);
     // 3. El cambio confirma (con la sesión rotada); el login encuentra otro hash.
     await retenida.soltar();
 
@@ -903,7 +945,7 @@ describe.skipIf(url === undefined)('PUT /auth/password voluntario: concurrencia 
     const retenida = await retenerSesion(vieja.id);
 
     const pendiente = cambiar(app, token, { actual: TEMPORAL, nueva: NUEVA }).then((r) => r);
-    const pid = await esperarBloqueada(LIMPIEZA_DE_SESIONES);
+    const pid = await esperarBloqueada(LIMPIEZA_DE_SESIONES, pendiente);
     await otraConexion.$queryRaw`SELECT pg_terminate_backend(${pid}::int)`;
     const res = await pendiente;
     await retenida.soltar();
@@ -991,7 +1033,7 @@ describe.skipIf(url === undefined)('POST /auth/login: reemplazo de la sesión an
     const pendiente = login(app, usuario.email)
       .set('Cookie', `${COOKIE}=${token}`)
       .then((r) => r);
-    const pid = await esperarBloqueada(REVOCACION);
+    const pid = await esperarBloqueada(REVOCACION, pendiente);
     await otraConexion.$queryRaw`SELECT pg_terminate_backend(${pid}::int)`;
     const res = await pendiente;
     await retenida.soltar();

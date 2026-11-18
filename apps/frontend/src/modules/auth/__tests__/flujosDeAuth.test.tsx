@@ -596,6 +596,105 @@ describe('F. cierre de sesión', () => {
     },
   );
 
+  it('con la barra lateral colapsada, el error del cierre se ve en la página (no queda oculto)', async () => {
+    servidor.sesion = sesionDePrueba();
+    servidor.forzadas.set('POST /api/auth/logout', NO_DISPONIBLE);
+    const { donde } = abrir('/clientes');
+    const usuario = userEvent.setup();
+    await usuario.click(await screen.findByRole('button', { name: 'Contraer barra lateral' }));
+    await usuario.click(screen.getByRole('button', { name: /^Cuenta de Ana Administrativa/ }));
+    await usuario.click(await screen.findByRole('menuitem', { name: 'Cerrar sesión' }));
+
+    // El aviso va arriba de la página: colapsada a íconos, la barra no tiene lugar para mostrarlo
+    // (antes quedaba `sr-only` en el pie, invisible).
+    const aviso = await within(screen.getByRole('main')).findByRole('alert');
+    expect(aviso).toHaveTextContent(
+      'No pudimos cerrar la sesión: seguís con la sesión abierta. Probá de nuevo.',
+    );
+    const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar"]');
+    expect(sidebar).not.toBeNull();
+    expect(within(sidebar as HTMLElement).queryByRole('alert')).not.toBeInTheDocument();
+    expect(donde()).toBe('/clientes');
+    expect(queryClient.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba());
+
+    // Al expandir la barra, el aviso no se repite en el pie.
+    await usuario.click(screen.getByRole('button', { name: 'Expandir barra lateral' }));
+    expect(within(sidebar as HTMLElement).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('con la barra lateral colapsada, mientras se cierra la sesión hay un indicador a la vista', async () => {
+    servidor.sesion = sesionDePrueba();
+    let responder: (respuesta: Response) => void = () => undefined;
+    servidor.forzadas.set(
+      'POST /api/auth/logout',
+      () => new Promise<Response>((resolver) => (responder = resolver)),
+    );
+    abrir('/clientes');
+    const usuario = userEvent.setup();
+    await usuario.click(await screen.findByRole('button', { name: 'Contraer barra lateral' }));
+    await usuario.click(screen.getByRole('button', { name: /^Cuenta de Ana Administrativa/ }));
+    await usuario.click(await screen.findByRole('menuitem', { name: 'Cerrar sesión' }));
+
+    // En curso: el estado no depende solo de la animación (`aria-busy` y el nombre lo dicen).
+    const disparador = await screen.findByRole('button', { name: /, cerrando sesión$/ });
+    expect(disparador).toHaveAttribute('aria-busy', 'true');
+
+    // jsdom no aplica Tailwind: se comprueba lo que decide la visibilidad con la barra colapsada.
+    // Algún spinner del botón no puede estar debajo de una clase que lo oculte colapsada (el de la
+    // derecha se desvanece con las etiquetas, `group-data-[collapsible=icon]:opacity-0`), y su
+    // contenedor oculto por defecto tiene que mostrarse colapsada.
+    const seVeColapsada = (nodo: Element) => {
+      for (let actual: Element | null = nodo; actual && actual !== disparador;) {
+        const clases = actual.getAttribute('class') ?? '';
+        if (/group-data-\[collapsible=icon\]:(opacity-0|sr-only|hidden)/.test(clases)) return false;
+        if (
+          /(^|\s)hidden(\s|$)/.test(clases) &&
+          !clases.includes('group-data-[collapsible=icon]:flex')
+        )
+          return false;
+        actual = actual.parentElement;
+      }
+      return true;
+    };
+    const spinners = Array.from(disparador.querySelectorAll('.animate-spin'));
+    expect(spinners.some(seVeColapsada)).toBe(true);
+
+    // No se pide dos veces: las opciones del menú quedan deshabilitadas mientras tanto.
+    await usuario.click(disparador);
+    expect(await screen.findByRole('menuitem', { name: 'Cerrar sesión' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await usuario.keyboard('{Escape}');
+
+    // Termina (el servidor no confirma): el indicador se va y el aviso va a la página, como antes.
+    act(() => responder(NO_DISPONIBLE()));
+    const aviso = await within(screen.getByRole('main')).findByRole('alert');
+    expect(aviso).toHaveTextContent('seguís con la sesión abierta');
+    const enReposo = screen.getByRole('button', { name: /^Cuenta de Ana Administrativa/ });
+    expect(enReposo).not.toHaveAttribute('aria-busy');
+    expect(enReposo).not.toHaveAccessibleName(/cerrando sesión/);
+    expect(enReposo.querySelector('.animate-spin')).toBeNull();
+    expect(pedidos().filter((p) => p === 'POST /api/auth/logout')).toHaveLength(1);
+  });
+
+  it('con el origen rechazado (403), también dice que la sesión sigue abierta', async () => {
+    servidor.sesion = sesionDePrueba();
+    servidor.forzadas.set('POST /api/auth/logout', () =>
+      error(403, 'FORBIDDEN', { motivo: 'ORIGEN_NO_PERMITIDO' }),
+    );
+    abrir('/clientes');
+    const usuario = await abrirMenuDeCuenta();
+    await usuario.click(await screen.findByRole('menuitem', { name: 'Cerrar sesión' }));
+
+    expect(
+      await screen.findByText(
+        'No pudimos cerrar la sesión: seguís con la sesión abierta. Recargá la página y probá de nuevo.',
+      ),
+    ).toBeVisible();
+    expect(queryClient.getQueryData(CLAVE_SESION)).toEqual(sesionDePrueba());
+  });
+
   it('si la sesión ya no existía (401), el cierre vale igual', async () => {
     servidor.sesion = sesionDePrueba();
     servidor.forzadas.set('POST /api/auth/logout', SIN_SESION);

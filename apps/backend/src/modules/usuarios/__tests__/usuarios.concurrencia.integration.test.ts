@@ -304,11 +304,11 @@ describe.skipIf(url === undefined)('último ADMINISTRADOR activo', () => {
       // segunda espera el bloqueo de aviso. Sin ese bloqueo, las dos contarían al otro como activo.
       const retenidas = await retenerFilas(tercera, 'Usuario', [a.id, b.id]);
       const unoA = resultado(operacion(a.id, b.id, adminA));
-      await esperarEnEspera(tercera, BLOQUEOS_ADMINISTRATIVOS, 1);
+      await esperarEnEspera(tercera, BLOQUEOS_ADMINISTRATIVOS, 1, { mientras: unoA });
       const unoB = resultado(operacion(b.id, a.id, adminB));
       // Las dos bloqueadas, en el bloqueo que sea: con el de aviso, una espera la fila y la otra el
       // aviso; sin él, cada una esperaría su fila y las dos contarían a la otra como activa.
-      await esperarEnEspera(tercera, BLOQUEOS_ADMINISTRATIVOS, 2);
+      await esperarEnEspera(tercera, BLOQUEOS_ADMINISTRATIVOS, 2, { mientras: [unoA, unoB] });
       await retenidas.soltar();
       const salidas = await Promise.all([unoA, unoB]);
 
@@ -330,11 +330,17 @@ describe.skipIf(url === undefined)('último ADMINISTRADOR activo', () => {
     const primera = resultado(
       s.cambiarEstadoDeUsuario(adminA, { actorId: a.id, usuarioId: b.id, activo: false }),
     );
-    expect(await esperarEnEspera(tercera, CONSULTA.bloqueoAdministrativo)).toHaveLength(1);
+    expect(
+      await esperarEnEspera(tercera, CONSULTA.bloqueoAdministrativo, 1, { mientras: primera }),
+    ).toHaveLength(1);
     const segunda = resultado(
       s.modificarUsuario(adminB, { actorId: b.id, usuarioId: a.id, cambios: { rol: 'CONSULTA' } }),
     );
-    expect(await esperarEnEspera(tercera, CONSULTA.bloqueoDeAdministradores)).toHaveLength(1);
+    expect(
+      await esperarEnEspera(tercera, CONSULTA.bloqueoDeAdministradores, 1, {
+        mientras: [primera, segunda],
+      }),
+    ).toHaveLength(1);
     // La segunda NO llegó a pedir la fila de `a` (que también está retenida).
     expect(await enEspera(tercera, CONSULTA.bloqueoAdministrativo)).toHaveLength(1);
     await retenidas.soltar();
@@ -348,11 +354,13 @@ describe.skipIf(url === undefined)('último ADMINISTRADOR activo', () => {
     const desactivar = resultado(
       s.cambiarEstadoDeUsuario(adminA, { actorId: a.id, usuarioId: b.id, activo: false }),
     );
-    await esperarEnEspera(tercera, BLOQUEOS_ADMINISTRATIVOS, 1);
+    await esperarEnEspera(tercera, BLOQUEOS_ADMINISTRATIVOS, 1, { mientras: desactivar });
     const degradar = resultado(
       s.modificarUsuario(adminB, { actorId: b.id, usuarioId: a.id, cambios: { rol: 'CONSULTA' } }),
     );
-    await esperarEnEspera(tercera, BLOQUEOS_ADMINISTRATIVOS, 2);
+    await esperarEnEspera(tercera, BLOQUEOS_ADMINISTRATIVOS, 2, {
+      mientras: [desactivar, degradar],
+    });
     await retenidas.soltar();
 
     const salidas = await Promise.all([desactivar, degradar]);
@@ -435,9 +443,9 @@ describe.skipIf(url === undefined)('carreras con el inicio de sesión', () => {
   ) {
     const retenida = await retenerFilas(tercera, 'Usuario', [usuarioId]);
     const uno = resultado(primero.lanzar());
-    await esperarEnEspera(tercera, primero.espera);
+    await esperarEnEspera(tercera, primero.espera, 1, { mientras: uno });
     const dos = resultado(segundo.lanzar());
-    await esperarEnEspera(tercera, segundo.espera);
+    await esperarEnEspera(tercera, segundo.espera, 1, { mientras: [uno, dos] });
     await retenida.soltar();
     return Promise.all([uno, dos]);
   }
@@ -708,7 +716,7 @@ describe.skipIf(url === undefined)('fallas de PostgreSQL', () => {
     const baja = resultado(
       s.cambiarEstadoDeUsuario(adminA, { actorId: actor.id, usuarioId: cuenta.id, activo: false }),
     );
-    const [pid] = await esperarEnEspera(tercera, CONSULTA.revocacion);
+    const [pid] = await esperarEnEspera(tercera, CONSULTA.revocacion, 1, { mientras: baja });
     await tercera.$queryRaw`SELECT pg_terminate_backend(${pid}::int)`;
     const salida = await baja;
     await retenida.soltar();

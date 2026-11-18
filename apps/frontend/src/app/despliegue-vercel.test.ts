@@ -141,15 +141,85 @@ describe('vercel.json', () => {
     });
   });
 
+  describe('cabeceras de seguridad del frontend', () => {
+    const regla = () => {
+      const encontrada = config.headers?.find((candidata) =>
+        candidata.headers.some(({ key }) => key.toLowerCase() === 'x-content-type-options'),
+      );
+      if (!encontrada) throw new Error('vercel.json no tiene las cabeceras de seguridad');
+      return encontrada;
+    };
+    const cabeceras = () =>
+      Object.fromEntries(regla().headers.map(({ key, value }) => [key.toLowerCase(), value]));
+
+    it('nosniff, Referrer-Policy y protección contra framing', () => {
+      expect(cabeceras()).toEqual({
+        'x-content-type-options': 'nosniff',
+        // No manda la URL a otros sitios. No condiciona `verificarOrigen`: las escrituras de la API
+        // usan `fetch()` en modo `cors` y llevan su `Origin` real con cualquier política
+        // (docs/deployment.md, "Cabeceras de seguridad").
+        'referrer-policy': 'same-origin',
+        // No `DENY`: la vista previa de documentos muestra un iframe propio (URL `blob:`).
+        'x-frame-options': 'SAMEORIGIN',
+      });
+    });
+
+    it('cubren todas las rutas de la SPA y los assets, pero no /api (lleva las del backend)', () => {
+      const patron = compilar(regla().source);
+
+      for (const path of [...pathsDeLaSpa(routes), '/assets/index-abc.js', '/index.html']) {
+        expect({ path, cubierto: patron.test(path) }).toEqual({ path, cubierto: true });
+      }
+      for (const path of ['/api', '/api/', '/api/clientes']) {
+        expect({ path, cubierto: patron.test(path) }).toEqual({ path, cubierto: false });
+      }
+    });
+  });
+
   it('no usa Functions, middleware ni routes (el proxy es solo un rewrite)', () => {
     for (const clave of ['functions', 'routes', 'builds', 'middleware', 'crons']) {
       expect(config).not.toHaveProperty(clave);
     }
   });
 
-  describe('rewrite hacia el backend (se agrega al activar el proxy)', () => {
+  describe('rewrite hacia el backend (proxy de mismo origen, ADR-0006)', () => {
+    const HOST_DE_PRODUCCION = 'realpolitik-manager.vercel.app';
+    const BACKEND = 'https://realpolitik-manager-production.up.railway.app';
+    const externos = () =>
+      (config.rewrites ?? []).filter((rewrite) => /^[a-z]+:\/\//i.test(rewrite.destination));
+
     it('si existe, tiene la forma segura', () => {
       expect(problemasDelProxy(config)).toEqual([]);
+    });
+
+    it('es el único rewrite externo, el primero, y lleva /api al backend de producción por HTTPS', () => {
+      expect(externos()).toEqual([
+        {
+          source: FUENTE_API,
+          has: [{ type: 'host', value: HOST_DE_PRODUCCION }],
+          destination: `${BACKEND}/:path*`,
+        },
+      ]);
+      expect(config.rewrites?.[0]).toBe(externos()[0]);
+    });
+
+    it('quita el prefijo /api: /api/health llega al backend como /health', () => {
+      const [proxy] = externos();
+      const ruta = '/api/health';
+
+      expect(compilar(proxy?.source ?? '').test(ruta)).toBe(true);
+      expect(proxy?.destination.replace(':path*', ruta.replace(/^\/api\//, ''))).toBe(
+        `${BACKEND}/health`,
+      );
+    });
+
+    it('solo aplica en el host de producción: ningún Preview llega al backend productivo', () => {
+      const [proxy] = externos();
+
+      expect(proxy?.has).toEqual([{ type: 'host', value: HOST_DE_PRODUCCION }]);
+      expect(proxy?.missing).toBeUndefined();
+      // Y el fallback de la SPA tampoco toma /api: en un Preview, /api responde 404 de Vercel.
+      expect(compilar(fallback().source).test('/api/health')).toBe(false);
     });
 
     it('la guarda detecta un rewrite sin condición de host, sin https o después del fallback', () => {

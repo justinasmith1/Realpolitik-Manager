@@ -37,6 +37,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 import { PDF } from '../../documentos/__tests__/archivosDePrueba';
 import type * as Servicio from '../rendiciones.service';
 
@@ -72,9 +73,11 @@ const porLaOperadora = () => ({ registradoPorId: sesiones.idDe(), origen: 'MANUA
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
+  // Antes de cualquier escritura, también de las cuentas: fija DATABASE_URL, importa `lib/prisma`
+  // y verifica que su conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   await sesiones.preparar();
-  ({ prisma } = await import('../../../lib/prisma'));
   ({ registrarCambioDeEstado } = await import('../rendiciones.service'));
   const { createApp } = await import('../../../app');
   const { AlmacenamientoEnMemoria } = await import('../../../lib/almacenamiento/memoria');
@@ -82,7 +85,6 @@ beforeAll(async () => {
     corsOrigins: ['http://localhost:5173'],
     documentos: { almacenamiento: new AlmacenamientoEnMemoria() },
   });
-  prismaInicializado = true;
 });
 
 afterAll(async () => {

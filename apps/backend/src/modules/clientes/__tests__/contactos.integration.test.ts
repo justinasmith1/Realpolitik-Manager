@@ -17,14 +17,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppError } from '../../../errors/app-error';
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
+import { esperarEnEspera } from '../../usuarios/__tests__/entornoDeUsuarios';
 import type * as ContactosService from '../contactos.service';
 
 import { urlDeBaseDescartable } from './baseDescartable';
+import { conectarBaseDePrueba } from './baseVerificada';
 
 const url = urlDeBaseDescartable();
 
 let service: typeof ContactosService;
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 let app: Express;
 const clientesCreados: string[] = [];
 
@@ -33,21 +37,27 @@ const sesiones = sesionesDePrueba();
 
 beforeAll(async () => {
   if (url === undefined) return;
-  // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
-  process.env.DATABASE_URL = url;
+  // Antes de cualquier escritura, también de las cuentas: fija DATABASE_URL, importa `lib/prisma`
+  // y verifica que su conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   await sesiones.preparar();
-  ({ prisma } = await import('../../../lib/prisma'));
   service = await import('../contactos.service');
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  // Los contactos caen en cascada con su cliente.
-  await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
-  await sesiones.limpiar();
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  // Si la preparación falló después, igual se borran las cuentas de la corrida (`finally`).
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    // Los contactos caen en cascada con su cliente.
+    await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+  } finally {
+    await sesiones.limpiar();
+    await prisma.$disconnect();
+  }
 });
 
 async function crearCliente(extra: { isDeleted?: boolean } = {}): Promise<string> {
@@ -436,10 +446,15 @@ describe.skipIf(url === undefined)('contactos contra PostgreSQL real', () => {
       contactos: [contacto('Ana', 'a@ejemplo.example')],
     });
 
-    // Otra persona modifica a Ana y tarda en confirmar: su transacción retiene la fila.
+    // Otra persona modifica a Ana y no confirma hasta que el test lo indique: su transacción
+    // retiene la fila.
     let retenida: () => void = () => undefined;
     const filaRetenida = new Promise<void>((resolver) => {
       retenida = resolver;
+    });
+    let confirmar: () => void = () => undefined;
+    const puedeConfirmar = new Promise<void>((resolver) => {
+      confirmar = resolver;
     });
     const otraPersona = prisma.$transaction(async (tx) => {
       await tx.contacto.update({
@@ -447,7 +462,7 @@ describe.skipIf(url === undefined)('contactos contra PostgreSQL real', () => {
         data: { nombre: 'Cambio de otra persona' },
       });
       retenida();
-      await new Promise((resolver) => setTimeout(resolver, 400));
+      await puedeConfirmar;
     });
     await filaRetenida;
 
@@ -457,6 +472,16 @@ describe.skipIf(url === undefined)('contactos contra PostgreSQL real', () => {
     const miGuardado = service.reemplazarContactos(cliente, {
       contactos: [{ ...contacto('Cambio mío', 'a@ejemplo.example'), id: a?.id }],
     });
+    try {
+      // La otra persona confirma recién cuando el guardado ya espera la fila. El plazo queda por
+      // debajo del timeout del test y del de la transacción interactiva (5 s cada uno).
+      await esperarEnEspera(prisma, 'UPDATE "public"."Contacto"', 1, {
+        plazoMs: 2_000,
+        mientras: [otraPersona, miGuardado],
+      });
+    } finally {
+      confirmar();
+    }
 
     const [, resultado] = await Promise.allSettled([otraPersona, miGuardado]);
 

@@ -11,9 +11,10 @@
 //   `https://app.example`;
 // - `Sec-Fetch-Site: cross-site`, como defensa adicional cuando el navegador lo informa.
 //
-// `Referer` no se usa como respaldo: el frontend envía `Referrer-Policy: no-referrer`, y aceptar un
-// Referer cuando falta Origin solo agregaría un camino más. `Host` y `X-Forwarded-Host` tampoco: los
-// controla quien hace el pedido o el proxy, no prueban de dónde salió.
+// `Referer` no se usa como respaldo: depende de la `Referrer-Policy` de la página (el frontend usa
+// `same-origin`, que no lo manda a otros sitios), y aceptar un Referer cuando falta Origin solo
+// agregaría un camino más. `Host` y `X-Forwarded-Host` tampoco: los controla quien hace el pedido o
+// el proxy, no prueban de dónde salió.
 //
 // Se aplica a TODA la API, no solo a `/auth`: `createApp` lo monta global, antes de leer cualquier
 // cuerpo, así que toda escritura de negocio (y también login, logout y cambio de contraseña) exige

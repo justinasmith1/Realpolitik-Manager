@@ -32,6 +32,7 @@ import type * as ModuloAlmacenamiento from '../../../lib/almacenamiento/almacena
 import type { AlmacenamientoEnMemoria as Memoria } from '../../../lib/almacenamiento/memoria';
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 
 import { PDF } from './archivosDePrueba';
 
@@ -78,10 +79,11 @@ const sesiones = sesionesDePrueba();
 
 beforeAll(async () => {
   if (url === undefined) return;
-  // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes, y pisa la de desarrollo.
-  process.env.DATABASE_URL = url;
+  // Antes de cualquier escritura, también de las cuentas: fija DATABASE_URL, importa `lib/prisma`
+  // y verifica que su conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   await sesiones.preparar();
-  ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   const { AlmacenamientoEnMemoria } = await import('../../../lib/almacenamiento/memoria');
   crearApp = (conAlmacenamiento) =>
@@ -91,7 +93,6 @@ beforeAll(async () => {
     });
   almacenamiento = new AlmacenamientoEnMemoria();
   app = crearApp(almacenamiento);
-  prismaInicializado = true;
 });
 
 afterAll(async () => {
