@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppError } from '../../../errors/app-error';
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
+import { esperarEnEspera } from '../../usuarios/__tests__/entornoDeUsuarios';
 import type * as ContactosService from '../contactos.service';
 
 import { urlDeBaseDescartable } from './baseDescartable';
@@ -436,10 +437,15 @@ describe.skipIf(url === undefined)('contactos contra PostgreSQL real', () => {
       contactos: [contacto('Ana', 'a@ejemplo.example')],
     });
 
-    // Otra persona modifica a Ana y tarda en confirmar: su transacción retiene la fila.
+    // Otra persona modifica a Ana y no confirma hasta que el test lo indique: su transacción
+    // retiene la fila.
     let retenida: () => void = () => undefined;
     const filaRetenida = new Promise<void>((resolver) => {
       retenida = resolver;
+    });
+    let confirmar: () => void = () => undefined;
+    const puedeConfirmar = new Promise<void>((resolver) => {
+      confirmar = resolver;
     });
     const otraPersona = prisma.$transaction(async (tx) => {
       await tx.contacto.update({
@@ -447,7 +453,7 @@ describe.skipIf(url === undefined)('contactos contra PostgreSQL real', () => {
         data: { nombre: 'Cambio de otra persona' },
       });
       retenida();
-      await new Promise((resolver) => setTimeout(resolver, 400));
+      await puedeConfirmar;
     });
     await filaRetenida;
 
@@ -457,6 +463,16 @@ describe.skipIf(url === undefined)('contactos contra PostgreSQL real', () => {
     const miGuardado = service.reemplazarContactos(cliente, {
       contactos: [{ ...contacto('Cambio mío', 'a@ejemplo.example'), id: a?.id }],
     });
+    try {
+      // La otra persona confirma recién cuando el guardado ya espera la fila. El plazo queda por
+      // debajo del timeout del test y del de la transacción interactiva (5 s cada uno).
+      await esperarEnEspera(prisma, 'UPDATE "public"."Contacto"', 1, {
+        plazoMs: 2_000,
+        mientras: [otraPersona, miGuardado],
+      });
+    } finally {
+      confirmar();
+    }
 
     const [, resultado] = await Promise.allSettled([otraPersona, miGuardado]);
 

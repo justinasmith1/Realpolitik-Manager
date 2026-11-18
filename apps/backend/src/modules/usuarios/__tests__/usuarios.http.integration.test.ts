@@ -374,7 +374,7 @@ describe.skipIf(url === undefined)('transacción vencida esperando un bloqueo (P
     try {
       const pendiente = login(cuenta.email).then((r) => r);
       // `crearSesion` quedó esperando la fila del usuario (`SELECT … FOR UPDATE`).
-      await esperarEnEspera(verificacion, 'auth:crear-sesion');
+      await esperarEnEspera(verificacion, 'auth:crear-sesion', 1, { mientras: pendiente });
       await dormir(MAS_ALLA_DEL_TIMEOUT_MS);
       await retenida.soltar();
       res = await pendiente;
@@ -415,7 +415,7 @@ describe.skipIf(url === undefined)('transacción vencida esperando un bloqueo (P
         .send({ rol: 'CONSULTA' })
         .then((r) => r);
       // La transacción del cambio quedó esperando la fila (`bloquearUsuario`).
-      await esperarEnEspera(verificacion, 'usuarios:bloquear-usuario');
+      await esperarEnEspera(verificacion, 'usuarios:bloquear-usuario', 1, { mientras: pendiente });
       await dormir(MAS_ALLA_DEL_TIMEOUT_MS);
       await retenida.soltar();
       res = await pendiente;

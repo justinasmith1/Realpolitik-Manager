@@ -414,6 +414,44 @@ describe.skipIf(url === undefined)('revocación', () => {
   });
 });
 
+/**
+ * Hasta cuándo puede tardar un test de creaciones simultáneas: por debajo de su timeout (5 s, el de
+ * Vitest), para que, si la base está tan lenta que no terminan, falle diciendo cuántas terminaron en
+ * vez de con un timeout sin explicación. En un entorno sano tardan unos cientos de milisegundos.
+ */
+const PLAZO_DE_LAS_SIMULTANEAS_MS = 4_000;
+
+/** Espera las operaciones simultáneas hasta `limite` (un `Date.now()`); si vence, dice cuántas terminaron. */
+async function simultaneas<T>(
+  operaciones: Promise<T>[],
+  limite: number,
+): Promise<PromiseSettledResult<T>[]> {
+  let terminadas = 0;
+  const todas = Promise.allSettled(
+    operaciones.map((operacion) => operacion.finally(() => (terminadas += 1))),
+  );
+  let reloj: ReturnType<typeof setTimeout> | undefined;
+  const vencida = new Promise<never>((_, rechazar) => {
+    reloj = setTimeout(
+      () =>
+        rechazar(
+          new Error(
+            `De ${operaciones.length} creaciones simultáneas terminaron ${terminadas} antes del plazo ` +
+              `del test (${PLAZO_DE_LAS_SIMULTANEAS_MS} ms). No indica un fallo del límite de ` +
+              'sesiones: la base tarda demasiado en cada transacción (Docker o PostgreSQL ' +
+              'saturados). Ver docs/development/database.md, "Si falla una prueba de concurrencia".',
+          ),
+        ),
+      Math.max(0, limite - Date.now()),
+    );
+  });
+  try {
+    return await Promise.race([todas, vencida]);
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
 describe.skipIf(url === undefined)('límite de sesiones vigentes', () => {
   it('es 10 (propuesta del ADR)', () => {
     expect(servicio.LIMITE_DE_SESIONES_VIGENTES).toBe(10);
@@ -468,12 +506,14 @@ describe.skipIf(url === undefined)('límite de sesiones vigentes', () => {
   });
 
   it('con creaciones simultáneas no se supera el límite (bloqueo de la fila del usuario)', async () => {
+    const limite = Date.now() + PLAZO_DE_LAS_SIMULTANEAS_MS;
     for (let ronda = 0; ronda < 3; ronda += 1) {
       const usuario = await crearUsuario();
       for (let i = 0; i < 9; i += 1) await servicio.crearSesion(usuario.id, hashValido, T0);
 
-      const resultados = await Promise.allSettled(
+      const resultados = await simultaneas(
         Array.from({ length: 8 }, () => servicio.crearSesion(usuario.id, hashValido, en(MINUTO))),
+        limite,
       );
 
       expect(resultados.every((r) => r.status === 'fulfilled')).toBe(true);
@@ -482,10 +522,12 @@ describe.skipIf(url === undefined)('límite de sesiones vigentes', () => {
   });
 
   it('veinte inicios de sesión simultáneos desde cero dejan exactamente 10 vigentes, sin errores', async () => {
+    const limite = Date.now() + PLAZO_DE_LAS_SIMULTANEAS_MS;
     const usuario = await crearUsuario();
 
-    const resultados = await Promise.allSettled(
+    const resultados = await simultaneas(
       Array.from({ length: 20 }, () => servicio.crearSesion(usuario.id, hashValido, T0)),
+      limite,
     );
 
     expect(resultados.filter((r) => r.status === 'rejected')).toEqual([]);

@@ -894,7 +894,7 @@ Ninguna cambia el comportamiento implementado; quedan para la decisión del clie
   - unitarios y de rutas de shared, backend y frontend;
   - integración con PostgreSQL en una base descartable: las seis suites del historial, 60 de 60;
   - un recorrido de 38 comprobaciones por la API real (proxy de Vite → Express → `realpolitik_db`), con sesiones reales de los tres roles, suplantación, cuenta renombrada o desactivada y una entrada histórica.
-- **Fuera de HU4.6:** en la corrida completa de integración fallan cuatro pruebas de concurrencia de auth, contactos y usuarios en este entorno (Windows con Docker Desktop). Fallan igual sin la migración de HU4.6 ([database.md](../development/database.md#pruebas-de-hu46-responsable-de-los-cambios-de-estado)).
+- **Fuera de HU4.6:** en la corrida completa de integración fallaban cuatro pruebas de concurrencia de auth, contactos y usuarios en este entorno (Windows con Docker Desktop). Fallaban igual sin la migración de HU4.6. En el cierre de la Épica 4 no se reprodujeron en un entorno sano (20 de 20 en verde): eran fallas de un entorno degradado. Desde entonces, si vuelven a aparecer, fallan con un mensaje que lo explica ([database.md](../development/database.md#pruebas-de-hu46-responsable-de-los-cambios-de-estado)).
 - **Pendiente:** QA visual manual (escritorio, 375 px, claro y oscuro, zoom) y despliegue. Integrada en `main` (PR #61), con el CI en verde (Node 24).
 
 **HU4.5 — administración de usuarios (2026-11-16, integrada en `main`, PR #58):**

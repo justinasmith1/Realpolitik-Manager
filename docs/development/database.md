@@ -285,6 +285,46 @@ El mensaje dice qué base recibió. **No cambies la guarda, el nombre esperado n
 - **Versión** (`no es PostgreSQL 16`): usá la imagen `postgres:16`, como el CI.
 - **Datos ajenos** (por ejemplo, `primerAdministrador` encuentra un `ADMINISTRADOR` activo): la base no está vacía. Creá una instancia nueva; no borres esos datos.
 
+### Si falla una prueba de concurrencia
+
+Las pruebas de carreras ordenan las operaciones con bloqueos reales de PostgreSQL. Una conexión retiene una fila y el test espera, en `pg_stat_activity`, a que la operación quede bloqueada esperándola (`esperarEnEspera`, en `usuarios/__tests__/entornoDeUsuarios.ts`). Cada espera tiene un plazo menor que el timeout de su test. Si no se cumple, el test falla con un mensaje propio y no con un timeout de Vitest:
+
+| Dónde                                                                 | Plazo                                  | Timeout del test                               |
+| --------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------- |
+| `usuarios.concurrencia`, `usuarios.http`                              | 10 s por espera (el valor por defecto) | 30 s                                           |
+| `cambioDeContrasena`                                                  | 2 s por espera (hay tests con dos)     | 5 s                                            |
+| `contactos`, escritura concurrente sobre un contacto                  | 2 s                                    | 5 s (y 5 s la transacción que retiene la fila) |
+| `sesiones.service`, creaciones simultáneas (sin bloqueos que esperar) | 4 s desde que empieza el test          | 5 s                                            |
+
+En un entorno sano, estas esperas tardan milisegundos. No subas plazos ni timeouts para que una corrida pase: primero mirá qué dice el mensaje.
+
+**Cómo leer el mensaje:**
+
+- **`una operación terminó antes de quedar esperando (… ms): …`**: la operación no llegó al bloqueo; terminó con el resultado que se muestra:
+  - Un error de Prisma, por ejemplo `P2028` con "Unable to start a transaction in the given time", significa que no pudo abrir la transacción a tiempo: el pool o la base estaban saturados.
+  - `respondió 200`, o cualquier éxito, significa que la retención no bloqueó lo que el test suponía (por ejemplo, retuvo otra fila).
+- **`a los … ms (… consultas, plazo … ms) había 0 de 1 …`**: se agotó el plazo. Debajo va la lista de conexiones de la base que no están inactivas en ese momento. Las marcadas con `*` contienen el fragmento que el test busca.
+  - Si la consulta de la operación no aparece, no llegó a la base: el entorno está lento (argon2, pool, Docker).
+  - Si aparece con `*` pero sin `Lock/…`, avanzó por otro camino.
+  - Si hay una consulta bloqueada (`Lock/…`) sin `*`, la operación espera en otro lugar o el texto de la consulta cambió y el fragmento del test ya no coincide. Los fragmentos identifican consultas por comentarios como `usuarios:bloquear-usuario` o `auth:crear-sesion`.
+- **`De N creaciones simultáneas terminaron M antes del plazo del test`** (`sesiones.service`): no es un fallo del límite de sesiones. La base tarda demasiado en cada transacción.
+- **`Test timed out in 5000ms` o `Hook timed out in 10000ms`**: puede seguir apareciendo si lo lento es la preparación (crear cuentas, calcular hashes) y no la carrera. Es la misma señal de entorno degradado.
+
+Una retención que el test no llegó a soltar se suelta en el `afterEach`. Así una falla no deja filas bloqueadas que hagan vencer la limpieza o los tests siguientes.
+
+**Diagnóstico del entorno**, siempre contra la instancia descartable, nunca contra una base compartida:
+
+1. **Docker Desktop:** `docker desktop status` tiene que decir `running`. Si `docker ps` responde `Docker Desktop is unable to start`, el motor está detenido y ningún contenedor corre. Antes de reiniciarlo con `docker desktop restart`, recordá que el reinicio detiene todos los contenedores. `docker stats --no-stream <contenedor>` muestra si el contenedor está sin CPU o sin memoria.
+2. **PostgreSQL:** `docker exec <contenedor> psql -U postgres -d realpolitik_test -c '\timing on' -c 'SELECT 1'` tiene que responder en pocos milisegundos. Si una corrida quedó colgada, `SELECT pid, state, wait_event_type, left(query, 80) FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle';` muestra quién espera a quién.
+3. **Prisma:** los códigos dicen qué se agotó:
+   - `P2028` con "Unable to start a transaction in the given time": no consiguió conexión para abrir la transacción (2 s).
+   - `P2028` con "Transaction already closed" o "expired transaction": la transacción superó sus 5 s.
+   - `P2024`: se agotó la espera de una conexión del pool.
+
+   El pool por defecto abre `núcleos × 2 + 1` conexiones. Limitarlo no reproduce las fallas en un entorno sano: con 5 y con 2 conexiones, las pruebas pasan.
+
+4. **Repetí la suite sola**, con la ruta exacta, porque el filtro de Vitest también toma archivos cuyo nombre la contiene: `pnpm --filter @realpolitik/backend exec vitest run --no-file-parallelism src/modules/<módulo>/__tests__/<suite>.integration.test.ts`. Si pasa sola y repetida, fue un error transitorio del entorno. Si falla siempre con el mismo mensaje en un entorno sano, es un defecto y hay que investigarlo.
+
 ### Frontend contra la API real
 
 En los ejemplos que siguen, `<usuario>`, `<clave>` y `<puerto>` son los de tu `.env` de la raíz (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`).
@@ -349,7 +389,7 @@ Las seis suites del historial corren contra una base descartable, de a una (`--n
 
 Resultado: 60 de 60. Las suites que crean rendiciones las borran antes que las cuentas (`limpiar()`), porque la FK del responsable es `RESTRICT`.
 
-**Fallos preexistentes de concurrencia (no son de HU4.6).** En la corrida completa de integración, en Windows con Docker Desktop, fallan siempre cuatro pruebas de módulos que HU4.6 no toca:
+**Fallos de concurrencia observados durante HU4.6 (entorno degradado, no son de HU4.6).** Durante HU4.6, en la corrida completa de integración en Windows con Docker Desktop, fallaban de manera repetida cuatro pruebas de módulos que HU4.6 no toca. Es un registro histórico: una revisión posterior no los reprodujo en un entorno sano (ver más abajo).
 
 | Suite                               | Prueba                                                             | Síntoma                                                                            |
 | ----------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
@@ -358,14 +398,21 @@ Resultado: 60 de 60. Las suites que crean rendiciones las borran antes que las c
 | `cambioDeContrasena.integration`    | PostgreSQL corta la transacción después de guardar el hash         | Timeout del test (5 s)                                                             |
 | `usuarios.concurrencia.integration` | Toda la suite (22 omitidos)                                        | Timeout del `beforeAll` (10 s)                                                     |
 
-Evidencia:
+Lo que se registró entonces:
 
-- Se reproducen corridas solas y repetidas.
-- Siguen fallando con `connection_limit=40` y con `UV_THREADPOOL_SIZE=16`.
-- La latencia de commit del contenedor es de 1 a 2 ms.
-- **Fallan igual en una base migrada sin la migración de HU4.6.**
+- Se reproducían en corridas solas y repetidas.
+- Seguían fallando con `connection_limit=40` y con `UV_THREADPOOL_SIZE=16`.
+- La latencia de commit del contenedor era de 1 a 2 ms.
+- **Fallaban igual en una base migrada sin la migración de HU4.6.**
 
-La causa queda para la historia de deuda técnica: son tiempos de las pruebas de carreras en este entorno, no un defecto de la aplicación demostrado.
+**Revisión en el cierre de la Épica 4 (noviembre de 2026).** Contra una instancia descartable nueva y sana, en la misma máquina:
+
+- **20 de 20 corridas en verde:** cada una de las cuatro suites corrió 5 veces. Después de los cambios descritos en [Si falla una prueba de concurrencia](#si-falla-una-prueba-de-concurrencia) se repitió: otras 25 corridas (las cuatro suites y `usuarios.http`), todas en verde.
+- **Margen amplio:** las cuatro pruebas de la tabla tardan entre 27 y 429 ms frente a timeouts de 5 s. Los tests que esperan bloqueos tardan como mucho 340 ms. La suite `usuarios.concurrencia` completa tarda 4 a 6 s, y su `beforeAll` entra holgado en sus 10 s.
+- **El pool no es la causa:** con el pool limitado a 5 y a 2 conexiones, los 20 inicios de sesión simultáneos pasan.
+- **Con la CPU de PostgreSQL limitada:** con 0,1 núcleos pasan las cuatro suites. Con 0,02 núcleos, de esas cuatro suites solo fallan las dos pruebas de creaciones simultáneas de `sesiones.service`, ahora con el mensaje de [Si falla una prueba de concurrencia](#si-falla-una-prueba-de-concurrencia).
+
+Conclusión: **no hay un defecto sistemático de la aplicación ni de las pruebas.** Las fallas aparecen solo con un entorno degradado, cuando cada transacción tarda del orden de 100 ms o más. Eso es compatible con el `ERROR_NO_SYSTEM_RESOURCES` que registró el [ADR-0006](../adr/0006-autenticacion-y-control-de-acceso.md) en esta máquina y con los estados en que Docker Desktop quedaba sin arrancar. Si vuelven a fallar, se pueden repetir como errores transitorios. Lo que faltaba era que fallaran con un mensaje que lo explicara, en vez de un timeout opaco. Eso se agregó sin subir ningún timeout ([Si falla una prueba de concurrencia](#si-falla-una-prueba-de-concurrencia)).
 
 ## Pruebas de HU4.4 (permisos de documentos)
 
