@@ -8,8 +8,14 @@
 // - `retenerFilas` y `esperarEnEspera` ordenan las carreras con bloqueos reales de PostgreSQL, sin
 //   esperas a ciegas.
 
-import { type Prisma, PrismaClient, type RolUsuario } from '@prisma/client';
+import type { Prisma, PrismaClient, RolUsuario } from '@prisma/client';
 import { vi } from 'vitest';
+
+import {
+  type Consultable,
+  type Desconectable,
+  exigirBaseDePrueba,
+} from '../../clientes/__tests__/baseVerificada';
 
 export const PASSWORD = 'tranvía ámbar sobre el puente 47';
 
@@ -17,83 +23,15 @@ export function nuevaMarca(prefijo: string): string {
   return `${prefijo}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export const conexion = (url: string) => new PrismaClient({ datasourceUrl: url, log: [] });
-
-/** Lo único que la guarda usa de una conexión: consultas de lectura. */
-export type Consultable = Pick<PrismaClient, '$queryRaw'>;
-type Abrir = (url: string) => Consultable & Pick<PrismaClient, '$disconnect'>;
-
-const BASE_DESCARTABLE = /_(audit|test)$/;
-
-const nombreDeLaBase = (url: string) =>
-  decodeURIComponent(new URL(url).pathname.replace(/^\//, ''));
-
-/**
- * A qué base está conectada de verdad una conexión: el nombre (`current_database()`) y una huella
- * del servidor (inicio del postmaster y puerto), para distinguir dos servidores con una base del
- * mismo nombre. Solo lee.
- */
-async function identidad(db: Consultable): Promise<{ base: string; servidor: string }> {
-  const [fila] = await db.$queryRaw<{ base: string; servidor: string }[]>`
-    SELECT current_database() AS "base",
-      pg_postmaster_start_time()::text || '@' || coalesce(inet_server_port()::text, 'socket') AS "servidor"`;
-  if (fila === undefined) throw new Error('La base no informó su identidad: no se ejecuta nada.');
-  return fila;
-}
-
-/**
- * Guarda de aislamiento, ANTES de cualquier escritura (también de los datos de prueba):
- * 1. el nombre de `url` (la de `TEST_DATABASE_URL`) tiene que ser `*_audit` o `*_test`;
- * 2. una conexión de referencia abierta con esa misma `url` tiene que estar en esa base;
- * 3. cada conexión de la suite tiene que estar en la MISMA base y el mismo servidor que la
- *    referencia. Un `TEST_DATABASE_URL` válido no alcanza: atrapa, por ejemplo, un `lib/prisma`
- *    cargado antes de fijar `DATABASE_URL`, que tomaría la base del `.env`.
- * Si algo no coincide, lanza y no escribe nada. `abrir` existe para los tests de la guarda.
- */
-export async function exigirBaseDePrueba(
-  url: string,
-  conexiones: Consultable[],
-  { abrir = conexion }: { abrir?: Abrir } = {},
-): Promise<void> {
-  const esperada = nombreDeLaBase(url);
-  if (!BASE_DESCARTABLE.test(esperada)) {
-    throw new Error(
-      `"${esperada}" no es una base descartable (*_audit o *_test): no se ejecuta nada.`,
-    );
-  }
-  const referencia = abrir(url);
-  let deLaUrl: { base: string; servidor: string };
-  try {
-    deLaUrl = await identidad(referencia);
-  } finally {
-    await referencia.$disconnect();
-  }
-  if (deLaUrl.base !== esperada) {
-    throw new Error(
-      `La URL de prueba lleva a "${deLaUrl.base}", no a "${esperada}": no se ejecuta nada.`,
-    );
-  }
-  for (const db of conexiones) {
-    const efectiva = await identidad(db);
-    if (efectiva.base !== deLaUrl.base || efectiva.servidor !== deLaUrl.servidor) {
-      throw new Error(
-        `Una conexión de la suite apunta a "${efectiva.base}" y no a "${esperada}" de ese servidor: no se ejecuta nada.`,
-      );
-    }
-  }
-}
-
-/** Una conexión nueva, ya verificada con `exigirBaseDePrueba`. */
-export async function conexionVerificada(url: string): Promise<PrismaClient> {
-  const db = conexion(url);
-  try {
-    await exigirBaseDePrueba(url, [db]);
-  } catch (error) {
-    await db.$disconnect();
-    throw error;
-  }
-  return db;
-}
+// La guarda de la conexión efectiva vive en `baseVerificada` (sin Vitest, para todas las suites);
+// se reexporta para los usos existentes.
+export {
+  type Consultable,
+  conexion,
+  conexionVerificada,
+  exigirBaseDePrueba,
+} from '../../clientes/__tests__/baseVerificada';
+type Abrir = (url: string) => Desconectable;
 
 export interface Cuentas {
   crear(opciones?: {

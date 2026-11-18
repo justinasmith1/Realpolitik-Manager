@@ -14,6 +14,7 @@ import type { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 import { hashearContrasena } from '../contrasenas';
 import type * as ServicioDeSesiones from '../sesiones.service';
 import { generarTokenDeSesion } from '../tokenDeSesion';
@@ -24,6 +25,8 @@ type Servicio = typeof ServicioDeSesiones;
 const url = urlDeBaseDescartable();
 
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 let servicio: Servicio;
 let hashValido: string;
 
@@ -40,17 +43,23 @@ const sha256 = (texto: string) => createHash('sha256').update(texto).digest('hex
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
-  ({ prisma } = await import('../../../lib/prisma'));
+  // Antes de cualquier escritura: fija DATABASE_URL, importa `lib/prisma` y verifica que su
+  // conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   servicio = await import('../sesiones.service');
   hashValido = await hashearContrasena('contraseña ficticia del servicio de sesiones');
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  // Las sesiones se borran en cascada con su usuario.
-  await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    // Las sesiones se borran en cascada con su usuario.
+    await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
+  } finally {
+    await prisma.$disconnect();
+  }
 });
 
 async function crearUsuario(extra: { activo?: boolean } = {}) {

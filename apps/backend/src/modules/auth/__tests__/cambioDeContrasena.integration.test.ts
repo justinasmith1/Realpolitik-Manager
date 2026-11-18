@@ -24,6 +24,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import type { createApp as CrearApp } from '../../../app';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 import { esperarEnEspera } from '../../usuarios/__tests__/entornoDeUsuarios';
 import { hashearContrasena, verificarContrasena } from '../contrasenas';
 import { ProteccionDeLogin } from '../proteccionDeLogin';
@@ -51,6 +52,8 @@ const MARCA = `testc${Date.now().toString(36)}`;
 let prisma: PrismaClient;
 /** Segunda conexión, para retener bloqueos y terminar conexiones como lo haría otro proceso. */
 let otraConexion: PrismaClient;
+/** `lib/prisma` y `otraConexion` pasaron la verificación: recién entonces se escribe o se limpia. */
+let verificadas = false;
 let createApp: typeof CrearApp;
 let LIMITE_DE_SESIONES_VIGENTES: number;
 let hashTemporal: string;
@@ -58,20 +61,28 @@ let secuencia = 0;
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
-  ({ prisma } = await import('../../../lib/prisma'));
+  // La otra conexión (retener filas, terminar backends, triggers) se verifica junto con
+  // `lib/prisma`, antes de cualquier escritura: las dos tienen que estar en la base y el servidor
+  // de la URL. Si no, se desconectan las dos y la suite no escribe nada.
+  otraConexion = new PrismaClient({ datasources: { db: { url } } });
+  prisma = await conectarBaseDePrueba(url, { otras: [otraConexion] });
+  verificadas = true;
   ({ createApp } = await import('../../../app'));
   ({ LIMITE_DE_SESIONES_VIGENTES } = await import('../sesiones.service'));
-  otraConexion = new PrismaClient({ datasources: { db: { url } } });
   hashTemporal = await hashearContrasena(TEMPORAL);
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  await quitarFallaAlConfirmar(); // por si un test se cortó antes de quitarla
-  await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
-  await prisma.$disconnect();
-  await otraConexion.$disconnect();
+  // Solo si las dos conexiones pasaron la verificación: nunca se limpia una base que no es la de la
+  // URL.
+  if (url === undefined || !verificadas) return;
+  try {
+    await quitarFallaAlConfirmar(); // por si un test se cortó antes de quitarla
+    await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
+  } finally {
+    await prisma.$disconnect();
+    await otraConexion.$disconnect();
+  }
 });
 
 const sha256 = (texto: string) => createHash('sha256').update(texto).digest('hex');

@@ -267,14 +267,30 @@ Para correr solo algunas, usá `vitest` directo con el mismo flag: `pnpm --filte
 
 ### Qué se verifica antes de escribir
 
-Todas estas comprobaciones corren antes de la primera escritura, incluidas las cuentas y sesiones de prueba. Ninguna se puede saltear con una variable.
+Son tres protecciones distintas que se suman. Ninguna se puede saltear con una variable, y las dos primeras corren antes de la primera escritura, incluidas las cuentas y sesiones de prueba.
 
-1. **Nombre (todas las suites).** `urlDeBaseDescartable` rechaza, al cargar el archivo, una base que no termine en `_audit` o `_test`. Las suites de la tabla de arriba agregan su restricción propia.
-2. **`lib/prisma` se importa después de fijar `DATABASE_URL`** con la URL de prueba, siempre con un import dinámico.
-3. **Conexión efectiva (Usuarios, `documentos.permisos`, `rendiciones.responsable` y Requisitos).** `exigirBaseDePrueba` abre una conexión de referencia con la URL y exige que `current_database()` sea la base de su nombre. Después exige que la conexión real de la suite (la de `lib/prisma`) esté en esa misma base y en el mismo servidor (inicio del postmaster y puerto). Atrapa un `lib/prisma` creado antes con otra URL, que escribiría en la base del `.env`.
-4. **Requisitos, además** (`verificarConexionDeRequisitos`): el nombre exacto `realpolitik_test`, `current_database()` igual a `realpolitik_test` sobre la conexión de la suite y, en `requisitos.integration`, PostgreSQL 16. Si algo falla, la suite desconecta `lib/prisma` y no escribe nada, tampoco en el `afterAll`.
+**1. Restricción de nombres.** `urlDeBaseDescartable` rechaza, al cargar el archivo, una base cuyo nombre no termine en `_audit` o `_test`. Algunas suites agregan su propia restricción ([Suites sueltas](#suites-sueltas)):
 
-Las demás suites solo cumplen 1 y 2: no consultan la conexión efectiva. Por eso que el nombre pase no alcanza: la instancia tiene que ser descartable.
+- Requisitos exige exactamente `realpolitik_test` y PostgreSQL 16 en `requisitos.integration`.
+- `documentos.permisos` exige el sufijo `_test`.
+- `cambioDeContrasena` y `usuarios.concurrencia` exigen un host local.
+
+El nombre solo dice a qué base apunta la URL, no a cuál se conecta de verdad la suite.
+
+**2. Verificación de la conexión efectiva (todas las suites).** En el `beforeAll`, `conectarBaseDePrueba` (`clientes/__tests__/baseVerificada.ts`) hace, en este orden:
+
+1. Aplica la restricción propia de la suite, si la tiene.
+2. Fija `DATABASE_URL` e importa `lib/prisma` dinámicamente.
+3. Abre una conexión de referencia con la URL y exige que `current_database()` sea la base de su nombre.
+4. Exige que `lib/prisma` y cualquier otra conexión de la suite (por ejemplo, la `otraConexion` de `cambioDeContrasena`) estén en esa misma base y en el mismo servidor. Para eso compara una huella: el inicio del postmaster y el puerto.
+
+Así atrapa un `lib/prisma` creado antes con otra URL: el singleton de `globalThis` o un import estático que tomó el `.env`. Solo lee. Si algo no coincide, desconecta lo que se abrió y lanza; no escribe, no limpia ni migra la base equivocada.
+
+La suite se marca como verificada recién después de esa comprobación, y solo entonces crea las cuentas (`sesiones.preparar()`) y los datos. El `afterAll` solo limpia si la suite quedó verificada. Si la preparación falla después de verificar, el `afterAll` igual borra lo de la corrida (`finally`), siempre por la marca propia de cada suite.
+
+Las suites de Usuarios (`cuentasDePrueba`) y de Requisitos (`verificarConexionDeRequisitos`) usan la misma verificación con sus restricciones.
+
+**3. Instancia descartable.** Verificar bien la conexión no distingue la instancia de QA manual de una descartable si las dos tienen una base con el mismo nombre. Las dos primeras protecciones solo confirman que la suite escribe en la base de la URL. Que esa URL lleve a una instancia nueva, vacía y descartable depende de quien corre las pruebas ([Toda la integración](#toda-la-integración)).
 
 ### Si una guarda rechaza la corrida
 

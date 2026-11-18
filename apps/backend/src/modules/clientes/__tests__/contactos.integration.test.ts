@@ -21,11 +21,14 @@ import { esperarEnEspera } from '../../usuarios/__tests__/entornoDeUsuarios';
 import type * as ContactosService from '../contactos.service';
 
 import { urlDeBaseDescartable } from './baseDescartable';
+import { conectarBaseDePrueba } from './baseVerificada';
 
 const url = urlDeBaseDescartable();
 
 let service: typeof ContactosService;
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 let app: Express;
 const clientesCreados: string[] = [];
 
@@ -34,21 +37,27 @@ const sesiones = sesionesDePrueba();
 
 beforeAll(async () => {
   if (url === undefined) return;
-  // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
-  process.env.DATABASE_URL = url;
+  // Antes de cualquier escritura, también de las cuentas: fija DATABASE_URL, importa `lib/prisma`
+  // y verifica que su conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   await sesiones.preparar();
-  ({ prisma } = await import('../../../lib/prisma'));
   service = await import('../contactos.service');
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  // Los contactos caen en cascada con su cliente.
-  await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
-  await sesiones.limpiar();
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  // Si la preparación falló después, igual se borran las cuentas de la corrida (`finally`).
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    // Los contactos caen en cascada con su cliente.
+    await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+  } finally {
+    await sesiones.limpiar();
+    await prisma.$disconnect();
+  }
 });
 
 async function crearCliente(extra: { isDeleted?: boolean } = {}): Promise<string> {
