@@ -11,25 +11,34 @@ import type { PeriodicidadTipo, Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { urlDeBaseDescartable } from './baseDescartable';
+import { conectarBaseDePrueba } from './baseVerificada';
 
 const url = urlDeBaseDescartable();
 
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 const clientesCreados: string[] = [];
 
 const MARCA = `TESTI${Date.now().toString(36).toUpperCase()}`;
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
-  ({ prisma } = await import('../../../lib/prisma'));
+  // Antes de cualquier escritura: fija DATABASE_URL, importa `lib/prisma` y verifica que su
+  // conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  // Los contactos se borran en cascada con su cliente.
-  await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    // Los contactos se borran en cascada con su cliente.
+    await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+  } finally {
+    await prisma.$disconnect();
+  }
 });
 
 // La base no valida el dígito verificador: alcanza con un CUIT único (varchar(13), @unique).

@@ -14,21 +14,17 @@
 // Si algo falla, desconecta `lib/prisma` y relanza: la suite no escribe nada, y su `afterAll`
 // tampoco (no llega a marcarse como verificada).
 //
-// Está en un archivo propio y no en `requisitosIntegrationEntorno.ts` porque ese también lo usa
-// `leerRequisitoDeTest.ts`, un script que corre fuera de Vitest, y `entornoDeUsuarios` importa
-// `vitest`.
+// Es la verificación compartida de todas las suites (`verificarConexiones`, en `baseVerificada`)
+// con las restricciones de Requisitos. Está en un archivo propio y no en
+// `requisitosIntegrationEntorno.ts` porque ese también lo usa `leerRequisitoDeTest.ts`, un script
+// que corre fuera de Vitest y no necesita la conexión.
 
-import type { PrismaClient } from '@prisma/client';
-
-import { type Consultable, exigirBaseDePrueba } from '../../usuarios/__tests__/entornoDeUsuarios';
-
+import { type Desconectable, verificarConexiones } from './baseVerificada';
 import { exigirBaseDeEstaSuite } from './requisitosIntegrationEntorno';
-
-type ConexionDeLaSuite = Consultable & Pick<PrismaClient, '$disconnect'>;
 
 export async function verificarConexionDeRequisitos(
   url: string,
-  prisma: ConexionDeLaSuite,
+  prisma: Desconectable,
   {
     versionMayor,
     abrir,
@@ -36,30 +32,13 @@ export async function verificarConexionDeRequisitos(
     /** Versión mayor de PostgreSQL que exige la suite (`requisitos.integration`: 16). */
     versionMayor?: number;
     /** Solo para los tests del preflight: cómo se abre la conexión de referencia. */
-    abrir?: (url: string) => ConexionDeLaSuite;
+    abrir?: (url: string) => Desconectable;
   } = {},
 ): Promise<void> {
-  try {
-    exigirBaseDeEstaSuite(url);
-    await exigirBaseDePrueba(url, [prisma], abrir === undefined ? {} : { abrir });
-    const [info] = await prisma.$queryRaw<{ db: string; version: string }[]>`
-      SELECT current_database() AS db, version() AS version`;
-    if (info?.db !== 'realpolitik_test') {
-      throw new Error(
-        `La conexión no es realpolitik_test (base=${info?.db ?? 'sin fila'}): no se ejecuta nada.`,
-      );
-    }
-    if (
-      versionMayor !== undefined &&
-      !new RegExp(`^PostgreSQL ${versionMayor}(?:\\D|$)`).test(info.version)
-    ) {
-      throw new Error(
-        `La conexión no es PostgreSQL ${versionMayor} sobre realpolitik_test (${info.version.split(' on ')[0]}): no se ejecuta nada.`,
-      );
-    }
-  } catch (error) {
-    // Lo que se abrió se libera; el motivo del rechazo es el error original.
-    await prisma.$disconnect().catch(() => undefined);
-    throw error;
-  }
+  await verificarConexiones(url, [prisma], {
+    exigir: exigirBaseDeEstaSuite,
+    baseExacta: 'realpolitik_test',
+    ...(versionMayor === undefined ? {} : { versionMayor }),
+    ...(abrir === undefined ? {} : { abrir }),
+  });
 }

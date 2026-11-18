@@ -12,6 +12,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 import { hashearContrasena } from '../contrasenas';
 import { generarTokenDeSesion, hashDeTokenDeSesion } from '../tokenDeSesion';
 import { evaluarSesion, fechasDeSesionNueva } from '../vigenciaDeSesion';
@@ -19,6 +20,8 @@ import { evaluarSesion, fechasDeSesionNueva } from '../vigenciaDeSesion';
 const url = urlDeBaseDescartable();
 
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 let hashValido: string;
 
 const MARCA = `testu${Date.now().toString(36)}`;
@@ -27,16 +30,22 @@ const emailUnico = () => `${MARCA}-${(secuencia += 1)}@ejemplo.example`;
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
-  ({ prisma } = await import('../../../lib/prisma'));
+  // Antes de cualquier escritura: fija DATABASE_URL, importa `lib/prisma` y verifica que su
+  // conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   hashValido = await hashearContrasena('contraseña ficticia de integración');
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  // Las sesiones se borran en cascada con su usuario.
-  await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    // Las sesiones se borran en cascada con su usuario.
+    await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
+  } finally {
+    await prisma.$disconnect();
+  }
 });
 
 /** Un usuario válido según TODOS los CHECK; cada test pisa lo que quiere romper. */

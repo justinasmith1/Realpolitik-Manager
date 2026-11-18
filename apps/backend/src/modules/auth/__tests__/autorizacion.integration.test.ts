@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { createApp as CrearApp } from '../../../app';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 import { hashearContrasena } from '../contrasenas';
 import { NOMBRE_COOKIE_DE_SESION } from '../cookieDeSesion';
 
@@ -24,26 +25,38 @@ const TEMPORAL = 'temporal-de-integracion-0042';
 const NUEVA = 'una frase nueva para entrar al negocio';
 
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 let app: ReturnType<typeof CrearApp>;
 const clientesCreados: string[] = [];
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
+  // Antes de cualquier escritura, también de las cuentas: fija DATABASE_URL, importa `lib/prisma`
+  // y verifica que su conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   await sesiones.preparar();
-  ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: [ORIGEN_DE_PRUEBA] });
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  // Primero las cuentas: si un alta falló, su id no existe y no debe impedir esta limpieza.
-  await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
-  await sesiones.limpiar();
-  const ids = clientesCreados.filter((id): id is string => typeof id === 'string');
-  await prisma.cliente.deleteMany({ where: { id: { in: ids } } });
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  // Si la preparación falló después, igual se borran las cuentas de la corrida (`finally`).
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    // Primero las cuentas: si un alta falló, su id no existe y no debe impedir esta limpieza.
+    await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
+  } finally {
+    try {
+      await sesiones.limpiar();
+      const ids = clientesCreados.filter((id): id is string => typeof id === 'string');
+      await prisma.cliente.deleteMany({ where: { id: { in: ids } } });
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
 });
 
 const sha256 = (texto: string) => createHash('sha256').update(texto).digest('hex');

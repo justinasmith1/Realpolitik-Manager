@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 
 import type { createApp as CrearApp } from '../../../app';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 import { hashearContrasena } from '../contrasenas';
 import type { limiteDeHash as LimiteDeHash } from '../limiteDeHash';
 import { ProteccionDeLogin } from '../proteccionDeLogin';
@@ -31,6 +32,8 @@ const CONTRASENA = 'una frase de prueba para integración';
 const MARCA = `testa${Date.now().toString(36)}`;
 
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 let createApp: typeof CrearApp;
 let limiteDeHash: typeof LimiteDeHash;
 let hashDeContrasena: string;
@@ -38,8 +41,10 @@ let secuencia = 0;
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
-  ({ prisma } = await import('../../../lib/prisma'));
+  // Antes de cualquier escritura: fija DATABASE_URL, importa `lib/prisma` y verifica que su
+  // conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   ({ createApp } = await import('../../../app'));
   ({ limiteDeHash } = await import('../limiteDeHash'));
   hashDeContrasena = await hashearContrasena(CONTRASENA);
@@ -50,9 +55,13 @@ afterEach(() => {
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    await prisma.usuario.deleteMany({ where: { email: { startsWith: MARCA } } });
+  } finally {
+    await prisma.$disconnect();
+  }
 });
 
 const sha256 = (texto: string) => createHash('sha256').update(texto).digest('hex');

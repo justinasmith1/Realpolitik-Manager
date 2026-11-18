@@ -14,10 +14,13 @@ import type { Emisor, PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 
 const url = urlDeBaseDescartable();
 
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 let esFacturaDuplicada: (error: unknown) => boolean;
 const clientesCreados: string[] = [];
 
@@ -25,17 +28,23 @@ const MARCA = `TESTX${Date.now().toString(36).toUpperCase()}`;
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
-  ({ prisma } = await import('../../../lib/prisma'));
+  // Antes de cualquier escritura: fija DATABASE_URL, importa `lib/prisma` y verifica que su
+  // conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   ({ esFacturaDuplicada } = await import('../rendiciones.service'));
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  // Una rendición protege a su cliente (`Restrict`): primero las rendiciones, con sus ítems.
-  await prisma.rendicion.deleteMany({ where: { clienteId: { in: clientesCreados } } });
-  await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    // Una rendición protege a su cliente (`Restrict`): primero las rendiciones, con sus ítems.
+    await prisma.rendicion.deleteMany({ where: { clienteId: { in: clientesCreados } } });
+    await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+  } finally {
+    await prisma.$disconnect();
+  }
 });
 
 const cuitsUsados = new Set<string>();

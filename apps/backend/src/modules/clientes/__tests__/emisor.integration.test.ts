@@ -20,10 +20,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 
 import { urlDeBaseDescartable } from './baseDescartable';
+import { conectarBaseDePrueba } from './baseVerificada';
 
 const url = urlDeBaseDescartable();
 
 let prisma: PrismaClient;
+/** `lib/prisma` pasó la verificación: recién entonces se escribe o se limpia. */
+let prismaInicializado = false;
 let app: Express;
 const clientesCreados: string[] = [];
 
@@ -34,19 +37,25 @@ const sesiones = sesionesDePrueba();
 
 beforeAll(async () => {
   if (url === undefined) return;
-  // El cliente de Prisma lee DATABASE_URL al importarse: se fija antes.
-  process.env.DATABASE_URL = url;
+  // Antes de cualquier escritura, también de las cuentas: fija DATABASE_URL, importa `lib/prisma`
+  // y verifica que su conexión real sea la de la URL (base y servidor). Si no, lanza sin escribir.
+  prisma = await conectarBaseDePrueba(url);
+  prismaInicializado = true;
   await sesiones.preparar();
-  ({ prisma } = await import('../../../lib/prisma'));
   const { createApp } = await import('../../../app');
   app = createApp({ corsOrigins: ['http://localhost:5173'] });
 });
 
 afterAll(async () => {
-  if (url === undefined) return;
-  await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
-  await sesiones.limpiar();
-  await prisma.$disconnect();
+  // Solo si la conexión pasó la verificación: nunca se limpia una base que no es la de la URL.
+  // Si la preparación falló después, igual se borran las cuentas de la corrida (`finally`).
+  if (url === undefined || !prismaInicializado) return;
+  try {
+    await prisma.cliente.deleteMany({ where: { id: { in: clientesCreados } } });
+  } finally {
+    await sesiones.limpiar();
+    await prisma.$disconnect();
+  }
 });
 
 /** CUIT válido (Módulo 11) y no usado por los demás tests de esta corrida. */

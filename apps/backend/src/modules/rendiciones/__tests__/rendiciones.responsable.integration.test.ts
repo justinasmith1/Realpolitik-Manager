@@ -29,7 +29,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sesionesDePrueba } from '../../auth/__tests__/sesionReal';
 import { clienteConCabeceras, ORIGEN_DE_PRUEBA } from '../../auth/__tests__/sesionSimulada';
 import { urlDeBaseDescartable } from '../../clientes/__tests__/baseDescartable';
-import { exigirBaseDePrueba } from '../../usuarios/__tests__/entornoDeUsuarios';
+import { conectarBaseDePrueba } from '../../clientes/__tests__/baseVerificada';
 import type * as Servicio from '../rendiciones.service';
 
 const url = urlDeBaseDescartable();
@@ -50,11 +50,10 @@ const porLaOperadora = () => ({ registradoPorId: sesiones.idDe(), origen: 'MANUA
 
 beforeAll(async () => {
   if (url === undefined) return;
-  process.env.DATABASE_URL = url;
-  ({ prisma } = await import('../../../lib/prisma'));
-  // Primero la guarda, sobre la misma conexión que usan las cuentas, el servicio y la app. Si
-  // falla, lanza: no se crea nada y el `afterAll` tampoco escribe (`prismaInicializado` sigue false).
-  await exigirBaseDePrueba(url, [prisma]);
+  // Fija DATABASE_URL, importa `lib/prisma` y verifica su conexión real (`exigirBaseDePrueba`), la
+  // misma que usan las cuentas, el servicio y la app. Si falla, la desconecta y lanza: no se crea
+  // nada y el `afterAll` tampoco escribe (`prismaInicializado` sigue false).
+  prisma = await conectarBaseDePrueba(url);
   prismaInicializado = true;
   await sesiones.preparar();
   ({ registrarCambioDeEstado } = await import('../rendiciones.service'));
