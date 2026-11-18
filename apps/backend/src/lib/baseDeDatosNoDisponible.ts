@@ -37,6 +37,33 @@ const SQLSTATE_DE_CONEXION_PERDIDA = /^(?:08[0-9A-Z]{3}|57P0[123])$/;
  */
 const SQLSTATE_EN_EL_MENSAJE = /PostgresError \{ code: "([0-9A-Z]{5})"/;
 
+/**
+ * `P2028` ("Transaction API error") agrupa causas distintas de una transacción interactiva. Solo dos
+ * son transitorias y no dejan nada confirmado; se reconocen por `meta.error`, el texto del motor
+ * (sin el lugar de la llamada que trae `message`):
+ * - "Unable to start a transaction in the given time.": en `maxWait` (2 s por defecto) no hubo una
+ *   conexión libre para empezarla; no se ejecutó nada. Es el equivalente transaccional de P2024.
+ * - "Transaction already closed: A <operación> cannot be executed on an expired transaction. …": la
+ *   transacción superó su `timeout` (5 s por defecto), por ejemplo esperando un bloqueo de fila, y
+ *   el motor la revirtió. El texto nombra la operación que lo encontró (`query`, `commit`…); en
+ *   todos los casos la transacción ya no se confirma.
+ * Las demás variantes (usar una transacción ya confirmada o revertida, "Transaction not found", un
+ * nivel de aislamiento inválido) son errores de programación y siguen siendo un 500, como un P2028
+ * sin `meta.error` o con cualquier otro texto. Reproducido con Prisma 5.22 y PostgreSQL 16 (B2A del
+ * cierre de la épica 4): login y cambio de rol con la fila del usuario bloqueada más de 5 s, y una
+ * transacción con el pool ocupado.
+ */
+const P2028_TRANSITORIOS: readonly RegExp[] = [
+  /^Unable to start a transaction in the given time\.?$/,
+  /^Transaction already closed: A [a-z]+(?: [a-z]+)? cannot be executed on an expired transaction\./,
+];
+
+function esTransaccionNoIniciadaOVencida(error: Prisma.PrismaClientKnownRequestError): boolean {
+  if (error.code !== 'P2028') return false;
+  const motivo = (error.meta as { error?: unknown } | undefined)?.error;
+  return typeof motivo === 'string' && P2028_TRANSITORIOS.some((patron) => patron.test(motivo));
+}
+
 /** La base no está disponible. Sin causa ni detalles: ni host, ni puerto, ni consulta. */
 export class BaseDeDatosNoDisponibleError extends Error {
   constructor() {
@@ -53,6 +80,7 @@ export function esBaseDeDatosNoDisponible(error: unknown): boolean {
   }
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (CODIGOS_DE_BASE_NO_DISPONIBLE.has(error.code)) return true;
+  if (esTransaccionNoIniciadaOVencida(error)) return true;
   const sqlstate = (error.meta as { code?: unknown } | undefined)?.code;
   return (
     error.code === 'P2010' &&

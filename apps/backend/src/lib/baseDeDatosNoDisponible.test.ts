@@ -49,6 +49,76 @@ describe('esBaseDeDatosNoDisponible', () => {
     },
   );
 
+  /** `meta.error` tal como lo dejó Prisma 5.22 en la reproducción del B2A (login con la fila bloqueada). */
+  const VENCIDA =
+    'Transaction already closed: A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 6951 ms passed since the start of the transaction. Consider increasing the interactive transaction timeout or doing less work in the transaction.';
+  const NO_INICIADA = 'Unable to start a transaction in the given time.';
+  /** Un P2028 como lo arma el cliente: el mensaje trae el lugar de la llamada; el motivo, `meta.error`. */
+  const p2028 = (meta?: Record<string, unknown>, mensaje = 'Invalid `tx.$queryRaw()` invocation') =>
+    new Prisma.PrismaClientKnownRequestError(`${mensaje}: Transaction API error`, {
+      code: 'P2028',
+      clientVersion: '5.22.0',
+      ...(meta === undefined ? {} : { meta }),
+    });
+
+  it.each([
+    ['no pudo empezar: pool ocupado más allá de maxWait', NO_INICIADA],
+    ['vencida al ejecutar una consulta (esperando un bloqueo)', VENCIDA],
+    [
+      'vencida al confirmar',
+      'Transaction already closed: A commit cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 5104 ms passed since the start of the transaction.',
+    ],
+  ])('P2028 transitorio (%s): no está disponible', (_caso, motivo) => {
+    expect(esBaseDeDatosNoDisponible(p2028({ error: motivo }))).toBe(true);
+  });
+
+  it.each([
+    [
+      'P2028 sobre una transacción ya confirmada (error de programación)',
+      p2028({
+        error: 'Transaction already closed: A query cannot be executed on a committed transaction.',
+      }),
+    ],
+    [
+      'P2028 sobre una transacción revertida (error de programación)',
+      p2028({
+        error:
+          'Transaction already closed: A query cannot be executed on a transaction that was rolled back.',
+      }),
+    ],
+    [
+      'P2028 con una transacción inexistente',
+      p2028({
+        error:
+          "Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma doesn't have information about anymore, or was obtained before disconnecting.",
+      }),
+    ],
+    ['P2028 con un nivel de aislamiento inválido', p2028({ error: 'Invalid isolation level' })],
+    ['P2028 sin meta', p2028()],
+    ['P2028 con meta sin error', p2028({ otro: NO_INICIADA })],
+    ['P2028 con meta.error que no es texto', p2028({ error: { mensaje: NO_INICIADA } })],
+    ['P2028 con meta.error numérico', p2028({ error: 2028 })],
+    [
+      'P2028 con el texto en otro lugar de meta.error',
+      p2028({ error: `Otro motivo: ${NO_INICIADA}` }),
+    ],
+    [
+      'P2028 con el texto solo en el mensaje (no en meta.error)',
+      p2028({ error: 'Invalid isolation level' }, NO_INICIADA),
+    ],
+    [
+      'otro código con el mismo meta.error',
+      new Prisma.PrismaClientKnownRequestError('falla', {
+        code: 'P2034',
+        clientVersion: '5.22.0',
+        meta: { error: NO_INICIADA },
+      }),
+    ],
+    ['un Error cualquiera con el texto', new Error(NO_INICIADA)],
+  ])('%s: NO es base caída (sigue como 500)', (_caso, error) => {
+    expect(esBaseDeDatosNoDisponible(error)).toBe(false);
+  });
+
   it.each([
     ['desconocido con otro SQLSTATE (23514)', desconocido('23514')],
     [
@@ -77,6 +147,39 @@ describe('conLaBaseDeDatos', () => {
     expect(error).toBeInstanceOf(BaseDeDatosNoDisponibleError);
     expect((error as Error).message).not.toMatch(/FATAL|terminating|57P01/);
     expect((error as Error).cause).toBeUndefined();
+  });
+
+  it('traduce un P2028 transitorio sin exponer el texto del motor ni la consulta', async () => {
+    const error = await conLaBaseDeDatos(() =>
+      Promise.reject(
+        new Prisma.PrismaClientKnownRequestError(
+          'Invalid `prisma.$queryRaw()` invocation: Transaction API error: Transaction already closed',
+          {
+            code: 'P2028',
+            clientVersion: '5.22.0',
+            meta: {
+              error:
+                'Transaction already closed: A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 6951 ms passed since the start of the transaction.',
+            },
+          },
+        ),
+      ),
+    ).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BaseDeDatosNoDisponibleError);
+    expect((error as Error).message).toBe('La base de datos no está disponible.');
+    expect((error as Error).cause).toBeUndefined();
+  });
+
+  it('deja pasar un P2028 de programación tal cual (sigue como 500)', async () => {
+    const original = new Prisma.PrismaClientKnownRequestError('falla', {
+      code: 'P2028',
+      clientVersion: '5.22.0',
+      meta: {
+        error: 'Transaction already closed: A query cannot be executed on a committed transaction.',
+      },
+    });
+    await expect(conLaBaseDeDatos(() => Promise.reject(original))).rejects.toBe(original);
   });
 
   it('deja pasar cualquier otro error tal cual', async () => {

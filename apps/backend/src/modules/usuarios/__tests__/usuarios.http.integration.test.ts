@@ -29,8 +29,10 @@ import {
   conexion,
   type Cuentas,
   cuentasDePrueba,
+  esperarEnEspera,
   nuevaMarca,
   PASSWORD,
+  retenerFilas,
 } from './entornoDeUsuarios';
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -340,5 +342,110 @@ describe.skipIf(url === undefined)('recorrido administrativo por HTTP (PostgreSQ
     const res = await con(token).get('/usuarios');
     expect(res.status).toBe(401);
     expect(JSON.stringify(res.body)).not.toContain(MARCA);
+  });
+});
+
+// Una transacción interactiva que supera su `timeout` esperando un bloqueo termina con un P2028
+// ("expired transaction") y el motor la revierte: es una falla transitoria de la base, no del
+// pedido. Antes respondía un 500 genérico; ahora es el 503 de base no disponible (S-01, cierre de
+// la épica 4). La fila se retiene desde otra conexión, se espera a ver la transacción bloqueada en
+// `pg_stat_activity` (sin esperas a ciegas) y se la mantiene así hasta pasar el `timeout` por
+// defecto de Prisma. Recién entonces se suelta: la consulta vuelve y el motor informa el vencimiento.
+const TIMEOUT_DE_TRANSACCION_MS = 5_000; // el de Prisma por defecto (`transactionOptions.timeout`)
+const MAS_ALLA_DEL_TIMEOUT_MS = TIMEOUT_DE_TRANSACCION_MS + 750;
+const dormir = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** El cuerpo no expone nada de Prisma, de la consulta ni del motor. */
+const sinDetallesInternos = (res: request.Response) =>
+  expect(JSON.stringify(res.body)).not.toMatch(
+    /Transaction|P2028|prisma|expired|timeout|SELECT|Usuario|Sesion/i,
+  );
+
+describe.skipIf(url === undefined)('transacción vencida esperando un bloqueo (P2028)', () => {
+  it('login: 503 con Retry-After, sin cookie ni sesión nueva, y después se puede entrar', async () => {
+    const cuenta = await cuentas.crear({ rol: 'ADMINISTRATIVO', alias: 'login-bloqueado' });
+    const accesoAntes = await prisma.usuario.findUniqueOrThrow({
+      where: { id: cuenta.id },
+      select: { ultimoAccesoEn: true },
+    });
+
+    const retenida = await retenerFilas(verificacion, 'Usuario', [cuenta.id]);
+    let res: request.Response;
+    try {
+      const pendiente = login(cuenta.email).then((r) => r);
+      // `crearSesion` quedó esperando la fila del usuario (`SELECT … FOR UPDATE`).
+      await esperarEnEspera(verificacion, 'auth:crear-sesion');
+      await dormir(MAS_ALLA_DEL_TIMEOUT_MS);
+      await retenida.soltar();
+      res = await pendiente;
+    } finally {
+      await retenida.soltar().catch(() => undefined);
+    }
+
+    expect(res.status).toBe(503);
+    expect((res.body as CuerpoDeError).error.code).toBe('SERVICE_UNAVAILABLE');
+    expect(res.headers['retry-after']).toBe('5');
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['set-cookie']).toBeUndefined();
+    sinDetallesInternos(res);
+    // La transacción se revirtió: ninguna sesión, ni el último acceso.
+    expect(await prisma.sesion.count({ where: { usuarioId: cuenta.id } })).toBe(0);
+    expect(
+      await prisma.usuario.findUniqueOrThrow({
+        where: { id: cuenta.id },
+        select: { ultimoAccesoEn: true },
+      }),
+    ).toEqual(accesoAntes);
+
+    // No contó como intento fallido y no dejó nada bloqueado: el login siguiente entra.
+    await entrar(cuenta.email);
+    expect(await prisma.sesion.count({ where: { usuarioId: cuenta.id } })).toBe(1);
+  });
+
+  it('cambio de rol: 503 RESULTADO_NO_CONFIRMADO, sin Retry-After, y nada quedó confirmado', async () => {
+    const objetivo = await cuentas.crear({ rol: 'ADMINISTRATIVO', alias: 'rol-bloqueado' });
+    const tokenObjetivo = await entrar(objetivo.email);
+    const eventosAntes = eventos.administrativos().length;
+
+    const retenida = await retenerFilas(verificacion, 'Usuario', [objetivo.id]);
+    let res: request.Response;
+    try {
+      const pendiente = con(tokenAdmin)
+        .patch(`/usuarios/${objetivo.id}`)
+        .send({ rol: 'CONSULTA' })
+        .then((r) => r);
+      // La transacción del cambio quedó esperando la fila (`bloquearUsuario`).
+      await esperarEnEspera(verificacion, 'usuarios:bloquear-usuario');
+      await dormir(MAS_ALLA_DEL_TIMEOUT_MS);
+      await retenida.soltar();
+      res = await pendiente;
+    } finally {
+      await retenida.soltar().catch(() => undefined);
+    }
+
+    // El contrato de las escrituras de usuarios: no afirma ni niega el resultado y no lleva
+    // Retry-After (ninguna escritura se reintenta sola).
+    expect(res.status).toBe(503);
+    expect((res.body as CuerpoDeError).error).toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+      details: { motivo: 'RESULTADO_NO_CONFIRMADO' },
+    });
+    expect(res.headers['retry-after']).toBeUndefined();
+    sinDetallesInternos(res);
+
+    // PostgreSQL no confirmó nada: el rol sigue, la sesión de la persona sigue y no hubo evento.
+    expect(
+      await prisma.usuario.findUniqueOrThrow({ where: { id: objetivo.id }, select: { rol: true } }),
+    ).toEqual({ rol: 'ADMINISTRATIVO' });
+    expect((await con(tokenObjetivo).get('/auth/sesion')).status).toBe(200);
+    expect(eventos.administrativos().slice(eventosAntes)).toEqual([]);
+
+    // Sin bloqueos pendientes (ni la fila ni el de la composición de administradores): el mismo
+    // cambio, pedido de nuevo a mano, se confirma.
+    const reintento = await con(tokenAdmin)
+      .patch(`/usuarios/${objetivo.id}`)
+      .send({ rol: 'CONSULTA' });
+    expect(reintento.status).toBe(200);
+    expect((reintento.body as { usuario: { rol: string } }).usuario.rol).toBe('CONSULTA');
   });
 });
