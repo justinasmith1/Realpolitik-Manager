@@ -36,7 +36,12 @@ export function AppLayout() {
   return (
     <TooltipProvider>
       <SidebarProvider style={sidebarWidths} className="bg-background">
-        <AppSidebar onCambiarContrasena={() => setCambioAbierto(true)} cuentaRef={cuentaRef} />
+        <AppSidebar
+          onCambiarContrasena={() => setCambioAbierto(true)}
+          cuentaRef={cuentaRef}
+          // Con la barra colapsada a íconos, el error del cierre de sesión se ve acá, en la página.
+          onErrorAlCerrarSesion={(texto) => avisar('destructive', texto)}
+        />
         <div className="flex min-w-0 flex-1 flex-col">
           <AppHeader />
           <main ref={mainRef} tabIndex={-1} className="flex-1 outline-none">

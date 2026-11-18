@@ -224,12 +224,26 @@ describe('VistaPreviaDocumentoSheet: motivo del fallo', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('404: dice que ya no está, sin "Descargar" ni "Reintentar" (darían el mismo 404)', async () => {
+    fetchMock.mockImplementationOnce(() => Promise.resolve(errorJson(404, 'NOT_FOUND')));
+    renderVisor();
+    const visor = within(await screen.findByRole('dialog', { name: /print-octubre\.pdf/ }));
+
+    expect(
+      await visor.findByText(
+        'print-octubre.pdf ya no está disponible. Actualizá la información y probá de nuevo.',
+      ),
+    ).toBeVisible();
+    expect(visor.queryByText(/mensaje interno/)).not.toBeInTheDocument();
+    expect(visor.queryByRole('button', { name: 'Descargar' })).not.toBeInTheDocument();
+    expect(visor.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+    expect(visor.queryByRole('link', { name: 'Abrir en otra pestaña' })).not.toBeInTheDocument();
+    // La salida sigue: cerrar el visor (la X del panel y el botón del pie).
+    expect(visor.getAllByRole('button', { name: 'Cerrar' }).length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
-    [
-      '404',
-      () => Promise.resolve(errorJson(404, 'NOT_FOUND')),
-      'print-octubre.pdf ya no está disponible. Actualizá la información y probá de nuevo.',
-    ],
     [
       'sin red',
       () => Promise.reject(new TypeError('Failed to fetch')),

@@ -40,13 +40,23 @@ const enlaceDelSidebar = (nombre: string) =>
 const fetchSinSimular = globalThis.fetch;
 
 // La página de /clientes pide el listado al montarse. El layout no depende de esos datos: se
-// simula vacío, así el test no le pega a ningún backend.
+// simula vacío, así el test no le pega a ningún backend. Documentos (al navegar desde el cajón
+// mobile) responde como un entorno con los documentos sin montar: 404, que la página muestra como
+// un estado neutro.
 const fetchMock = vi.fn<typeof fetch>((entrada, init) => {
   const url = new URL(entrada instanceof Request ? entrada.url : String(entrada));
-  if ((init?.method ?? 'GET') === 'GET' && url.pathname === '/clientes') {
-    return Promise.resolve(
-      new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+  const json = (cuerpo: unknown, status = 200) =>
+    Promise.resolve(
+      new Response(JSON.stringify(cuerpo), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     );
+  if ((init?.method ?? 'GET') === 'GET') {
+    if (url.pathname === '/clientes' || url.pathname === '/tipos-documento') return json([]);
+    if (url.pathname === '/documentos') {
+      return json({ error: { code: 'NOT_FOUND', message: 'Recurso no encontrado' } }, 404);
+    }
   }
   return fetchSinSimular(entrada, init);
 });
@@ -197,6 +207,67 @@ describe('AppLayout', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveFocus();
+  });
+
+  it('en mobile, elegir otra sección del cajón lo cierra y muestra esa sección', async () => {
+    mockMobileViewport();
+    const user = userEvent.setup();
+    renderRoute('/clientes');
+
+    await user.click(screen.getByRole('button', { name: 'Alternar barra lateral' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Navegación' });
+    await user.click(within(drawer).getByRole('link', { name: 'Documentos' }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Navegación' })).not.toBeInTheDocument(),
+    );
+    expect(within(screen.getByRole('banner')).getByText('Documentos')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Alternar barra lateral' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('en mobile, elegir la sección actual también cierra el cajón', async () => {
+    mockMobileViewport();
+    const user = userEvent.setup();
+    renderRoute('/clientes');
+
+    await user.click(screen.getByRole('button', { name: 'Alternar barra lateral' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Navegación' });
+    await user.click(within(drawer).getByRole('link', { name: 'Clientes' }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Navegación' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('en mobile, elegir una sección con Enter cierra el cajón y devuelve el foco al botón', async () => {
+    mockMobileViewport();
+    const user = userEvent.setup();
+    renderRoute('/clientes');
+
+    const toggle = screen.getByRole('button', { name: 'Alternar barra lateral' });
+    await user.tab();
+    await user.keyboard('{Enter}');
+    const drawer = await screen.findByRole('dialog', { name: 'Navegación' });
+    within(drawer).getByRole('link', { name: 'Clientes' }).focus();
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Navegación' })).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(toggle).toHaveFocus());
+  });
+
+  it('en escritorio, navegar desde la barra lateral no la colapsa', async () => {
+    const user = userEvent.setup();
+    renderRoute('/clientes');
+
+    await user.click(enlaceDelSidebar('Clientes'));
+
+    expect(screen.getByRole('button', { name: 'Contraer barra lateral' })).toBeInTheDocument();
+    expect(enlaceDelSidebar('Clientes')).toHaveAttribute('aria-current', 'page');
   });
 
   it('en mobile, "Cambiar contraseña" cierra el cajón y abre el panel a todo el ancho', async () => {

@@ -49,6 +49,10 @@ export function VistaPreviaDocumentoSheet({
   // reintento, que crea otra, vuelve a probar.
   const [urlRota, setUrlRota] = useState<string | null>(null);
   const sinMostrar = error || (url !== null && url === urlRota);
+  // Sin permiso (403) o con el documento que ya no está (404), descargar y reintentar piden la
+  // misma ruta y darían el mismo error: solo queda el mensaje. Los fallos temporales (servicio,
+  // red) y el archivo que el navegador no pudo dibujar conservan las dos salidas.
+  const recuperable = fallo?.tipo !== 'sin-permiso' && fallo?.tipo !== 'no-existe';
   const clase = mostrado === null ? null : claseDeVistaPrevia(mostrado.tipoContenido);
   const nombre = mostrado?.nombreOriginal ?? '';
 
@@ -82,8 +86,7 @@ export function VistaPreviaDocumentoSheet({
             <Alert>
               <div className="flex flex-col gap-2">
                 <span>{mensajeFalloVistaPrevia(nombre, fallo)}</span>
-                {/* Sin permiso, descargar y reintentar darían el mismo 403: solo el mensaje. */}
-                {fallo?.tipo !== 'sin-permiso' && (
+                {recuperable && (
                   <span className="flex flex-wrap gap-2">
                     <LoadingButton
                       type="button"

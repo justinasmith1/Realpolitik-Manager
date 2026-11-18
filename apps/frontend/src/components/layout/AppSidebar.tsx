@@ -117,7 +117,7 @@ const claseEtiqueta = `whitespace-nowrap transition-opacity ${transicion} group-
 
 function NavItem({ to, seccion, label, icon: Icon }: NavDestination) {
   const isActive = useMatch({ path: seccion, end: false }) !== null;
-  const { isMobile, state } = useSidebar();
+  const { isMobile, state, setOpenMobile } = useSidebar();
   // El tooltip solo hace falta con el Sidebar colapsado a íconos en escritorio. En
   // los demás casos no debe existir: abierto por el foco de teclado, consume el
   // primer Escape y el menú móvil no se cierra.
@@ -129,6 +129,14 @@ function NavItem({ to, seccion, label, icon: Icon }: NavDestination) {
         size="nav"
         isActive={isActive}
         {...tooltip}
+        // En mobile el panel es un cajón modal: elegir un destino lo cierra, también la sección
+        // actual (no hay navegación que lo delate) y con Enter (el enlace recibe el mismo clic).
+        // En escritorio no cambia nada.
+        onClick={() => {
+          if (isMobile) {
+            setOpenMobile(false);
+          }
+        }}
         // `Link` y no `NavLink`: el actual lo decide la sección, no el `to` (un `NavLink` a
         // `/documentos/archivos` no se marcaría en `/documentos/tipos`).
         render={<Link to={to} aria-current={isActive ? 'page' : undefined} />}
@@ -145,7 +153,7 @@ function NavItem({ to, seccion, label, icon: Icon }: NavDestination) {
  * El pie: la cuenta. En mobile, abrir el cambio de contraseña o ir a Usuarios cierra el cajón
  * primero.
  */
-function PieDeCuenta({ onCambiarContrasena, cuentaRef }: AppSidebarProps) {
+function PieDeCuenta({ onCambiarContrasena, cuentaRef, onErrorAlCerrarSesion }: AppSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar();
   const navigate = useNavigate();
   const cerrarCajon = () => {
@@ -164,6 +172,7 @@ function PieDeCuenta({ onCambiarContrasena, cuentaRef }: AppSidebarProps) {
         cerrarCajon();
         void navigate('/usuarios');
       }}
+      onErrorAlCerrarSesion={onErrorAlCerrarSesion}
     />
   );
 }
@@ -173,9 +182,15 @@ interface AppSidebarProps {
   onCambiarContrasena: () => void;
   /** El disparador del menú de cuenta, para devolverle el foco. */
   cuentaRef?: Ref<HTMLButtonElement> | undefined;
+  /** El cierre de sesión no se confirmó con la barra colapsada: el shell lo avisa en la página. */
+  onErrorAlCerrarSesion: (texto: string) => void;
 }
 
-export function AppSidebar({ onCambiarContrasena, cuentaRef }: AppSidebarProps) {
+export function AppSidebar({
+  onCambiarContrasena,
+  cuentaRef,
+  onErrorAlCerrarSesion,
+}: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon">
       {/* 56px expandido (marca + botón en una fila); colapsado crece a 96px para alojar el
@@ -200,7 +215,11 @@ export function AppSidebar({ onCambiarContrasena, cuentaRef }: AppSidebarProps) 
         </nav>
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border">
-        <PieDeCuenta onCambiarContrasena={onCambiarContrasena} cuentaRef={cuentaRef} />
+        <PieDeCuenta
+          onCambiarContrasena={onCambiarContrasena}
+          cuentaRef={cuentaRef}
+          onErrorAlCerrarSesion={onErrorAlCerrarSesion}
+        />
       </SidebarFooter>
     </Sidebar>
   );
